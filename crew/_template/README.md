@@ -15,13 +15,15 @@ by `bootstrap/PROMPT.md`; anyone can run it on a fork of this repo.
 | `measurements.md` | Every test of the member: backtests, interview, report verdicts | the build, then each report |
 | `report.md` | The review report a body of work ends with | as is |
 | `SKILL.md` | The Claude Code skill, installed to `~/.claude/skills/<slug>/SKILL.md` | install.sh |
-| `interview.md` | The calibration interview, used when answered questions are few | the build drafts its questions |
-| `briefs/` | Briefs for the sub-agents that label, distil and backtest | install.sh (placeholders) |
+| `interview.md` | The calibration interview, used when answered questions are few, and the question rounds that replace it for a principal with no Claude history | the build drafts its questions |
+| `lens.md` | Optional: how the principal builds things, distilled from their own documents | the build (lens step) |
+| `briefs/` | Briefs for the sub-agents that label, distil, backtest and write the lens | install.sh (placeholders) |
 
 ## Privacy rules (every member)
 
-- **The raw corpus never enters git.** Transcripts, the claude.ai export, the mined
-  `decisions*.jsonl`, labels and sub-agent inputs stay in the state dir (`~/.claude/state/<slug>/`).
+- **The raw corpus never enters git.** Transcripts, the claude.ai export, the principal's
+  documents, the mined `decisions*.jsonl`, round answers, labels and sub-agent inputs stay in the
+  state dir (`~/.claude/state/<slug>/`).
 - **Everything committed here is paraphrase.** Before a commit, `crew_decisions.py shingle` finds 0
   runs of 6 of the principal's words in a row, and a grep for personal topics finds nothing.
 - **The default filters keep the work and drop the person.** Dropped whole: records on the

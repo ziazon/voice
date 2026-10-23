@@ -12,6 +12,10 @@ on other Macs, run `PROMPT-extra-mac.md` on each of them when step 4 asks. If so
 private kit folder, keep its path handy for step 3. Built one before 2026-10-23? This
 repo's history was rewritten that day: clone it fresh and copy your `crew/<slug>/` across.
 
+**Building one for someone who does not use Claude?** (No account of their own, or under 18.) Say
+so at the start: the build follows *The route without a Claude history* at the end of this file,
+which learns from their documents and from question rounds instead of a history.
+
 ---
 
 You are helping the person at this Mac (**the principal**) build their AI assistant. Work through
@@ -234,10 +238,13 @@ Copy the draft to `$REPO/crew/$S/decisions.md`. Then both checks must pass:
 ```bash
 cd "$REPO/crew/$S"
 for f in *.md briefs/*.md; do [ "$f" = interview.md ] || $C shingle --doc "$f" --corpus ~/.claude/state/$S/decisions*.jsonl || echo "OVERLAP in $f"; done
+[ ! -d ~/.claude/state/$S/build/lens-in ] || for f in *.md briefs/*.md; do $C shingle --doc "$f" --corpus ~/.claude/state/$S/build/lens-in/documents-*.jsonl || echo "OVERLAP in $f"; done
 $C privacy-check --dir .
 ```
 
-(`interview.md` is skipped: the interview's questions were drafted from its table.) The shingle
+(`interview.md` is skipped against the decisions: the interview's questions were drafted from its
+table. The second line runs only when the lens step ran, and checks every file against their
+documents.) The shingle
 check must print `0 overlaps` for every file (rewrite any overlapping line in your own words). The
 second runs the merged filters (including `private.json`) over every committed file in
 `crew/<slug>/` at any depth, and over `member.json` outside its `filters`. It must print `clean`.
@@ -293,3 +300,60 @@ assistant to suggest, in two or three lines, which of the principal's recurring 
 take off their plate first, given the live categories. That ends the build. Tell the principal what
 was made, where it lives, and how to use it: type `/<slug>` with a question, or just work; sessions
 now ask the assistant first.
+
+## The route without a Claude history
+
+Some principals never use Claude themselves: they have no account, or they are under 18, which
+Anthropic's consumer terms require. There is nothing of theirs to mine, so the member learns from
+two other sources: **their own work** (the lens below) and **question rounds**, forms they fill in
+whose answers an adult relays (`crew/<slug>/interview.md`, *Question rounds*). The person running
+the build here is that adult, not the principal: **never mine this Mac's history for this member.**
+
+Run the steps above with these changes:
+
+- **Step 1.** Say what will be read (the documents they choose, their round answers), what is
+  dropped and where it stays, to the principal in plain words and, when they are under 18, to their
+  parent or guardian too. The principal can say no, and can ask later for everything to be deleted
+  (`~/.claude/state/<slug>/` and `crew/<slug>/`). Ask the topics question now, not at step 3:
+  school, friends' names and where they live are typical additions to `filters.personal` in
+  `private.json`.
+- **Step 3.** Add `--no-history` to the install command. It fills `crew/<slug>/`, reads no Claude
+  Code history and no export, and reports that there is nothing to merge yet. Skip steps 4 and 5.
+- **Step 7 becomes the lens and round 1.** Run *The lens* below. Then draft round 1 (about twenty
+  questions) as `interview.md` describes, show the draft to the adult (and the principal), turn it
+  into the form, and when the answers come back import them with `$C round --name 1 …` and re-run
+  the step 3 install command (with `--no-history`).
+- **Steps 8 and 9** as written.
+- **Step 10 is round 2, held out.** Draft about fifteen new questions, never shown to step 9's
+  sub-agents, and import the answers with `--heldout`; re-run the install command. Re-run step 8's
+  `chunk` and label only the new `heldout-*` chunks. Then step 10 as written, except its 30-question
+  floor: score the round whatever its size and give N beside every number. A category still needs 5
+  High picks at 90% or better to go live, so expect few or none from one round.
+- **Steps 11 to 15** as written. Step 13's one line in `~/.claude/CLAUDE.md` belongs to whoever
+  works with the member, not to the principal.
+
+### The lens (either route)
+
+Any principal can add this: a short file on how they build things, distilled from their own work.
+Ask them (or the adult) to put the files they choose in one folder: text, Markdown, Word (`.docx`)
+and PDF files are read, images are listed by file name only, and nothing else is opened. Move the
+folder into the state dir, so the raw text lives only there, and confirm their original copy can go:
+
+```bash
+mkdir -p ~/.claude/state/$S && mv "<their folder>" ~/.claude/state/$S/raw && chmod -R go-rwx ~/.claude/state/$S/raw
+B=~/.claude/state/$S/build
+$C documents --dir ~/.claude/state/$S/raw --out-dir $B/lens-in
+```
+
+Show the two count lines. A PDF skipped for want of `pdftotext` needs `brew install poppler` (ask
+first) or an export as `.docx` or `.txt`; then run it again. `$B/lens-in/inventory.jsonl` lists
+every file and why any was skipped. For every `documents-NN.jsonl`, start one sub-agent (model
+`sonnet`) with `$REPO/crew/$S/briefs/lens-brief.md`, `<MODE>` `notes` and its `<CHUNK>` (`NN`), then
+one with `<MODE>` `combine`. Check the draft, which must print `0 overlaps`:
+
+```bash
+$C shingle --doc $B/lens-draft.md --corpus $B/lens-in/documents-*.jsonl
+```
+
+Show the draft to the principal (and the adult) and correct what they say is wrong, then copy it
+to `$REPO/crew/$S/lens.md`. Step 11 checks it again with everything else.

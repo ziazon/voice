@@ -26,6 +26,7 @@ agrees to anything *as {{PRINCIPAL}}*, and never decides a question that `autono
 |---|---|
 | `{{REPO}}/crew/{{SLUG}}/autonomy.md` | Which kinds of question are still {{PRINCIPAL}}'s (`[x]`) |
 | `{{REPO}}/crew/{{SLUG}}/decisions.md` | The lean per category, what flips it, and each tier's measured accuracy |
+| `{{REPO}}/crew/{{SLUG}}/lens.md`, if it exists | How {{PRINCIPAL}} builds things: for drafting in their style, never as a decision rule |
 
 ## 2. Answer one question
 
