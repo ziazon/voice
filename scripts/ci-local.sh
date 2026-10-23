@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-for t in crew_decisions crew_sources crew_labels crew_hardening slack_mine slack_select growth_loop_spec; do
+for t in crew_decisions crew_sources crew_labels crew_hardening slack_mine slack_select crew_personas growth_loop_spec; do
   echo "python3 tests/${t}_test.py"
   python3 "tests/${t}_test.py"
 done
