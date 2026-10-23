@@ -1,0 +1,85 @@
+{
+  "name": "{{NAME}}",
+  "slug": "{{SLUG}}",
+  "pronouns": "{{PRONOUNS}}",
+  "principal": "{{PRINCIPAL}}",
+  "principal_slug": "{{PRINCIPAL_SLUG}}",
+  "principal_pronouns": "{{PRINCIPAL_PRONOUNS}}",
+  "state_dir": "~/.claude/state/{{SLUG}}",
+  "mark_word": "{{NAME}}",
+  "filters": {
+    "excluded_folders": "^-private-",
+    "personal": "divorce|custody|alimony|child support|\\bmediat(?:ion|or)\\b|attorney|lawyer|lawsuit|probate|\\bwill and testament\\b|\\bmy (?:doctor|therapist|therapy|medication|meds|diagnosis|symptoms|prescription|surgery|appointment|insurance)\\b|\\b(?:i was|i've been|i am|i'm) (?:diagnosed|pregnant|sick)\\b|\\b(?:my|our) (?:mom|mother|dad|father|son|daughter|kids?|children|family|sister|brother|wife|husband|partner|spouse|marriage|wedding)\\b|household financ|\\bmortgage\\b|\\bhoa\\b|unit owner|\\bneurodivergen|\\badhd\\b|\\bautis(?:m|tic)\\b|\\bour (?:taxes|budget|bills|savings|rent)\\b|tax return|credit card|bank account",
+    "secret": "routing number|account (?:number|no\\b|num)|\\b\\d{7,}\\b|\\b\\d{3}-\\d{2}-\\d{4}\\b|\\(?\\b\\d{3}\\)?[-. ]\\d{3}[-. ]\\d{4}\\b|[\\w.+-]+@[\\w-]+\\.[a-z]{2,}|\\b(?:student|participant|subject|respondent|patient)[ \\t]*(?:id\\b|#[ \\t]*\\d|no\\.?[ \\t]*\\d|number)|\\bparticipant\\s+\\d+|\\b(?:date of birth|dob|mrn|medical record)\\b|\\bsk-[A-Za-z0-9]{20,}|\\bsk_(live|test)_[A-Za-z0-9]{16,}|\\bgh[pousr]_[A-Za-z0-9]{20,}|\\bxox[abpr]-|\\bxapp-|AKIA[0-9A-Z]{16}|\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}|\\bAIza[0-9A-Za-z_-]{30,}|\\bhf_[A-Za-z0-9]{30,}|\\bglpat-[A-Za-z0-9_-]{20,}|\\bnpm_[A-Za-z0-9]{30,}|-----BEGIN|passw(or)?d|\\b\\d{9,}\\b",
+    "pasted_prefixes": [
+      "You are ",
+      "This session is being continued",
+      "[Request interrupted",
+      "[Image",
+      "Caveat:"
+    ]
+  },
+  "codebook": {
+    "categories": [
+      "scope",
+      "sequencing",
+      "methods",
+      "framing",
+      "writing-voice",
+      "communication",
+      "collaboration",
+      "compliance-ethics",
+      "tooling",
+      "verification",
+      "placement-naming",
+      "go-no-go",
+      "other"
+    ],
+    "domains": [
+      "work",
+      "writing",
+      "admin",
+      "other"
+    ],
+    "escalates": [
+      "send-external",
+      "submit",
+      "money",
+      "irreversible",
+      "privacy",
+      "commitment"
+    ],
+    "signals": [
+      "ruling",
+      "correction",
+      "direction",
+      "ack",
+      "other"
+    ],
+    "groups": {
+      "g1-plan": [
+        "scope",
+        "sequencing",
+        "go-no-go"
+      ],
+      "g2-method": [
+        "methods",
+        "framing",
+        "verification"
+      ],
+      "g3-words": [
+        "writing-voice",
+        "communication",
+        "collaboration"
+      ],
+      "g4-rules": [
+        "compliance-ethics",
+        "placement-naming"
+      ],
+      "g5-tools": [
+        "tooling",
+        "other"
+      ]
+    }
+  }
+}

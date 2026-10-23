@@ -1,0 +1,45 @@
+# Recordings of real people's voices never enter git: reference clips, enrolled voices,
+# generated speech. Keep them outside the repo, or in ignored ref/ and out/ folders.
+*.wav
+*.m4a
+*.mp3
+*.caf
+*.aif
+*.aiff
+*.flac
+*.ogg
+research/*/ref/
+research/*/out/
+voices/
+
+# Run logs carry local paths and model download noise; the results JSON is the record.
+research/*/logs/
+
+# Python environments and model checkpoints are rebuilt, never committed.
+*-venv/
+.venv/
+__pycache__/
+*.pth
+*.safetensors
+checkpoints*/
+
+# Build output
+target/
+build/
+DerivedData/
+.DS_Store
+
+# Session worktrees live inside the repo.
+.claude/worktrees/
+crew/*/private.json
+
+# Additional recording formats and local private data.
+*.opus
+*.aac
+*.webm
+*.mp4
+venv/
+.env
+.envrc
+decisions*.jsonl
+**/private.json

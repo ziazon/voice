@@ -1,0 +1,23 @@
+# voice: a kit for building AI assistants
+
+An AI assistant built with this kit answers a decision the way its principal would, says how sure it
+is, and hands the question back when it is the principal's. This repo is the kit: the member
+template, the guided build, and the shared miners and their tests. It is public, so it holds no
+member and no real person's data.
+
+| Path | What | Test |
+| --- | --- | --- |
+| `crew/_template/` | Member template, filled by `bootstrap/install.sh --name <Name>` | `tests/crew_install_test.sh` |
+| `bootstrap/` | The guided build (`PROMPT.md`) and its installer | `tests/crew_install_test.sh` |
+| `scripts/crew_decisions.py` | Mine, split, tally, label, score, record, privacy-check | `tests/crew_*_test.py` |
+| `scripts/slack_mine.py`, `slack_select.py` | Optional Slack export miners, driven by `--config` | `tests/slack_*_test.py` |
+
+All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck).
+
+## Rules that bind every change
+
+- No real people: see `AGENTS.md`. Member-specific values (names, filters, workspaces, ids) come
+  from a member's `member.json` and its gitignored `private.json`, or a config path passed in.
+- Every file a miner writes goes outside the repo, 0600 in 0700 folders.
+- Never print a secret or an environment value; tokens live in the Keychain, never in config or argv.
+- Test first: a change to behaviour starts with a failing test.
