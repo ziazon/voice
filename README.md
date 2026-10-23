@@ -60,6 +60,7 @@ It is safe to stop and re-run: the installer keeps what you have already marked.
 | `bootstrap/` | `PROMPT.md` (the guided build), `PROMPT-extra-mac.md`, `install.sh` |
 | `scripts/crew_decisions.py` | Mines, splits, tallies, labels and scores your decision history; every command takes `--member <member.json>` |
 | `scripts/slack_mine.py`, `scripts/slack_select.py` | Optional: turn a Slack JSON export into samples and candidate decision threads for persona work (see below) |
+| `scripts/crew_personas.py` | Optional: decision cards, per-person decision models, blind backtests and a panel (see below) |
 | `scripts/ci-local.sh` | Runs every test and shellcheck; needs `shellcheck` (`brew install shellcheck`) |
 | `tests/` | The suites `ci-local.sh` runs, all on fictional data |
 
@@ -86,6 +87,36 @@ file you keep outside the repo:
 python3 -I scripts/slack_mine.py --config ~/private/slack.json <export dir> <work dir>
 python3 -I scripts/slack_select.py --config ~/private/slack.json <work dir>
 ```
+
+## Optional: persona models and panels
+
+`crew_personas.py` turns a team's recorded arguments into **cards**, one per decision: a neutral
+question, the 2 to 4 options people argued, each person's stance (an option id, `own` or
+`asked-only`) and the outcome. A model pass writes the cards (`crew/_template/briefs/card-brief.md`);
+the script is the deterministic half, with no model calls and no network. One real card updates
+every participant's model at once, which is the only way the models learn from each other.
+
+```bash
+python3 -I scripts/crew_personas.py check --cards cards.json --categories categories.json
+python3 -I scripts/crew_personas.py split --cards cards.json --person alex --before 2025-06-01 > split.json
+python3 -I scripts/crew_personas.py distil-in --cards cards.json --split split.json --evidence reads.jsonl
+python3 -I scripts/crew_personas.py questions --cards cards.json --split split.json > questions.jsonl
+python3 -I scripts/crew_personas.py score --cards cards.json --split split.json --predictions pred.json
+```
+
+- **Build a model:** `split` holds out each person's newest cards; a distil pass
+  (`persona-model-brief.md`) writes the model from the training cards and the principal's own reads
+  of that person; a blind predictor (`persona-backtest-brief.md`) answers the held-out questions;
+  `score` reports hits per tier and category with a 95% interval and two baselines (a random option,
+  and siding with the outcome). Refit on every card for live use afterwards.
+- **Run a panel:** one seat per model (`panel-seat.md`), round 1 independent, round 2 reacting to the
+  others. `panel-check` validates the answers, `panel-sheet` prints the predicted meeting and
+  `panel-score` scores it against the real card once the discussion has happened.
+- **Ground truth only.** Training reads `card`, `pr-review`, `principal-read` and
+  `principal-correction` records. A panel answer is `simulated`: `split` and `distil-in` refuse it, so a
+  prediction never trains a model. It counts only once a real card confirms it.
+- A model of a person is private to its principal: it never speaks, posts or sends as them, and its
+  predictions are never attributed to them.
 
 ## Rules
 
