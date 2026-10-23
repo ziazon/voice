@@ -94,7 +94,7 @@ files before making it pass. Tests:
 5. **The doc's inline examples equal the files**: for each kind, find the line
    ``Example (`growth-loop/examples/<kind>.json`):``, take the next fenced ```` ```json ```` block,
    `json.loads` it, and assert it equals the file's parsed JSON.
-6. **The examples obey the cross-record rules** (spec rules 2–4):
+6. **The examples obey the cross-record rules** (spec rules 2–5):
    - the case's `from_signals` contains the signal's `id`; the proposal's `cases` contains the
      case's `id`; the approval's `proposal` and the measurement's `proposal` equal the proposal's
      `id`; the measurement's `approval` equals the approval's `id`; `persona` is the same on the
@@ -102,7 +102,7 @@ files before making it pass. Tests:
    - the approval's `role` is the one the proposal's `persona_kind` requires (`person` → `subject`,
      `product` → `staff`);
    - the set of `results[].case` with `new: true` equals the proposal's `cases`;
-   - a helper `expected_outcome(measurement, approval)` implementing rule 3 (`keep` only when the
+   - a helper `expected_outcome(measurement, approval)` implementing rules 3 and 4 (`keep` only when the
      approval's `decision` is `approved`, every `new: true` result has `after: pass`, and no
      `new: false` result went `pass` → `fail`; else `revert`) returns the example's `outcome`; and it
      returns `revert` for three mutated copies: a regression (`before: pass, after: fail` on an old
