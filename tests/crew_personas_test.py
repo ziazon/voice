@@ -235,6 +235,8 @@ class Personas(unittest.TestCase):
         proc = self.run_cli('similar', '--cards', path, '--person', 'Sam', '--query', 'choir rehearse Thursdays')
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn('thread/c15', proc.stdout)
+        # Each line leads with the card id, the handle a panel seat cites as evidence.
+        self.assertIn('- c15 · ', proc.stdout)
         self.assertIn('argued: Ship half · went: Ship it all', proc.stdout)
 
     # the panel

@@ -285,7 +285,7 @@ def cmd_similar(args):
         print(json.dumps(hits, indent=2, ensure_ascii=False))
     else:
         for h in hits:
-            print(f"- {h['date']} · {h['question']} · argued: {h['argued']} · went: {h['went']} · {h['link']}")
+            print(f"- {h['id']} · {h['date']} · {h['question']} · argued: {h['argued']} · went: {h['went']} · {h['link']}")
     return 0
 
 
