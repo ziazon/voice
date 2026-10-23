@@ -306,3 +306,18 @@ Two defects the review found, each test first:
    the merged corpus still equals the imported round and lacks that text.
 
 Also wrap the `COMMANDS` dict in `crew_decisions.py` to the file's usual width.
+
+## Verifier fixes (dispatch D)
+
+The Verifier found two inputs that end in a traceback instead of one `crew_decisions:` line. Test first:
+
+1. **Deeply nested JSON.** A `--questions` or `--answers` file holding `"[" * 100000` raises
+   `RecursionError` from `json.loads`. `read_round_file` must turn it into a one-line `Failed`
+   (`round: questions: …`), and `main`'s final `except` must also catch `RecursionError`, so a
+   nested line in any JSONL a command reads (for example `merge --in`) ends in one line too.
+   Tests: `round` with a nested questions file; `merge --in` with a nested line. Each: exit 1,
+   `assert_cli_error`, no traceback.
+2. **A merge input line that is not an object.** `[1, 2]` as a line of any `merge` input raises
+   `AttributeError` or `TypeError`. `cmd_merge` refuses it before anything else reads the record:
+   `Failed(f"{path}: a line is not a JSON object")`. Test: a `--rounds` file with that line, and an
+   `--in` file with that line: exit 1, one line naming the file.
