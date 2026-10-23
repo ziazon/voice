@@ -286,3 +286,23 @@ Implement sections A to E above: `scripts/crew_documents.py` (new), `scripts/cre
 packing into chunks and writing live in `cmd_documents`. Keep each function at one level of
 abstraction, early returns over nesting, names that say what they hold. Run
 `bash scripts/ci-local.sh` until it passes, and report its tail.
+
+## Review fixes (dispatch C)
+
+Two defects the review found, each test first:
+
+1. **A special file hangs `documents`.** A FIFO (or any non-regular file) under `--dir` blocks
+   `read_bytes` forever. `crew_documents.read` must check the `lstat` result first: anything that is
+   not a regular file is skipped with reason `unreadable` and never opened, whatever its suffix.
+   Test: `os.mkfifo(self.source / "pipe.txt")` beside a normal `a.txt`; the run exits 0 and the
+   inventory row for `pipe.txt` is `{"source": "pipe.txt", "kind": "skipped", "reason": "unreadable"}`.
+2. **`--no-history` merges a stale history corpus.** A `decisions-<host>.jsonl` or
+   `decisions-claudeai.jsonl` left from an earlier run without the flag still reaches `--in`, which
+   brings the running Mac's own history into the member. With `--no-history`, step 6 passes no
+   `--in` at all: each such file prints `ignored (--no-history): <file name>` and is left on disk.
+   Test (in `tests/crew_install_test.sh`, in the no-history case after the round import): write
+   `decisions-old.jsonl` into the relay state dir holding one message record whose text is
+   `STALE_HISTORY_MUST_NOT_MERGE`, rerun with `--no-history`, check the `ignored` line, and assert
+   the merged corpus still equals the imported round and lacks that text.
+
+Also wrap the `COMMANDS` dict in `crew_decisions.py` to the file's usual width.

@@ -10,6 +10,7 @@ member and no real person's data.
 | `crew/_template/` | Member template, filled by `bootstrap/install.sh --name <Name>` | `tests/crew_install_test.sh` |
 | `bootstrap/` | The guided build (`PROMPT.md`) and its installer | `tests/crew_install_test.sh` |
 | `scripts/crew_decisions.py` | Mine, split, tally, label, score, record, privacy-check | `tests/crew_*_test.py` |
+| `scripts/crew_documents.py` | Read text, Word and PDF inputs for the lens | `tests/crew_documents_test.py` |
 | `scripts/slack_mine.py`, `slack_select.py` | Optional Slack export miners, driven by `--config` | `tests/slack_*_test.py` |
 | `scripts/crew_personas.py` | Optional decision cards, per-person models, blind backtests, panels | `tests/crew_personas_test.py` |
 | `docs/spec/growth-loop.md` | The growth loop spec any persona app implements, with its JSON Schemas | `tests/growth_loop_spec_test.py` |
