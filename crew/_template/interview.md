@@ -38,3 +38,37 @@ their work:
 
 After the interview, ask one open question: "Which kinds of decisions would you most like {{NAME}}
 to take off your plate?" and note the answer (paraphrased) for the autonomy gate.
+
+## Question rounds, when {{PRINCIPAL}} does not use Claude
+
+When {{PRINCIPAL}} cannot be asked in a Claude session (no account of their own, or under 18, which
+Anthropic's consumer terms require), the same questions go out as a **round**: a form they fill in
+on paper or as a fillable PDF, whose answers an adult relays. Draft a round from the table above,
+then write two files in `~/.claude/state/{{SLUG}}/rounds/`:
+
+- `<round>-questions.json`, exactly what the form shows. Options are lettered A to D in order;
+  `recommended` is a letter, or null where there is no honest default.
+
+  ```json
+  {"questions": [{"n": 1, "header": "<short tag>", "question": "…", "multiSelect": false,
+                  "recommended": "A", "options": [{"label": "…", "description": "…"}, {"label": "…", "description": "…"}]}]}
+  ```
+
+- `<round>-answers.json`, typed from the returned form: the letter they ticked (a list of letters
+  where several may be ticked), their own words when they wrote some, and the date they answered.
+  A question left blank is simply missing.
+
+  ```json
+  {"answered": "YYYY-MM-DD", "answers": {"1": {"pick": "B"}, "2": {"own_words": "…", "notes": "…"}}}
+  ```
+
+Import each round into the corpus folder, then re-run the install command so it is merged:
+
+```bash
+$C round --name 1 --questions ~/.claude/state/{{SLUG}}/rounds/1-questions.json --answers ~/.claude/state/{{SLUG}}/rounds/1-answers.json
+$C round --name 2 --questions … --answers … --heldout
+```
+
+A round trains by default, like the interview. Pass `--heldout` for a round the model must be
+scored on blind: new questions, never shown to the sub-agents that draft the model, so the
+backtest (PROMPT.md step 10) tests it on every one of that round's questions. Hold out a whole round or nothing; never mix.

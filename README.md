@@ -12,7 +12,8 @@ a *member*, and it lives in `crew/<slug>/` of your own private copy.
 
 - **It reads** your Claude Code history on your Mac (`~/.claude/projects/`) and, if you choose, a
   claude.ai data export. From these it keeps the questions Claude asked you with the option you
-  picked, and the messages you typed.
+  picked, and the messages you typed. On the route without a Claude history (below), it reads
+  instead the documents the principal chooses and their answers to question rounds.
 - **Filters run first.** Records about your own health, family, legal matters or household money
   are dropped, and so is anything holding a secret, someone else's identifier, an email address, a
   phone number or a long run of digits. Your member's gitignored `private.json` can add patterns
@@ -52,13 +53,22 @@ It is safe to stop and re-run: the installer keeps what you have already marked.
    If you use Claude Code on other Macs too, step 4 asks you to run `bootstrap/PROMPT-extra-mac.md`
    on each of them.
 
+**No Claude history?** The person the assistant learns from may not use Claude at all: they have no
+account, or they are under 18, which Anthropic's consumer terms require. Then whoever runs the build
+says so at step 1, and the build takes *the route without a Claude history* (the end of
+`bootstrap/PROMPT.md`). It learns from the documents the principal chooses (stories, plans, notes;
+`crew_decisions.py documents`) and from question rounds they answer on a form that an adult relays
+(`crew_decisions.py round`), with one round held out to test the model blind. It never reads the
+Claude history of the Mac it runs on.
+
 ## Layout
 
 | Path | What |
 | --- | --- |
 | `crew/_template/` | The member template: identity, decision model, autonomy dial, measurements, report, skill, sub-agent briefs. "Crew" is just the folder's name for the set of members you build |
 | `bootstrap/` | `PROMPT.md` (the guided build), `PROMPT-extra-mac.md`, `install.sh` |
-| `scripts/crew_decisions.py` | Mines, splits, tallies, labels and scores your decision history; every command takes `--member <member.json>` |
+| `scripts/crew_decisions.py` | Mines, splits, tallies, labels and scores your decision history; imports question rounds and reads documents for the lens; every command takes `--member <member.json>` |
+| `scripts/crew_documents.py` | Reads text, Markdown, Word and PDF files for the lens step (PDF through poppler's `pdftotext`) |
 | `scripts/slack_mine.py`, `scripts/slack_select.py` | Optional: turn a Slack JSON export into samples and candidate decision threads for persona work (see below) |
 | `scripts/crew_personas.py` | Optional: decision cards, per-person decision models, blind backtests and a panel (see below) |
 | `scripts/ci-local.sh` | Runs every test and shellcheck; needs `shellcheck` (`brew install shellcheck`) |
