@@ -13,6 +13,7 @@
 # gitignored crew/<slug>/private.json, and DIR/crew/* replaces template files when crew/<slug>/ is
 # first filled), --repo-dir DIR (default: this script's clone), --export ZIP (main role; default
 # <state>/claudeai-export.zip when present), --project-field KEY (from `claudeai inspect`).
+# --no-history (main role only): skip this Mac's history and export; merge question rounds instead.
 # Environment: CLAUDE_PROJECTS (default ~/.claude/projects), CREW_HOST.
 #
 # Nothing here reads another person's data or sends anything anywhere except an extra Mac's own
@@ -20,7 +21,7 @@
 set -euo pipefail
 
 name="" role="main" pronouns="they/them" principal="" principal_pronouns="they/them"
-repo="" to="" copy=1 kit="" export_zip="" project_field=""
+repo="" to="" copy=1 kit="" export_zip="" project_field="" no_history=0
 
 die() { echo "install: $*" >&2; exit 1; }
 need_value() { [ "$#" -ge 2 ] && [ -n "$2" ] || die "$1 needs a value"; }
@@ -34,11 +35,12 @@ while [ "$#" -gt 0 ]; do
     --principal-pronouns) need_value "$@"; principal_pronouns="$2"; shift 2 ;;
     --repo-dir) need_value "$@"; repo="$2"; shift 2 ;;
     --to) need_value "$@"; to="$2"; shift 2 ;;
+    --no-history) no_history=1; shift ;;
     --no-copy) copy=0; shift ;;
     --kit) need_value "$@"; kit="$2"; shift 2 ;;
     --export) need_value "$@"; export_zip="$2"; shift 2 ;;
     --project-field) need_value "$@"; project_field="$2"; shift 2 ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
   esac
 done
@@ -46,6 +48,7 @@ done
 [ -n "$name" ] || die "--name is required (the assistant's name)"
 [ -n "$principal" ] || die "--principal is required (your own name: whose decisions the assistant learns)"
 case "$role" in main|extra) ;; *) die "--role must be main or extra" ;; esac
+[ "$no_history" = 0 ] || [ "$role" = main ] || die "--no-history is for the main role only"
 [ "$role" = main ] || [ "$copy" = 0 ] || [ -n "$to" ] ||
   die "--to is needed for --role extra (the main Mac as USER@HOST, or a folder), or pass --no-copy"
 [ -z "$kit" ] || [ -d "$kit" ] || die "--kit $kit is not a folder"
@@ -176,18 +179,22 @@ chmod 700 "$state"
 crew_run() { python3 -I "$crew" --member "$member" "$@"; }
 
 echo "== 4. Mine this Mac's Claude Code history"
-host="$(printf '%s' "${CREW_HOST:-$(hostname -s)}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-$//')"
-projects="${CLAUDE_PROJECTS:-$HOME/.claude/projects}"
-corpus="$state/decisions-$host.jsonl"
-if [ -d "$projects" ]; then
-  crew_run folders --projects "$projects" | tail -1
-  # Nothing is held out per Mac (a cutoff after every record): the merge on the main Mac splits once.
-  crew_run mine --projects "$projects" --out "$corpus" --cutoff 9999
+if [ "$no_history" = 1 ]; then
+  echo "skipped (--no-history): nothing is read from this Mac's Claude Code history"
 else
-  echo "no Claude Code history on this Mac ($projects)"
-  : > "$corpus"
+  host="$(printf '%s' "${CREW_HOST:-$(hostname -s)}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-$//')"
+  projects="${CLAUDE_PROJECTS:-$HOME/.claude/projects}"
+  corpus="$state/decisions-$host.jsonl"
+  if [ -d "$projects" ]; then
+    crew_run folders --projects "$projects" | tail -1
+    # Nothing is held out per Mac (a cutoff after every record): the merge on the main Mac splits once.
+    crew_run mine --projects "$projects" --out "$corpus" --cutoff 9999
+  else
+    echo "no Claude Code history on this Mac ($projects)"
+    : > "$corpus"
+  fi
+  chmod 600 "$corpus"
 fi
-chmod 600 "$corpus"
 
 if [ "$role" = extra ]; then
   echo "== 5. Copy the corpus to the main Mac"
@@ -213,45 +220,68 @@ if [ "$role" = extra ]; then
 fi
 
 echo "== 5. The claude.ai export"
-[ -n "$export_zip" ] || { [ -f "$state/claudeai-export.zip" ] && export_zip="$state/claudeai-export.zip"; } || true
-review="$state/claudeai-review.tsv"
-if [ -z "$export_zip" ]; then
-  echo "no export yet: request it (Settings > Privacy > Export data), open the manifest it sends,"
-  echo "  download conversations-000.zip in your browser, save it as $state/claudeai-export.zip,"
-  echo "  then run this again"
+if [ "$no_history" = 1 ]; then
+  echo "skipped (--no-history)"
 else
-  crew_run claudeai inspect --export "$export_zip" ||
-    die "the export's shape is not what the adapter reads (see above): stop, and report the field names (no content) upstream"
-  titles=(claudeai titles --export "$export_zip" --out "$review")
-  [ -z "$project_field" ] || titles+=(--project-field "$project_field")
-  crew_run "${titles[@]}"
-  chmod 600 "$review"
-  unmarked="$(awk -F'\t' 'NR > 1 && $1 == ""' "$review" | wc -l | tr -d ' ')"
-  total="$(awk 'NR > 1' "$review" | wc -l | tr -d ' ')"
-  if [ "$unmarked" = "$total" ] && [ "$total" != 0 ]; then
-    echo "none of the $total conversations is marked yet: review $review (PROMPT.md step 5),"
-    echo "then run this again. Until then no claude.ai conversation is mined."
-    rm -f "$state/decisions-claudeai.jsonl"
+  [ -n "$export_zip" ] || { [ -f "$state/claudeai-export.zip" ] && export_zip="$state/claudeai-export.zip"; } || true
+  review="$state/claudeai-review.tsv"
+  if [ -z "$export_zip" ]; then
+    echo "no export yet: request it (Settings > Privacy > Export data), open the manifest it sends,"
+    echo "  download conversations-000.zip in your browser, save it as $state/claudeai-export.zip,"
+    echo "  then run this again"
   else
-    [ "$unmarked" = 0 ] || echo "$unmarked conversations are still unmarked: they are left out"
-    crew_run claudeai mine --export "$export_zip" --review "$review" --out "$state/decisions-claudeai.jsonl" --cutoff 9999
-    chmod 600 "$state/decisions-claudeai.jsonl"
+    crew_run claudeai inspect --export "$export_zip" ||
+      die "the export's shape is not what the adapter reads (see above): stop, and report the field names (no content) upstream"
+    titles=(claudeai titles --export "$export_zip" --out "$review")
+    [ -z "$project_field" ] || titles+=(--project-field "$project_field")
+    crew_run "${titles[@]}"
+    chmod 600 "$review"
+    unmarked="$(awk -F'\t' 'NR > 1 && $1 == ""' "$review" | wc -l | tr -d ' ')"
+    total="$(awk 'NR > 1' "$review" | wc -l | tr -d ' ')"
+    if [ "$unmarked" = "$total" ] && [ "$total" != 0 ]; then
+      echo "none of the $total conversations is marked yet: review $review (PROMPT.md step 5),"
+      echo "then run this again. Until then no claude.ai conversation is mined."
+      rm -f "$state/decisions-claudeai.jsonl"
+    else
+      [ "$unmarked" = 0 ] || echo "$unmarked conversations are still unmarked: they are left out"
+      crew_run claudeai mine --export "$export_zip" --review "$review" --out "$state/decisions-claudeai.jsonl" --cutoff 9999
+      chmod 600 "$state/decisions-claudeai.jsonl"
+    fi
   fi
 fi
 
 echo "== 6. Merge every machine's corpus"
-inputs=()
+inputs=() train=() rounds=()
 for f in "$state"/decisions-*.jsonl; do
-  [ -e "$f" ] && [ "$(basename "$f")" != decisions-interview.jsonl ] && inputs+=("$f")
+  [ -e "$f" ] || continue
+  case "$(basename "$f")" in
+    decisions-interview.jsonl) train+=("$f") ;;
+    decisions-round-*.jsonl) rounds+=("$f") ;;
+    *)
+      if [ "$no_history" = 1 ]; then
+        echo "ignored (--no-history): $(basename "$f")"
+      else
+        inputs+=("$f")
+      fi
+      ;;
+  esac
 done
+if [ "${#inputs[@]}" = 0 ] && [ "${#train[@]}" = 0 ] && [ "${#rounds[@]}" = 0 ]; then
+  echo "nothing to merge yet: import a question round first (PROMPT.md, the route without a Claude history)"
+  exit 0
+fi
 echo "merging (a file from a Mac that no longer exists, or an old host name, should be deleted):"
-for f in "${inputs[@]}"; do echo "  $(date -r "$f" '+%Y-%m-%d %H:%M')  $(basename "$f")"; done
-merge=(merge --in "${inputs[@]}" --out "$state/decisions.jsonl" --holdout 0.15)
-[ ! -f "$state/decisions-interview.jsonl" ] || merge+=(--train "$state/decisions-interview.jsonl")
+for f in ${inputs[@]+"${inputs[@]}"} ${train[@]+"${train[@]}"} ${rounds[@]+"${rounds[@]}"}; do
+  echo "  $(date -r "$f" '+%Y-%m-%d %H:%M')  $(basename "$f")"
+done
+merge=(merge --out "$state/decisions.jsonl" --holdout 0.15)
+[ "${#inputs[@]}" = 0 ] || merge+=(--in "${inputs[@]}")
+[ "${#train[@]}" = 0 ] || merge+=(--train "${train[@]}")
+[ "${#rounds[@]}" = 0 ] || merge+=(--rounds "${rounds[@]}")
 crew_run "${merge[@]}"
 chmod 600 "$state/decisions.jsonl"
 questions="$(grep -c '"kind": "question"' "$state/decisions.jsonl" || true)"
 echo "Done on the main Mac. $questions answered questions in the merged corpus."
-if [ "$questions" -lt 150 ]; then
+if [ "$no_history" = 0 ] && [ "$questions" -lt 150 ]; then
   echo "That is thin: the build adds the calibration interview (PROMPT.md step 7)."
 fi

@@ -205,4 +205,82 @@ HOME="$scratch/new-home" bash "$scratch/loose/bootstrap/install.sh" --name Ari -
   > "$scratch/out" 2>&1 && fail "loose installer accepted no clone"
 check "$scratch/out" 'git clone' "loose installer did not explain cloning"
 
+# A no-history build runs on a relay Mac: its transcripts and export belong to somebody else.
+# Run both new cases even while the flag is missing, so each reports its own red.
+no_history_failures=0
+set +e
+(
+  set -e
+  relay="$scratch/relay"
+  transcript "$relay/.claude/projects" "-Users-robin-projects-world" relay-session \
+    "2026-09-01T10:00:00Z" "TRANSCRIPT_MUST_NOT_ENTER_ROUND_CORPUS"
+  mkdir -p "$relay/.claude/state/ari"
+  # Even an invalid export must not be inspected in this route.
+  printf 'NOT_AN_EXPORT\n' > "$relay/.claude/state/ari/claudeai-export.zip"
+  run "$relay" relay --no-history
+  state="$relay/.claude/state/ari"
+  [ ! -e "$state/decisions-relay.jsonl" ] || fail "--no-history created a host corpus"
+  check "$scratch/out" "== 4." "missing history step header"
+  check "$scratch/out" "skipped (--no-history): nothing is read from this Mac's Claude Code history" "missing history skip"
+  check "$scratch/out" "== 5." "missing export step header"
+  check "$scratch/out" "^skipped (--no-history)$" "missing export skip"
+  check "$scratch/out" "nothing to merge yet: import a question round first (PROMPT.md, the route without a Claude history)" \
+    "missing empty round guidance"
+  grep -q 'That is thin' "$scratch/out" && fail "history hint on the no-history route"
+  [ ! -e "$state/claudeai-review.tsv" ] || fail "--no-history inspected an export"
+
+  python3 -I - "$scratch/round-questions.json" "$scratch/round-answers.json" <<'PYROUND'
+import json, sys
+from pathlib import Path
+Path(sys.argv[1]).write_text(json.dumps({"questions": [
+    {"n": 1, "question": "Which route first?", "recommended": "A",
+     "options": [{"label": "Harbour"}, {"label": "Cliff"}]}]}))
+Path(sys.argv[2]).write_text(json.dumps({"answered": "2026-11-02", "answers": {"1": {"pick": "A"}}}))
+PYROUND
+  HOME="$relay" python3 -I "$relay/projects/voice/scripts/crew_decisions.py" \
+    --member "$relay/projects/voice/crew/ari/member.json" round --name spring \
+    --questions "$scratch/round-questions.json" --answers "$scratch/round-answers.json" --heldout \
+    > "$scratch/round-out" 2>&1 || { cat "$scratch/round-out"; fail "round import on the relay Mac"; }
+  run "$relay" relay --no-history
+  [ ! -e "$state/decisions-relay.jsonl" ] || fail "rerun mined the relay Mac"
+  grep -q 'That is thin' "$scratch/out" && fail "history hint after a round import"
+  python3 -I - "$state" <<'PYROUND'
+import json, sys
+from pathlib import Path
+state = Path(sys.argv[1])
+merged = [json.loads(line) for line in (state / "decisions.jsonl").read_text().splitlines()]
+imported = [json.loads(line) for line in (state / "decisions-round-spring.jsonl").read_text().splitlines()]
+assert merged == imported, (merged, imported)
+assert [r["id"] for r in merged] == ["question:spring-01"]
+assert merged[0]["split"] == "heldout"
+assert "TRANSCRIPT_MUST_NOT_ENTER_ROUND_CORPUS" not in (state / "decisions.jsonl").read_text()
+PYROUND
+  printf '%s\n' '{"id":"message:stale","kind":"message","timestamp":"2026-09-01T10:00:00Z","project":"world","text":"STALE_HISTORY_MUST_NOT_MERGE"}' \
+    > "$state/decisions-old.jsonl"
+  cp "$state/decisions-old.jsonl" "$scratch/stale-history.jsonl"
+  run "$relay" relay --no-history
+  check "$scratch/out" "ignored (--no-history): decisions-old.jsonl" "stale history was not reported as ignored"
+  cmp -s "$state/decisions-old.jsonl" "$scratch/stale-history.jsonl" || fail "--no-history changed the stale corpus"
+  python3 -I - "$state" <<'PYROUND'
+import json, sys
+from pathlib import Path
+state = Path(sys.argv[1])
+corpus = (state / "decisions.jsonl").read_text()
+merged = [json.loads(line) for line in corpus.splitlines()]
+imported = [json.loads(line) for line in (state / "decisions-round-spring.jsonl").read_text().splitlines()]
+assert merged == imported, (merged, imported)
+assert "STALE_HISTORY_MUST_NOT_MERGE" not in corpus
+PYROUND
+)
+no_history_result=$?
+[ "$no_history_result" = 0 ] || no_history_failures=$((no_history_failures + 1))
+(
+  set -e
+  refused "--no-history is for the main role only" --name Ari --principal Robin --no-history --role extra --no-copy
+)
+no_history_result=$?
+[ "$no_history_result" = 0 ] || no_history_failures=$((no_history_failures + 1))
+set -e
+[ "$no_history_failures" = 0 ] || fail "$no_history_failures no-history installer cases failed"
+
 echo "crew_install_test: all passed"
