@@ -103,11 +103,20 @@ def problems(c, categories, seen):
         text = o.get("text") if isinstance(o, dict) else None
         if isinstance(text, str) and len(text.split()) >= 3 and text.lower() in context:
             yield f"context repeats option {o.get('id')}"
-    for ask in c.get("asked") or []:
-        if not isinstance(ask, dict) or ask.get("by") not in stances or not isinstance(ask.get("about"), str):
-            yield f"{ask.get('by') if isinstance(ask, dict) else ask} asked but has no stance"
-    for person in c.get("agent_drafted") or []:
-        if person not in stances:
+    asked, drafted = c.get("asked") or [], c.get("agent_drafted") or []
+    if not isinstance(asked, list):
+        yield "asked must be a list"
+        asked = []
+    for ask in asked:
+        by = ask.get("by") if isinstance(ask, dict) else ask
+        if not isinstance(ask, dict) or not isinstance(by, str) or by not in stances \
+                or not isinstance(ask.get("about"), str):
+            yield f"{by} asked but has no stance"
+    if not isinstance(drafted, list):
+        yield "agent_drafted must be a list"
+        drafted = []
+    for person in drafted:
+        if not isinstance(person, str) or person not in stances:
             yield f"{person} is agent_drafted but has no stance"
 
 
@@ -290,7 +299,7 @@ def cmd_similar(args):
 
 
 def panel_inputs(args):
-    cards = {c["id"]: c for c in load_cards(args.cards)}
+    cards = {c["id"]: c for c in ground_truth(load_cards(args.cards))}
     if args.question not in cards:
         raise Failed(f"question {args.question} is not a card in {args.cards}")
     answers = json.loads(Path(args.answers).read_text())
@@ -436,6 +445,11 @@ def main(argv):
         return COMMANDS[args.command](args)
     except (Failed, ValueError, KeyError, OSError) as error:
         print("crew_personas: " + " ".join(str(error).splitlines()), file=sys.stderr)
+        return 2
+    except (TypeError, AttributeError) as error:
+        # Cards and answers are model-written: a wrong shape is an input error, not a crash.
+        print("crew_personas: malformed input (run check first): " + " ".join(str(error).splitlines()),
+              file=sys.stderr)
         return 2
 
 
