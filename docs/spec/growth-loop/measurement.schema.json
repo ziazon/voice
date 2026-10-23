@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Growth loop measurement, v1",
+  "description": "Every case run before and after an approved change, and whether the change is kept.",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "proposal",
+    "approval",
+    "at",
+    "base",
+    "candidate",
+    "results",
+    "outcome",
+    "reason"
+  ],
+  "properties": {
+    "schema": {
+      "const": "growth-loop/measurement/v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^meas-[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "proposal": {
+      "type": "string",
+      "pattern": "^prop-[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "approval": {
+      "type": "string",
+      "pattern": "^appr-[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "base": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidate": {
+      "type": "string",
+      "minLength": 1
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case",
+          "new",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "case": {
+            "type": "string",
+            "pattern": "^case-[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "new": {
+            "type": "boolean"
+          },
+          "before": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "after": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          }
+        }
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "keep",
+        "revert"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

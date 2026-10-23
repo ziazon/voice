@@ -1,0 +1,19 @@
+{
+  "schema": "growth-loop/proposal/v1",
+  "id": "prop-2026-03-05-001",
+  "persona": "robin",
+  "persona_kind": "person",
+  "created": "2026-03-05T09:00:00Z",
+  "base": "3f2c1a7",
+  "summary": "When a family asks to move a test or quiz, offer one make-up slot that week instead of declining.",
+  "changes": [
+    {
+      "file": "decisions.md",
+      "diff": "--- a/decisions.md\n+++ b/decisions.md\n@@ -12,3 +12,4 @@\n ## Communication\n \n - Replies to families are short and warm.\n+- A request to move a test or quiz gets one make-up slot in the same week; later than that, the late-work policy applies.\n",
+      "why": "You corrected this on March 4: you offer a make-up slot first."
+    }
+  ],
+  "cases": [
+    "case-2026-03-04-001"
+  ]
+}

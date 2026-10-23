@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Growth loop approval, v1",
+  "description": "The approver's answer to one proposal.",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "proposal",
+    "at",
+    "role",
+    "decision"
+  ],
+  "properties": {
+    "schema": {
+      "const": "growth-loop/approval/v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^appr-[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "proposal": {
+      "type": "string",
+      "pattern": "^prop-[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "subject",
+        "staff"
+      ]
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "rejected"
+      ]
+    },
+    "note": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

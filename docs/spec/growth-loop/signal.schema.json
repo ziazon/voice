@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Growth loop signal, v1",
+  "description": "One reaction to a persona: a pick, a correction, a verdict or a stated rule.",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "persona",
+    "at",
+    "given_by",
+    "kind",
+    "area",
+    "situation",
+    "wanted"
+  ],
+  "properties": {
+    "schema": {
+      "const": "growth-loop/signal/v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^sig-[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "persona": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "given_by": {
+      "type": "string",
+      "enum": [
+        "subject",
+        "staff"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "pick",
+        "correction",
+        "verdict",
+        "instruction"
+      ]
+    },
+    "area": {
+      "type": "string",
+      "minLength": 1
+    },
+    "situation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "wanted": {
+      "type": "string",
+      "minLength": 1
+    },
+    "persona_said": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "agree",
+        "disagree"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

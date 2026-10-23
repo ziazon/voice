@@ -1,0 +1,31 @@
+{
+  "schema": "growth-loop/measurement/v1",
+  "id": "meas-2026-03-05-001",
+  "proposal": "prop-2026-03-05-001",
+  "approval": "appr-2026-03-05-001",
+  "at": "2026-03-05T18:42:00Z",
+  "base": "3f2c1a7",
+  "candidate": "8d41e0b",
+  "results": [
+    {
+      "case": "case-2026-03-04-001",
+      "new": true,
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "case": "case-2026-02-11-004",
+      "new": false,
+      "before": "pass",
+      "after": "pass"
+    },
+    {
+      "case": "case-2026-02-20-002",
+      "new": false,
+      "before": "fail",
+      "after": "fail"
+    }
+  ],
+  "outcome": "keep",
+  "reason": "The new case now passes, and none of the other cases got worse."
+}
