@@ -42,13 +42,24 @@ def doc_example(kind):
     return json.loads(re.match(r"\s*```json\n(.*?)\n```", after, re.S).group(1))
 
 
-def expected_outcome(measurement, approval):
-    """Spec rule 3: keep only an approved change whose new cases pass with no regressions."""
+def expected_outcome(measurement, approval, proposal):
+    """Spec rules 3 and 4: keep only an approved change, measured on all its new cases, that makes
+    them pass with no regressions."""
     results = measurement["results"]
+    ids = [r["case"] for r in results]
+    complete = (len(ids) == len(set(ids))
+                and {r["case"] for r in results if r["new"]} == set(proposal["cases"]))
     new_pass = all(r["after"] == "pass" for r in results if r["new"])
     regressed = any(r["before"] == "pass" and r["after"] == "fail" for r in results if not r["new"])
-    keep = approval["decision"] == "approved" and new_pass and not regressed
+    keep = approval["decision"] == "approved" and complete and new_pass and not regressed
     return "keep" if keep else "revert"
+
+
+def doc_cells(kind):
+    """The Meaning column of the doc's field table, as {field: text}."""
+    section = re.search(rf"^### \d\. {kind.capitalize()}\n(.*?)(?=^### |^## |\Z)",
+                        DOC.read_text(), re.M | re.S)
+    return dict(re.findall(r"^\| `([a-z_]+)` \| (?:yes|no) \| (.*) \|$", section.group(1), re.M))
 
 
 class Validator(unittest.TestCase):
@@ -140,7 +151,8 @@ class Spec(unittest.TestCase):
         for kind, field, value in bad:
             with self.subTest(kind=kind, field=field, value=value):
                 self.assertTrue(validate({**example(kind), field: value}, schema(kind)))
-        for path in ["/etc/passwd", "../decisions.md", "notes/../../x", "a\\b"]:
+        for path in ["/etc/passwd", "../decisions.md", "notes/../../x", "a\\b", "./a.md",
+                     "a/./b.md", "a/", "a//b.md", "C:/x.md", ".hidden", "a b.md", ""]:
             with self.subTest(file=path):
                 broken = example("proposal")
                 broken["changes"][0]["file"] = path
@@ -175,18 +187,36 @@ class Spec(unittest.TestCase):
         self.assertEqual(appr["role"], APPROVER[prop["persona_kind"]])
         self.assertEqual({r["case"] for r in meas["results"] if r["new"]}, set(prop["cases"]))
         self.assertIn(case["expected"], case["options"])
-        self.assertEqual(expected_outcome(meas, appr), meas["outcome"])
+        self.assertEqual(appr["decision"], "approved")
+        self.assertEqual(expected_outcome(meas, appr, prop), meas["outcome"])
 
-    def test_rule_three_reverts_regressions_failures_and_rejections(self):
-        meas, appr = example("measurement"), example("approval")
+    def test_rule_four_reverts_regressions_failures_gaps_and_rejections(self):
+        meas, appr, prop = example("measurement"), example("approval"), example("proposal")
         regressed = copy.deepcopy(meas)
         next(r for r in regressed["results"] if not r["new"] and r["before"] == "pass")["after"] = "fail"
         failing = copy.deepcopy(meas)
         next(r for r in failing["results"] if r["new"])["after"] = "fail"
-        self.assertEqual(expected_outcome(meas, appr), "keep")
-        self.assertEqual(expected_outcome(regressed, appr), "revert")
-        self.assertEqual(expected_outcome(failing, appr), "revert")
-        self.assertEqual(expected_outcome(meas, {**appr, "decision": "rejected"}), "revert")
+        gap = copy.deepcopy(meas)
+        gap["results"] = [r for r in gap["results"] if not r["new"]]
+        twice = copy.deepcopy(meas)
+        twice["results"].append(dict(twice["results"][-1]))
+        self.assertEqual(expected_outcome(meas, appr, prop), "keep")
+        for name, broken in [("regression", regressed), ("new case fails", failing),
+                             ("new case not run", gap), ("case run twice", twice)]:
+            with self.subTest(name):
+                self.assertEqual(expected_outcome(broken, appr, prop), "revert")
+        self.assertEqual(expected_outcome(meas, {**appr, "decision": "rejected"}, prop), "revert")
+
+    def test_doc_and_schemas_list_the_same_values(self):
+        fields = {f for k in KINDS for f in schema(k)["properties"]}
+        for kind in KINDS:
+            cells = doc_cells(kind)
+            for field, rule in schema(kind)["properties"].items():
+                if "enum" not in rule:
+                    continue
+                with self.subTest(kind=kind, field=field):
+                    named = set(re.findall(r"`([a-z_]+)`", cells[field])) - (fields - set(rule["enum"]))
+                    self.assertEqual(named, set(rule["enum"]))
 
 
 if __name__ == "__main__":
