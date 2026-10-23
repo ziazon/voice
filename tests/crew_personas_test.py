@@ -139,6 +139,20 @@ class Personas(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn('c00: source simulated is not ground truth', proc.stderr)
 
+    def test_every_reader_refuses_simulated_cards(self):
+        path, result = self.split(series(24))
+        split = self.write('split.json', result)
+        predictions = self.write('p.json', {i: {'pick': 'a', 'confidence': 'low'} for i in result['heldout']})
+        cards = series(24)
+        cards[3]['source'] = 'simulated'
+        path.write_text(json.dumps({'cards': cards}))
+        for args in (('questions', '--split', split), ('score', '--split', split, '--predictions', predictions),
+                     ('similar', '--person', 'Sam', '--query', 'bake sale indoors'),
+                     ('similar', '--person', 'Sam', '--query', 'bake sale indoors', '--split', split)):
+            proc = self.run_cli(args[0], '--cards', path, *args[1:])
+            self.assertEqual(proc.returncode, 2, args)
+            self.assertIn('c03: source simulated is not ground truth', proc.stderr)
+
     def test_distil_in_gives_training_cards_and_refuses_simulated_evidence(self):
         path, result = self.split(series(24))
         split = self.write('split.json', result)
@@ -290,6 +304,43 @@ class Personas(unittest.TestCase):
                             '--question', 'gold')
         self.assertEqual(proc.returncode, 1)
         self.assertIn('Sam round 1: evidence gold is the question itself', proc.stdout)
+
+    def test_panel_refuses_a_simulated_question_card(self):
+        cards, gold, answers = self.panel_files()
+        gold['source'] = 'simulated'
+        cards.write_text(json.dumps({'cards': series(20) + [gold]}))
+        for command in ('panel-check', 'panel-sheet', 'panel-score'):
+            proc = self.run_cli(command, '--answers', self.write('a.json', answers), '--cards', cards,
+                                '--question', 'gold')
+            self.assertEqual(proc.returncode, 2, command)
+            self.assertIn('gold: source simulated is not ground truth', proc.stderr)
+
+    def test_malformed_model_written_input_is_reported_not_crashed(self):
+        cards = series(3)
+        cards[0]['asked'] = 5
+        cards[1]['agent_drafted'] = 7
+        cards[2]['asked'] = [{'by': ['Robin'], 'about': 'hall'}]
+        proc = self.run_cli('check', '--cards', self.write('cards.json', {'cards': cards}))
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        for needle in ('c00: asked must be a list', 'c01: agent_drafted must be a list', 'c02: [\'Robin\'] asked'):
+            self.assertIn(needle, proc.stdout)
+        broken = series(24)
+        broken[0]['stances'] = ['Sam']
+        proc = self.run_cli('split', '--cards', self.write('b.json', {'cards': broken}), '--person', 'Sam')
+        self.assertEqual(proc.returncode, 2)
+        assert_cli_error(self, proc.stderr, 'crew_personas: ')
+        path, result = self.split(series(24))
+        split = self.write('split.json', result)
+        proc = self.run_cli('score', '--cards', path, '--split', split,
+                            '--predictions', self.write('p.json', {i: 'a' for i in result['heldout']}))
+        self.assertEqual(proc.returncode, 2)
+        assert_cli_error(self, proc.stderr, 'crew_personas: ')
+        panel_cards, _, answers = self.panel_files()
+        answers[4]['round'] = '2'
+        proc = self.run_cli('panel-sheet', '--answers', self.write('a.json', answers), '--cards', panel_cards,
+                            '--question', 'gold')
+        self.assertEqual(proc.returncode, 2)
+        assert_cli_error(self, proc.stderr, 'crew_personas: ')
 
     def test_panel_score_against_the_gold_card(self):
         cards, _, answers = self.panel_files()
