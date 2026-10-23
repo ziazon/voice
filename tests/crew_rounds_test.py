@@ -141,6 +141,13 @@ class Rounds(unittest.TestCase):
         self.questions["questions"].append(copy.deepcopy(QUESTION))
         self.error(self.round(), "question 1", "n")
 
+    def test_deeply_nested_questions_is_a_one_line_error(self):
+        (self.h.root / "questions.json").write_text("[" * 100000)
+        self.h.write("answers.json", self.answers)
+        proc = self.h.crew(self.member, "round", "--name", "spring", "--questions", "questions.json",
+                           "--answers", "answers.json", "--out", "round.jsonl")
+        self.error(proc, "round: questions:")
+
     def test_invalid_answers(self):
         for answer, field in (({"pick": "E"}, "pick"), ({"pick": ["A", "B"]}, "pick"),
                               ({"own_words": 7}, "own_words"), ({"notes": []}, "notes")):
@@ -207,6 +214,26 @@ class Merge(unittest.TestCase):
                 assert_cli_error(self, proc.stderr, "crew_decisions:")
                 self.assertIn("bad-round.jsonl", proc.stderr)
                 self.assertIn("split", proc.stderr)
+
+    def test_deeply_nested_history_line_is_a_one_line_error(self):
+        (self.h.root / "nested.jsonl").write_text("[" * 100000 + "\n")
+        proc = self.h.crew(self.member, "merge", "--in", "nested.jsonl", "--out", "merged.jsonl")
+        self.assertEqual(proc.returncode, 1)
+        assert_cli_error(self, proc.stderr, "crew_decisions:")
+
+    def test_non_object_round_line_names_the_file(self):
+        self.write_rows("bad-round.jsonl", [[1, 2]])
+        proc = self.h.crew(self.member, "merge", "--rounds", "bad-round.jsonl", "--out", "merged.jsonl")
+        self.assertEqual(proc.returncode, 1)
+        assert_cli_error(self, proc.stderr, "crew_decisions:")
+        self.assertIn("crew_decisions: bad-round.jsonl: a line is not a JSON object\n", proc.stderr)
+
+    def test_non_object_history_line_names_the_file(self):
+        self.write_rows("bad-history.jsonl", [[1, 2]])
+        proc = self.h.crew(self.member, "merge", "--in", "bad-history.jsonl", "--out", "merged.jsonl")
+        self.assertEqual(proc.returncode, 1)
+        assert_cli_error(self, proc.stderr, "crew_decisions:")
+        self.assertIn("crew_decisions: bad-history.jsonl: a line is not a JSON object\n", proc.stderr)
 
     def test_mined_cutoff_ignores_later_rounds_and_rounds_remain_blind(self):
         for n in range(1, 5):

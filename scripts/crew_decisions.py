@@ -1149,7 +1149,7 @@ def round_answer(question, answer):
 def read_round_file(path, field):
     try:
         value = json.loads(Path(path).expanduser().read_text())
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         raise Failed(f"round: {field}: {exc}")
     if not isinstance(value, dict):
         raise Failed(f"round: {field} must be an object")
@@ -1218,6 +1218,8 @@ def cmd_merge(m, args):
     by_id, seen, fixed_splits, duplicates, dropped = {}, set(), {}, 0, Counter()
     for path, mode in inputs:
         for r in read_jsonl(path):
+            if not isinstance(r, dict):
+                raise Failed(f"{path}: a line is not a JSON object")
             if mode == "round" and r.get("split") not in ("train", "heldout"):
                 raise Failed(f"{path}: round split must be train or heldout")
             if r["id"] in seen:
@@ -1616,7 +1618,7 @@ def main(argv=None, member=None, prog="crew_decisions", description=None):
             setattr(args, name, str(Path(getattr(args, name)).expanduser()))
     try:
         return COMMANDS[args.cmd](m, args)
-    except (Failed, OSError, ValueError, KeyError) as exc:
+    except (Failed, OSError, ValueError, KeyError, RecursionError) as exc:
         print(f"{prog}: " + " ".join(str(exc).splitlines()), file=sys.stderr)
         return 1
 
