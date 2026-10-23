@@ -17,6 +17,13 @@ principal's pronouns, and the privacy filters (excluded folders, personal topics
       of the reply it answered. Drops excluded folders, and records on a personal topic or holding a
       secret. The newest share of questions, and every message from that point on, is split
       "heldout" for the backtest.
+  documents --dir FOLDER --out-dir DIR [--size 6000] [--pdftotext PATH]
+      Read the principal's documents into filtered private lens inputs and an inventory.
+  round --name NAME --questions Q.json --answers A.json [--heldout] [--out PATH]
+      Import an off-Claude question round, training by default or held out as a whole round.
+  merge [--in FILE...] [--train FILE...] [--rounds FILE...] --out decisions.jsonl
+      Merge history and training inputs; question rounds keep their imported split and never
+      move the history cutoff.
   tally --corpus decisions.jsonl --labels labels.json [--json]
       Outcomes per decision category over the training split. Every training record must
       carry one label; a held-out record may carry a category but never a reason.
@@ -51,13 +58,17 @@ import uuid
 import zipfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import crew_documents  # noqa: E402
 
 NOISE = {"try again", "continue", "retry"}
 REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
 CONTEXT_CHARS = 300
 MAX_MESSAGE_CHARS = 4000
+PART_WORDS = 500
 QUEUE_TAIL_BYTES = 512 * 1024
 TIERS = ("high", "medium", "low")
 REQUIRED = ("name", "slug", "principal", "principal_slug", "state_dir", "mark_word", "filters")
@@ -993,13 +1004,222 @@ def cmd_claudeai_mine(m, args):
     return 0
 
 
+def pack_words(items, limit, text_of):
+    """Pack whole items in order; an oversized item stays whole."""
+    current, words = [], 0
+    for item in items:
+        count = len(text_of(item).split())
+        if current and words + count > limit:
+            yield current
+            current, words = [], 0
+        current.append(item)
+        words += count
+    if current:
+        yield current
+
+
+def document_parts(m, source, paragraphs):
+    kept, dropped = [], Counter(personal=0, secret=0)
+    for paragraph in paragraphs:
+        text = flat(paragraph)
+        if not text:
+            continue
+        reason = "secret" if m.secret.search(text) else "personal" if m.personal.search(text) else None
+        if reason:
+            dropped[reason] += 1
+        else:
+            kept.append(text)
+    parts = []
+    for part, paragraphs in enumerate(pack_words(kept, PART_WORDS, lambda text: text), 1):
+        text = "\n\n".join(paragraphs)
+        parts.append({"id": record_id("document", source, str(part), text), "kind": "document",
+                      "source": source, "part": part, "text": text})
+    return parts, dropped
+
+
+def cmd_documents(m, args):
+    root, output = Path(args.dir).expanduser(), Path(args.out_dir).expanduser()
+    resolved = output.resolve()
+    if any(os.path.lexists(parent / ".git") for parent in (resolved, *resolved.parents)):
+        raise Failed("out dir must not be inside a git work tree")
+    if args.size <= 0:
+        raise Failed("documents: size must be positive")
+    if root.is_symlink() or not root.is_dir():
+        raise Failed("documents: dir must be a directory, not a symlink")
+    inventory, parts, totals, dropped = [], [], Counter(), Counter()
+    for relative in crew_documents.walk(root):
+        source = relative.as_posix()
+        if m.personal.search(source) or m.secret.search(source):
+            inventory.append({"source": "[filtered]", "kind": "skipped", "reason": "filtered"})
+            totals["skipped"] += 1
+            continue
+        try:
+            kind, paragraphs = crew_documents.read(root / relative, args.pdftotext)
+        except crew_documents.Unreadable as exc:
+            inventory.append({"source": source, "kind": "skipped", "reason": str(exc)})
+            totals["skipped"] += 1
+            continue
+        if kind == "image":
+            inventory.append({"source": source, "kind": kind})
+            totals["images"] += 1
+            continue
+        document, counts = document_parts(m, source, paragraphs)
+        words = sum(len(part["text"].split()) for part in document)
+        inventory.append({"source": source, "kind": kind, "words": words,
+                          "parts": len(document), "dropped": dict(counts)})
+        parts.extend(document)
+        dropped.update(counts)
+        totals["documents"] += 1
+        totals["words"] += words
+    os.close(private_directory(output))
+    for path in output.glob("documents-*.jsonl"):
+        path.unlink()
+    chunks = 0
+    for chunks, records in enumerate(pack_words(parts, args.size, lambda r: r["text"]), 1):
+        write_jsonl(output / f"documents-{chunks:02d}.jsonl", records)
+    write_jsonl(output / "inventory.jsonl", inventory)
+    print(f"read {totals['documents']} documents into {len(parts)} parts ({totals['words']} words) "
+          f"in {chunks} chunks; listed {totals['images']} images; skipped {totals['skipped']} files")
+    print(f"dropped {dropped['personal']} personal and {dropped['secret']} secret paragraphs")
+    return 0
+
+
+def round_error(number, message):
+    raise Failed(f"round: question {number}: {message}")
+
+
+def round_string(value, field, number, nonempty=False):
+    if not isinstance(value, str) or (nonempty and not value.strip()):
+        round_error(number, f"{field} must be {'a non-empty string' if nonempty else 'a string'}")
+    return value
+
+
+def round_question(question, seen):
+    if not isinstance(question, dict):
+        round_error("?", "question must be an object")
+    number = question.get("n")
+    if type(number) is not int or number <= 0 or number in seen:
+        round_error(number, "n must be a distinct positive integer")
+    seen.add(number)
+    text = round_string(question.get("question"), "question", number, nonempty=True)
+    header = round_string(question.get("header", ""), "header", number)
+    multi = question.get("multiSelect", False)
+    if not isinstance(multi, bool):
+        round_error(number, "multiSelect must be a bool")
+    options = question.get("options")
+    if not isinstance(options, list) or not 2 <= len(options) <= 4:
+        round_error(number, "options must contain 2 to 4 options")
+    labels, normalized = set(), []
+    for option in options:
+        if not isinstance(option, dict):
+            round_error(number, "options must be objects with a label")
+        label = round_string(option.get("label"), "label", number, nonempty=True)
+        if label in labels:
+            round_error(number, "label must be distinct")
+        labels.add(label)
+        description = round_string(option.get("description", ""), "description", number)
+        normalized.append({"label": label, "description": description})
+    recommended = question.get("recommended")
+    if recommended is not None and recommended not in list("ABCD"[:len(options)]):
+        round_error(number, "recommended must be an option letter")
+    for letter, option in zip("ABCD", normalized):
+        if letter == recommended:
+            option["label"] += " (Recommended)"
+    recommendation = next((o["label"] for letter, o in zip("ABCD", normalized) if letter == recommended), None)
+    return {"n": number, "question": text, "header": header, "multiSelect": multi,
+            "options": normalized, "recommended": recommendation}
+
+
+def round_answer(question, answer):
+    number = question["n"]
+    if not isinstance(answer, dict):
+        round_error(number, "answer must be an object")
+    own_words = round_string(answer.get("own_words", ""), "own_words", number)
+    notes = round_string(answer.get("notes", ""), "notes", number)
+    pick = answer.get("pick", [])
+    picks = [pick] if isinstance(pick, str) else pick
+    if not isinstance(picks, list) or any(letter not in list("ABCD"[:len(question["options"])]) for letter in picks):
+        round_error(number, "pick is not an option")
+    if not question["multiSelect"] and len(picks) > 1:
+        round_error(number, "pick must have one option for a single-select question")
+    labels = [o["label"] for letter, o in zip("ABCD", question["options"]) if letter in picks]
+    return labels, own_words, notes
+
+
+def read_round_file(path, field):
+    try:
+        value = json.loads(Path(path).expanduser().read_text())
+    except (OSError, ValueError) as exc:
+        raise Failed(f"round: {field}: {exc}")
+    if not isinstance(value, dict):
+        raise Failed(f"round: {field} must be an object")
+    return value
+
+
+def cmd_round(m, args):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", args.name):
+        raise Failed("round: name must be 1 to 40 lowercase letters, digits or hyphens, starting with a letter or digit")
+    questions = read_round_file(args.questions, "questions").get("questions")
+    answers_file = read_round_file(args.answers, "answers")
+    if not isinstance(questions, list):
+        raise Failed("round: questions must be a list")
+    seen = set()
+    questions = [round_question(q, seen) for q in questions]
+    answered = answers_file.get("answered")
+    if not isinstance(answered, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", answered):
+        raise Failed("round: answered must be YYYY-MM-DD")
+    try:
+        timestamp = datetime.strptime(answered, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
+    except ValueError:
+        raise Failed("round: answered must be a valid date")
+    answers = answers_file.get("answers")
+    if not isinstance(answers, dict):
+        raise Failed("round: answers must be an object")
+    numbers = {str(q["n"]) for q in questions}
+    for number in answers:
+        if number not in numbers:
+            round_error(number, "answer has no question")
+    kept, unanswered, dropped = [], 0, Counter()
+    split = "heldout" if args.heldout else "train"
+    for question in questions:
+        number = question["n"]
+        picks, own_words, notes = round_answer(question, answers.get(str(number), {}))
+        if not picks and not own_words.strip():
+            unanswered += 1
+            continue
+        try:
+            when = (timestamp + timedelta(seconds=number)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        except OverflowError:
+            round_error(number, "n exceeds the timestamp range")
+        record = {k: v for k, v in question.items() if k != "n"}
+        record.update(id=f"question:{args.name}-{number:02d}", kind="question", timestamp=when,
+                      project=f"round-{args.name}", picks=picks, own_words=own_words, notes=notes,
+                      outcome=outcome(picks, own_words, question["recommended"]), split=split)
+        record[m.pick_field] = None
+        reason = privacy(m, record)
+        if reason:
+            dropped[reason] += 1
+        else:
+            kept.append(record)
+    write_jsonl(args.out or m.state(f"decisions-round-{args.name}.jsonl"), kept)
+    print(f"imported {len(kept)} answers from round {args.name} ({split}); {unanswered} unanswered")
+    print(f"dropped {dropped['personal']} personal records, {dropped['secret']} secret records")
+    return 0
+
+
 def cmd_merge(m, args):
     """Every input's records once, re-split as one corpus. The privacy filters run again, so a
     filter tightened since another Mac mined its corpus still applies. Records from a --train input
-    (the calibration interview) always train: they neither move the cutoff nor join the test set."""
-    by_id, seen, train_only, duplicates, dropped = {}, set(), set(), 0, Counter()
-    for path, always_train in [(p, False) for p in args.inputs] + [(p, True) for p in args.train]:
+    (the calibration interview) always train; --rounds keeps imported splits. Neither moves the cutoff."""
+    inputs = ([(p, "history") for p in args.inputs] + [(p, "train") for p in args.train] +
+              [(p, "round") for p in args.rounds])
+    if not inputs:
+        raise Failed("merge needs at least one input")
+    by_id, seen, fixed_splits, duplicates, dropped = {}, set(), {}, 0, Counter()
+    for path, mode in inputs:
         for r in read_jsonl(path):
+            if mode == "round" and r.get("split") not in ("train", "heldout"):
+                raise Failed(f"{path}: round split must be train or heldout")
             if r["id"] in seen:
                 duplicates += 1
                 continue
@@ -1009,18 +1229,18 @@ def cmd_merge(m, args):
                 dropped[reason] += 1
                 continue
             by_id[r["id"]] = r
-            if always_train:
-                train_only.add(r["id"])
+            if mode != "history":
+                fixed_splits[r["id"]] = "train" if mode == "train" else r["split"]
     merged = sorted(by_id.values(), key=lambda r: (r["timestamp"], r["id"]))
-    cutoff = mark_split([r for r in merged if r["id"] not in train_only], args.holdout, args.cutoff)
+    cutoff = mark_split([r for r in merged if r["id"] not in fixed_splits], args.holdout, args.cutoff)
     for r in merged:
-        if r["id"] in train_only:
-            r["split"] = "train"
+        if r["id"] in fixed_splits:
+            r["split"] = fixed_splits[r["id"]]
     write_jsonl(args.out, merged)
     questions = [r for r in merged if r["kind"] == "question"]
     held = sum(r["split"] == "heldout" for r in questions)
     print(f"merged {len(questions)} questions ({held} held out) and {len(merged) - len(questions)} messages "
-          f"from {len(args.inputs) + len(args.train)} files; {duplicates} duplicates dropped; "
+          f"from {len(inputs)} files; {duplicates} duplicates dropped; "
           f"held out from {cutoff or 'nothing'}")
     print(f"dropped {dropped['personal']} personal records, {dropped['secret']} secret records")
     return 0
@@ -1252,8 +1472,9 @@ def cmd_privacy_check(m, args):
 
 COMMANDS = {"mine": cmd_mine, "tally": cmd_tally, "split": cmd_split, "score": cmd_score,
             "similar": cmd_similar, "record": cmd_record, "pending": cmd_pending, "claudeai": cmd_claudeai,
-            "merge": cmd_merge, "folders": cmd_folders, "chunk": cmd_chunk, "check-labels": cmd_check_labels,
-            "distil-in": cmd_distil_in, "shingle": cmd_shingle, "privacy-check": cmd_privacy_check}
+            "documents": cmd_documents, "round": cmd_round, "merge": cmd_merge, "folders": cmd_folders,
+            "chunk": cmd_chunk, "check-labels": cmd_check_labels, "distil-in": cmd_distil_in,
+            "shingle": cmd_shingle, "privacy-check": cmd_privacy_check}
 
 
 def parser_for(m, description):
@@ -1324,11 +1545,23 @@ def parser_for(m, description):
     p.add_argument("--holdout", type=float, default=0.15)
     p.add_argument("--cutoff")
     p = sub.add_parser("merge")
-    p.add_argument("--in", dest="inputs", nargs="+", required=True)
+    p.add_argument("--in", dest="inputs", nargs="*", default=[])
+    p.add_argument("--rounds", nargs="*", default=[], help="question-round files: each record keeps its imported split")
     p.add_argument("--train", nargs="*", default=[], help="inputs whose records always train (the interview)")
     p.add_argument("--out", required=True)
     p.add_argument("--holdout", type=float, default=0.15)
     p.add_argument("--cutoff")
+    p = sub.add_parser("documents")
+    p.add_argument("--dir", required=True)
+    p.add_argument("--out-dir", required=True)
+    p.add_argument("--size", type=int, default=6000)
+    p.add_argument("--pdftotext")
+    p = sub.add_parser("round")
+    p.add_argument("--name", required=True)
+    p.add_argument("--questions", required=True)
+    p.add_argument("--answers", required=True)
+    p.add_argument("--heldout", action="store_true")
+    p.add_argument("--out")
     p = sub.add_parser("folders")
     p.add_argument("--projects", default="~/.claude/projects")
     p = sub.add_parser("chunk")
