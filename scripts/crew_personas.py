@@ -258,26 +258,29 @@ def searchable(c):
     return " ".join([c["question"], c["context"]] + [o["text"] for o in c["options"]])
 
 
-def cmd_similar(args):
-    cards = [c for c in ground_truth(load_cards(args.cards)) if takes_part(c, args.person)]
-    if args.split:
-        train = set(json.loads(Path(args.split).read_text())["train"])
-        cards = [c for c in cards if c["id"] in train]
+def similar_cards(cards, person, query, k, train=None):
+    """The person's cards nearest a query (shared rare words); only `train` ids when given."""
+    cards = [c for c in ground_truth(cards) if takes_part(c, person) and (train is None or c["id"] in train)]
     docs = [(c, words(searchable(c))) for c in cards]
     df = defaultdict(int)
     for _, ws in docs:
         for w in ws:
             df[w] += 1
-    wanted = words(args.query)
+    wanted = words(query)
     scored = []
     for c, ws in docs:
         shared = wanted & ws
         if len(shared) >= MIN_SHARED_WORDS:
             scored.append((sum(math.log(len(docs) / df[w]) + 1 for w in shared) / math.sqrt(len(ws)), c["date"], c))
     scored.sort(key=lambda t: (-t[0], t[1]))
-    hits = [{"id": c["id"], "date": c["date"], "category": c["category"], "question": c["question"],
-             "argued": option_text(c, c["stances"][args.person]), "went": option_text(c, c["outcome"]),
-             "link": c.get("link", "")} for _, _, c in scored[:args.k]]
+    return [{"id": c["id"], "date": c["date"], "category": c["category"], "question": c["question"],
+             "argued": option_text(c, c["stances"][person]), "went": option_text(c, c["outcome"]),
+             "link": c.get("link", "")} for _, _, c in scored[:k]]
+
+
+def cmd_similar(args):
+    train = set(json.loads(Path(args.split).read_text())["train"]) if args.split else None
+    hits = similar_cards(load_cards(args.cards), args.person, args.query, args.k, train)
     if args.json:
         print(json.dumps(hits, indent=2, ensure_ascii=False))
     else:
