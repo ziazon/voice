@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Growth loop proposal, v1",
+  "description": "A change to a persona's files, as diffs, waiting for approval.",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "persona",
+    "persona_kind",
+    "created",
+    "base",
+    "summary",
+    "changes",
+    "cases"
+  ],
+  "properties": {
+    "schema": {
+      "const": "growth-loop/proposal/v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^prop-[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "persona": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "persona_kind": {
+      "type": "string",
+      "enum": [
+        "person",
+        "product"
+      ]
+    },
+    "created": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "base": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "changes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "file",
+          "diff",
+          "why"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[^\\\\]+$"
+          },
+          "diff": {
+            "type": "string",
+            "minLength": 1
+          },
+          "why": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^case-[a-z0-9]+(-[a-z0-9]+)*$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  }
+}

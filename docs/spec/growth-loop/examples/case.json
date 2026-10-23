@@ -1,0 +1,19 @@
+{
+  "schema": "growth-loop/case/v1",
+  "id": "case-2026-03-04-001",
+  "persona": "robin",
+  "created": "2026-03-04T16:00:00Z",
+  "from_signals": [
+    "sig-2026-03-04-001"
+  ],
+  "area": "communication",
+  "situation": "A parent asks to move a student's test because of a medical appointment.",
+  "options": [
+    "Decline and point to the late-work policy",
+    "Offer one make-up slot in the same week",
+    "Let the student skip the test"
+  ],
+  "expected": "Offer one make-up slot in the same week",
+  "match": "choice",
+  "status": "new"
+}
