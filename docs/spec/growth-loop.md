@@ -18,9 +18,10 @@ Schema in [`growth-loop/`](growth-loop/).
    diff, with a plain reason for each, and the new cases the change should make pass.
 4. **Ask for approval.** The approver reads the proposal and approves or rejects it. Nothing is applied
    without an **approval** that says *approved*.
-5. **Re-measure, then keep or revert.** The app applies the approved change, runs every case on the
-   persona before and after, and writes a **measurement**. The change is kept only when every new case
-   passes and no existing case got worse. Otherwise it is reverted.
+5. **Re-measure, then keep or revert.** The app applies the approved change, runs the proposal's new
+   cases and every active case on the persona before and after, and writes a **measurement**. The
+   change is kept only when every new case passes and no existing case got worse. Otherwise it is
+   reverted.
 
 ```
 signals → cases → proposal → approval → measurement → keep | revert
@@ -41,31 +42,59 @@ An app never approves its own proposal, and never applies one on a timer or by d
    (for example `growth-loop/signal/v1`) and must validate against it.
 2. **Nothing applies without approval.** A change reaches the persona only after an approval of that
    proposal with `decision: approved`, from the role the table above names for its `persona_kind`.
-3. **Kept means no regressions.** A measurement's `outcome` is `keep` only when its approval approved
-   the proposal, every result with `new: true` has `after: pass`, and no result with `new: false` went
-   from `before: pass` to `after: fail`. In every other case it is `revert`, and the persona returns to
-   its `base` version.
-4. **References resolve.** Every id a record names (a case's `from_signals`, a proposal's `cases`, an
+3. **Every case that counts is run.** A measurement's `results` hold exactly one entry for each case
+   the proposal names (`new: true`) and one for each case that is `active` when the measurement starts
+   (`new: false`), and no others: `retired` cases, and cases still `new` for some other proposal, are
+   not run.
+4. **Kept means no regressions.** A measurement's `outcome` is `keep` only when its results are
+   complete by rule 3, every result with `new: true` has `after: pass`, and no result with `new: false`
+   went from `before: pass` to `after: fail`. In every other case it is `revert`, and the persona
+   returns to its `base` version.
+5. **References resolve.** Every id a record names (a case's `from_signals`, a proposal's `cases`, an
    approval's `proposal`, a measurement's `proposal` and `approval`) is the id of an existing record of
-   the right kind for the same persona.
-5. **Signals and cases are private.** They can hold what a person actually said. Keep them where the
+   the right kind for the same persona. A measurement's `approval` approved its proposal.
+6. **Signals and cases are private.** They can hold what a person actually said. Keep them where the
    app keeps private data (for a person's persona, on their own computer, readable only by them), never
    in a shared or public repository. The persona's own files, and so a proposal's diff, hold paraphrase
    only.
-6. **Cases grow; they are not quietly dropped.** A case starts `new`. When a proposal that names it is
-   kept, it becomes `active` and is measured from then on. Only the approver retires a case (`retired`);
-   retired cases are no longer measured.
-7. **Records are never rewritten**, except a case's `status`. A rejected or reverted proposal stays on
-   file with its approval and measurement, so the history explains itself.
+7. **Cases grow; they are not quietly dropped.** A case starts `new`. When a proposal that names it is
+   kept, it becomes `active` and is measured from then on. When that proposal is rejected or reverted,
+   the case stays `new` and a later proposal may name it again. Only the approver retires a case
+   (`retired`); retired cases are no longer measured.
+8. **Records are never rewritten.** A case's status changes by appending the whole case again, with the
+   same `id` and the new `status` (see *Storage*). A proposal gets at most one approval. A rejected
+   proposal stays on file with its approval and gets no measurement; a reverted one stays on file with
+   its approval and measurement. So the history explains itself.
+9. **The base must be current.** A proposal is applied only to the version it names as `base`. If the
+   persona has changed since, the proposal is not applied; the app drafts a new one against the
+   current version.
 
 ## Storage
 
-Signals and cases are [JSON Lines](https://jsonlines.org/) files, one record per line, appended. Each
-proposal, approval and measurement is its own JSON file. Where they live is the app's choice, within
-rule 5. Ids are lowercase letters, digits and dashes behind a fixed prefix (`sig-`, `case-`, `prop-`,
-`appr-`, `meas-`), unique per persona. Times are RFC 3339 with a time zone (`2026-03-04T15:20:00Z`).
-A persona's `version` (`base`, `candidate`) is any string that names one exact state of its files,
-such as a git commit.
+Signals and cases are [JSON Lines](https://jsonlines.org/) files, one record per line, only ever
+appended. Each proposal, approval and measurement is its own JSON file. Where they live is the app's
+choice, within rule 6.
+
+- **Ids** are lowercase letters, digits and dashes behind a fixed prefix (`sig-`, `case-`, `prop-`,
+  `appr-`, `meas-`), unique per persona. The one repeat allowed is a case appended again to change its
+  `status`: every other field must equal the first line's, and a reader takes the last line for each
+  case id.
+- **Times** are RFC 3339 with a time zone (`2026-03-04T15:20:00Z`).
+- **Versions** (`base`, `candidate`) are any string that names one exact state of the persona's files,
+  such as a git commit.
+- **File paths** in a proposal are relative to the persona's folder: names of letters, digits, `.`,
+  `_` and `-`, joined by `/`, none starting with a dot (so no `..`, no hidden files, no leading or
+  trailing `/`).
+
+## Checks the schemas cannot make
+
+The schemas check each record on its own. An implementation also checks these, before it acts on a
+record:
+
+- a signal has `verdict` exactly when its `kind` is `verdict`;
+- a case with `match: choice` has `options`, and its `expected` is one of them;
+- a measurement names each case once in `results`, and its results are complete (rule 3);
+- every rule above that spans two records (rules 2, 4, 5, 7, 8 and 9).
 
 ## The files
 
@@ -125,7 +154,7 @@ One test the persona must pass. Schema: [`growth-loop/case.schema.json`](growth-
 | `options` | no | the choices offered, when it is a choice; at least two |
 | `expected` | yes | the right answer: one of `options`, or a description a grader checks |
 | `match` | yes | `choice` (the answer must equal `expected`, which is one of `options`) or `rubric` (a grader, person or model, judges the answer against `expected`) |
-| `status` | yes | `new`, `active` or `retired` (rule 6) |
+| `status` | yes | `new`, `active` or `retired` (rule 7) |
 
 Example (`growth-loop/examples/case.json`):
 
@@ -163,7 +192,7 @@ A change to the persona's files, waiting for approval. Schema:
 | `created` | yes | when it was drafted |
 | `base` | yes | the persona version the diff applies to |
 | `summary` | yes | one or two plain sentences for the approver |
-| `changes` | yes | at least one change: `file` (a path inside the persona's folder, relative, no `..`), `diff` (a unified diff of that file), `why` (a plain reason) |
+| `changes` | yes | at least one change: `file` (a path inside the persona's folder, as *Storage* sets out), `diff` (a unified diff of that file), `why` (a plain reason) |
 | `cases` | yes | the ids of the new cases this change should make pass, at least one |
 
 Example (`growth-loop/examples/proposal.json`):
@@ -230,8 +259,8 @@ Every case run on the persona before and after an approved change, and the outco
 | `at` | yes | when the run finished |
 | `base` | yes | the version before the change (the proposal's `base`) |
 | `candidate` | yes | the version with the change applied |
-| `results` | yes | one entry per case run, at least one: `case` (its id), `new` (`true` for the proposal's own cases), `before` and `after` (`pass` or `fail`) |
-| `outcome` | yes | `keep` or `revert`, by rule 3 |
+| `results` | yes | one entry per case run, by rule 3: `case` (its id), `new` (`true` for the proposal's own cases, `false` for active ones), `before` and `after` (`pass` or `fail`) |
+| `outcome` | yes | `keep` or `revert`, by rule 4 |
 | `reason` | yes | one plain sentence the approver will read |
 
 Example (`growth-loop/examples/measurement.json`):
@@ -257,6 +286,6 @@ Example (`growth-loop/examples/measurement.json`):
 
 ## Changing this spec
 
-A change that an existing file would fail (a new required field, a removed value) gets a new version:
-`v2` in the `schema` field and a new schema file. Implementations read every version they have
-written. Adding an optional field keeps the version.
+The schemas allow no field they do not list, so every change to a record's shape, even one new
+optional field, is a new version: `v2` in the `schema` field and a new schema file beside the old one.
+Implementations read every version they have written, and write only the newest.

@@ -7,8 +7,6 @@ Read first, in this order: `AGENTS.md`, `CONTRIBUTING.md`, `.ai/PROJECT.md`, the
 implements, `docs/spec/growth-loop.md` (already written; do not change its prose). Work test-first
 and match the surrounding code.
 
-*Outcome (2026-10-23):* Codex had reached her usage limit, so Claude implemented this brief directly.
-
 ## Goal
 
 The spec defines five record kinds (signal, case, proposal, approval, measurement), each with a
