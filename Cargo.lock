@@ -255,6 +255,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "persona-builder",
+ "persona-builder-save",
 ]
 
 [[package]]
@@ -262,6 +263,7 @@ name = "persona-builder-save"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "libc",
  "persona-builder",
  "serde",
  "serde_json",
