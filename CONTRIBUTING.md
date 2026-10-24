@@ -14,7 +14,8 @@ Thanks for helping. This kit handles people's private history, so a few rules co
   bash scripts/ci-local.sh
   ```
 
-  It needs Python 3.9 or newer and `shellcheck`.
+  It needs Python 3.9 or newer and `shellcheck`. The Rust checks also need stable Rust
+  (https://rustup.rs); without it they are skipped.
 - **Keep the miners private by default.** Anything a miner writes goes to a state or work folder
   outside the repo, with files 0600 and folders 0700.
 

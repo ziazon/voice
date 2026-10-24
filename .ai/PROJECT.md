@@ -14,8 +14,11 @@ member and no real person's data.
 | `scripts/slack_mine.py`, `slack_select.py` | Optional Slack export miners, driven by `--config` | `tests/slack_*_test.py` |
 | `scripts/crew_personas.py` | Optional decision cards, per-person models, blind backtests, panels | `tests/crew_personas_test.py` |
 | `docs/spec/growth-loop.md` | The growth loop spec any persona app implements, with its JSON Schemas | `tests/growth_loop_spec_test.py` |
+| `builder/core/` | The Persona Builder core library (`persona_builder`) | `cargo test` |
+| `builder/cli/` | The `persona-builder` command | `builder/cli/tests/` |
 
-All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck).
+All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck). The
+Rust checks (fmt, clippy, tests) need stable Rust and are skipped when `cargo` is missing.
 
 ## Rules that bind every change
 

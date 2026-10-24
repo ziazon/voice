@@ -1,0 +1,6 @@
+[package]
+name = "persona-builder"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true

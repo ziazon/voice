@@ -2,6 +2,32 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB0: the Rust workspace and its checks (2026-10-23, lane: V2)
+
+- **What:** a virtual Cargo workspace at the root (edition 2024, stable, no toolchain file) with
+  `builder/core` (package `persona-builder`, library `persona_builder`, one `VERSION` constant) and
+  `builder/cli` (binary `persona-builder`, clap derive, `--version` and `--help` only).
+  `scripts/ci-local.sh` runs `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D
+  warnings` and `cargo test --locked` after the existing steps, and prints a skip line when `cargo`
+  is missing. `.ai/PROJECT.md`, `README.md` and `CONTRIBUTING.md` name the new folders and the Rust
+  requirement. `target/` was already ignored. Brief: `plans/briefs/PB0-rust-workspace.md`.
+- **Who wrote it:** Claude, directly. Codex was at a hard usage limit (until 2026-10-29), so the
+  brief was implemented by hand at the same bar.
+- **Dependency intake:** `clap` 4.6 with `derive` (MIT or Apache-2.0, the standard Rust argument
+  parser); the lock adds only clap's own tree (anstream, anstyle, clap_lex, heck, strsim, syn,
+  proc-macro2, quote, windows-sys on Windows). No network, file or process access of its own.
+  `cargo audit` is not installed here, so no advisory scan was run.
+- **Verified:** red first (`builder/cli/tests/version.rs` failed on its assertion against an empty
+  `main`), then green; a mutation (core `VERSION` set to `9.9.9`) turned it red and was restored with
+  `cmp`. `bash scripts/ci-local.sh` passed with cargo on `PATH` (all three Rust steps ran) and with
+  `~/.cargo/bin` removed from `PATH` (it printed the skip line and passed).
+- **Not verified:** a Linux or Windows build; a contributor machine with an older stable Rust than
+  1.98 (edition 2024 needs 1.85 or newer).
+- **Landed by V1 (2026-10-24):** rebased onto `main` (one README table conflict, both rows kept),
+  re-authored to the project's noreply identity, and pushed to `main` as a fast-forward so the
+  committer stays noreply too. `bash scripts/ci-local.sh` passed again with and without `cargo` on
+  `PATH`.
+
 ## PB4.0: the growth loop spec (2026-10-23)
 
 - **What landed:** `docs/spec/growth-loop.md`, five JSON Schemas and five invented examples in
