@@ -2,6 +2,49 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB2.2: mine Claude Code transcripts, in Rust (2026-10-24, lane: V1)
+
+- **What:** `persona_builder_ingest` gains `mine` and `folders`, ported from `crew_decisions.py`'s
+  `cmd_mine` and `cmd_folders`: the same records in the same order, the same JSONL bytes
+  (`json.dumps(ensure_ascii=False)`), the same printed lines. The corpus goes only into
+  `~/.claude/state/<slug>/` (default `decisions-claude-code.jsonl`), 0600 in 0700 folders, through
+  `O_NOFOLLOW` directory descriptors and an atomic `renameat` (`src/private.rs`, the crate's only
+  `unsafe`). The CLI gains `persona-builder mine <member_dir>` (with `--dry-run`, which writes
+  nothing) and `persona-builder folders <member_dir>`. `forget`'s state-folder check moved to
+  `member::private_state_dir`, shared with `mine`. The Python's `folders` now breaks project-name ties
+  by folder name. Brief: `plans/briefs/PB2.2-mine-claude-code.md`.
+- **Who wrote it:** Codex, from the brief and two fix rounds; Claude wrote the brief and this record
+  and reviewed every line. Codex also made the one-line fix to PB6's flaky `ureq_wire` test (an
+  accepted socket inherits the listener's non-blocking flag on macOS, so a loaded full run sometimes
+  failed with `WouldBlock`).
+- **Decisions made at pickup:** CPython's own rules are ported where Rust's differ: truthiness,
+  `str.isspace` (it also strips U+001C to U+001F), `splitlines` (it also splits at U+2028, U+0085
+  and the rest), `errors="ignore"` decoding (drop, never U+FFFD), half-to-even rounding. Where the
+  Python raises on a malformed record, Rust stops with `<file>:<line>: a transcript record has an
+  unexpected shape (<key>)`, never quoting record text, and writes nothing. Six differences are
+  deliberate and each has its own test: links in the history refused; lines `serde_json` can't parse
+  (`NaN`, a lone surrogate, deeper than 128) skipped; odd types the Python only tolerates by accident
+  refused; `--holdout` limited to 0 to 1; names that aren't UTF-8 refused; a `*.jsonl` entry that
+  isn't a file refused.
+- **Dependency intake:** `sha1_smol` 1.0.1 (BSD-3-Clause, no dependencies, no build script, no
+  network, files or processes), for the record ids the Python makes with `hashlib.sha1`; an id only,
+  never a security control. No `cargo audit` scan: it is not installed.
+- **Verified:** every test file went red on its assertion first. Parity runs the real Python as the
+  oracle on 17 fixture cases built with `tests/crew_fixtures.py` (new `tests/crew_mine_fixtures.py`)
+  and 7 split settings, comparing the JSONL bytes and the printed lines; the helpers are checked
+  against CPython over every code point (`isspace`), invalid UTF-8 sequences, every line separator and
+  every code point below U+0100 (JSON escaping). One disagreement surfaced (an empty `mark_word` kept
+  an empty mark) and was fixed. Five mutations, each restored and checked with `cmp`, each failing a
+  test: `isspace` without U+001C to U+001F, `splitlines` without U+2028, ordinary rounding, the folder
+  walk without `O_NOFOLLOW`, empty marks kept. `bash scripts/ci-local.sh` passed (150 Python tests,
+  312 Rust tests).
+- **Known limits:** an existing `~/.claude/state` or slug folder keeps its mode (as in the Python);
+  the file is still 0600. A project folder swapped for a link between listing and reading is not
+  caught (same user only). The summary prints timestamp text from the transcripts.
+- **Gates:** `/security-review` (a sub-agent): no findings; its three notes below the bar are in
+  Known limits. The Verifier (Fable): her first pass on `1d35cf0` ran out of run time before reporting; owed before the land.
+- **Not verified:** a run on a real Claude Code history (the attended walk in PB8 covers it).
+
 ## PB2.1: the privacy filters and the privacy check, in Rust (2026-10-24, lane: V1)
 
 - **What:** a new crate, `builder/ingest` (`persona_builder_ingest`), since core keeps to the
