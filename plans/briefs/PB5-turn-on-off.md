@@ -500,9 +500,12 @@ Each test-first, as above.
    `<claude_home>/skills` a symlink to `claude_home` (or to any folder that contains it), a
    hand-edited record listing `<claude_home>/skills/CLAUDE.md` passes `read` and `off` deletes
    `CLAUDE.md`. In `install_record::check_path`, after canonicalizing `skills`, refuse when
-   `claude_home.starts_with(&canonical_root)` (the link resolves to `claude_home` or an ancestor
-   of it), with the same `invalid()` message. Test: exactly that setup; `off` is refused and
-   `CLAUDE.md` stays.
+   `claude_home.starts_with(&canonical_root) || canonical_root.starts_with(claude_home)` (the
+   link resolves to `claude_home`, an ancestor of it, or a folder inside it; `claude_home` is
+   already canonical, from `Places::canonical`), with the same `invalid()` message. Tests: a link
+   to `claude_home` and a link to `<claude_home>/persona-builder`, each with a hand-edited record
+   listing a file through the link; `off` is refused and the file stays. The test of fix 3 (a
+   link to a folder outside `claude_home`) still passes.
 8. **Front-matter keys, by allowlist** (should-fix). The line-prefix test lets `hooks : …`,
    `"hooks": …`, `'hooks': …`, `? hooks` and merge keys through. Instead, for each front-matter
    line that does not start with a space or tab: refuse a line starting with `?`, `<<`, `&` or
@@ -510,8 +513,12 @@ Each test-first, as above.
    refuse any key outside `name, description, argument-hint, user-invocable,
    disable-model-invocation, model, context, agent, paths` with
    `Invalid("<path> asks for <key>, which Persona Builder does not turn on. Remove it, then turn <Name> on again")`,
-   keeping the existing message for `hooks` and `allowed-tools` in every spelling. Tests: each
-   spelling above is refused; the template's `SKILL.md` passes.
+   keeping the existing message for `hooks` and `allowed-tools` in every spelling. Skip a line
+   that is empty after trimming, or that starts with `#` (a comment). `check_skill` gains the
+   member's name for the message. Tests: each spelling above is refused (`hooks : x`,
+   `"hooks": x`, `'allowed-tools': x`, `? hooks`, `<<: *x`, `&a x`, `*a`), an unknown key
+   `shell: x` gets the new message, a line with no `:` is refused as that key; the template's
+   `SKILL.md` (whose `description: >` continues on indented lines) passes.
 9. Fix 4's message uses the item's own reason: `"<path> <why>. Move it away, then turn <Name> on again"`
    is wrong for "it still holds other files"; say
    `"<path> was left in place (<why>). Move it away, then turn <Name> on again"` for every item.
