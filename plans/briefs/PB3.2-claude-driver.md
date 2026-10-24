@@ -313,7 +313,8 @@ should-fixes) changed these decisions. Each has a test that fails without it.
   and a build killed mid-call (its `claude` runs on in its own process group) leaves that call counted
   at its budget. This replaces "lines are never rewritten" and the session's `unrecorded` sum. The
   cap message's figure now includes calls still running.
-- **A prompt whose first non-blank character is `/` is refused** before anything runs: `claude -p`
+- **A prompt whose first character that is neither white space nor an invisible format character
+  (a byte-order mark, zero-width space or joiner, word joiner, soft hyphen) is `/` is refused** before anything runs: `claude -p`
   expands a leading `/` as a command, and built-in ones (`/model`, `/config`) work under
   `--safe-mode` (the headless docs).
 - **`check` says when `ANTHROPIC_API_KEY` is set** (by name, never its value): `Ready.api_key_set`,
@@ -322,7 +323,11 @@ should-fixes) changed these decisions. Each has a test that fails without it.
 - **`private_folder` also refuses an assistant folder** (`~/.claude/state/<slug>`) that another user
   owns or that others can write (mode bits 0o022); a readable 0750 one from an older build is kept.
 - **A failed `waitid` no longer kills the group:** the child may be reaped already and its group id
-  reused, so the runner only waits.
+  reused. The runner asks `try_wait` instead: a finished child is returned, a running one goes on to
+  the time limit, so the limit holds on every path.
+- **Known limit:** the headless docs say a `/skill-name` *included* in the prompt is expanded; only a
+  leading one is refused here. Whether one mid-prompt expands is not verified; the attended walk
+  (PB8) tries it.
 - **Kept as decided:** `--setting-sources project,local` (in the empty folder this loads nothing);
   Claude Code 2.1.292 accepts an empty list, but its meaning is not documented, so it is not used.
 - **For PB3.3:** `--system-prompt` and `--json-schema` are in the argv, which other local users can

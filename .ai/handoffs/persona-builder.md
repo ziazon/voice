@@ -42,8 +42,10 @@ One record per slice, newest first. Paraphrase only; no real person.
   folder, the argv readable by other users, an API key in the environment, a group kill after a
   failed `waitid`). The Verifier (Fable): pass with no must-fix; three should-fixes (a released
   budget untested, the same mid-call crash, a prompt opening with `/` read as a command). All fixed
-  in the brief's *After the gates*, each with a test; 10 more mutations, all failed a test. A delta
-  Verifier pass covers the fixes.
+  in the brief's *After the gates*, each with a test; 11 more mutations, all failed a test. The delta
+  Verifier pass: no must-fix; her two should-fixes (an invisible character before the `/`, and the
+  time limit after a failed `waitid`) are in, the first with a test; the second has none (a failing
+  `waitid` on a live child could not be produced).
 - **Not verified:** a successful live call (no signed-in Claude Code CLI on Mimi); owed to an
   attended walk (PB8 covers it). `total_cost_usd` is the CLI's own estimate.
 - **Known limits:** the ledger is rewritten whole on each call (like the Python `record`); the cap
