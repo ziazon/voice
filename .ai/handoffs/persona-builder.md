@@ -32,7 +32,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   argv, the work folder as the current folder, the environment, every reply shape (ok, error, exit
   1, signed out, no output, unreadable, over the output cap), the cut-off killing a grandchild, every
   refusal running nothing and writing no line, the cap (full, exact, yesterday, two calls racing), a
-  damaged ledger, the lock. 20 mutations, each restored and checked with `cmp`, all failed a test.
+  damaged ledger, the lock. 20 mutations, each restored and checked with `cmp`: 18 failed a test at
+  once; one pattern did not apply and one survived (a missing test, added), and both then failed.
+  Restored files must be touched before the next build, or cargo reuses the mutated one.
   Live: `persona-builder claude check` against the real Claude Code 2.1.292 on Mimi said "isn't
   signed in" (its own `auth status` reads `loggedIn: false` there), and the exact call argv run by
   hand against the real CLI was accepted flag for flag and answered `is_error: true` with "Failed to
