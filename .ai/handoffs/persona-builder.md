@@ -2,6 +2,46 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB3.2: the Claude driver (2026-10-24, lane: V1)
+
+- **What:** a new crate `builder/agent` (`persona_builder_agent`), the one road every model call
+  takes. The agent list (one entry, `claude-code`); finding Claude Code (absolute `PATH` folders,
+  then the native installer's and Homebrew's places, since an app opened from the Finder gets a
+  short PATH); a check that it runs and is signed in (only `loggedIn` is read from
+  `claude auth status --json`); one tool-less `claude -p` call (argv modelled on Flightdeck's
+  `draft`: safe mode, no tools, no MCP servers, no session saved, a JSON schema, `--max-budget-usd`)
+  with the person's records on stdin only, run in an empty 0700 folder of its own, killed with its
+  whole process group at its time limit; a ledger line per call in `runs.jsonl` (tokens, the CLI's
+  own cost estimate, the outcome, never any text); a daily cap in estimated dollars (default 50, 5
+  per call) that reserves each call's budget before it starts; one build per assistant at a time
+  (an `flock` on the state folder). `private.rs` gains `lock_state`, `private_folder` and
+  `read_private_optional`. The CLI gains `persona-builder agents`, `claude check` and
+  `spend <member-dir>`. PB3 was split into PB3.1 to PB3.4 at this pickup. Brief:
+  `plans/briefs/PB3.2-claude-driver.md`.
+- **Who wrote it:** Claude, directly. Codex was at a hard usage limit until 2026-10-30 (probed again
+  at dispatch).
+- **Decisions made at pickup:** `--bare` is not used, because it never reads the person's own login
+  (the headless docs); the work folder must be empty before every call, since without `--bare` a
+  `-p` run loads the working folder's `.claude/settings.json` and `.mcp.json`; the session markers
+  `CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT` are removed from the child's environment and nothing is
+  added; a call that is cut off or answers unreadably is recorded at its whole budget, so the cap
+  never under-counts; a damaged ledger stops all spending; the cap's defaults (50 a day, 5 a call)
+  are this slice's choice and can be changed by flag.
+- **Verified:** 36 new tests, each red on its assertion first (27 in the crate, 6 in `ingest`, 3 in
+  the CLI) against stub `claude` scripts: the exact argv, the prompt on stdin and nowhere in the
+  argv, the work folder as the current folder, the environment, every reply shape (ok, error, exit
+  1, signed out, no output, unreadable, over the output cap), the cut-off killing a grandchild, every
+  refusal running nothing and writing no line, the cap (full, exact, yesterday, two calls racing), a
+  damaged ledger, the lock. 20 mutations, each restored and checked with `cmp`, all failed a test.
+  Live: `persona-builder claude check` against the real Claude Code 2.1.292 on Mimi said "isn't
+  signed in" (its own `auth status` reads `loggedIn: false` there), and the exact call argv run by
+  hand against the real CLI was accepted flag for flag and answered `is_error: true` with "Failed to
+  authenticate…", the shape the driver reads as signed out; the work folder stayed empty.
+- **Not verified:** a successful live call (no signed-in Claude Code CLI on Mimi); owed to an
+  attended walk (PB8 covers it). `total_cost_usd` is the CLI's own estimate.
+- **Known limits:** the ledger is rewritten whole on each call (like the Python `record`); the cap
+  is per assistant, not per person.
+
 ## PB2.3: mine the claude.ai export, in Rust (2026-10-24, lane: V1)
 
 - **What:** `persona_builder_ingest` gains `claudeai`, ported from `crew_decisions.py`'s
