@@ -22,6 +22,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   Projects help page) are cited in the brief.
 - **Who wrote it:** Codex, from the brief, in three parts plus four fix rounds; Claude reviewed it.
   No new dependency.
+- **Rebased onto PB6:** `builder/cli/src/main.rs` was merged by hand (PB5's commands became one
+  function each, as PB6's are); a Verifier pass on the resolution found every PB5 line and every
+  PB6 line unchanged. `ci-local.sh` green on the rebased head.
 - **Verified:** every test went red on its assertion first; mutations on the line break before an
   appended block, the changed-file comparison, the record's containment check, the dropped `Where`
   section, blank areas and `forget`'s path comparison each turned a named test red.
@@ -47,7 +50,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   Every fix in both rounds was red first, and a mutation of each turned its test red.
 - **Known limits:** `on` with `skills` linked back into the Claude Code folder creates
   `skills/<slug>/` through the link before it is refused, then removes it again (the disk ends as
-  it began); `off` refuses rather than reports when the user replaced a recorded folder with
+  it began); the CLI reads `HOME` two ways since PB6 landed beside it (an empty `HOME` is refused
+  by `on`, `off`, `status` and `forget` but not by `save`), for a later cleanup; `off` refuses rather than reports when the user replaced a recorded folder with
   a symlink; a dangling-symlink `CLAUDE.md` and `pack --out` under a missing folder give the
   system's own error. The installed skill still calls the Python `similar` and `record` commands;
   a later slice moves it to `persona-builder`.
