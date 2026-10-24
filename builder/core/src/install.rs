@@ -72,12 +72,15 @@ fn block_error(path: &Path, error: Error) -> Error {
 pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
     let opened = MemberDir::open(member_dir)?;
     let member = opened.member;
+    crew::check_name("name", &member.name)?;
+    crew::check_name("principal", &member.principal)?;
     block::validate_id(&member.slug)?;
     let places = places.canonical()?;
     let member_dir = io(member_dir, fs::canonicalize(member_dir))?;
     let source = member_dir.join("SKILL.md");
     refuse_symlink(&source)?;
     let skill_text = io(&source, fs::read_to_string(&source))?;
+    check_skill(&source, &skill_text, &member.slug)?;
     let mut journal = Journal::default();
     if let Some(record) = install_record::read(&places.claude_home)? {
         if record.slug != member.slug {
@@ -88,7 +91,15 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
         }
         // Refresh must be able to write its new record before removing the old one.
         check_temporary(&install_record::record_path(&places.claude_home), true)?;
-        off(&places, record, &mut journal)?;
+        let turned_off = off(&places, record, &mut journal)?;
+        if let Some(left) = turned_off.left.first() {
+            return Err(Error::Invalid(format!(
+                "{} changed after {} was turned on. Move it away, then turn {} on again",
+                left.path.display(),
+                member.name,
+                member.name
+            )));
+        }
     }
     let skill = places.claude_home.join("skills").join(&member.slug);
     let rules_folder = places
@@ -172,6 +183,50 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
         claude_md,
         import_line,
     })
+}
+
+fn check_skill(path: &Path, text: &str, slug: &str) -> Result<()> {
+    let lines: Vec<_> = text.lines().collect();
+    let end = if lines.first() == Some(&"---") {
+        lines
+            .iter()
+            .skip(1)
+            .position(|line| *line == "---")
+            .map(|i| i + 1)
+    } else {
+        None
+    };
+    let Some(end) = end else {
+        return Err(Error::Invalid(format!(
+            "{} has no front matter (the lines between ---)",
+            path.display()
+        )));
+    };
+    let front_matter = &lines[1..end];
+    if !front_matter.contains(&format!("name: {slug}").as_str()) {
+        return Err(Error::Invalid(format!(
+            "{} must be named {slug} (a line name: {slug})",
+            path.display()
+        )));
+    }
+    for key in ["hooks", "allowed-tools"] {
+        if front_matter
+            .iter()
+            .any(|line| line.starts_with(&format!("{key}:")))
+        {
+            return Err(Error::Invalid(format!(
+                "{} asks for {key}, which can run commands without asking. Persona Builder turns on only a skill without them",
+                path.display()
+            )));
+        }
+    }
+    if text.contains("!`") {
+        return Err(Error::Invalid(format!(
+            "{} runs a shell command (!`). Persona Builder turns on only a skill without one",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 pub fn turn_off(places: &Places) -> Result<TurnedOff> {
