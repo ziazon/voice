@@ -14,7 +14,7 @@ member and no real person's data.
 | `scripts/slack_mine.py`, `slack_select.py` | Optional Slack export miners, driven by `--config` | `tests/slack_*_test.py` |
 | `scripts/crew_personas.py` | Optional decision cards, per-person models, blind backtests, panels | `tests/crew_personas_test.py` |
 | `docs/spec/growth-loop.md` | The growth loop spec any persona app implements, with its JSON Schemas | `tests/growth_loop_spec_test.py` |
-| `builder/core/` | The Persona Builder core library (persona_builder): the member format, the dial, field packs | `builder/core/src/`, `builder/core/tests/` |
+| `builder/core/` | The Persona Builder core library (persona_builder): the member format, the dial, field packs, turning an assistant on and off in Claude Code, the claude.ai Project pack, forget | `builder/core/src/`, `builder/core/tests/` |
 | `crew/_fields/` | Field packs: starter decisions and words per kind of work | `builder/core/tests/` |
 | `builder/cli/` | The `persona-builder` command | `builder/cli/tests/` |
 

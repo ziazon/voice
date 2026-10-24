@@ -45,6 +45,8 @@ fn member_show_prints_exact_file_bytes() {
     .unwrap();
     let path = target.join("member.json");
     let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        .env("HOME", scratch.0.join("home"))
+        .env("CLAUDE_CONFIG_DIR", scratch.0.join("home/.claude"))
         .args(["member", "show"])
         .arg(&path)
         .output()
@@ -63,6 +65,8 @@ fn member_show_missing_path_exits_one_with_prefix() {
     let scratch = Scratch::new();
     let path = scratch.0.join("member.json");
     let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        .env("HOME", scratch.0.join("home"))
+        .env("CLAUDE_CONFIG_DIR", scratch.0.join("home/.claude"))
         .args(["member", "show"])
         .arg(&path)
         .output()

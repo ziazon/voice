@@ -92,7 +92,7 @@ pub fn new_member(template: &Path, target: &Path, new: &NewMember<'_>) -> Result
     result
 }
 
-fn fill(text: &str, values: &[(&str, &str)]) -> String {
+pub(crate) fn fill(text: &str, values: &[(&str, &str)]) -> String {
     let mut filled = text.to_owned();
     for (key, value) in values {
         filled = filled.replace(&format!("{{{{{key}}}}}"), value);
