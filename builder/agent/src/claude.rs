@@ -63,6 +63,8 @@ pub struct Reply {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ready {
     pub version: String,
+    /// `ANTHROPIC_API_KEY` is set (its value is never read): Claude Code may bill that key.
+    pub api_key_set: bool,
 }
 
 #[derive(Debug)]
@@ -296,7 +298,10 @@ impl Claude {
         if logged_in != Some(true) {
             return Err(invalid(text::SIGNED_OUT));
         }
-        Ok(Ready { version })
+        Ok(Ready {
+            version,
+            api_key_set: std::env::var_os("ANTHROPIC_API_KEY").is_some_and(|key| !key.is_empty()),
+        })
     }
 
     /// One tool-less call, spent against the session's cap and recorded in its ledger.
@@ -314,6 +319,11 @@ impl Claude {
         if call.prompt.trim().is_empty() || call.prompt.len() > MAX_PROMPT {
             return Err(invalid("a step's records must be there and at most 8 MiB"));
         }
+        // `claude -p` expands a prompt that opens with `/` as a command (`/model`, `/config`),
+        // and the built-in ones work under `--safe-mode`: records never open a prompt that way.
+        if call.prompt.trim_start().starts_with('/') {
+            return Err(invalid("a step's records can't begin with /"));
+        }
         if call.system.trim().is_empty() || call.system.len() > MAX_SYSTEM {
             return Err(invalid(
                 "a step's instructions must be there and at most 32 KiB",
@@ -323,9 +333,9 @@ impl Claude {
             return Err(invalid("a step's answer shape must be a JSON object"));
         }
         let folder = session.work_folder()?;
-        let reservation = session.reserve()?;
-        let budget = Session::budget(&reservation);
+        let started = session.start(AGENT_ID, call.step, call.model)?;
         let schema = call.schema.to_string();
+        let budget = started.budget();
         let budget_arg = format!("{budget:.2}");
         let mut command = self.command(&folder);
         command.args([
@@ -352,16 +362,19 @@ impl Claude {
             "--max-budget-usd",
             &budget_arg,
         ]);
-        let started = Instant::now();
+        let begun = Instant::now();
         let ran = child::run(
             &mut command,
             Some(call.prompt.as_bytes()),
             self.timeout,
             STDOUT_CAP,
         );
-        let seconds = started.elapsed().as_secs_f64();
-        // A child that never started spent nothing; the reservation is released on drop.
-        let judged = judge(ran, self.timeout).ok_or_else(|| invalid(text::DOES_NOT_RUN))?;
+        let seconds = begun.elapsed().as_secs_f64();
+        let Some(judged) = judge(ran, self.timeout) else {
+            // A child that never started spent nothing.
+            session.discard(started)?;
+            return Err(invalid(text::DOES_NOT_RUN));
+        };
         let (cost_usd, cost_from) = match judged.cost {
             Some(cost) => (cost, "claude"),
             // Money may have been spent: count the whole budget, so the cap never under-counts.
@@ -377,7 +390,7 @@ impl Claude {
             cost_usd,
             cost_from,
         };
-        session.record(reservation, &line)?;
+        session.finish(started, &line)?;
         judged.result
     }
 }

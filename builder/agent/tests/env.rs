@@ -11,6 +11,7 @@ fn the_session_markers_do_not_reach_claude_and_the_rest_does() {
         std::env::set_var("CLAUDECODE", "1");
         std::env::set_var("CLAUDE_CODE_ENTRYPOINT", "cli");
         std::env::set_var("PB_AGENT_TEST_KEEP", "kept");
+        std::env::set_var("ANTHROPIC_API_KEY", "not-a-real-key");
     }
     let home = Scratch::new("env");
     let stub = Stub::replying(&ok_reply(&json!({})), 0);
@@ -26,7 +27,7 @@ fn the_session_markers_do_not_reach_claude_and_the_rest_does() {
     let check = Stub::new(
         "case \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; esac",
     );
-    check.claude().check(&home.0).unwrap();
+    assert!(check.claude().check(&home.0).unwrap().api_key_set);
     assert_eq!(check.file("claudecode").trim(), "unset");
     assert_eq!(check.file("entrypoint").trim(), "unset");
 }

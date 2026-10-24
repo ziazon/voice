@@ -132,7 +132,7 @@ fn calls_in_flight_hold_their_budget() {
         "{results:?}"
     );
     let refused = results.iter().find_map(|r| r.clone().err()).unwrap();
-    assert_eq!(refused, text::cap_reached(41.0, 50.0));
+    assert_eq!(refused, text::cap_reached(46.0, 50.0));
     assert_eq!(ledger_lines(&home.0).len(), 2);
 }
 

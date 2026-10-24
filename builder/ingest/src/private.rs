@@ -277,14 +277,23 @@ pub fn private_folder(home: &Path, slug: &str, name: &str) -> Result<PathBuf> {
             "the folder name must be a plain name".into(),
         ));
     }
-    let (directory, path) = state_directory(home, slug, true)?;
-    let path = path.join(name);
+    let (directory, state) = state_directory(home, slug, true)?;
+    // The assistant's folder may be readable by others (an older build left 0750), never writable.
+    let parent = File::from(directory.try_clone().map_err(|e| io(&state, e))?);
+    only_mine(&parent, &state, 0o022)?;
+    let path = state.join(name);
     let part = CString::new(name).expect("validated folder name");
     let folder = File::from(open_directory(&directory, &part, &path, true)?);
-    let metadata = folder.metadata().map_err(|e| io(&path, e))?;
+    only_mine(&folder, &path, 0o077)?;
+    Ok(path)
+}
+
+/// Refuse a folder another user owns, or whose mode has any bit of `others` set.
+fn only_mine(folder: &File, path: &Path, others: u32) -> Result<()> {
+    let metadata = folder.metadata().map_err(|e| io(path, e))?;
     // SAFETY: geteuid has no preconditions.
     let me = unsafe { libc::geteuid() };
-    if metadata.permissions().mode() & 0o077 != 0
+    if metadata.permissions().mode() & others != 0
         || std::os::unix::fs::MetadataExt::uid(&metadata) != me
     {
         return Err(Error::Invalid(format!(
@@ -292,7 +301,7 @@ pub fn private_folder(home: &Path, slug: &str, name: &str) -> Result<PathBuf> {
             path.display()
         )));
     }
-    Ok(path)
+    Ok(())
 }
 
 /// [`read_private`], or `None` when the state folder or the file does not exist.

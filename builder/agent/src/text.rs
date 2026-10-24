@@ -6,6 +6,8 @@ pub const DOES_NOT_RUN: &str = "Claude Code is on this Mac but didn't start. Ope
 pub const SIGNED_OUT: &str = "Claude Code isn't signed in. Open Claude Code, sign in with your own Claude account, then try again.";
 pub const FAILED: &str = "Claude Code couldn't finish this step. Open Claude Code and check it answers you, then try again.";
 
+pub const API_KEY_SET: &str = "ANTHROPIC_API_KEY is set on this Mac, so Claude Code may use that API key, billed separately, instead of your Claude plan.";
+
 pub fn ready(version: &str) -> String {
     format!("Claude Code {version} is installed and signed in.")
 }

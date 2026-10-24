@@ -674,6 +674,9 @@ fn claude_check() -> Result<()> {
     let path = std::env::var_os("PATH");
     let ready = claude::find(path.as_deref(), &home)?.check(&home)?;
     println!("{}", text::ready(&ready.version));
+    if ready.api_key_set {
+        println!("{}", text::API_KEY_SET);
+    }
     Ok(())
 }
 fn spend(member_dir: PathBuf, daily_cap_usd: f64) -> Result<()> {

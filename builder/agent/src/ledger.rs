@@ -1,6 +1,11 @@
 //! The session a build holds: one build per assistant, the empty work folder every call runs in,
 //! the ledger of calls (`runs.jsonl`) and the daily cap.
-use crate::text;
+//!
+//! Every call is on the ledger before it starts, as a `started` line at its whole budget, and that
+//! line is replaced by the call's own result when it ends. So a call in flight counts against the
+//! cap, in this process and in any other, and a build that is killed mid-call (its `claude` child
+//! runs on in its own process group) still has that call counted at its budget.
+use crate::{claude::Usage, text};
 use persona_builder::error::{Error, Result};
 use persona_builder_ingest::private::{
     StateLock, lock_state, private_folder, read_private_optional, write_private,
@@ -8,7 +13,10 @@ use persona_builder_ingest::private::{
 use serde_json::{Map, Value};
 use std::{
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard},
+    sync::{
+        Mutex, MutexGuard,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -16,6 +24,7 @@ const LEDGER: &str = "runs.jsonl";
 const WORK_FOLDER: &str = "agent";
 /// The largest cap Persona Builder accepts, in estimated US dollars a day.
 const MOST_USD: f64 = 1000.0;
+static NEXT_CALL: AtomicU64 = AtomicU64::new(0);
 
 /// The daily cap and each call's budget, in US dollars as Claude Code estimates them.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -65,14 +74,6 @@ impl Default for Cap {
 /// The clock a session reads the day from.
 pub type Clock = Box<dyn Fn() -> SystemTime + Send + Sync>;
 
-#[derive(Default)]
-struct Held {
-    /// The budgets of this session's calls in flight.
-    reserved: f64,
-    /// What this session's calls may have spent that the ledger failed to record.
-    unrecorded: f64,
-}
-
 /// One build's hold on an assistant: every call goes through it.
 pub struct Session {
     home: PathBuf,
@@ -80,33 +81,32 @@ pub struct Session {
     _lock: StateLock,
     cap: Cap,
     clock: Clock,
-    held: Mutex<Held>,
+    /// One ledger read-and-rewrite at a time.
+    ledger: Mutex<()>,
 }
 
-/// One ledger line, before its time is stamped. Never any prompt or reply text.
+/// One ledger line, before its time and id are stamped. Never any prompt or reply text.
 pub(crate) struct Line<'a> {
     pub agent: &'a str,
     pub step: &'a str,
     pub model: &'a str,
     pub outcome: &'a str,
     pub seconds: f64,
-    pub usage: crate::claude::Usage,
+    pub usage: Usage,
     pub cost_usd: f64,
     pub cost_from: &'a str,
 }
 
-/// A call's budget, held against the cap until the call is recorded (or released on drop).
-pub(crate) struct Reservation<'a> {
-    session: &'a Session,
+/// A call on the ledger as `started`, at its whole budget, until [`Session::finish`] or
+/// [`Session::discard`] replaces or removes its line. Dropped without either, the line stays.
+pub(crate) struct Started {
+    id: String,
     budget: f64,
-    open: bool,
 }
 
-impl Drop for Reservation<'_> {
-    fn drop(&mut self) {
-        if self.open {
-            self.session.held().reserved -= self.budget;
-        }
+impl Started {
+    pub(crate) fn budget(&self) -> f64 {
+        self.budget
     }
 }
 
@@ -125,7 +125,7 @@ impl Session {
             _lock: lock,
             cap,
             clock,
-            held: Mutex::new(Held::default()),
+            ledger: Mutex::new(()),
         })
     }
 
@@ -133,11 +133,10 @@ impl Session {
         self.cap
     }
 
-    /// The estimated dollars spent today: the ledger's lines for today, plus anything this
-    /// session spent that the ledger failed to record.
+    /// The estimated dollars spent today, calls still running counted at their whole budget.
     pub fn spent_today(&self) -> Result<f64> {
-        let held = self.held();
-        Ok(self.recorded_today()? + held.unrecorded)
+        let _held = self.held();
+        self.recorded_today()
     }
 
     /// The work folder, checked again before each call: a real 0700 folder, and empty, so no
@@ -154,44 +153,68 @@ impl Session {
         Ok(folder)
     }
 
-    /// Hold one call's budget, or refuse when today's spend, the calls in flight and this call
-    /// could pass the daily cap.
-    pub(crate) fn reserve(&self) -> Result<Reservation<'_>> {
-        let mut held = self.held();
-        let spent = self.recorded_today()? + held.unrecorded;
+    /// Put a call on the ledger at its whole budget, or refuse when today's spend (calls still
+    /// running included) and this call could pass the daily cap.
+    pub(crate) fn start(&self, agent: &str, step: &str, model: &str) -> Result<Started> {
+        let _held = self.held();
+        let spent = self.recorded_today()?;
         let budget = self.cap.call_usd;
-        if spent + held.reserved + budget > self.cap.daily_usd + 1e-9 {
+        if spent + budget > self.cap.daily_usd + 1e-9 {
             return Err(Error::Invalid(text::cap_reached(spent, self.cap.daily_usd)));
         }
-        held.reserved += budget;
-        Ok(Reservation {
-            session: self,
-            budget,
-            open: true,
-        })
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let id = format!(
+            "{}-{nanos}-{}",
+            std::process::id(),
+            NEXT_CALL.fetch_add(1, Ordering::Relaxed)
+        );
+        let line = Line {
+            agent,
+            step,
+            model,
+            outcome: "started",
+            seconds: 0.0,
+            usage: Usage::default(),
+            cost_usd: budget,
+            cost_from: "budget",
+        };
+        let mut lines = self.ledger_lines()?;
+        lines.push(self.render(&id, &line));
+        self.write(&lines)?;
+        Ok(Started { id, budget })
     }
 
-    pub(crate) fn budget(reservation: &Reservation) -> f64 {
-        reservation.budget
-    }
-
-    /// Append the call's line and release its budget. When the ledger cannot be written, the
-    /// whole budget stays counted for this session, since the money may have been spent.
-    pub(crate) fn record(&self, mut reservation: Reservation, line: &Line) -> Result<()> {
-        let mut held = self.held();
-        reservation.open = false;
-        held.reserved -= reservation.budget;
-        let written = self.append(line);
-        if written.is_err() {
-            held.unrecorded += reservation.budget;
+    /// Replace the call's `started` line with its result.
+    pub(crate) fn finish(&self, started: Started, line: &Line) -> Result<()> {
+        let _held = self.held();
+        let rendered = self.render(&started.id, line);
+        let mut lines = self.ledger_lines()?;
+        match lines
+            .iter()
+            .position(|raw| line_id(raw).as_deref() == Some(started.id.as_str()))
+        {
+            Some(at) => lines[at] = rendered,
+            None => lines.push(rendered),
         }
-        written
+        self.write(&lines)
     }
 
-    fn append(&self, line: &Line) -> Result<()> {
+    /// Remove the line of a call that never started: it spent nothing.
+    pub(crate) fn discard(&self, started: Started) -> Result<()> {
+        let _held = self.held();
+        let mut lines = self.ledger_lines()?;
+        lines.retain(|raw| line_id(raw).as_deref() != Some(started.id.as_str()));
+        self.write(&lines)
+    }
+
+    fn render(&self, id: &str, line: &Line) -> String {
         let now = (self.clock)();
         let mut object = Map::new();
         object.insert("at".into(), Value::from(utc_stamp(now)));
+        object.insert("id".into(), Value::from(id));
         object.insert("day".into(), Value::from(local_day(now)));
         object.insert("agent".into(), Value::from(line.agent));
         object.insert("step".into(), Value::from(line.step));
@@ -214,18 +237,20 @@ impl Session {
         );
         object.insert("cost_usd".into(), Value::from(line.cost_usd));
         object.insert("cost_from".into(), Value::from(line.cost_from));
-        let mut bytes = self.ledger_bytes()?.unwrap_or_default();
-        if !bytes.is_empty() && !bytes.ends_with(b"\n") {
-            bytes.push(b'\n');
+        Value::Object(object).to_string()
+    }
+
+    fn write(&self, lines: &[String]) -> Result<()> {
+        let mut text = lines.join("\n");
+        if !text.is_empty() {
+            text.push('\n');
         }
-        bytes.extend_from_slice(Value::Object(object).to_string().as_bytes());
-        bytes.push(b'\n');
-        write_private(&self.home, &self.slug, LEDGER, &bytes)?;
+        write_private(&self.home, &self.slug, LEDGER, text.as_bytes())?;
         Ok(())
     }
 
-    fn held(&self) -> MutexGuard<'_, Held> {
-        self.held
+    fn held(&self) -> MutexGuard<'_, ()> {
+        self.ledger
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -237,40 +262,60 @@ impl Session {
             .join(LEDGER)
     }
 
-    fn ledger_bytes(&self) -> Result<Option<Vec<u8>>> {
-        read_private_optional(&self.home, &self.slug, LEDGER)
+    fn damaged(&self) -> Error {
+        Error::Invalid(text::ledger_damaged(&self.ledger_path()))
     }
 
-    /// The sum of today's `cost_usd`; any line that is not a ledger line stops all spending.
-    fn recorded_today(&self) -> Result<f64> {
-        let Some(bytes) = self.ledger_bytes()? else {
-            return Ok(0.0);
+    /// The ledger's lines, each checked to be a ledger line; any other line stops all spending.
+    fn ledger_lines(&self) -> Result<Vec<String>> {
+        let Some(bytes) = read_private_optional(&self.home, &self.slug, LEDGER)? else {
+            return Ok(Vec::new());
         };
-        let damaged = || Error::Invalid(text::ledger_damaged(&self.ledger_path()));
-        let text = std::str::from_utf8(&bytes).map_err(|_| damaged())?;
-        let text = text.strip_suffix('\n').unwrap_or(text);
+        let text = String::from_utf8(bytes).map_err(|_| self.damaged())?;
+        let text = text.strip_suffix('\n').unwrap_or(&text);
+        if text.is_empty() {
+            return Ok(Vec::new());
+        }
+        text.split('\n')
+            .map(|raw| {
+                parse_line(raw)
+                    .map(|_| raw.to_owned())
+                    .ok_or_else(|| self.damaged())
+            })
+            .collect()
+    }
+
+    /// The sum of today's `cost_usd`.
+    fn recorded_today(&self) -> Result<f64> {
         let today = local_day((self.clock)());
         let mut spent = 0.0;
-        if text.is_empty() {
-            return Ok(spent);
-        }
-        for raw in text.split('\n') {
-            let line: Value = serde_json::from_str(raw).map_err(|_| damaged())?;
-            let day = line
-                .get("day")
-                .and_then(Value::as_str)
-                .ok_or_else(damaged)?;
-            let cost = line
-                .get("cost_usd")
-                .and_then(Value::as_f64)
-                .filter(|cost| cost.is_finite() && *cost >= 0.0)
-                .ok_or_else(damaged)?;
+        for raw in self.ledger_lines()? {
+            let (day, cost) = parse_line(&raw).ok_or_else(|| self.damaged())?;
             if day == today {
                 spent += cost;
             }
         }
         Ok(spent)
     }
+}
+
+/// A ledger line's day and cost, or `None` when it is not a ledger line.
+fn parse_line(raw: &str) -> Option<(String, f64)> {
+    let line: Value = serde_json::from_str(raw).ok()?;
+    let day = line.get("day")?.as_str()?.to_owned();
+    let cost = line
+        .get("cost_usd")?
+        .as_f64()
+        .filter(|cost| cost.is_finite() && *cost >= 0.0)?;
+    Some((day, cost))
+}
+
+fn line_id(raw: &str) -> Option<String> {
+    serde_json::from_str::<Value>(raw)
+        .ok()?
+        .get("id")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 fn seconds(time: SystemTime) -> libc::time_t {

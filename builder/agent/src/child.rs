@@ -71,9 +71,15 @@ fn settle(child: &mut Child, started: Instant, timeout: Duration) -> Option<Exit
     // The child is reaped only after its group's kill (`has_exited` leaves it unreaped), so its
     // zombie keeps the group id from being reused before the kill lands.
     loop {
-        if has_exited(pid) {
-            kill_group(pid);
-            return child.wait().ok();
+        match has_exited(pid) {
+            Some(true) => {
+                kill_group(pid);
+                return child.wait().ok();
+            }
+            // `waitid` failed, so the child may be reaped already and its group id free for
+            // reuse: no group kill, `wait` reports what happened.
+            None => return child.wait().ok(),
+            Some(false) => {}
         }
         let elapsed = started.elapsed();
         if elapsed < timeout {
@@ -111,8 +117,9 @@ fn kill_group(pid: u32) {
     }
 }
 
-/// Whether the child `pid` has exited, asked without reaping it (`WNOWAIT`).
-fn has_exited(pid: u32) -> bool {
+/// Whether the child `pid` has exited, asked without reaping it (`WNOWAIT`); `None` when
+/// `waitid` itself failed.
+fn has_exited(pid: u32) -> Option<bool> {
     loop {
         // SAFETY: siginfo_t is plain data; all-zero is valid and waitid fills it.
         let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
@@ -121,11 +128,10 @@ fn has_exited(pid: u32) -> bool {
         if unsafe { libc::waitid(libc::P_PID, pid as libc::id_t, &mut info, flags) } == 0 {
             // With WNOHANG and nothing to report, the pid is left zero.
             // SAFETY: waitid succeeded, so the pid field is initialised.
-            return unsafe { info.si_pid() } != 0;
+            return Some(unsafe { info.si_pid() } != 0);
         }
         if io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
-            // Nothing left to wait for: `wait` reports what happened.
-            return true;
+            return None;
         }
     }
 }

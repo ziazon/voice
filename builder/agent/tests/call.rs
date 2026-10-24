@@ -84,6 +84,7 @@ fn a_call_runs_tool_less_in_the_work_folder_with_the_prompt_on_stdin() {
         keys,
         [
             "at",
+            "id",
             "day",
             "agent",
             "step",
@@ -408,5 +409,74 @@ fn a_program_that_cannot_start_spends_nothing() {
         .call(&session, &call("records", &schema))
         .unwrap_err();
     assert_eq!(error.to_string(), text::DOES_NOT_RUN);
-    assert!(ledger(&home.0).is_none());
+    assert!(ledger_lines(&home.0).is_empty());
+}
+
+#[test]
+fn a_call_that_never_started_gives_its_budget_back() {
+    let home = Scratch::new("call-missing-then-ok");
+    seed_ledger(
+        &home.0,
+        &[spent_line(
+            &persona_builder_agent::ledger::local_day(fixed_time()),
+            45.0,
+        )],
+    );
+    let session = common::session(&home.0);
+    let schema = schema();
+    let missing = persona_builder_agent::claude::Claude::at(home.0.join("no-such-claude"));
+    missing
+        .call(&session, &call("records", &schema))
+        .unwrap_err();
+    let stub = Stub::replying(&ok_reply(&json!({})), 0);
+    stub.claude()
+        .call(&session, &call("records", &schema))
+        .unwrap();
+    assert_eq!(ledger_lines(&home.0).len(), 2);
+}
+
+#[test]
+fn a_call_is_on_the_ledger_at_its_whole_budget_while_it_runs() {
+    let home = Scratch::new("call-started");
+    let runs = state(&home.0).join("runs.jsonl");
+    let stub = Stub::new(&format!(
+        "cp '{}' \"$here/during\"\ncat <<'EOF'\n{}\nEOF",
+        runs.display(),
+        ok_reply(&json!({}))
+    ));
+    let session = common::session(&home.0);
+    let schema = schema();
+    stub.claude()
+        .call(&session, &call("records", &schema))
+        .unwrap();
+    let during: Vec<Value> = stub
+        .file("during")
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(during.len(), 1);
+    assert_eq!(during[0]["outcome"], "started");
+    assert_eq!(during[0]["cost_usd"], 5.0);
+    assert_eq!(during[0]["cost_from"], "budget");
+    let after = ledger_lines(&home.0);
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0]["outcome"], "ok");
+    assert_eq!(after[0]["cost_usd"], 0.0123);
+    assert_eq!(after[0]["id"], during[0]["id"]);
+    assert!(after[0]["id"].as_str().is_some_and(|id| !id.is_empty()));
+}
+
+#[test]
+fn a_prompt_that_starts_like_a_command_is_refused() {
+    let stub = Stub::replying(&ok_reply(&json!({})), 0);
+    let schema = schema();
+    for prompt in ["/model opus", "  \n/config x=y", "\t/fast"] {
+        let home = Scratch::new("call-slash");
+        refused(&home, &stub, &call(prompt, &schema));
+    }
+    let home = Scratch::new("call-slash-later");
+    let session = common::session(&home.0);
+    stub.claude()
+        .call(&session, &call("records\n/model opus", &schema))
+        .unwrap();
 }

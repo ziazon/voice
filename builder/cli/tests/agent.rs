@@ -49,13 +49,17 @@ impl Fixture {
         fs::write(&program, format!("#!/bin/sh\n{body}\n")).unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
     }
-    fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_persona-builder"));
+        command
             .env("HOME", &self.home)
             .env("PATH", format!("{}:/usr/bin:/bin", self.bin.display()))
-            .args(args)
-            .output()
-            .unwrap()
+            .env_remove("ANTHROPIC_API_KEY")
+            .args(args);
+        command
+    }
+    fn run(&self, args: &[&str]) -> Output {
+        self.command(args).output().unwrap()
     }
     fn state(&self) -> PathBuf {
         self.home.join(".claude/state/wren")
@@ -96,6 +100,19 @@ fn claude_check_says_ready_or_what_to_do() {
         "Claude Code 2.1.292 is installed and signed in.\n"
     );
     assert!(!text(&out.stdout).contains("example.invalid"));
+    let out = f
+        .command(&["claude", "check"])
+        .env("ANTHROPIC_API_KEY", "not-a-real-key")
+        .output()
+        .unwrap();
+    assert_eq!(
+        text(&out.stdout),
+        format!(
+            "Claude Code 2.1.292 is installed and signed in.\n{}\n",
+            persona_builder_agent::text::API_KEY_SET
+        )
+    );
+    assert!(!text(&out.stdout).contains("not-a-real-key"));
 
     f.stub("case \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":false}';; esac");
     let out = f.run(&["claude", "check"]);

@@ -109,3 +109,23 @@ fn optional_read_fails_when_the_folder_cannot_be_searched() {
     fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
     assert!(result.is_err(), "{result:?}");
 }
+
+#[test]
+fn private_folder_refuses_an_assistant_folder_others_can_write() {
+    for mode in [0o770, 0o702, 0o777] {
+        let home = Scratch::new("private-folder-parent");
+        let state = home.0.join(".claude/state/wren");
+        fs::create_dir_all(&state).unwrap();
+        fs::set_permissions(&state, fs::Permissions::from_mode(mode)).unwrap();
+        let error = private_folder(&home.0, "wren", "agent").unwrap_err();
+        assert!(
+            error.to_string().contains("only you can open"),
+            "{mode:o}: {error}"
+        );
+    }
+    let home = Scratch::new("private-folder-parent-ok");
+    let state = home.0.join(".claude/state/wren");
+    fs::create_dir_all(&state).unwrap();
+    fs::set_permissions(&state, fs::Permissions::from_mode(0o750)).unwrap();
+    private_folder(&home.0, "wren", "agent").unwrap();
+}

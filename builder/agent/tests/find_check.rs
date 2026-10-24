@@ -121,7 +121,8 @@ fn check_reads_the_version_and_the_sign_in() {
     assert_eq!(
         ready,
         Ready {
-            version: "2.1.292".into()
+            version: "2.1.292".into(),
+            api_key_set: std::env::var_os("ANTHROPIC_API_KEY").is_some_and(|v| !v.is_empty()),
         }
     );
     assert_eq!(stub.argv(0).unwrap(), ["--version"]);
