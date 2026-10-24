@@ -1,6 +1,6 @@
 //! Files for a claude.ai Project, rendered locally from a member's files.
 use crate::{
-    crew::{MemberDir, fill},
+    crew::{MemberDir, check_name, fill},
     error::{Error, Result},
     install_fs::{Journal, exists, io},
     member::refuse_symlink,
@@ -22,6 +22,8 @@ pub fn pack(member_dir: &Path, out: &Path) -> Result<Vec<PathBuf>> {
         )));
     }
     let member = MemberDir::open(member_dir)?;
+    check_name("name", &member.member.name)?;
+    check_name("principal", &member.member.principal)?;
     for name in ["IDENTITY.md", "autonomy.md", "decisions.md"] {
         refuse_symlink(&member_dir.join(name))?;
     }

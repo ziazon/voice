@@ -54,13 +54,19 @@ pub(super) fn check_path(path: &Path, claude_home: &Path) -> Result<()> {
     // Validate each ancestor too: a lexically contained path can escape through a link.
     let relative = path.strip_prefix(claude_home).map_err(|_| invalid())?;
     let mut parent = claude_home.to_owned();
+    let mut canonical_root = claude_home.to_owned();
     let parts: Vec<_> = relative.components().collect();
     for part in &parts[..parts.len() - 1] {
         parent.push(part.as_os_str());
-        if parent != claude_home.join("skills") {
-            refuse_symlink(&parent)?;
+        if parent == claude_home.join("skills") {
+            if exists(&parent)? {
+                canonical_root = io(&parent, fs::canonicalize(&parent))?;
+            }
+            continue;
         }
-        if exists(&parent)? && !io(&parent, fs::canonicalize(&parent))?.starts_with(claude_home) {
+        refuse_symlink(&parent)?;
+        if exists(&parent)? && !io(&parent, fs::canonicalize(&parent))?.starts_with(&canonical_root)
+        {
             return Err(invalid());
         }
     }
@@ -94,6 +100,13 @@ pub(super) fn read(claude_home: &Path) -> Result<Option<Record>> {
     block::validate_id(&record.slug)
         .map_err(|error| Error::Invalid(format!("{}: {error}", path.display())))?;
     for added in &record.added {
+        if added.path() == claude_home.join("CLAUDE.md") || added.path() == path {
+            return Err(Error::Invalid(format!(
+                "{} lists {} as added: fix or remove installed.json",
+                path.display(),
+                added.path().display()
+            )));
+        }
         check_path(added.path(), claude_home)
             .map_err(|error| Error::Invalid(format!("{}: {error}", path.display())))?;
     }

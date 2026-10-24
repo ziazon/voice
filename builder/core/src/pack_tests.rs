@@ -341,3 +341,69 @@ Each kind has its own file in this Project's knowledge:
 - `decisions-sequencing.md`
 - `decisions-writing-voice.md`
 "#;
+
+#[test]
+fn unsafe_names_are_refused_before_writing() {
+    for what in ["name", "principal"] {
+        for value in [
+            "Ari\n@~/.ssh/x",
+            "@x",
+            "a`b",
+            "{{SLUG}}",
+            "a\tb",
+            &"a".repeat(65),
+            "",
+            " Ari",
+            "Ari ",
+            "a<b",
+            "a>b",
+            "a}b",
+            "a[b",
+            "a]b",
+            "a(b",
+            "a)b",
+            "a#b",
+            "a\\b",
+            "a\u{85}b",
+        ] {
+            let scratch = Scratch::new();
+            let member = &fixture(&scratch);
+            let out = scratch.path().join("pack");
+            let path = member.join("member.json");
+            let mut config: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            config[what] = value.into();
+            fs::write(path, serde_json::to_string(&config).unwrap()).unwrap();
+            let result = pack(member, &out);
+            assert!(
+                matches!(&result, Err(Error::Invalid(_))),
+                "{what} {value:?} was not refused: {result:?}"
+            );
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                format!(
+                    "the {what} {value:?} can't be used: a name is one line of up to 64 characters without @ < > {{ }} [ ] ( ) # \\ or backticks"
+                )
+            );
+            assert!(!out.exists());
+        }
+    }
+}
+
+#[test]
+fn ordinary_names_are_accepted() {
+    for what in ["name", "principal"] {
+        for value in ["Mo Lee", "Zoë", "Sam O'Neil", &"ë".repeat(64)] {
+            let scratch = Scratch::new();
+            let member = &fixture(&scratch);
+            let out = scratch.path().join("pack");
+            let path = member.join("member.json");
+            let mut config: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            config[what] = value.into();
+            fs::write(path, serde_json::to_string(&config).unwrap()).unwrap();
+            let result = pack(member, &out);
+            assert!(result.is_ok(), "{what} {value:?}: {result:?}");
+        }
+    }
+}

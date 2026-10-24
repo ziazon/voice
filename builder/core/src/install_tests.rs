@@ -268,17 +268,17 @@ fn changed_skill_is_left_and_reported() {
 fn turning_on_twice_refreshes_one_block() {
     let f = Fixture::new();
     f.on();
-    fs::write(f.member.join("SKILL.md"), "new skill").unwrap();
+    fs::write(f.member.join("SKILL.md"), "---\nname: ari\n---\nnew skill").unwrap();
     f.on();
     assert_eq!(fs::read_to_string(f.path("CLAUDE.md")).unwrap(), BLOCK);
     assert_eq!(
         fs::read_to_string(f.path("skills/ari/SKILL.md")).unwrap(),
-        "new skill"
+        "---\nname: ari\n---\nnew skill"
     );
     f.off();
 }
 #[test]
-fn failed_install_rolls_back_every_created_path() {
+fn persona_builder_file_is_refused_before_any_write() {
     let f = Fixture::new();
     fs::write(f.path("CLAUDE.md"), "notes").unwrap();
     fs::write(f.path("persona-builder"), "not a folder").unwrap();
@@ -329,7 +329,7 @@ fn status_tracks_missing_changed_line_and_outdated_member() {
     fs::remove_file(f.path("persona-builder/ari/RULES.md")).unwrap();
     fs::write(f.path("skills/ari/SKILL.md"), "edit").unwrap();
     fs::write(f.path("CLAUDE.md"), "notes").unwrap();
-    fs::write(f.member.join("SKILL.md"), "updated").unwrap();
+    fs::write(f.member.join("SKILL.md"), "---\nname: ari\n---\nupdated").unwrap();
     let current = status(&f.places).unwrap().unwrap();
     assert!(!current.line);
     assert!(current.out_of_date);
@@ -372,7 +372,7 @@ fn import_paths_escape_spaces_and_use_absolute_path_outside_home() {
 fn refresh_failure_restores_previous_install_including_record() {
     let f = Fixture::new();
     f.on();
-    fs::write(f.member.join("SKILL.md"), "updated").unwrap();
+    fs::write(f.member.join("SKILL.md"), "---\nname: ari\n---\nupdated").unwrap();
     let temporary = f.path(&format!(
         "persona-builder/.installed.json.tmp-{}",
         std::process::id()
@@ -493,4 +493,213 @@ fn refresh_checks_claude_restore_temporary_before_removing_original() {
         tree(&f.places.claude_home) == before,
         "rollback lost CLAUDE.md"
     );
+}
+
+#[test]
+fn unsafe_names_are_refused_before_writing() {
+    for what in ["name", "principal"] {
+        for value in [
+            "Ari\n@~/.ssh/x",
+            "@x",
+            "a`b",
+            "{{SLUG}}",
+            "a\tb",
+            &"a".repeat(65),
+            "",
+            " Ari",
+            "Ari ",
+            "a<b",
+            "a>b",
+            "a}b",
+            "a[b",
+            "a]b",
+            "a(b",
+            "a)b",
+            "a#b",
+            "a\\b",
+            "a\u{85}b",
+        ] {
+            let f = Fixture::new();
+            let member = &f.member;
+            let before = tree(&f.places.claude_home);
+            let path = member.join("member.json");
+            let mut config: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            config[what] = value.into();
+            fs::write(path, serde_json::to_string(&config).unwrap()).unwrap();
+            let result = turn_on(member, &f.places);
+            assert!(
+                matches!(&result, Err(Error::Invalid(_))),
+                "{what} {value:?} was not refused: {result:?}"
+            );
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                format!(
+                    "the {what} {value:?} can't be used: a name is one line of up to 64 characters without @ < > {{ }} [ ] ( ) # \\ or backticks"
+                )
+            );
+            assert_eq!(tree(&f.places.claude_home), before);
+        }
+    }
+}
+
+#[test]
+fn ordinary_names_are_accepted() {
+    for what in ["name", "principal"] {
+        for value in ["Mo Lee", "Zoë", "Sam O'Neil", &"ë".repeat(64)] {
+            let f = Fixture::new();
+            let member = &f.member;
+
+            let path = member.join("member.json");
+            let mut config: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            config[what] = value.into();
+            fs::write(path, serde_json::to_string(&config).unwrap()).unwrap();
+            let result = turn_on(member, &f.places);
+            assert!(result.is_ok(), "{what} {value:?}: {result:?}");
+        }
+    }
+}
+
+fn refused_skill(text: &str, message: &str) {
+    let f = Fixture::new();
+    let path = f.member.join("SKILL.md");
+    fs::write(&path, text).unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_on(&f.member, &f.places);
+    assert!(
+        matches!(&result, Err(Error::Invalid(_))),
+        "skill was not refused: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!("{} {message}", path.canonicalize().unwrap().display())
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
+}
+
+#[test]
+fn skill_without_front_matter_is_refused() {
+    for text in ["# Ari\n", "---\nname: ari\n"] {
+        refused_skill(text, "has no front matter (the lines between ---)");
+    }
+}
+
+#[test]
+fn skill_without_matching_name_is_refused() {
+    for text in [
+        "---\nname: other\n---\n",
+        "---\ndescription: Ari\n---\nname: ari\n",
+        "---\nname: ari \n---\n",
+    ] {
+        refused_skill(text, "must be named ari (a line name: ari)");
+    }
+}
+
+#[test]
+fn skill_with_hooks_is_refused() {
+    refused_skill(
+        "---\nname: ari\nhooks: {}\n---\n",
+        "asks for hooks, which can run commands without asking. Persona Builder turns on only a skill without them",
+    );
+}
+
+#[test]
+fn skill_with_allowed_tools_is_refused() {
+    refused_skill(
+        "---\nname: ari\nallowed-tools: Bash\n---\n",
+        "asks for allowed-tools, which can run commands without asking. Persona Builder turns on only a skill without them",
+    );
+}
+
+#[test]
+fn skill_with_shell_command_is_refused() {
+    for text in [
+        "---\nname: ari\n---\n!`echo example`\n",
+        "---\nname: ari\ndescription: !`echo example`\n---\n",
+    ] {
+        refused_skill(
+            text,
+            "runs a shell command (!`). Persona Builder turns on only a skill without one",
+        );
+    }
+}
+
+#[test]
+fn symlinked_skills_outside_claude_home_supports_on_and_off() {
+    let f = Fixture::new();
+    let target = f.scratch.path().join("shared-skills");
+    fs::create_dir(&target).unwrap();
+    fs::write(target.join("other.md"), "keep").unwrap();
+    symlink(&target, f.path("skills")).unwrap();
+    let before = tree(&f.places.claude_home);
+    let target_before = tree(&target);
+    f.on();
+    assert_eq!(
+        fs::read(target.join("ari/SKILL.md")).unwrap(),
+        fs::read(f.member.join("SKILL.md")).unwrap()
+    );
+    let off = turn_off(&f.places);
+    assert!(off.is_ok(), "turn_off: {off:?}");
+    assert!(off.unwrap().left.is_empty());
+    assert_eq!(tree(&f.places.claude_home), before);
+    assert_eq!(tree(&target), target_before);
+    assert!(fs::symlink_metadata(f.path("skills")).unwrap().is_symlink());
+}
+
+#[test]
+fn refresh_refuses_user_changes_and_restores_the_install() {
+    for changed in ["skills/ari/SKILL.md", "persona-builder/ari/RULES.md"] {
+        let f = Fixture::new();
+        f.on();
+        let path = f.path(changed);
+        fs::write(&path, "user edit").unwrap();
+        let before = tree(&f.places.claude_home);
+        let result = turn_on(&f.member, &f.places);
+        assert!(
+            matches!(&result, Err(Error::Invalid(_))),
+            "refresh was not refused: {result:?}"
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            format!(
+                "{} changed after Ari was turned on. Move it away, then turn Ari on again",
+                path.display()
+            )
+        );
+        assert_eq!(tree(&f.places.claude_home), before);
+    }
+}
+
+#[test]
+fn record_cannot_claim_claude_file_or_itself() {
+    for claimed in ["CLAUDE.md", "persona-builder/installed.json"] {
+        for kind in ["file", "dir"] {
+            let f = Fixture::new();
+            f.on();
+            let record_path = f.path("persona-builder/installed.json");
+            let mut record: serde_json::Value =
+                serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+            let path = f.path(claimed);
+            let text = fs::read_to_string(&path).unwrap();
+            record["added"]
+                .as_array_mut()
+                .unwrap()
+                .push(serde_json::json!({"kind": kind, "path": path, "text": text}));
+            fs::write(&record_path, serde_json::to_string(&record).unwrap()).unwrap();
+            let before = tree(&f.places.claude_home);
+            let result = turn_off(&f.places);
+            assert!(
+                matches!(&result, Err(Error::Invalid(_))),
+                "record claiming {claimed} as {kind} was not refused: {result:?}"
+            );
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains(&record_path.display().to_string())
+            );
+            assert_eq!(tree(&f.places.claude_home), before);
+        }
+    }
 }

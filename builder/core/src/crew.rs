@@ -24,6 +24,20 @@ pub fn slugify(text: &str) -> Option<String> {
     if slug.is_empty() { None } else { Some(slug) }
 }
 
+pub(crate) fn check_name(what: &str, value: &str) -> Result<()> {
+    if !(1..=64).contains(&value.chars().count())
+        || value.trim() != value
+        || value
+            .chars()
+            .any(|c| c.is_control() || "@<>{}[]()#\\`".contains(c))
+    {
+        return Err(Error::Invalid(format!(
+            "the {what} {value:?} can't be used: a name is one line of up to 64 characters without @ < > {{ }} [ ] ( ) # \\ or backticks"
+        )));
+    }
+    Ok(())
+}
+
 pub fn shown_path(repo: &Path, home: &Path) -> Result<String> {
     let repo = repo.canonicalize().map_err(|source| Error::Io {
         path: repo.to_owned(),
