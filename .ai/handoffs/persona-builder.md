@@ -2,6 +2,34 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB1: the member format in Rust, the neutral base, one field pack (2026-10-24, lane: V1)
+
+- **What:** `builder/core` reads and writes an assistant's files the way the Python tooling does:
+  `member.json` with `private.json` laid over (`member`), JSON written byte for byte as Python's
+  `json.dumps(indent=2)` (`json`), a new `crew/<slug>/` folder filled from the template as
+  `install.sh` fills it, without a kit, and removed again if filling it fails (`crew`), the dial in `autonomy.md` (`autonomy`) and field
+  packs (`fields`). The CLI gains `persona-builder member show <member.json>`. The template's
+  `IDENTITY.md` and `autonomy.md` are rewritten in plain words, keeping every dial key and its
+  state; `crew/_fields/general.md` is the first field pack. Brief:
+  `plans/briefs/PB1-member-format.md`.
+- **Who wrote it:** Codex, from the brief; Claude reviewed it and wrote the user-facing text.
+- **Dependency intake:** `serde` 1 (derive) and `serde_json` 1 (`preserve_order`), both MIT or
+  Apache-2.0 and the standard Rust JSON pair. They add `serde_core`, `serde_derive`, `itoa`,
+  `memchr`, `zmij` (serde_json's float formatter, same author), and `indexmap` with `hashbrown`,
+  `equivalent` and `foldhash`. None of them touches the network, files or processes. No
+  `cargo audit` scan was run because it is not installed.
+- **Verified:** every test went red on its assertion first. The parity tests run the real Python:
+  Rust's `read_member` matches `crew_decisions.py`'s byte for byte on three invented members and
+  gives the same error on two invalid ones. `new_member` matches `install.sh --no-history` file for
+  file and byte for byte on three invented name pairs, one of them non-ASCII. Four mutations each
+  turned their test red: the ASCII escaping, the private-filter join, the placeholder order and the
+  skipped `README.md`. `bash scripts/ci-local.sh` passed with all Rust steps and no parity skips.
+- **A miss caught by the gate:** the first `autonomy.md` text said "passwords", which the
+  template's own secret filter flags, so the privacy-check tests failed. It now says "logins".
+- **Not verified:** a kit (`install.sh --kit`), which `new_member` does not cover yet. Unknown keys
+  in a hand-edited `member.json` are written after the known ones, while Python keeps them where
+  they were.
+
 ## PB0: the Rust workspace and its checks (2026-10-23, lane: V2)
 
 - **What:** a virtual Cargo workspace at the root (edition 2024, stable, no toolchain file) with
