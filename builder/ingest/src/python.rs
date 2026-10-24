@@ -25,24 +25,29 @@ pub fn decode(bytes: &[u8]) -> String {
     bytes.utf8_chunks().map(|chunk| chunk.valid()).collect()
 }
 
+/// The characters CPython's `str.splitlines()` splits at.
+pub fn line_break(character: char) -> bool {
+    matches!(
+        character,
+        '\n' | '\r'
+            | '\u{b}'
+            | '\u{c}'
+            | '\u{1c}'
+            | '\u{1d}'
+            | '\u{1e}'
+            | '\u{85}'
+            | '\u{2028}'
+            | '\u{2029}'
+    )
+}
+
 /// Matches CPython's `str.splitlines()` without retaining line endings.
 pub fn splitlines(text: &str) -> Vec<&str> {
     let mut lines = Vec::new();
     let mut start = 0;
     let mut chars = text.char_indices().peekable();
     while let Some((offset, character)) = chars.next() {
-        if matches!(
-            character,
-            '\n' | '\r'
-                | '\u{b}'
-                | '\u{c}'
-                | '\u{1c}'
-                | '\u{1d}'
-                | '\u{1e}'
-                | '\u{85}'
-                | '\u{2028}'
-                | '\u{2029}'
-        ) {
+        if line_break(character) {
             lines.push(&text[start..offset]);
             start = offset + character.len_utf8();
             if character == '\r' && chars.peek().is_some_and(|(_, next)| *next == '\n') {

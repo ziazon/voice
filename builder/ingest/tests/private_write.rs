@@ -79,12 +79,21 @@ fn replaces_file_link_without_touching_target_and_accepts_linked_home() {
 #[test]
 fn rejects_unsafe_names_and_slugs_before_creating_folders() {
     let home = Scratch::new("private-names");
-    for name in ["../x.jsonl", "a/b.jsonl", ".x.jsonl", "x.json", "x\0.jsonl"] {
+    for name in [
+        "../x.jsonl",
+        "a/b.jsonl",
+        ".x.jsonl",
+        "x.json",
+        "x\0.jsonl",
+        "x.txt",
+        "x.tsv/",
+        ".x.tsv",
+    ] {
         assert_eq!(
             write_private(&home.0, "wren", name, b"private")
                 .unwrap_err()
                 .to_string(),
-            "the file name must be a plain name ending .jsonl"
+            "the file name must be a plain name ending .jsonl or .tsv"
         );
     }
     for slug in [

@@ -339,22 +339,7 @@ impl Builder<'_> {
         Ok(out)
     }
     fn text_blocks<'a>(&self, content: &'a Value) -> Result<Vec<&'a str>> {
-        if let Value::String(s) = content {
-            return Ok(vec![s]);
-        }
-        if !truthy(content) {
-            return Ok(vec![]);
-        }
-        match content {
-            Value::Object(_) => Ok(vec![]),
-            Value::Array(a) => a
-                .iter()
-                .filter_map(|v| v.as_object())
-                .filter(|o| o.get("type").and_then(Value::as_str) == Some("text"))
-                .map(|o| self.field(o, "text", "text"))
-                .collect(),
-            _ => Err(self.shape("content")),
-        }
+        text_blocks(content).map_err(|key| self.shape(key))
     }
     fn content<'a>(&self, r: &'a Map<String, Value>) -> Result<&'a Value> {
         match r.get("message") {
@@ -395,19 +380,7 @@ impl Builder<'_> {
         Ok(self.own_message(text))
     }
     fn own_message(&self, text: String) -> Option<String> {
-        if text.is_empty()
-            || self
-                .filters
-                .pasted_prefixes()
-                .iter()
-                .any(|p| text.starts_with(p))
-            || ["try again", "continue", "retry"].contains(&text.to_lowercase().as_str())
-            || text.chars().count() > 4000
-        {
-            None
-        } else {
-            Some(text)
-        }
+        own_message(self.filters, text)
     }
     fn assistant_text(&self, r: &Map<String, Value>) -> Result<String> {
         Ok(self.text_blocks(self.content(r)?)?.join("\n"))
@@ -442,6 +415,45 @@ impl Builder<'_> {
         Ok(out)
     }
 }
+/// Text strings from a message's string content or typed block list; the error is the key whose
+/// shape is wrong.
+pub(crate) fn text_blocks(content: &Value) -> std::result::Result<Vec<&str>, &'static str> {
+    if let Value::String(s) = content {
+        return Ok(vec![s]);
+    }
+    if !truthy(content) {
+        return Ok(vec![]);
+    }
+    match content {
+        Value::Object(_) => Ok(vec![]),
+        Value::Array(a) => a
+            .iter()
+            .filter_map(|v| v.as_object())
+            .filter(|o| o.get("type").and_then(Value::as_str) == Some("text"))
+            .map(|o| match o.get("text") {
+                None => Ok(""),
+                Some(Value::String(s)) => Ok(s.as_str()),
+                Some(_) => Err("text"),
+            })
+            .collect(),
+        _ => Err("content"),
+    }
+}
+/// The text, unless it is empty, pasted, a one-word nudge or too long to be typed.
+pub(crate) fn own_message(filters: &Filters, text: String) -> Option<String> {
+    if text.is_empty()
+        || filters
+            .pasted_prefixes()
+            .iter()
+            .any(|p| text.starts_with(p))
+        || ["try again", "continue", "retry"].contains(&text.to_lowercase().as_str())
+        || text.chars().count() > 4000
+    {
+        None
+    } else {
+        Some(text)
+    }
+}
 fn outcome(picks: &[String], own: &str, recommended: Option<&str>) -> &'static str {
     if !own.is_empty() {
         "own_words"
@@ -453,7 +465,7 @@ fn outcome(picks: &[String], own: &str, recommended: Option<&str>) -> &'static s
         }
     }
 }
-fn message_record(
+pub(crate) fn message_record(
     session: &str,
     when: &str,
     project: &str,

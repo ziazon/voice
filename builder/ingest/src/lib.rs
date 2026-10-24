@@ -1,4 +1,5 @@
 pub mod check;
+pub mod claudeai;
 pub mod corpus;
 pub mod filters;
 pub mod mine;

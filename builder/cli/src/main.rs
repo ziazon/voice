@@ -104,6 +104,11 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Read your claude.ai chats: check the export, list the chats, mark which are yours, and read them.
+    Claudeai {
+        #[command(subcommand)]
+        command: ClaudeaiCommand,
+    },
     /// List the Claude Code project folders and which are left out.
     Folders {
         member_dir: PathBuf,
@@ -119,6 +124,65 @@ enum Command {
     Member {
         #[command(subcommand)]
         command: MemberCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum ClaudeaiCommand {
+    /// Check the export has what Persona Builder reads (shows field names only, never your words).
+    Inspect {
+        #[arg(long)]
+        export: PathBuf,
+    },
+    /// List your claude.ai chats in a review file, so you can mark which are yours.
+    Titles {
+        member_dir: PathBuf,
+        #[arg(long)]
+        export: PathBuf,
+        #[arg(long, default_value = "claudeai-review.tsv")]
+        review: String,
+        #[arg(long)]
+        project_field: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Mark chats in the review file as yours (y) or not (n).
+    Mark {
+        member_dir: PathBuf,
+        #[arg(long = "as", value_parser = ["y", "n"])]
+        mark: String,
+        #[arg(long, default_value = "claudeai-review.tsv")]
+        review: String,
+        #[arg(long = "uuid", action = clap::ArgAction::Append)]
+        uuids: Vec<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long, allow_hyphen_values = true)]
+        title: Option<String>,
+        #[arg(long)]
+        before: Option<String>,
+        #[arg(long)]
+        after: Option<String>,
+        #[arg(long)]
+        unmarked: bool,
+        #[arg(long)]
+        all: bool,
+    },
+    /// Read the chats you marked as yours into your assistant's private folder.
+    Mine {
+        member_dir: PathBuf,
+        #[arg(long)]
+        export: PathBuf,
+        #[arg(long, default_value = "claudeai-review.tsv")]
+        review: String,
+        #[arg(long, default_value = "decisions-claudeai.jsonl")]
+        out: String,
+        #[arg(long, conflicts_with = "cutoff", allow_hyphen_values = true)]
+        holdout: Option<String>,
+        #[arg(long)]
+        cutoff: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -172,13 +236,18 @@ fn home() -> Result<PathBuf> {
             source: std::io::Error::new(std::io::ErrorKind::NotFound, "HOME"),
         })
 }
-fn projects_path(projects: Option<PathBuf>, home: &std::path::Path) -> Result<PathBuf> {
-    let path = projects.unwrap_or_else(|| home.join(".claude/projects"));
-    let path = if path.as_os_str().as_encoded_bytes().starts_with(b"~/") {
+fn expand_home(path: PathBuf, home: &std::path::Path) -> PathBuf {
+    if path.as_os_str().as_encoded_bytes().starts_with(b"~/") {
         home.join(path.strip_prefix("~").expect("leading ~/"))
     } else {
         path
-    };
+    }
+}
+fn projects_path(projects: Option<PathBuf>, home: &std::path::Path) -> Result<PathBuf> {
+    let path = expand_home(
+        projects.unwrap_or_else(|| home.join(".claude/projects")),
+        home,
+    );
     if !path.exists() {
         return Err(Error::Invalid(format!(
             "{} doesn't exist: there is no Claude Code history there",
@@ -248,6 +317,168 @@ fn mine(
             mine::summary(&mined),
             member.slug
         );
+    }
+    Ok(())
+}
+fn claudeai_inspect(export: PathBuf) -> Result<()> {
+    use persona_builder_ingest::claudeai;
+    let export = claudeai::read_export(&expand_home(export, &home()?))?;
+    let inspection = claudeai::inspect(&export)?;
+    print!("{}", inspection.text);
+    if !inspection.missing.is_empty() {
+        return Err(Error::Invalid(format!(
+            "the export is missing fields Persona Builder reads: {}",
+            inspection.missing.join(", ")
+        )));
+    }
+    println!("ok: every field the adapter reads is present");
+    Ok(())
+}
+fn existing_review(
+    home: &std::path::Path,
+    slug: &str,
+    review: &str,
+) -> Result<Vec<persona_builder_ingest::claudeai::ReviewRow>> {
+    use persona_builder_ingest::{claudeai::read_review, private::read_private};
+    let bytes = read_private(home, slug, review).map_err(|error| match error {
+        Error::Invalid(message) if message.ends_with("doesn't exist") => Error::Invalid(
+            "there's no review file yet: run persona-builder claudeai titles first".into(),
+        ),
+        other => other,
+    })?;
+    read_review(review, &bytes)
+}
+fn claudeai_titles(
+    member_dir: PathBuf,
+    export: PathBuf,
+    review: String,
+    project_field: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
+    use persona_builder_ingest::{
+        claudeai::{self, review_text},
+        filters::Filters,
+        private::{validate_review_name, write_private},
+    };
+    validate_review_name(&review)?;
+    let home = home()?;
+    let member = checked_member(&member_dir, &home)?;
+    let filters = Filters::compile(&member.filters)?;
+    let export = claudeai::read_export(&expand_home(export, &home))?;
+    let existing = match existing_review(&home, &member.slug, &review) {
+        Ok(rows) => rows,
+        Err(Error::Invalid(message)) if message.starts_with("there's no review file yet") => {
+            vec![]
+        }
+        Err(other) => return Err(other),
+    };
+    let titles = claudeai::titles(&filters, &export, &existing, project_field.as_deref())?;
+    if !dry_run {
+        write_private(
+            &home,
+            &member.slug,
+            &review,
+            review_text(&titles.rows).as_bytes(),
+        )?;
+    }
+    print!(
+        "{}",
+        claudeai::titles_summary(
+            &titles,
+            &format!("~/.claude/state/{}/{review}", member.slug)
+        )
+    );
+    if dry_run {
+        println!("dry run: nothing written");
+    }
+    Ok(())
+}
+struct MarkArgs {
+    mark: String,
+    review: String,
+    uuids: Vec<String>,
+    project: Option<String>,
+    title: Option<String>,
+    before: Option<String>,
+    after: Option<String>,
+    unmarked: bool,
+    all: bool,
+}
+fn claudeai_mark(member_dir: PathBuf, args: MarkArgs) -> Result<()> {
+    use persona_builder_ingest::{
+        claudeai::{self, Selector, review_text},
+        private::{validate_review_name, write_private},
+    };
+    validate_review_name(&args.review)?;
+    let given = |value: Option<String>| value.filter(|v| !v.is_empty());
+    let title = given(args.title);
+    let mut selector = Selector {
+        uuids: args.uuids,
+        project: given(args.project),
+        title: None,
+        before: given(args.before),
+        after: given(args.after),
+        unmarked: args.unmarked,
+        all: args.all,
+    };
+    if !selector.is_given() && title.is_none() {
+        return Err(Error::Invalid(
+            "mark needs a selector: --uuid, --project, --title, --before, --after, --unmarked or --all".into(),
+        ));
+    }
+    selector.title = title
+        .map(|pattern| claudeai::title_pattern(&pattern))
+        .transpose()?;
+    let home = home()?;
+    let member = checked_member(&member_dir, &home)?;
+    let mut rows = existing_review(&home, &member.slug, &args.review)?;
+    let changed = claudeai::mark(&mut rows, &selector, &args.mark);
+    write_private(
+        &home,
+        &member.slug,
+        &args.review,
+        review_text(&rows).as_bytes(),
+    )?;
+    println!("marked {changed} conversations {}", args.mark);
+    Ok(())
+}
+fn claudeai_mine(
+    member_dir: PathBuf,
+    export: PathBuf,
+    review: String,
+    out: String,
+    holdout: Option<String>,
+    cutoff: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
+    use persona_builder_ingest::{
+        claudeai,
+        filters::Filters,
+        mine::to_jsonl,
+        private::{validate_name, validate_review_name, write_private},
+    };
+    validate_review_name(&review)?;
+    validate_name(&out)?;
+    let split = split_choice(holdout, cutoff)?;
+    let home = home()?;
+    let member = checked_member(&member_dir, &home)?;
+    let filters = Filters::compile(&member.filters)?;
+    let export = claudeai::read_export(&expand_home(export, &home))?;
+    let rows = existing_review(&home, &member.slug, &review)?;
+    let mined = claudeai::mine(&filters, &export, &rows, &split)?;
+    if !dry_run {
+        write_private(
+            &home,
+            &member.slug,
+            &out,
+            to_jsonl(&mined.records).as_bytes(),
+        )?;
+    }
+    print!("{}", claudeai::mine_summary(&mined));
+    if dry_run {
+        println!("dry run: nothing written");
+    } else {
+        println!("saved to ~/.claude/state/{}/{out}", member.slug);
     }
     Ok(())
 }
@@ -715,6 +946,50 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             cutoff,
             dry_run,
         }) => mine(member_dir, projects, out, holdout, cutoff, dry_run),
+        Some(Command::Claudeai { command }) => match command {
+            ClaudeaiCommand::Inspect { export } => claudeai_inspect(export),
+            ClaudeaiCommand::Titles {
+                member_dir,
+                export,
+                review,
+                project_field,
+                dry_run,
+            } => claudeai_titles(member_dir, export, review, project_field, dry_run),
+            ClaudeaiCommand::Mark {
+                member_dir,
+                mark,
+                review,
+                uuids,
+                project,
+                title,
+                before,
+                after,
+                unmarked,
+                all,
+            } => claudeai_mark(
+                member_dir,
+                MarkArgs {
+                    mark,
+                    review,
+                    uuids,
+                    project,
+                    title,
+                    before,
+                    after,
+                    unmarked,
+                    all,
+                },
+            ),
+            ClaudeaiCommand::Mine {
+                member_dir,
+                export,
+                review,
+                out,
+                holdout,
+                cutoff,
+                dry_run,
+            } => claudeai_mine(member_dir, export, review, out, holdout, cutoff, dry_run),
+        },
         Some(Command::Folders {
             member_dir,
             projects,

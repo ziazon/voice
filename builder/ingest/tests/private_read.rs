@@ -51,10 +51,19 @@ fn missing_folders_and_bad_names_create_nothing() {
             .to_string(),
         format!("{} doesn't exist", canonical.join(".claude").display())
     );
-    for name in ["../x.jsonl", "a/b.jsonl", ".x.jsonl", "x.json", "x\0.jsonl"] {
+    for name in [
+        "../x.jsonl",
+        "a/b.jsonl",
+        ".x.jsonl",
+        "x.json",
+        "x\0.jsonl",
+        "x.txt",
+        "x.tsv/",
+        ".x.tsv",
+    ] {
         assert_eq!(
             read_private(&s.0, "wren", name).unwrap_err().to_string(),
-            "the file name must be a plain name ending .jsonl"
+            "the file name must be a plain name ending .jsonl or .tsv"
         );
     }
     assert!(listing(&s.0).is_empty());
@@ -121,4 +130,17 @@ fn folders_and_pipes_are_refused_without_blocking() {
         );
         assert_eq!(listing(&folder)[0].as_bytes(), b"x.jsonl");
     }
+}
+#[test]
+fn review_files_are_private_too() {
+    let s = Scratch::new("private-review");
+    let path = write_private(&s.0, "wren", "claudeai-review.tsv", b"mine\n").unwrap();
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        read_private(&s.0, "wren", "claudeai-review.tsv").unwrap(),
+        b"mine\n"
+    );
 }

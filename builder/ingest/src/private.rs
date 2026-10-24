@@ -98,10 +98,31 @@ impl Drop for Temporary<'_> {
     }
 }
 
+fn plain(name: &str, endings: &[&str]) -> bool {
+    !name.contains(['/', '\0'])
+        && !name.starts_with('.')
+        && endings.iter().any(|ending| name.ends_with(ending))
+}
 pub fn validate_name(name: &str) -> Result<()> {
-    if name.contains(['/', '\0']) || name.starts_with('.') || !name.ends_with(".jsonl") {
+    if !plain(name, &[".jsonl"]) {
         return Err(Error::Invalid(
             "the file name must be a plain name ending .jsonl".into(),
+        ));
+    }
+    Ok(())
+}
+pub fn validate_review_name(name: &str) -> Result<()> {
+    if !plain(name, &[".tsv"]) {
+        return Err(Error::Invalid(
+            "the review file name must be a plain name ending .tsv".into(),
+        ));
+    }
+    Ok(())
+}
+fn validate_private_name(name: &str) -> Result<()> {
+    if !plain(name, &[".jsonl", ".tsv"]) {
+        return Err(Error::Invalid(
+            "the file name must be a plain name ending .jsonl or .tsv".into(),
         ));
     }
     Ok(())
@@ -138,9 +159,9 @@ fn state_directory(home: &Path, slug: &str, create: bool) -> Result<(OwnedFd, Pa
     Ok((directory, path))
 }
 
-/// Atomically replace a JSONL file in the member's private state folder.
+/// Atomically replace a JSONL or review file in the member's private state folder.
 pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Result<PathBuf> {
-    validate_name(name)?;
+    validate_private_name(name)?;
     let (directory, path) = state_directory(home, slug, true)?;
     let destination = path.join(name);
     let target = CString::new(name).expect("validated file name");
@@ -189,9 +210,9 @@ pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Resul
     Ok(destination)
 }
 
-/// Read a corpus file from the private state folder.
+/// Read a corpus or review file from the private state folder.
 pub fn read_private(home: &Path, slug: &str, name: &str) -> Result<Vec<u8>> {
-    validate_name(name)?;
+    validate_private_name(name)?;
     let missing = |error| match error {
         Error::Io { path, source } if source.kind() == std::io::ErrorKind::NotFound => {
             Error::Invalid(format!("{} doesn't exist", path.display()))
