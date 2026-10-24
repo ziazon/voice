@@ -259,3 +259,35 @@ Every test above went red on its assertion first and is green. `cargo fmt --chec
 file you added or changed, the red you saw for each test file, every case where the engines disagreed
 outside the accepted differences (stop and report it; never bend a test or the Python to make it pass),
 and anything in this brief you could not do as written.
+
+## Fix 1 (Claude's review, 2026-10-24)
+
+Codex stopped, rightly, on a disagreement this brief caused: Python's `Path.read_text()` reads in text
+mode with universal newlines, so it turns `\r\n` and a lone `\r` into `\n` before `split("\n")`.
+
+1. **Universal newlines.** In `read_records`, after the UTF-8 check, replace every `\r\n` with `\n`,
+   then every remaining `\r` with `\n`, then split at `\n`. Line numbers count the lines after that
+   translation. (A raw `\r` can't sit inside a JSON string, so only line ends change.) Add a fixture
+   case `bare_cr` to `tests/crew_merge_fixtures.py` (records separated by a bare `\r`, then by `\r\n`,
+   then by `\n`, with a blank `\r` line between) and to the parity list; add a rule test pinning the
+   line number in an error on the third record of such a file.
+2. **No copies of records.** `merge` must not clone a record for the privacy check (wrap it in
+   `Value::Object`, check it, and take the map back out) and must not clone the history records for
+   `mark_split` (move them out of `kept` and back, keeping the sorted order).
+3. **Dead code.** `split_corpus` in `builder/cli/src/main.rs` compiles the filters into an unused
+   `_filters`; remove it.
+4. Leave `.ai/handoffs/persona-builder.md` alone: Claude writes the record.
+
+The sandbox refuses local sockets, so `builder/save/tests/ureq_wire.rs` fails there; that is expected.
+Run everything else (`cargo test` for `persona-builder-ingest` and `persona-builder-cli`, fmt, clippy,
+the Python suites) and report the red you saw for the new case and test.
+
+## Fix 2 (Claude's gate run, 2026-10-24)
+
+Outside the sandbox, `bash scripts/ci-local.sh` fails one test:
+`builder/cli/tests/merge.rs`, `discovers_modes_prints_lines_and_writes_private_files_then_splits`,
+panics with `create invalid UTF-8 fixture name: Illegal byte sequence (os error 92)`. On macOS, APFS
+refuses a name that isn't UTF-8 with `EILSEQ`; the sandbox returned `EPERM`. In that test's probe,
+treat any error from creating the non-UTF-8 file as "the filesystem refused the name" (print the
+same note and go on), as `mine_rules.rs`'s `non_utf8_names_error_where_filesystem_allows_them` does,
+and on every OS, not only macOS. Change nothing else.
