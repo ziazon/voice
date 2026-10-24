@@ -2,6 +2,46 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB2.1: the privacy filters and the privacy check, in Rust (2026-10-24, lane: V1)
+
+- **What:** a new crate, `builder/ingest` (`persona_builder_ingest`), since core keeps to the
+  filesystem and this one runs `git ls-files` and `git check-ignore`. It compiles a member's filters
+  (`filters`), checks a mined record (`privacy`, for PB2.2 to PB2.4), and checks a folder (`check`),
+  ported from `crew_decisions.py`. The CLI gains `persona-builder privacy-check <folder>`, and
+  `save push` now runs the real check in place of the "can't run the privacy check yet" stop.
+  The save and its check read one file list (`persona_builder_save::git::folder_files`): every file
+  the save commits, at any depth, untracked and git-ignored files included. Brief:
+  `plans/briefs/PB2.1-privacy-check.md`. PB2 was split into PB2.1 to PB2.4 at pickup.
+- **Who wrote it:** Codex, from the brief and three review rounds; Claude wrote the brief and the
+  docs, and reviewed every line.
+- **Decisions made at pickup:** the `regex` crate, case-insensitive, as the engine. It has no
+  look-around and no backreferences (its own docs), so a filter using one is refused in plain words,
+  never rewritten; the template's filters use neither. The template's filters are compiled into the
+  binary. Hit lines and the summary match the Python byte for byte, `1 hits` included.
+- **Dependency intake:** `regex` 1.13.1 (MIT or Apache-2.0, the version Flightdeck pins) with
+  `regex-automata` 0.4.18, `regex-syntax` 0.8.11 (both MIT or Apache-2.0) and `aho-corasick` 1.1.5
+  (Unlicense or MIT). None has a build script; none touches the network, files or processes. `libc`
+  0.2.191 was already in the lock. No `cargo audit` scan: it is not installed.
+- **Verified:** every test file went red on its assertion first. Parity runs the real Python as the
+  oracle: 12 invented records through `filtered` and `privacy`, and every case of the Python
+  `PrivacyCheck` tests, each in a plain folder (the walk) and a git folder (tracked files), plus a
+  path-order case, a two-line codebook string, and the walk's ignore list (a repo whose index is
+  corrupt, so `ls-files` fails while `check-ignore --no-index` works). No case disagreed. Twelve
+  mutations, each restored and checked with `cmp`, each failing a named test: secret winning a
+  shared line, secret checked first, case-insensitive, `private.json` skipped, `O_NOFOLLOW`, the `._`
+  junk rule, the template comparison, the first hit only for a `member.json` string, ignored paths
+  dropped, a missing record key, `save push` using the save's file list (an untracked, ignored file
+  with a hit is still refused), and `folder_files` skipping `private.json`. Two missed at first and
+  got the last two parity cases. `bash scripts/ci-local.sh` passed.
+- **Known limits:** `\b`, `\w` and case folding follow Unicode in both engines but are not proven
+  identical beyond the template's patterns and the tested text. Python's `$` also matches before a
+  final newline; Rust's does not (no template pattern uses `$`). The CLI's check, like the Python,
+  lists only tracked files in a clone, so an untracked file there is not checked; `save push` does
+  not have that gap. A file swapped for a link inside a listed folder between listing and reading is
+  refused at the last step only (`O_NOFOLLOW` covers the file, not its parent folders; same user).
+  `core.fsmonitor` is turned off for the two git calls, but that is not tested.
+- **Not verified:** a real `save push` past the check (it needs V-Q1's client ID: PB6.1).
+
 ## PB5: turn it on and off, the claude.ai Project pack, forget (2026-10-24, lane: V2)
 
 - **What:** `persona-builder on <member dir>` copies the assistant's `SKILL.md` to

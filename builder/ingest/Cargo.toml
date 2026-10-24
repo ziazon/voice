@@ -1,0 +1,12 @@
+[package]
+name = "persona-builder-ingest"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+persona-builder = { path = "../core" }
+regex = "=1.13.1"
+serde_json = { version = "1", features = ["preserve_order"] }
+libc = "=0.2.191"

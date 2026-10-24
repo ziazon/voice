@@ -502,3 +502,31 @@ fn failed_commit_removes_its_private_index_directory() {
     );
     assert!(git_output(&repo, &["show-ref"]).stdout.is_empty());
 }
+
+#[test]
+fn folder_files_uses_component_order_and_skips_only_save_exclusions() {
+    let scratch = Scratch::new("folder-files");
+    let folder = source(&scratch.0);
+    fs::create_dir(folder.join("a")).unwrap();
+    fs::write(folder.join("a/b.md"), "nested").unwrap();
+    fs::write(folder.join("a-b.md"), "flat").unwrap();
+    assert_eq!(
+        saving::folder_files(&folder).unwrap(),
+        ["a/b.md", "a-b.md", "a.md", "nested/b.md"].map(std::path::PathBuf::from)
+    );
+}
+#[test]
+fn folder_files_refuses_links_even_with_excluded_names() {
+    let scratch = Scratch::new("folder-files-link");
+    let folder = source(&scratch.0);
+    fs::remove_file(folder.join("nested/private.json")).unwrap();
+    symlink(
+        scratch.0.join("outside"),
+        folder.join("nested/private.json"),
+    )
+    .unwrap();
+    assert_eq!(
+        saving::folder_files(&folder).err().map(|e| e.to_string()),
+        Some(text::links_in_folder("nested/private.json"))
+    );
+}

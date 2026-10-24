@@ -48,8 +48,6 @@ pub const KEPT_LOCAL: &str = "Your assistant is kept on this Mac only, so there'
 pub fn privacy_hits(places: &str) -> String {
     format!("The privacy check found something private, so nothing was sent. Look at: {places}")
 }
-pub const PRIVACY_NOT_BUILT: &str =
-    "This copy of Persona Builder can't run the privacy check yet, so nothing was sent.";
 pub fn links_in_folder(rel: &str) -> String {
     format!("Persona Builder won't save a folder that holds links to other places: {rel}")
 }

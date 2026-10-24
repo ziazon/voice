@@ -106,16 +106,51 @@ fn choose_local_then_push_keeps_everything_on_this_mac() {
     );
 }
 
-#[test]
-fn github_record_refuses_privacy_before_sign_in_or_network() {
-    let fixture = Fixture::new();
+fn github_record(fixture: &Fixture) {
     let state = fixture.home.join(".claude/state/wren");
     fs::create_dir_all(&state).unwrap();
     fs::write(state.join("save.json"), b"{\"version\":1,\"mode\":\"github\",\"owner\":\"rowan-vale\",\"name\":\"wren-assistant\",\"branch\":\"main\"}").unwrap();
+}
+#[test]
+fn clean_github_save_passes_privacy_before_sign_in() {
+    let fixture = Fixture::new();
+    github_record(&fixture);
     refused(
         fixture.run(&["save", "push", fixture.path()]),
-        text::PRIVACY_NOT_BUILT,
+        text::NOT_SET_UP,
     );
+}
+fn private_github_save(ignored: bool) {
+    let fixture = Fixture::new();
+    github_record(&fixture);
+    let folder = fixture.member.parent().unwrap();
+    let path = folder.join("decisions.md");
+    let mut body = fs::read_to_string(&path).unwrap();
+    body.push_str("We moved it because my doctor called.\n");
+    let line = body.lines().count();
+    fs::write(path, body).unwrap();
+    if ignored {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&fixture.home)
+            .args(["init", "-q"])
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        fs::write(folder.join(".gitignore"), "decisions.md\n").unwrap();
+    }
+    refused(
+        fixture.run(&["save", "push", fixture.path()]),
+        &text::privacy_hits(&format!("decisions.md:{line} (personal)")),
+    );
+}
+#[test]
+fn private_github_save_is_refused_before_sign_in() {
+    private_github_save(false);
+}
+#[test]
+fn ignored_untracked_private_file_is_still_refused() {
+    private_github_save(true);
 }
 
 #[test]

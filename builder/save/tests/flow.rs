@@ -6,10 +6,7 @@ use common::{
 };
 use persona_builder::error::{Error, Result};
 use persona_builder_save::{
-    flow::{
-        self, Choice, GithubRemotes, MemberPaths, NotBuiltYet, PrivacyCheck, RemoteCheck, Saved,
-        Saver,
-    },
+    flow::{self, Choice, GithubRemotes, MemberPaths, PrivacyCheck, RemoteCheck, Saved, Saver},
     git::{FoundRepo, Git, Remote},
     github::{Endpoints, Github},
     keychain::{MemoryStore, TokenStore},
@@ -365,10 +362,6 @@ fn privacy_errors_and_not_built_precede_client_id_and_sign_in() {
     assert_error(
         saver.save_now(&member, &scratch.0, &RefusePrivacy, &remotes),
         "privacy fixture refused",
-    );
-    assert_error(
-        saver.save_now(&member, &scratch.0, &NotBuiltYet, &remotes),
-        text::PRIVACY_NOT_BUILT,
     );
     assert_error(
         saver.save_now(&member, &scratch.0, &Clean, &remotes),

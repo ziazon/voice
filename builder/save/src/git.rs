@@ -262,6 +262,14 @@ fn list(folder: &Path, directory: &Path, files: &mut Vec<String>) -> Result<()> 
     Ok(())
 }
 
+pub fn folder_files(folder: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    list(folder, folder, &mut files)?;
+    let mut paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
+    paths.sort();
+    Ok(paths)
+}
+
 /// Uses a separate index and git plumbing; see https://git-scm.com/docs/git-update-index
 /// and https://git-scm.com/docs/git-commit-tree.
 #[allow(clippy::too_many_arguments)] // Signature fixed by the PB6 brief.
@@ -293,9 +301,7 @@ pub fn commit_folder(
     {
         return Err(Error::Invalid(text::branch_in_use(branch)));
     }
-    let mut files = Vec::new();
-    list(folder, folder, &mut files)?;
-    files.sort();
+    let files = folder_files(folder)?;
     let folder = folder.canonicalize().map_err(|e| io(folder, e))?;
     let scratch = Scratch::new()?;
     let run = |subcommand: &str, args: &[&str], input: Option<&[u8]>| -> Result<String> {
@@ -371,7 +377,7 @@ pub fn commit_folder(
     }
     for (rel, blob) in files.iter().zip(blobs.lines()) {
         // NUL-delimited index entries preserve literal quotes and spaces.
-        index.push_str(&format!("100644 {blob}\t{prefix}/{rel}\0"));
+        index.push_str(&format!("100644 {blob}\t{prefix}/{}\0", rel.display()));
     }
     run(
         "update-index",

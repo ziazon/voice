@@ -15,12 +15,6 @@ use std::path::{Path, PathBuf};
 pub trait PrivacyCheck {
     fn hits(&self, folder: &Path) -> Result<Vec<String>>;
 }
-pub struct NotBuiltYet;
-impl PrivacyCheck for NotBuiltYet {
-    fn hits(&self, _folder: &Path) -> Result<Vec<String>> {
-        Err(Error::Invalid(text::PRIVACY_NOT_BUILT.into()))
-    }
-}
 pub trait RemoteCheck {
     fn confirm(&self, token: &Secret, push_urls: &[String]) -> Result<()>;
 }

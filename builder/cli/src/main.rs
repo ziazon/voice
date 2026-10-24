@@ -6,7 +6,7 @@ use persona_builder::{
     member::read_member,
 };
 use persona_builder_save::{
-    flow::{self, Choice, GithubRemotes, MemberPaths, NotBuiltYet, RemoteCheck, Saved, Saver},
+    flow::{self, Choice, GithubRemotes, MemberPaths, RemoteCheck, Saved, Saver},
     git::Git,
     github::{self, Endpoints, Github, UreqHttp},
     keychain::{Keychain, TokenStore},
@@ -58,6 +58,8 @@ enum Command {
         #[arg(long)]
         claude_home: Option<PathBuf>,
     },
+    /// Check an assistant's folder for anything private before it is shared.
+    PrivacyCheck { folder: PathBuf },
     /// Choose where to keep an assistant and save it.
     Save {
         #[command(subcommand)]
@@ -210,6 +212,15 @@ fn save_choose_github(path: PathBuf, name: String) -> Result<()> {
     println!("{}", text::chose_github(&repo.full()));
     Ok(())
 }
+struct FolderPrivacy;
+impl flow::PrivacyCheck for FolderPrivacy {
+    fn hits(&self, folder: &std::path::Path) -> Result<Vec<String>> {
+        let files = persona_builder_save::git::folder_files(folder)?;
+        let member = read_member(&folder.join("member.json"))?;
+        let filters = persona_builder_ingest::filters::Filters::compile(&member.filters)?;
+        Ok(persona_builder_ingest::check::scan(folder, &files, &filters)?.hits)
+    }
+}
 struct UnavailableRemotes;
 impl RemoteCheck for UnavailableRemotes {
     fn confirm(&self, _token: &Secret, _urls: &[String]) -> Result<()> {
@@ -233,7 +244,7 @@ fn save_push(path: PathBuf) -> Result<()> {
         github: github.as_ref(),
         tokens: &Keychain::github(),
     }
-    .save_now(&member, &home, &NotBuiltYet, check)?;
+    .save_now(&member, &home, &FolderPrivacy, check)?;
     match saved {
         Saved::KeptLocal => println!("{}", text::KEPT_LOCAL),
         Saved::Pushed { message } => println!("{message}"),
@@ -369,8 +380,17 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn run(cli: Cli) -> Result<()> {
-    match cli.command {
+fn run(cli: Cli) -> Result<std::process::ExitCode> {
+    let result = match cli.command {
+        Some(Command::PrivacyCheck { folder }) => {
+            let report = persona_builder_ingest::check::privacy_check(&folder)?;
+            print!("{}", persona_builder_ingest::check::render(&report));
+            return Ok(if report.hits.is_empty() {
+                std::process::ExitCode::SUCCESS
+            } else {
+                std::process::ExitCode::FAILURE
+            });
+        }
         Some(Command::Forget { member_dir, yes }) => forget(member_dir, yes),
         Some(Command::Pack { member_dir, out }) => pack(member_dir, out),
         Some(Command::On {
@@ -397,12 +417,13 @@ fn run(cli: Cli) -> Result<()> {
             SaveCommand::Push { path } => save_push(path),
         },
         None => Ok(()),
-    }
+    };
+    result.map(|()| std::process::ExitCode::SUCCESS)
 }
 
 fn main() -> std::process::ExitCode {
     match run(Cli::parse()) {
-        Ok(()) => std::process::ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(error) => {
             eprintln!("persona-builder: {error}");
             std::process::ExitCode::FAILURE
