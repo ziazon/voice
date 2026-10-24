@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::path::Path;
 
+/// The writer emits keys in the struct's order with unknown keys last, and drops
+/// null optional fields and empty codebook lists. Numbers go through serde_json's f64/i64
+/// handling, so byte parity with Python holds for configs in the template's shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Member {
     pub name: String,
@@ -198,6 +201,12 @@ pub fn read_member(path: &Path) -> Result<Member> {
                             "member config: private.json: filters.{key} must be a string (a regex)"
                         ))
                     })?;
+                    if filters.get(key).is_some_and(|value| !value.is_string()) {
+                        return Err(Error::Invalid(format!(
+                            "member config: {}: filters.{key} must be a string (a regex)",
+                            path.display()
+                        )));
+                    }
                     let joined = match filters
                         .get(key)
                         .and_then(Value::as_str)
@@ -339,6 +348,26 @@ mod tests {
         assert_eq!(member.filters.excluded_folders, "hidden");
         assert_eq!(member.filters.pasted_prefixes, ["You are ", "Note:"]);
         assert_eq!(member.filters.extra["future"], "extra");
+    }
+
+    #[test]
+    fn private_filter_cannot_replace_non_string_member_filter() {
+        let scratch = Scratch::new();
+        let path = scratch.path().join("member.json");
+        let mut value = config();
+        value["filters"]["personal"] = json!(5);
+        fs::write(&path, to_python_json(&value).unwrap()).unwrap();
+        fs::write(
+            scratch.path().join("private.json"),
+            r#"{"filters":{"personal":"x"}}"#,
+        )
+        .unwrap();
+        let result = read_member(&path);
+        assert!(
+            matches!(result, Err(Error::Invalid(ref message))
+            if message == &format!("member config: {}: filters.personal must be a string (a regex)", path.display())),
+            "expected member filter type error, got {result:?}"
+        );
     }
 
     #[test]

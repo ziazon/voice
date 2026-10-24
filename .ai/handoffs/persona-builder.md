@@ -21,14 +21,27 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Verified:** every test went red on its assertion first. The parity tests run the real Python:
   Rust's `read_member` matches `crew_decisions.py`'s byte for byte on three invented members and
   gives the same error on two invalid ones. `new_member` matches `install.sh --no-history` file for
-  file and byte for byte on three invented name pairs, one of them non-ASCII. Four mutations each
-  turned their test red: the ASCII escaping, the private-filter join, the placeholder order and the
-  skipped `README.md`. `bash scripts/ci-local.sh` passed with all Rust steps and no parity skips.
+  file and byte for byte on four invented cases, one of them non-ASCII. Five mutations each turned
+  their test red: the ASCII escaping, the private-filter join, the placeholder order, the skipped
+  `README.md` and the cleanup on failure. `bash scripts/ci-local.sh` passed with all Rust steps; it
+  sets `PERSONA_BUILDER_REQUIRE_PARITY=1`, so a missing `python3`, `git` or `bash` fails the run
+  instead of skipping the parity tests.
+- **Gates:** `/security-review` found three low issues; the two cheap ones are fixed (the target
+  folder is created with `create_dir`, and entry types come from `file_type()`). The Verifier
+  (Fable) found that parity holds for configs in the template's shape but not beyond it. Fixed: a
+  nested `member.json` is now copied unfilled, as `install.sh` does, and a non-string filter in
+  `member.json` is refused instead of being replaced. Two `IDENTITY.md` sentences overclaimed: one
+  said a change is kept only once approved (that step comes in PB4), and one promised no backup.
+  Both now say only what is true today.
 - **A miss caught by the gate:** the first `autonomy.md` text said "passwords", which the
   template's own secret filter flags, so the privacy-check tests failed. It now says "logins".
-- **Not verified:** a kit (`install.sh --kit`), which `new_member` does not cover yet. Unknown keys
-  in a hand-edited `member.json` are written after the known ones, while Python keeps them where
-  they were.
+- **Known limits (documented in the code):** the writer puts keys in the struct's order with
+  unknown keys last, drops `null` optional fields and empty codebook lists, and reads numbers as
+  `f64` or `i64`. Python keeps all of these as they were. `slugify` matches `install.sh` under
+  `LC_ALL=C`; in a UTF-8 locale `tr` may lowercase some non-ASCII letters differently. Rust keeps
+  CRLF line endings and does not copy a file's executable bit, while `install.sh` normalizes the
+  first and keeps the second. The template has none of these cases.
+- **Not verified:** a kit (`install.sh --kit`), which `new_member` does not cover yet.
 
 ## PB0: the Rust workspace and its checks (2026-10-23, lane: V2)
 

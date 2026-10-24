@@ -44,6 +44,9 @@ pub fn parity_tools_available() -> bool {
         .iter()
         .any(|tool| Command::new(tool).arg("--version").output().is_err())
     {
+        if std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref() == Ok("1") {
+            panic!("parity tools missing: python3, git or bash not on PATH");
+        }
         eprintln!("skipped: python3, git or bash not found");
         return false;
     }

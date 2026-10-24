@@ -17,8 +17,8 @@ if command -v cargo >/dev/null 2>&1; then
   cargo fmt --check
   echo 'cargo clippy --all-targets --locked -- -D warnings'
   cargo clippy --all-targets --locked -- -D warnings
-  echo 'cargo test --locked'
-  cargo test --locked
+  echo 'PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked'
+  PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked
 else
   echo 'ci-local: cargo not found, skipping the Rust checks (install Rust from https://rustup.rs)'
 fi

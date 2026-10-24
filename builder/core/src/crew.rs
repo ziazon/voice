@@ -4,6 +4,8 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 
+/// Matches install.sh run under `LC_ALL=C`.
+/// A UTF-8 locale's `tr` may lowercase some non-ASCII letters differently.
 pub fn slugify(text: &str) -> Option<String> {
     let mut slug = String::new();
     let mut separator = false;
@@ -72,6 +74,16 @@ pub fn new_member(template: &Path, target: &Path, new: &NewMember<'_>) -> Result
         ("REPO", new.repo_shown),
         ("DATE", new.date),
     ];
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| Error::Io {
+            path: parent.to_owned(),
+            source,
+        })?;
+    }
+    std::fs::create_dir(target).map_err(|source| Error::Io {
+        path: target.to_owned(),
+        source,
+    })?;
     let result = copy_template(template, target, &values, true)
         .and_then(|()| crate::member::read_member(&target.join("member.json")));
     if result.is_err() {
@@ -116,10 +128,6 @@ fn copy_template(
 ) -> Result<()> {
     use std::fs;
     crate::member::refuse_symlink(source)?;
-    fs::create_dir_all(target).map_err(|source| Error::Io {
-        path: target.to_owned(),
-        source,
-    })?;
     let entries = fs::read_dir(source).map_err(|error| Error::Io {
         path: source.to_owned(),
         source: error,
@@ -132,11 +140,26 @@ fn copy_template(
         let path = entry.path();
         crate::member::refuse_symlink(&path)?;
         let destination = target.join(entry.file_name());
-        if path.is_dir() {
+        let file_type = entry.file_type().map_err(|source| Error::Io {
+            path: path.clone(),
+            source,
+        })?;
+        if file_type.is_dir() {
+            fs::create_dir(&destination).map_err(|source| Error::Io {
+                path: destination.clone(),
+                source,
+            })?;
             copy_template(&path, &destination, values, false)?;
             continue;
         }
         if top_level && entry.file_name() == "README.md" {
+            continue;
+        }
+        if !top_level && entry.file_name() == "member.json" {
+            fs::copy(&path, &destination).map_err(|source| Error::Io {
+                path: destination,
+                source,
+            })?;
             continue;
         }
         let text = fs::read_to_string(&path).map_err(|source| Error::Io {
@@ -314,6 +337,23 @@ mod tests {
     }
 
     #[test]
+    fn nested_member_json_is_copied_byte_for_byte() {
+        let scratch = Scratch::new();
+        let template = scratch.path().join("template");
+        fs::create_dir_all(template.join("nested")).unwrap();
+        fs::write(
+            template.join("member.json"),
+            serde_json::to_string(&crate::test_support::config()).unwrap(),
+        )
+        .unwrap();
+        let bytes = br#"{"who":"{{NAME}}"}"#;
+        fs::write(template.join("nested/member.json"), bytes).unwrap();
+        let target = scratch.path().join("output");
+        new_member(&template, &target, &input()).unwrap();
+        assert_eq!(fs::read(target.join("nested/member.json")).unwrap(), bytes);
+    }
+
+    #[test]
     fn placeholders_fill_json_keys_lists_and_in_order() {
         let scratch = Scratch::new();
         let template = scratch.path().join("template");
@@ -363,6 +403,21 @@ mod tests {
         assert!(matches!(error, Error::Invalid(message)
             if message.contains("symlink") && message.contains(&link.display().to_string())));
         assert!(!target.exists(), "failed new_member left its target behind");
+    }
+
+    #[test]
+    fn copy_template_does_not_create_the_top_level_target() {
+        let scratch = Scratch::new();
+        let template = scratch.path().join("template");
+        fs::create_dir(&template).unwrap();
+        fs::write(template.join("file.md"), "text").unwrap();
+        let target = scratch.path().join("new");
+        let result = copy_template(&template, &target, &[], true);
+        assert!(
+            result.is_err(),
+            "copy_template must require a target owned by new_member"
+        );
+        assert!(!target.exists());
     }
 
     #[test]

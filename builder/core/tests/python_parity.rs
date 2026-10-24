@@ -135,3 +135,34 @@ fn invalid_filters_matches_python_failed_text() {
 fn invalid_queue_answerer_matches_python_failed_text() {
     invalid_case("invalid-answerer", r#"{"queue_answerer": ""}"#);
 }
+
+#[test]
+fn missing_tools_fail_only_when_parity_is_required() {
+    for required in [true, false] {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "plain_member_matches_python_bytes",
+                "--nocapture",
+            ])
+            .env("PATH", "/nonexistent-dir");
+        if required {
+            command.env("PERSONA_BUILDER_REQUIRE_PARITY", "1");
+        } else {
+            command.env_remove("PERSONA_BUILDER_REQUIRE_PARITY");
+        }
+        let output = command.output().unwrap();
+        assert_eq!(
+            output.status.success(),
+            !required,
+            "required={required}: {output:?}"
+        );
+        let message = if required {
+            "parity tools missing: python3, git or bash not on PATH"
+        } else {
+            "skipped: python3, git or bash not found"
+        };
+        assert!(String::from_utf8_lossy(&output.stderr).contains(message));
+    }
+}
