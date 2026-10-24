@@ -1,10 +1,10 @@
 use crate::{
     error::{Error, Result},
     install_fs::io,
-    member::{read_member, refuse_symlink},
+    member::{private_state_dir, read_member, refuse_symlink},
 };
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Forgotten {
@@ -28,29 +28,10 @@ fn count_files(path: &Path) -> Result<usize> {
 
 pub fn forget(member_dir: &Path, home: &Path, delete: bool) -> Result<Forgotten> {
     let member = read_member(&member_dir.join("member.json"))?;
-    let path = match member.state_dir.strip_prefix("~/") {
-        Some(rest) => home.join(rest),
-        None => PathBuf::from(&member.state_dir),
-    };
-    let expected = home.join(".claude/state").join(&member.slug);
-    // Path::components normalizes interior dots, so reject them in the written path too.
-    let has_dots = path
-        .as_os_str()
-        .as_encoded_bytes()
-        .split(|byte| *byte == b'/')
-        .any(|part| matches!(part, b"." | b".."));
-    let mut slug = Path::new(&member.slug).components();
-    let single_slug = matches!(slug.next(), Some(Component::Normal(_))) && slug.next().is_none();
-    if !single_slug
-        || !path.is_absolute()
-        || has_dots
-        || !path.components().eq(expected.components())
-    {
-        return Err(Error::Invalid(format!(
-            "state_dir {} is not ~/.claude/state/{}, so Persona Builder will not delete it. Delete that folder yourself if you mean to",
-            member.state_dir, member.slug
-        )));
-    }
+    let path = private_state_dir(&member, home).ok_or_else(|| Error::Invalid(format!(
+        "state_dir {} is not ~/.claude/state/{}, so Persona Builder will not delete it. Delete that folder yourself if you mean to",
+        member.state_dir, member.slug
+    )))?;
     refuse_symlink(&home.join(".claude/state"))?;
     refuse_symlink(&path)?;
     match fs::symlink_metadata(&path) {

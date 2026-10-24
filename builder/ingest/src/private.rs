@@ -1,0 +1,211 @@
+//! Descriptor-relative private writes: directory links are never followed.
+use persona_builder::error::{Error, Result};
+use std::{
+    ffi::{CStr, CString},
+    fs::{self, File, OpenOptions, Permissions},
+    io::Write,
+    os::{
+        fd::{AsRawFd, FromRawFd, OwnedFd},
+        unix::{
+            ffi::OsStrExt,
+            fs::{OpenOptionsExt, PermissionsExt},
+        },
+    },
+    path::{Component, Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+static NEXT: AtomicU64 = AtomicU64::new(0);
+const DIRECTORY_FLAGS: libc::c_int =
+    libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+
+fn io(path: &Path, source: std::io::Error) -> Error {
+    Error::Io {
+        path: path.to_owned(),
+        source,
+    }
+}
+
+fn directory_error(path: &Path, source: std::io::Error) -> Error {
+    if matches!(source.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR)) {
+        Error::Invalid(format!(
+            "{} is a link or not a folder: Persona Builder writes your history only into a real folder. Move it away and try again",
+            path.display()
+        ))
+    } else {
+        io(path, source)
+    }
+}
+
+fn open_directory(parent: &OwnedFd, part: &CStr, path: &Path, create: bool) -> Result<OwnedFd> {
+    // SAFETY: parent is live and part is a terminated C string; no ownership is transferred.
+    let mut fd = unsafe { libc::openat(parent.as_raw_fd(), part.as_ptr(), DIRECTORY_FLAGS) };
+    if fd < 0 {
+        let source = std::io::Error::last_os_error();
+        if !create || source.kind() != std::io::ErrorKind::NotFound {
+            return Err(directory_error(path, source));
+        }
+        // SAFETY: the directory descriptor and C string remain live for this call.
+        if unsafe { libc::mkdirat(parent.as_raw_fd(), part.as_ptr(), 0o700) } < 0 {
+            let source = std::io::Error::last_os_error();
+            if source.kind() != std::io::ErrorKind::AlreadyExists {
+                return Err(directory_error(path, source));
+            }
+        }
+        // SAFETY: parent and part remain live; flags refuse links even after mkdir races.
+        fd = unsafe { libc::openat(parent.as_raw_fd(), part.as_ptr(), DIRECTORY_FLAGS) };
+        if fd < 0 {
+            return Err(directory_error(path, std::io::Error::last_os_error()));
+        }
+    }
+    // SAFETY: openat returned a fresh valid descriptor, now owned exactly once.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+struct Temporary<'a> {
+    directory: &'a OwnedFd,
+    name: CString,
+    armed: bool,
+}
+
+impl Temporary<'_> {
+    fn rename(&mut self, target: &CStr) -> std::io::Result<()> {
+        // SAFETY: both names are valid C strings relative to the same live directory descriptor.
+        if unsafe {
+            libc::renameat(
+                self.directory.as_raw_fd(),
+                self.name.as_ptr(),
+                self.directory.as_raw_fd(),
+                target.as_ptr(),
+            )
+        } < 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        self.armed = false;
+        Ok(())
+    }
+}
+
+impl Drop for Temporary<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // SAFETY: directory is borrowed for this guard's lifetime and name is a C string.
+        unsafe { libc::unlinkat(self.directory.as_raw_fd(), self.name.as_ptr(), 0) };
+    }
+}
+
+/// Atomically replace a JSONL file in the member's private state folder.
+pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Result<PathBuf> {
+    if name.contains(['/', '\0']) || name.starts_with('.') || !name.ends_with(".jsonl") {
+        return Err(Error::Invalid(
+            "the file name must be a plain name ending .jsonl".into(),
+        ));
+    }
+    if slug.is_empty() || slug.contains(['/', '\0']) || matches!(slug, "." | "..") {
+        return Err(Error::Invalid(
+            "the assistant slug must be a plain folder name".into(),
+        ));
+    }
+    let home = fs::canonicalize(home).map_err(|e| io(home, e))?;
+    let root = Path::new("/");
+    let mut directory: OwnedFd = OpenOptions::new()
+        .read(true)
+        .custom_flags(DIRECTORY_FLAGS)
+        .open(root)
+        .map_err(|e| io(root, e))?
+        .into();
+    let mut path = PathBuf::from(root);
+    for component in home.components() {
+        if let Component::Normal(part) = component {
+            path.push(part);
+            let part = CString::new(part.as_bytes())
+                .map_err(|_| Error::Invalid("invalid home folder".into()))?;
+            directory = open_directory(&directory, &part, &path, false)?;
+        }
+    }
+    for part in [".claude", "state", slug] {
+        path.push(part);
+        let part = CString::new(part).expect("validated folder name");
+        directory = open_directory(&directory, &part, &path, true)?;
+    }
+    let destination = path.join(name);
+    let target = CString::new(name).expect("validated file name");
+    let (mut temporary, mut file) = loop {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let count = NEXT.fetch_add(1, Ordering::Relaxed);
+        let temporary = CString::new(format!(
+            ".{name}.{}-{nanos}-{count}.tmp",
+            std::process::id()
+        ))
+        .expect("validated file name");
+        // SAFETY: directory is owned and live; the temporary C string is valid and O_EXCL creates a fresh file.
+        let fd = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                temporary.as_ptr(),
+                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o600,
+            )
+        };
+        if fd >= 0 {
+            // SAFETY: openat returned a fresh descriptor; OwnedFd takes sole ownership.
+            let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+            break (
+                Temporary {
+                    directory: &directory,
+                    name: temporary,
+                    armed: true,
+                },
+                File::from(owned),
+            );
+        }
+        let source = std::io::Error::last_os_error();
+        if source.kind() != std::io::ErrorKind::AlreadyExists {
+            return Err(io(&destination, source));
+        }
+    };
+    file.set_permissions(Permissions::from_mode(0o600))
+        .map_err(|e| io(&destination, e))?;
+    file.write_all(bytes).map_err(|e| io(&destination, e))?;
+    file.sync_all().map_err(|e| io(&destination, e))?;
+    temporary.rename(&target).map_err(|e| io(&destination, e))?;
+    Ok(destination)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renamed_temporary_does_not_unlink_a_reused_name() {
+        let path =
+            std::env::temp_dir().join(format!("persona-builder-guard-{}", std::process::id()));
+        fs::create_dir(&path).unwrap();
+        let directory: OwnedFd = File::open(&path).unwrap().into();
+        let source = path.join("source.tmp");
+        let target = path.join("target.jsonl");
+        fs::write(&source, b"original").unwrap();
+        let mut temporary = Temporary {
+            directory: &directory,
+            name: CString::new("source.tmp").unwrap(),
+            armed: true,
+        };
+        temporary
+            .rename(&CString::new("target.jsonl").unwrap())
+            .unwrap();
+        fs::write(&source, b"new owner").unwrap();
+        drop(temporary);
+        let reused = fs::read(&source);
+        let renamed = fs::read(&target).unwrap();
+        fs::remove_dir_all(&path).unwrap();
+        assert_eq!(reused.unwrap(), b"new owner");
+        assert_eq!(renamed, b"original");
+    }
+}

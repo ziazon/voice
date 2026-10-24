@@ -10,3 +10,5 @@ persona-builder = { path = "../core" }
 regex = "=1.13.1"
 serde_json = { version = "1", features = ["preserve_order"] }
 libc = "=0.2.191"
+serde = "1"
+sha1_smol = "=1.0.1"

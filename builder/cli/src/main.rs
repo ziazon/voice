@@ -60,6 +60,26 @@ enum Command {
     },
     /// Check an assistant's folder for anything private before it is shared.
     PrivacyCheck { folder: PathBuf },
+    /// Read your Claude Code history into your assistant's private folder.
+    Mine {
+        member_dir: PathBuf,
+        #[arg(long)]
+        projects: Option<PathBuf>,
+        #[arg(long, default_value = "decisions-claude-code.jsonl")]
+        out: String,
+        #[arg(long, conflicts_with = "cutoff", allow_hyphen_values = true)]
+        holdout: Option<String>,
+        #[arg(long)]
+        cutoff: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// List the Claude Code project folders and which are left out.
+    Folders {
+        member_dir: PathBuf,
+        #[arg(long)]
+        projects: Option<PathBuf>,
+    },
     /// Choose where to keep an assistant and save it.
     Save {
         #[command(subcommand)]
@@ -121,6 +141,86 @@ fn home() -> Result<PathBuf> {
             path: "~".into(),
             source: std::io::Error::new(std::io::ErrorKind::NotFound, "HOME"),
         })
+}
+fn projects_path(projects: Option<PathBuf>, home: &std::path::Path) -> Result<PathBuf> {
+    let path = projects.unwrap_or_else(|| home.join(".claude/projects"));
+    let path = if path.as_os_str().as_encoded_bytes().starts_with(b"~/") {
+        home.join(path.strip_prefix("~").expect("leading ~/"))
+    } else {
+        path
+    };
+    if !path.exists() {
+        return Err(Error::Invalid(format!(
+            "{} doesn't exist: there is no Claude Code history there",
+            path.display()
+        )));
+    }
+    Ok(path)
+}
+fn mine(
+    member_dir: PathBuf,
+    projects: Option<PathBuf>,
+    out: String,
+    holdout: Option<String>,
+    cutoff: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
+    use persona_builder_ingest::{filters::Filters, mine, private::write_private};
+    if out.contains('/') || out.starts_with('.') || !out.ends_with(".jsonl") {
+        return Err(Error::Invalid(
+            "the file name must be a plain name ending .jsonl".into(),
+        ));
+    }
+    let split = match cutoff {
+        Some(cutoff) => mine::Split::Cutoff(cutoff),
+        None => {
+            let holdout = holdout.as_deref().unwrap_or("0.15").parse::<f64>();
+            let holdout = holdout
+                .ok()
+                .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+                .ok_or_else(|| Error::Invalid("--holdout must be a number from 0 to 1".into()))?;
+            mine::Split::Holdout(holdout)
+        }
+    };
+    let home = home()?;
+    let member = read_member(&member_dir.join("member.json"))?;
+    persona_builder::member::private_state_dir(&member, &home).ok_or_else(|| {
+        Error::Invalid(format!(
+            "Persona Builder keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says {}: change it to ~/.claude/state/<slug> and try again",
+            member.state_dir
+        ))
+    })?;
+    let projects = projects_path(projects, &home)?;
+    let filters = Filters::compile(&member.filters)?;
+    let mined = mine::mine(&member, &filters, &projects, &home, &split)?;
+    if dry_run {
+        println!("{}dry run: nothing written", mine::summary(&mined));
+    } else {
+        write_private(
+            &home,
+            &member.slug,
+            &out,
+            mine::to_jsonl(&mined.records).as_bytes(),
+        )?;
+        println!(
+            "{}saved to ~/.claude/state/{}/{out}",
+            mine::summary(&mined),
+            member.slug
+        );
+    }
+    Ok(())
+}
+fn folders(member_dir: PathBuf, projects: Option<PathBuf>) -> Result<()> {
+    use persona_builder_ingest::{filters::Filters, mine};
+    let home = home()?;
+    let member = read_member(&member_dir.join("member.json"))?;
+    let filters = Filters::compile(&member.filters)?;
+    let projects = projects_path(projects, &home)?;
+    print!(
+        "{}",
+        mine::render_folders(&mine::folders(&filters, &projects, &home)?)
+    );
+    Ok(())
 }
 fn github_client(http: &UreqHttp) -> Result<Github<'_>> {
     Github::new(
@@ -392,6 +492,18 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             });
         }
         Some(Command::Forget { member_dir, yes }) => forget(member_dir, yes),
+        Some(Command::Mine {
+            member_dir,
+            projects,
+            out,
+            holdout,
+            cutoff,
+            dry_run,
+        }) => mine(member_dir, projects, out, holdout, cutoff, dry_run),
+        Some(Command::Folders {
+            member_dir,
+            projects,
+        }) => folders(member_dir, projects),
         Some(Command::Pack { member_dir, out }) => pack(member_dir, out),
         Some(Command::On {
             member_dir,

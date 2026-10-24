@@ -1251,7 +1251,7 @@ def cmd_merge(m, args):
 def cmd_folders(m, args):
     root = Path(args.projects).expanduser()
     totals = {"mined": [0, 0], "excluded": [0, 0]}
-    for folder in sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: project_name(p.name)):
+    for folder in sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: (project_name(p.name), p.name)):
         state = "excluded" if m.excluded.search(folder.name) else "mined"
         sessions = len(list(folder.glob("*.jsonl")))
         totals[state][0] += 1

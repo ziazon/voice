@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 /// The writer emits keys in the struct's order with unknown keys last, and drops
 /// null optional fields and empty codebook lists. Numbers go through serde_json's f64/i64
@@ -102,6 +102,31 @@ impl Member {
             .next()
             .unwrap_or("they")
     }
+}
+
+/// Resolve only the member's exact private state folder, without touching the filesystem.
+pub fn private_state_dir(member: &Member, home: &Path) -> Option<PathBuf> {
+    let path = match member.state_dir.strip_prefix("~/") {
+        Some(rest) => home.join(rest),
+        None => PathBuf::from(&member.state_dir),
+    };
+    let expected = home.join(".claude/state").join(&member.slug);
+    // Path::components normalizes interior dots, so reject them in the written path too.
+    let has_dots = path
+        .as_os_str()
+        .as_encoded_bytes()
+        .split(|byte| *byte == b'/')
+        .any(|part| matches!(part, b"." | b".."));
+    let mut slug = Path::new(&member.slug).components();
+    let single_slug = matches!(slug.next(), Some(Component::Normal(_))) && slug.next().is_none();
+    if !single_slug
+        || !path.is_absolute()
+        || has_dots
+        || !path.components().eq(expected.components())
+    {
+        return None;
+    }
+    Some(path)
 }
 
 fn validate_config(value: &Value, source: &str) -> Result<()> {
@@ -241,6 +266,39 @@ mod tests {
     };
     use serde_json::json;
     use std::fs;
+
+    #[test]
+    fn private_state_dir_accepts_only_the_exact_member_folder() {
+        let home = Path::new("/home/robin");
+        let mut member = Member::from_value(config(), "fixture").unwrap();
+        member.state_dir = "~/.claude/state/ari".into();
+        assert_eq!(
+            private_state_dir(&member, home),
+            Some(home.join(".claude/state/ari"))
+        );
+        for written in [
+            "~",
+            "~/.claude/state",
+            "~/.claude/state/other",
+            "~/.claude/state/ari/..",
+            "state/ari",
+            "/tmp/x",
+            "~/.claude/state/./ari",
+            "~/.claude/./state/ari",
+            "~/.claude/state/ari/.",
+            "~/.claude/state/ari/drafts",
+        ] {
+            member.state_dir = written.into();
+            assert_eq!(private_state_dir(&member, home), None, "{written}");
+        }
+        member.state_dir = "/home/robin/.claude/state/ari".into();
+        assert_eq!(
+            private_state_dir(&member, home),
+            Some(home.join(".claude/state/ari"))
+        );
+        member.slug = "/home/robin/.claude/state/ari".into();
+        assert_eq!(private_state_dir(&member, home), None);
+    }
 
     #[test]
     fn validates_objects_before_required_fields() {

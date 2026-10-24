@@ -1,4 +1,6 @@
 """Regression checks for public-kit input validation and private output handling."""
+import contextlib
+import io
 import json
 import os
 import re
@@ -8,6 +10,7 @@ import sys
 import unittest
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -64,6 +67,20 @@ class Hardening(unittest.TestCase):
         with patch.object(Path, 'home', return_value=Path('/Users/someone')):
             self.assertEqual(crew.project_name('-Users-z-projects-app'), 'app')
             self.assertEqual(crew.project_name('-home-jo-notes'), 'notes')
+
+    def test_folders_breaks_project_name_ties_by_folder_name(self):
+        names = ['-Users-p-projects-course--claude-worktrees-z',
+                 '-Users-p-projects-course--claude-worktrees-a']
+        folders = [self.h.projects / name for name in names]
+        for folder in folders:
+            folder.mkdir(parents=True)
+        output = io.StringIO()
+        with patch.object(Path, 'iterdir', return_value=iter(folders)), \
+                patch.object(Path, 'home', return_value=Path('/Users/p')), \
+                contextlib.redirect_stdout(output):
+            crew.cmd_folders(crew.load_member(ADA), SimpleNamespace(projects=self.h.projects))
+        printed_names = [line.split('\t')[-1] for line in output.getvalue().splitlines()[:-1]]
+        self.assertEqual(printed_names, sorted(names))
 
     def test_project_fields_are_filtered(self):
         member = crew.load_member(ADA)

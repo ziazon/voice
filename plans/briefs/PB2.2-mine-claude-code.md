@@ -321,3 +321,38 @@ gains `sha1_smol`; run `cargo build` once so `--locked` passes). Report: each fi
 the red you saw for each test file, every case where the engines disagreed outside the six accepted
 differences (stop and report it; never bend a test or the Python to make it pass), and anything in this
 brief you could not do as written.
+
+## Fix 1 (Claude's review, 2026-10-24)
+
+`marks` must drop empty words, as the Python's `if word` does: in `builder/ingest/src/mine.rs`, filter
+out every capture whose text is empty before lowercasing. With `mark_word: ""` a label `A ()` then gives
+no marks, and `empty_mark_word_matches_python` passes. Then run `bash scripts/ci-local.sh` to green and
+report its last lines.
+
+## Fix 2 (Claude's review, 2026-10-24)
+
+Each one gets a test that fails before the change (a parity case where the Python can judge it).
+
+1. **`answers` is read before the question's type is checked.** The Python's
+   `result["answers"].get(q.get("question"))` reads `answers` for every question, even one whose
+   `question` is missing or a number. In `questions_in`, check `answers` is an object (shape error
+   `(answers)`) at the top of the loop body, before the `question` match. Test (Rust only, the Python
+   raises): a question with no `question` and `answers` of `[]` is an error; the same with `questions:
+   []` is not (no question reached).
+2. **`project_name` removes every `--claude-worktrees-` match**, as `re.sub` does: `replace_all`, not
+   `replace`. Compile the two `project_name` regexes once (`std::sync::LazyLock`), not per call.
+   Unit test: a name holding `--claude-worktrees-` twice, the second after a `\n`, gives the same as
+   the Python (`python3 -I -c` with `crew_decisions.project_name`, HOME set).
+3. **A session file swapped for a pipe after the listing must not hang the open.** Open with
+   `O_NOFOLLOW | O_NONBLOCK`, then check `file.metadata()?.is_file()` and fail with
+   `<path> is not a file` otherwise. Test: `open_session` (make the opener a private function you can
+   call from a unit test in `mine.rs`) on a FIFO returns that error at once.
+4. **`private.rs`: disarm the temporary's guard after the rename succeeds** (a `bool` field or
+   `std::mem::forget`), so it never unlinks a name it no longer owns.
+5. **Tidy `mine()`:** the mark pattern built in its own function with the whitespace class as a
+   `const SPACE: &str = r"[\s\x1c-\x1f]";`, formatted normally (no one-line `let mark=Regex::new(…)`);
+   `matches!(split, Split::Holdout(h) if …)` spaced as rustfmt would.
+
+Then run `cargo test -p persona-builder-ingest -p persona-builder -p persona-builder-cli`, fmt and
+clippy. Skip `persona-builder-save`'s `ureq_wire` (it needs sockets your sandbox refuses); Claude runs the
+full gate.
