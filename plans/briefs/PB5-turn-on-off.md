@@ -413,7 +413,8 @@ drafts. The assistant's own files in `member_dir` are never touched.
 - Without `--yes`:
   ```
   This deletes <N> files in <path>: the history <Name> learned from and the drafts of each build.
-  <Name>'s own files in <member_dir> stay. To delete them: persona-builder forget <member_dir> --yes
+  <Name>'s own files in <member_dir> stay.
+  To go ahead: persona-builder forget <member_dir> --yes
   ```
   and nothing is deleted.
 - With `--yes`: `Deleted <N> files in <path>. <Name>'s own files in <member_dir> are untouched.`
