@@ -300,3 +300,31 @@ option (PB-ANT); other agents. No live call to the real `claude` in the tests.
 The files changed, the test count, `cargo clippy --all-targets -- -D warnings` and `cargo test -p
 persona-builder-agent -p persona-builder-ingest -p persona-builder-cli` results, and anything in this
 brief you could not do as written (with why).
+
+## After the gates (as built, 2026-10-24)
+
+The security review (no high finding; one medium, four low) and the Verifier (pass, three
+should-fixes) changed these decisions. Each has a test that fails without it.
+
+- **A started line replaces the in-memory reservation.** Before a call starts, its line goes on the
+  ledger as `outcome: "started"` at its whole budget (`cost_from: "budget"`), with an `id` (the
+  second key); when the call ends, that line is replaced by its result, and a call that never
+  started has its line removed. Calls still running therefore count against the cap in every process,
+  and a build killed mid-call (its `claude` runs on in its own process group) leaves that call counted
+  at its budget. This replaces "lines are never rewritten" and the session's `unrecorded` sum. The
+  cap message's figure now includes calls still running.
+- **A prompt whose first non-blank character is `/` is refused** before anything runs: `claude -p`
+  expands a leading `/` as a command, and built-in ones (`/model`, `/config`) work under
+  `--safe-mode` (the headless docs).
+- **`check` says when `ANTHROPIC_API_KEY` is set** (by name, never its value): `Ready.api_key_set`,
+  and `claude check` prints `text::API_KEY_SET` after the ready line. Claude Code may bill that key
+  instead of the person's plan.
+- **`private_folder` also refuses an assistant folder** (`~/.claude/state/<slug>`) that another user
+  owns or that others can write (mode bits 0o022); a readable 0750 one from an older build is kept.
+- **A failed `waitid` no longer kills the group:** the child may be reaped already and its group id
+  reused, so the runner only waits.
+- **Kept as decided:** `--setting-sources project,local` (in the empty folder this loads nothing);
+  Claude Code 2.1.292 accepts an empty list, but its meaning is not documented, so it is not used.
+- **For PB3.3:** `--system-prompt` and `--json-schema` are in the argv, which other local users can
+  read with `ps`. They hold fixed instructions and shapes only, never anything from the person's
+  records or their assistant's files.
