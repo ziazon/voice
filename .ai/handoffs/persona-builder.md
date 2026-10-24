@@ -37,7 +37,12 @@ One record per slice, newest first. Paraphrase only; no real person.
   refused.
 - **Gates:** `/security-review` (a sub-agent): no findings; its two notes (fields the filters don't
   read, and `split` not re-filtering) match the Python, and the files stay in the state folder.
-  The Verifier (Fable): pending.
+  The Verifier (Fable): passed on `ea7ac86` with no must-fix or should-fix findings. Besides
+  checking each claim, she ran 124 checks of her own through both engines (ties, holdout rounding,
+  escapes, whole-number extremes, duplicates across modes, mixed line ends), all identical. Her
+  notes: Rust reports a bad timestamp before a later file's error (both exit 1, nothing written);
+  discovered names pass the name rule by construction; discovery sorts by bytes where `install.sh`
+  uses the shell's order (it only decides which copy of a duplicate wins).
 - **Not verified:** a merge of real corpora (the attended walk in PB8 covers it).
 
 ## PB2.2: mine Claude Code transcripts, in Rust (2026-10-24, lane: V1)
