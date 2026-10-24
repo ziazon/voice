@@ -31,6 +31,8 @@ impl Server {
                     Err(error) => panic!("accept: {error}"),
                 }
             };
+            // Accepted sockets inherit the listener's non-blocking flag on macOS.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
