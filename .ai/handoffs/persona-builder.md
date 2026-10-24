@@ -27,8 +27,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   added; a call that is cut off or answers unreadably is recorded at its whole budget, so the cap
   never under-counts; a damaged ledger stops all spending; the cap's defaults (50 a day, 5 a call)
   are this slice's choice and can be changed by flag.
-- **Verified:** 40 new tests, each red on its assertion first (30 in the crate, 7 in `ingest`, 3 in
-  the CLI) against stub `claude` scripts: the exact argv, the prompt on stdin and nowhere in the
+- **Verified:** 40 new tests (30 in the crate, 7 in `ingest`, 3 in the CLI), 37 red on their
+  assertion first; 3 (plain folder names, a folder that can't be searched, a budget given back)
+  were proved by a mutation instead against stub `claude` scripts: the exact argv, the prompt on stdin and nowhere in the
   argv, the work folder as the current folder, the environment, every reply shape (ok, error, exit
   1, signed out, no output, unreadable, over the output cap), the cut-off killing a grandchild, every
   refusal running nothing and writing no line, the cap (full, exact, yesterday, two calls racing), a
