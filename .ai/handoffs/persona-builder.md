@@ -2,6 +2,63 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB2.3: mine the claude.ai export, in Rust (2026-10-24, lane: V1)
+
+- **What:** `persona_builder_ingest` gains `claudeai`, ported from `crew_decisions.py`'s
+  `export_files` to `cmd_claudeai_mine`: reading the export (a zip, a folder or a bare
+  `conversations.json`, in memory, never unpacked), `inspect` (field names, types and counts),
+  `titles` (the review file of every chat, keeping marks already made, with opening words or
+  `[filtered]` for untitled chats), `mark` and `mine`, giving the same printed lines, review TSV
+  and JSONL bytes as the Python. The CLI gains `persona-builder claudeai inspect | titles | mark |
+  mine`; the review (`claudeai-review.tsv`) and the corpus (`decisions-claudeai.jsonl`, the names
+  `install.sh` uses) are plain names in `~/.claude/state/<slug>/`, so `write_private` and
+  `read_private` now take `.tsv` names too. `text_blocks` and `own_message` moved out of the Claude
+  Code miner so both share them. Brief: `plans/briefs/PB2.3-claudeai-export.md`.
+- **Who wrote it:** Claude, directly. Codex was at a hard usage limit (until 2026-10-30) when the
+  brief was dispatched, so the brief was implemented at the same bar and then corrected to match
+  what testing proved.
+- **Decisions made at pickup:** ten accepted differences, each with a test that also shows what the
+  Python does (the brief lists them): a stricter timestamp grammar (16 forms only Python reads,
+  measured on 3.12.14); odd types refused; a uuid holding a tab or line break refused (Python
+  writes a broken review file); links, pipes, repeated zip names, other compression methods,
+  encryption, a zip over 2 GB or over 100,000 entries refused; UTF-8 only; `mark` and `mine` need
+  an existing review; plain file names; `--title` read by the `regex` crate; `--holdout` checked as
+  `mine` checks it; `inspect` shows only the message senders' values, control characters escaped.
+  The `zip` crate keeps one entry per name, so `validate_header_consistency` runs before any read
+  (zip 9.0.5 has no public duplicate check).
+- **Dependency intake:** `zip` =9.0.5 (zip-rs/zip2, MIT; crate first published 2014; 9.0.5 is a
+  week old, chosen over 9.1.0, published hours before pickup), default features off plus
+  `deflate-flate2`, and `flate2` =1.1.10 with `rust_backend` (miniz_oxide, pure Rust). Why: nothing
+  in the lock read zip archives. The lock adds adler2, bitflags, cfg_aliases, crc32fast,
+  miniz_oxide, nix, simd-adler32 and typed-path. Build scripts: crc32fast's (runs
+  `rustc --version`) and nix's (`cfg_aliases`), both harmless. RustSec has four `zip` advisories,
+  all about extraction (fixed in 9.0.0; nothing here extracts). `cargo audit` is not installed, so
+  no advisory scan of the new tree was run.
+- **Verified:** parity runs the real Python on 12 invented cases (zip, folder and bare file; a
+  nested zip; untitled chats; every shared timestamp form; text and content blocks; the filters
+  for both test members; a hand-edited review with odd marks, extra columns and CRLF; Unicode;
+  odd shapes for `inspect`), through `inspect`, `titles`, a run of `mark` selectors and 7 `mine`
+  split settings, comparing stdout, review bytes and JSONL bytes. The timestamp grammar is checked
+  against the Python's own `utc` on 59 strings. 24 mutations, each restored and checked with `cmp`,
+  all failed a test; the two review-fix tests went red on the code before the fix.
+  `bash scripts/ci-local.sh` passed (151 Python tests, 365 Rust tests; after the review fixes 151 and 367).
+- **Known limits:** the export is held in memory (up to 2 GB of JSON plus its parsed tree). The
+  100:1 ratio can be beaten by a central directory that overstates the compressed size; the 2 GB
+  read cap still holds. The 100,000-entry cap bounds the walk, not memory: the `zip` crate parses
+  the whole central directory first (about 350 bytes per entry, measured by the Verifier), so a
+  crafted zip under 2 GB listing tens of millions of entries can use many gigabytes before it is
+  refused. `inspect` prints key names, which a crafted export could fill with words (the Python does
+  too); only control characters are escaped, so Unicode format characters print as they are.
+- **Gates:** `/security-review` (a sub-agent): nothing exploitable; two low findings, both fixed
+  (`ec58dac`): `sender` values at any depth, and no cap on the zip itself. The Verifier (Fable):
+  passed `25ff91e` with no must-fix, after about 70 two-engine round trips and a 538-string
+  timestamp fuzz (every mismatch was a form only Python reads); her three should-fixes were gaps in
+  the brief's list of differences, now listed. A delta pass on `ec58dac` passed with no must-fix; her two should-fixes are in
+  `1301d04`: the sender check is by place, since a key named `chat_messages[].sender` forged the
+  path, and the entry cap's limit is stated above.
+- **Not verified:** a real claude.ai export, and a multi-gigabyte one (the attended walk in PB8
+  covers a real export).
+
 ## PB2.4: merge and split the corpus, in Rust (2026-10-24, lane: V1)
 
 - **What:** `persona_builder_ingest` gains `corpus` (`merge`, `split`, `read_records`, `discover`),
