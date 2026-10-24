@@ -17,6 +17,7 @@ member and no real person's data.
 | `builder/core/` | The Persona Builder core library (persona_builder): the member format, the dial, field packs | `builder/core/src/`, `builder/core/tests/` |
 | `crew/_fields/` | Field packs: starter decisions and words per kind of work | `builder/core/tests/` |
 | `builder/cli/` | The `persona-builder` command | `builder/cli/tests/` |
+| `builder/save/` | Saving an assistant (persona_builder_save): an existing repo, a private GitHub repo, or this Mac only; GitHub sign-in, the Keychain, git | `builder/save/tests/` |
 
 All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck). The
 Rust checks (fmt, clippy, tests) need stable Rust and are skipped when `cargo` is missing.

@@ -2,6 +2,65 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB6: saving, to an existing repo, a private GitHub repo, or this Mac only (2026-10-24, lane: V1)
+
+- **What:** a new crate, `builder/save` (`persona_builder_save`), because the core library keeps
+  to the filesystem. It holds every sentence a person sees while saving (`text`), a `Secret` type
+  that hides a token from `Debug` and zeroes it on drop, GitHub's device-flow sign-in with the
+  granted-scope check, creating a repo private and reading it back as private, GitHub's address
+  rules, the token store in the macOS Keychain, git plumbing that commits an assistant's folder
+  without touching anyone's work tree, the saved choice in `<state>/save.json`, and the flow
+  (`detect`, `options`, `choose_*`, `save_now`). The CLI gains `persona-builder save options |
+  sign-in | sign-out | choose (local | here | github) | push`. Brief: `plans/briefs/PB6-saving.md`.
+- **Who wrote it:** Codex, in separate test and implementation passes for each half; Claude wrote
+  the brief, the person-facing texts and the docs, and reviewed every test and line.
+- **Decisions made at pickup:** the network, git and Keychain code is a crate of its own, so core's
+  "filesystem only" rule stays true. Sign-in is an OAuth app's device flow with the `repo` scope,
+  the only scope that can make a private repo; the client ID is unset until V-Q1 is answered, and
+  sign-in says it is not set up. A save to a person's own repo goes to a `persona/<slug>` branch
+  built from a scratch index, as the guided build's step 14 does today, so their branch, index and
+  work tree never change. The GitHub backup is a bare repo in the state folder, pushed with the
+  token as an environment header scoped to `https://github.com/`, the person's git config off.
+  Every push address must read back private from GitHub's API before every push; any other host
+  is refused, since nothing else can be confirmed. The privacy check is a seam: the CLI's `push`
+  refuses with "can't run the privacy check yet" until PB2 plugs the Rust check in.
+- **Dependency intake:** `ureq` 3.4.2 (rustls, no default features; MIT or Apache-2.0; the same
+  pin Flightdeck uses), and `base64` 0.23.1, `libc` 0.2.191 and `zeroize` 1.9.1, which were
+  already in ureq's tree. New in the lock: ureq's tree (rustls, ring, webpki-roots,
+  rustls-pki-types, ureq-proto, http, httparse, percent-encoding, untrusted, subtle, log,
+  getrandom, cc, utf8-zero). `ring` builds C and assembly through `cc` at build time. `cargo
+  audit` is not installed, so no advisory scan was run.
+- **Sources:** GitHub's docs on the device flow, OAuth scopes, the repos REST API and API
+  versions, and actions/checkout's git auth header, all read 2026-10-24 and cited in the brief
+  and the code.
+- **Verified:** every test file went red before its code existed (part 1: 65 tests on stubs;
+  part 2: 51 tests on stubs plus the review fixes' new files red on their assertions), then green:
+  135 Rust tests in the two packages, and `bash scripts/ci-local.sh` passed. Mutation checks, each
+  anchored, restored from a backup and confirmed with `cmp`, and each failing a named test, not a
+  build: 26 in all (bearer only on API calls; both private fields; the exact host; the slow-down
+  step; the exact `repo` scope; no redirects; the expiry stop; the device page's host; the
+  Keychain alphabet; the read-back after create; the git config off for the backup repo, both
+  variables; the credential helper off; the cleared environment; `private.json` skipped; links
+  refused; the credential hidden in errors; `--no-gpg-sign`; the privacy check run; the remote
+  check run; the backup's exact origin; every push URL on GitHub; a repo `detect` did not offer;
+  the remote-name rule; the 0700 folder; a local choice sending nothing). Two missed at first; two
+  tests were added, and both now fail when their line is removed. The live Keychain test (a throwaway
+  `persona-builder.test` item) passed and left nothing behind. The CLI was driven by hand in a
+  scratch home: the options with and without a repo around `~/.claude`, every refusal, and a
+  `save.json` carrying `--upload-pack=…` as its remote refused before git ran. A build with an
+  invented client ID reached github.com over rustls and turned GitHub's real `404 {"error":"Not
+  Found"}` into the plain "sign-in didn't work" line.
+- **Test harness, fixed on review:** on this Mac `python3` is a pyenv shim, which macOS will not
+  run as a `#!` interpreter, so the git wrapper now resolves the real interpreter; APFS refuses
+  non-UTF-8 file names, so that case is skipped where the filesystem refuses it; one test deleted
+  the folder holding its own record. Codex stopped on that one rather than bend the code.
+- **Known limits:** an existing state folder keeps its mode (only one Persona Builder creates gets
+  0700). A file swapped for a link between listing and hashing would be read through the link
+  (same-user only). The person's own `pre-push` hook runs on a save to their repo, with Persona
+  Builder's cleared environment. A non-GitHub remote cannot be used at all.
+- **Not verified:** a real sign-in, repo creation and push (they need V-Q1's client ID and PB2's
+  privacy check: PB6.1, card `51dkJ0YE`, with Zia); Linux (the Keychain is macOS only).
+
 ## PB1: the member format in Rust, the neutral base, one field pack (2026-10-24, lane: V1)
 
 - **What:** `builder/core` reads and writes an assistant's files the way the Python tooling does:

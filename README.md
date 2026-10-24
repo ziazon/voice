@@ -71,7 +71,7 @@ Claude history of the Mac it runs on.
 | `scripts/crew_documents.py` | Reads text, Markdown, Word and PDF files for the lens step (PDF through poppler's `pdftotext`) |
 | `scripts/slack_mine.py`, `scripts/slack_select.py` | Optional: turn a Slack JSON export into samples and candidate decision threads for persona work (see below) |
 | `scripts/crew_personas.py` | Optional: decision cards, per-person decision models, blind backtests and a panel (see below) |
-| `builder/` | Persona Builder, a standalone app in progress: the core library and the `persona-builder` command |
+| `builder/` | Persona Builder, a standalone app in progress: the core library, saving (to your own private GitHub repo or only on your Mac), and the `persona-builder` command |
 | `crew/_fields/` | Field packs: a short starter set of decisions and words for a kind of work, used when someone's history is thin |
 | `scripts/ci-local.sh` | Runs every test and shellcheck; needs `shellcheck` (`brew install shellcheck`). Runs the Rust checks too when `cargo` is installed |
 | `tests/` | The suites `ci-local.sh` runs, all on fictional data |
