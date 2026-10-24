@@ -1,6 +1,5 @@
 //! A child with a time limit, its output capped, and its whole process group killed on every way
-//! out. Ported from Flightdeck's `desktop/core/src/runtime.rs` (`run_captured_checked`, `settle`,
-//! `drain`, `kill_group`, `has_exited`), keeping its reasoning; stderr is never read here.
+//! out; stderr is never read here.
 use std::{
     io::{self, Read, Write},
     os::unix::process::CommandExt,

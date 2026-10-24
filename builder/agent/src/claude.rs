@@ -146,8 +146,8 @@ fn opens_with_slash(prompt: &str) -> bool {
         == Some('/')
 }
 
-/// The failures `claude` reports when its login is missing or expired (Flightdeck's
-/// `could_not_sign_in` markers).
+/// The failures `claude` reports when its login is missing or expired: they name `/login` or
+/// authenticating.
 fn signed_out(result: &str) -> bool {
     result.contains("/login")
         || result.contains("authenticate")
