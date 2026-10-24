@@ -522,3 +522,32 @@ Each test-first, as above.
 9. Fix 4's message uses the item's own reason: `"<path> <why>. Move it away, then turn <Name> on again"`
    is wrong for "it still holds other files"; say
    `"<path> was left in place (<why>). Move it away, then turn <Name> on again"` for every item.
+
+## Third review fixes (after the delta security review and Verifier)
+
+Each test-first, as above. Both reviews read Claude Code 2.1.292's binary: it strips a BOM, takes
+the front matter with a `---` fence regex and parses it with `Bun.YAML.parse`, retrying with each
+leading tab turned into two spaces when that fails.
+
+10. **A lone carriage return hides a key** (must-fix). `str::lines()` splits only on `\n` and
+    `\r\n`, but YAML also breaks a line on a lone `\r` (and some parsers on U+0085, U+2028,
+    U+2029), so `description: x\rallowed-tools: Bash(*)` passes the allowlist as one line. In
+    `check_skill`, before the front-matter test, refuse the whole file when it holds a `\r` not
+    followed by `\n`, any of U+0085, U+2028, U+2029, or any other control character than `\t`,
+    `\n` and the `\r` of a `\r\n`, with
+    `Invalid("<path> holds a character Persona Builder can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn <Name> on again")`.
+    Tests: that payload, `hooks:` after a lone `\r`, U+2028, U+0085 and a NUL are each refused with
+    nothing written; a `SKILL.md` with `\r\n` line endings throughout passes.
+11. **A tab-indented front-matter line** (should-fix). YAML forbids tab indentation and parsers
+    disagree on such a line (one reads `\thooks: y` as a top-level key). Refuse a front-matter line
+    starting with `\t` with
+    `Invalid("<path> indents a front-matter line with a tab. Use spaces, then turn <Name> on again")`.
+    Drop the tab line from `skill_front_matter_accepts_allowed_keys_comments_and_indented_lines`;
+    add a test refusing `\thooks: y` and `\tMore description.` after `description: >`.
+12. **Its own message for an overlapping `skills` link** (should-fix). Fix 7's refusal reaches
+    `on` too, where there is no record yet, so "fix or remove installed.json" is wrong. In
+    `check_path`, the overlap case returns
+    `Invalid("<claude_home>/skills points back into the Claude Code folder. Point it at a folder outside <claude_home>, then try again")`
+    (`read` still prefixes the record's path, as for every `check_path` error). Update
+    `record_through_overlapping_skills_link_is_refused`; add a test that `on` with `skills` linked
+    to `claude_home` gets this message and writes nothing.
