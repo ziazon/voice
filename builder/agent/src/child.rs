@@ -77,8 +77,12 @@ fn settle(child: &mut Child, started: Instant, timeout: Duration) -> Option<Exit
                 return child.wait().ok();
             }
             // `waitid` failed, so the child may be reaped already and its group id free for
-            // reuse: no group kill, `wait` reports what happened.
-            None => return child.wait().ok(),
+            // reuse: no group kill. A child still running goes on to the time limit below.
+            None => match child.try_wait() {
+                Ok(Some(status)) => return Some(status),
+                Ok(None) => {}
+                Err(_) => return None,
+            },
             Some(false) => {}
         }
         let elapsed = started.elapsed();

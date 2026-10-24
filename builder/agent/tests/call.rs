@@ -470,7 +470,14 @@ fn a_call_is_on_the_ledger_at_its_whole_budget_while_it_runs() {
 fn a_prompt_that_starts_like_a_command_is_refused() {
     let stub = Stub::replying(&ok_reply(&json!({})), 0);
     let schema = schema();
-    for prompt in ["/model opus", "  \n/config x=y", "\t/fast"] {
+    for prompt in [
+        "/model opus",
+        "  \n/config x=y",
+        "\t/fast",
+        "\u{feff}/model opus",
+        "\u{200b} /config x=y",
+        "\u{2060}\u{00ad}/fast",
+    ] {
         let home = Scratch::new("call-slash");
         refused(&home, &stub, &call(prompt, &schema));
     }

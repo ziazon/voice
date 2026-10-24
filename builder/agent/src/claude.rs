@@ -63,7 +63,7 @@ pub struct Reply {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ready {
     pub version: String,
-    /// `ANTHROPIC_API_KEY` is set (its value is never read): Claude Code may bill that key.
+    /// `ANTHROPIC_API_KEY` is set (its value is never shown or kept): Claude Code may bill that key.
     pub api_key_set: bool,
 }
 
@@ -134,6 +134,16 @@ fn valid_version(version: &str) -> bool {
         && parts
             .iter()
             .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// The prompt's first character that is neither white space nor an invisible format character
+/// (a byte-order mark, a zero-width space or joiner, a word joiner, a soft hyphen) is `/`.
+fn opens_with_slash(prompt: &str) -> bool {
+    let invisible = |c: char| matches!(c, '\u{00ad}' | '\u{feff}' | '\u{200b}'..='\u{200f}' | '\u{2060}'..='\u{2064}');
+    prompt
+        .chars()
+        .find(|&c| !c.is_whitespace() && !invisible(c))
+        == Some('/')
 }
 
 /// The failures `claude` reports when its login is missing or expired (Flightdeck's
@@ -321,7 +331,7 @@ impl Claude {
         }
         // `claude -p` expands a prompt that opens with `/` as a command (`/model`, `/config`),
         // and the built-in ones work under `--safe-mode`: records never open a prompt that way.
-        if call.prompt.trim_start().starts_with('/') {
+        if opens_with_slash(call.prompt) {
             return Err(invalid("a step's records can't begin with /"));
         }
         if call.system.trim().is_empty() || call.system.len() > MAX_SYSTEM {

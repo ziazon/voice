@@ -280,16 +280,17 @@ pub fn private_folder(home: &Path, slug: &str, name: &str) -> Result<PathBuf> {
     let (directory, state) = state_directory(home, slug, true)?;
     // The assistant's folder may be readable by others (an older build left 0750), never writable.
     let parent = File::from(directory.try_clone().map_err(|e| io(&state, e))?);
-    only_mine(&parent, &state, 0o022)?;
+    only_mine(&parent, &state, 0o022, "changed")?;
     let path = state.join(name);
     let part = CString::new(name).expect("validated folder name");
     let folder = File::from(open_directory(&directory, &part, &path, true)?);
-    only_mine(&folder, &path, 0o077)?;
+    only_mine(&folder, &path, 0o077, "opened")?;
     Ok(path)
 }
 
-/// Refuse a folder another user owns, or whose mode has any bit of `others` set.
-fn only_mine(folder: &File, path: &Path, others: u32) -> Result<()> {
+/// Refuse a folder another user owns, or whose mode has any bit of `others` set; `how` says what
+/// others could do with it ("opened", "changed").
+fn only_mine(folder: &File, path: &Path, others: u32, how: &str) -> Result<()> {
     let metadata = folder.metadata().map_err(|e| io(path, e))?;
     // SAFETY: geteuid has no preconditions.
     let me = unsafe { libc::geteuid() };
@@ -297,8 +298,9 @@ fn only_mine(folder: &File, path: &Path, others: u32) -> Result<()> {
         || std::os::unix::fs::MetadataExt::uid(&metadata) != me
     {
         return Err(Error::Invalid(format!(
-            "{} can be opened by others on this Mac, so Persona Builder stopped. Make it a folder only you can open, then try again",
-            path.display()
+            "{} can be {how} by others on this Mac, so Persona Builder stopped. Make it a folder only you can {}, then try again",
+            path.display(),
+            if how == "changed" { "change" } else { "open" }
         )));
     }
     Ok(())

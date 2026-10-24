@@ -119,7 +119,8 @@ fn private_folder_refuses_an_assistant_folder_others_can_write() {
         fs::set_permissions(&state, fs::Permissions::from_mode(mode)).unwrap();
         let error = private_folder(&home.0, "wren", "agent").unwrap_err();
         assert!(
-            error.to_string().contains("only you can open"),
+            error.to_string().contains("can be changed by others")
+                && error.to_string().contains("only you can change"),
             "{mode:o}: {error}"
         );
     }
