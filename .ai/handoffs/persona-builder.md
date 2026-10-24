@@ -13,7 +13,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   with the person's records on stdin only, run in an empty 0700 folder of its own, killed with its
   whole process group at its time limit; a ledger line per call in `runs.jsonl` (tokens, the CLI's
   own cost estimate, the outcome, never any text); a daily cap in estimated dollars (default 50, 5
-  per call) that reserves each call's budget before it starts; one build per assistant at a time
+  per call), each call on the ledger at its whole budget before it starts; one build per assistant at a time
   (an `flock` on the state folder). `private.rs` gains `lock_state`, `private_folder` and
   `read_private_optional`. The CLI gains `persona-builder agents`, `claude check` and
   `spend <member-dir>`. PB3 was split into PB3.1 to PB3.4 at this pickup. Brief:
@@ -27,7 +27,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   added; a call that is cut off or answers unreadably is recorded at its whole budget, so the cap
   never under-counts; a damaged ledger stops all spending; the cap's defaults (50 a day, 5 a call)
   are this slice's choice and can be changed by flag.
-- **Verified:** 36 new tests, each red on its assertion first (27 in the crate, 6 in `ingest`, 3 in
+- **Verified:** 40 new tests, each red on its assertion first (30 in the crate, 7 in `ingest`, 3 in
   the CLI) against stub `claude` scripts: the exact argv, the prompt on stdin and nowhere in the
   argv, the work folder as the current folder, the environment, every reply shape (ok, error, exit
   1, signed out, no output, unreadable, over the output cap), the cut-off killing a grandchild, every
@@ -37,6 +37,13 @@ One record per slice, newest first. Paraphrase only; no real person.
   signed in" (its own `auth status` reads `loggedIn: false` there), and the exact call argv run by
   hand against the real CLI was accepted flag for flag and answered `is_error: true` with "Failed to
   authenticate…", the shape the driver reads as signed out; the work folder stayed empty.
+- **Gates:** `/security-review` (a sub-agent): nothing exploitable; one medium (a build killed
+  mid-call left that call's spend uncounted) and four lows (planted settings and an open assistant
+  folder, the argv readable by other users, an API key in the environment, a group kill after a
+  failed `waitid`). The Verifier (Fable): pass with no must-fix; three should-fixes (a released
+  budget untested, the same mid-call crash, a prompt opening with `/` read as a command). All fixed
+  in the brief's *After the gates*, each with a test; 10 more mutations, all failed a test. A delta
+  Verifier pass covers the fixes.
 - **Not verified:** a successful live call (no signed-in Claude Code CLI on Mimi); owed to an
   attended walk (PB8 covers it). `total_cost_usd` is the CLI's own estimate.
 - **Known limits:** the ledger is rewritten whole on each call (like the Python `record`); the cap
