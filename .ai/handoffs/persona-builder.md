@@ -2,6 +2,47 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB5: turn it on and off, the claude.ai Project pack, forget (2026-10-24, lane: V2)
+
+- **What:** `persona-builder on <member dir>` copies the assistant's `SKILL.md` to
+  `<claude home>/skills/<slug>/`, writes `<claude home>/persona-builder/<slug>/RULES.md`, and adds
+  one `@` import of it to `CLAUDE.md` inside `<!-- persona-builder:begin/end <slug> -->` markers.
+  A record (`persona-builder/installed.json`) lists every folder and file added with the exact text
+  written, so `off` removes exactly that, leaves anything the user changed (and says so), and gives
+  back `CLAUDE.md` byte for byte. One assistant on per Claude Code folder; a failed `on` rolls back.
+  `status` reports the line, each file and whether the member changed since. `pack <member dir>
+  --out <dir>` writes `instructions.md` plus one `decisions-<kind>.md` per kind of question in
+  `decisions.md` (deterministic). `forget <member dir> [--yes]` deletes only
+  `<home>/.claude/state/<slug>`, after a preview. Brief: `plans/briefs/PB5-turn-on-off.md`.
+- **Design calls (within the plan, not asked):** "confirmed area" means a kind of question that has
+  a section in the committed `decisions.md` (PB4's review edits that same file, so a dropped area
+  drops out of the pack). The `CLAUDE.md` import points at a generated `RULES.md` rather than a
+  member file, so moving the repo does not break it. `--claude-home` defaults to
+  `$CLAUDE_CONFIG_DIR`, else `~/.claude`. Sources (Claude Code memory and skills docs, the claude.ai
+  Projects help page) are cited in the brief.
+- **Who wrote it:** Codex, from the brief, in three parts plus two fix rounds; Claude reviewed it.
+  No new dependency.
+- **Verified:** every test went red on its assertion first; mutations on the line break before an
+  appended block, the changed-file comparison, the record's containment check, the dropped `Where`
+  section, blank areas and `forget`'s path comparison each turned a named test red.
+  `bash scripts/ci-local.sh` passed with all Rust steps. Live, with the built binary in a scratch
+  home: `on`, a second assistant refused, `status`, `off` (CLAUDE.md byte-identical, nothing left),
+  `pack`, `forget` preview, delete, and a second run.
+- **Gates:** the security review found a name holding a line break and `@~/…` could put any file's
+  import into every session through `RULES.md` (high), and that a shared `SKILL.md` could carry
+  hooks or shell lines (medium). Both are fixed: names are one plain line without `@ < > { } [ ]
+  ( ) # \` or backticks, and a skill must be named for its slug and ask for no hooks,
+  `allowed-tools` or `` !` `` lines. The Verifier (Fable) passed the rest and found a symlinked
+  `skills/` folder was refused (fixed), plus nits: a refresh's message after a user edit (fixed), a
+  record listing `CLAUDE.md` (refused now), and a test named for rollback that tested an early
+  refusal (renamed). A delta Verifier pass covered the fixes.
+- **Known limits:** `off` refuses rather than reports when the user replaced a recorded folder with
+  a symlink; a dangling-symlink `CLAUDE.md` and `pack --out` under a missing folder give the
+  system's own error. The installed skill still calls the Python `similar` and `record` commands;
+  a later slice moves it to `persona-builder`.
+- **Not verified:** that a real Claude Code session loads the import and the skill (owed to the
+  first attended run, PB8), and a real claude.ai Project built from the pack.
+
 ## PB6: saving, to an existing repo, a private GitHub repo, or this Mac only (2026-10-24, lane: V1)
 
 - **What:** a new crate, `builder/save` (`persona_builder_save`), because the core library keeps
