@@ -406,7 +406,7 @@ def write_jsonl(path, records):
 
 
 def read_jsonl(path):
-    return [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
+    return [json.loads(line) for line in Path(path).read_text().split("\n") if line.strip()]
 
 
 def cmd_mine(m, args):

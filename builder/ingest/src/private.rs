@@ -1,9 +1,9 @@
-//! Descriptor-relative private writes: directory links are never followed.
+//! Descriptor-relative private reads and writes: directory links are never followed.
 use persona_builder::error::{Error, Result};
 use std::{
     ffi::{CStr, CString},
     fs::{self, File, OpenOptions, Permissions},
-    io::Write,
+    io::{Read, Write},
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd},
         unix::{
@@ -98,13 +98,16 @@ impl Drop for Temporary<'_> {
     }
 }
 
-/// Atomically replace a JSONL file in the member's private state folder.
-pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Result<PathBuf> {
+pub fn validate_name(name: &str) -> Result<()> {
     if name.contains(['/', '\0']) || name.starts_with('.') || !name.ends_with(".jsonl") {
         return Err(Error::Invalid(
             "the file name must be a plain name ending .jsonl".into(),
         ));
     }
+    Ok(())
+}
+
+fn state_directory(home: &Path, slug: &str, create: bool) -> Result<(OwnedFd, PathBuf)> {
     if slug.is_empty() || slug.contains(['/', '\0']) || matches!(slug, "." | "..") {
         return Err(Error::Invalid(
             "the assistant slug must be a plain folder name".into(),
@@ -130,8 +133,15 @@ pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Resul
     for part in [".claude", "state", slug] {
         path.push(part);
         let part = CString::new(part).expect("validated folder name");
-        directory = open_directory(&directory, &part, &path, true)?;
+        directory = open_directory(&directory, &part, &path, create)?;
     }
+    Ok((directory, path))
+}
+
+/// Atomically replace a JSONL file in the member's private state folder.
+pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Result<PathBuf> {
+    validate_name(name)?;
+    let (directory, path) = state_directory(home, slug, true)?;
     let destination = path.join(name);
     let target = CString::new(name).expect("validated file name");
     let (mut temporary, mut file) = loop {
@@ -177,6 +187,43 @@ pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Resul
     file.sync_all().map_err(|e| io(&destination, e))?;
     temporary.rename(&target).map_err(|e| io(&destination, e))?;
     Ok(destination)
+}
+
+/// Read a corpus file from the private state folder.
+pub fn read_private(home: &Path, slug: &str, name: &str) -> Result<Vec<u8>> {
+    validate_name(name)?;
+    let missing = |error| match error {
+        Error::Io { path, source } if source.kind() == std::io::ErrorKind::NotFound => {
+            Error::Invalid(format!("{} doesn't exist", path.display()))
+        }
+        other => other,
+    };
+    let (directory, path) = state_directory(home, slug, false).map_err(missing)?;
+    let path = path.join(name);
+    let name = CString::new(name).expect("validated file name");
+    // SAFETY: directory is live and name is terminated; flags refuse links and avoid blocking on pipes.
+    let fd = unsafe {
+        libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(missing(directory_error(
+            &path,
+            std::io::Error::last_os_error(),
+        )));
+    }
+    // SAFETY: openat returned a fresh valid descriptor, owned exactly once from here.
+    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+    let mut file = File::from(owned);
+    if !file.metadata().map_err(|e| io(&path, e))?.is_file() {
+        return Err(Error::Invalid(format!("{} is not a file", path.display())));
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).map_err(|e| io(&path, e))?;
+    Ok(bytes)
 }
 
 #[cfg(test)]

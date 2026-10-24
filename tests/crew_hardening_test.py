@@ -29,6 +29,15 @@ class Hardening(unittest.TestCase):
         self.addCleanup(self.h.dir.cleanup)
         self.member = self.h.member(ADA)
 
+    def test_merge_preserves_unicode_line_separators(self):
+        record = crew.message_record('s', '2026-09-01', 'kit', 'scope\u2028next\u0085last', '')
+        source = self.h.root / 'source.jsonl'
+        output = self.h.root / 'merged.jsonl'
+        crew.write_jsonl(source, [record])
+        proc = self.h.crew(self.member, 'merge', '--in', str(source), '--out', str(output))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(crew.read_jsonl(output)[0]['text'], record['text'])
+
     def test_bad_config_shapes_are_one_line_errors(self):
         for filename, value in [('member.json', []), ('member.json', None), ('private.json', []),
                                 ('private.json', {'filters': {'pasted_prefixes': [3]}})]:

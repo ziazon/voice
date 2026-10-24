@@ -476,7 +476,7 @@ fn message_record(
         ("context".into(), Value::from(context)),
     ])
 }
-fn mark_split(records: &mut [Map<String, Value>], split: &Split) -> Option<String> {
+pub(crate) fn mark_split(records: &mut [Map<String, Value>], split: &Split) -> Option<String> {
     let mut questions: Vec<_> = records
         .iter()
         .filter(|r| r["kind"] == "question")

@@ -74,6 +74,36 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Combine your histories into one set of decisions, and set aside the newest to test with.
+    Merge {
+        member_dir: PathBuf,
+        #[arg(long = "in", num_args = 1.., action = clap::ArgAction::Append)]
+        inputs: Vec<String>,
+        #[arg(long, num_args = 1.., action = clap::ArgAction::Append)]
+        train: Vec<String>,
+        #[arg(long, num_args = 1.., action = clap::ArgAction::Append)]
+        rounds: Vec<String>,
+        #[arg(long, default_value = "decisions.jsonl")]
+        out: String,
+        #[arg(long, conflicts_with = "cutoff", allow_hyphen_values = true)]
+        holdout: Option<String>,
+        #[arg(long)]
+        cutoff: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Set aside the held-out questions and their answers for the test.
+    Split {
+        member_dir: PathBuf,
+        #[arg(long, default_value = "decisions.jsonl")]
+        corpus: String,
+        #[arg(long, default_value = "heldout-questions.jsonl")]
+        questions: String,
+        #[arg(long, default_value = "heldout-answers.jsonl")]
+        answers: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// List the Claude Code project folders and which are left out.
     Folders {
         member_dir: PathBuf,
@@ -157,20 +187,11 @@ fn projects_path(projects: Option<PathBuf>, home: &std::path::Path) -> Result<Pa
     }
     Ok(path)
 }
-fn mine(
-    member_dir: PathBuf,
-    projects: Option<PathBuf>,
-    out: String,
+fn split_choice(
     holdout: Option<String>,
     cutoff: Option<String>,
-    dry_run: bool,
-) -> Result<()> {
-    use persona_builder_ingest::{filters::Filters, mine, private::write_private};
-    if out.contains('/') || out.starts_with('.') || !out.ends_with(".jsonl") {
-        return Err(Error::Invalid(
-            "the file name must be a plain name ending .jsonl".into(),
-        ));
-    }
+) -> Result<persona_builder_ingest::mine::Split> {
+    use persona_builder_ingest::mine;
     let split = match cutoff {
         Some(cutoff) => mine::Split::Cutoff(cutoff),
         None => {
@@ -182,14 +203,34 @@ fn mine(
             mine::Split::Holdout(holdout)
         }
     };
-    let home = home()?;
+    Ok(split)
+}
+fn checked_member(
+    member_dir: &std::path::Path,
+    home: &std::path::Path,
+) -> Result<persona_builder::member::Member> {
     let member = read_member(&member_dir.join("member.json"))?;
-    persona_builder::member::private_state_dir(&member, &home).ok_or_else(|| {
+    persona_builder::member::private_state_dir(&member, home).ok_or_else(|| {
         Error::Invalid(format!(
             "Persona Builder keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says {}: change it to ~/.claude/state/<slug> and try again",
             member.state_dir
         ))
     })?;
+    Ok(member)
+}
+fn mine(
+    member_dir: PathBuf,
+    projects: Option<PathBuf>,
+    out: String,
+    holdout: Option<String>,
+    cutoff: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
+    use persona_builder_ingest::{filters::Filters, mine, private::write_private};
+    persona_builder_ingest::private::validate_name(&out)?;
+    let split = split_choice(holdout, cutoff)?;
+    let home = home()?;
+    let member = checked_member(&member_dir, &home)?;
     let projects = projects_path(projects, &home)?;
     let filters = Filters::compile(&member.filters)?;
     let mined = mine::mine(&member, &filters, &projects, &home, &split)?;
@@ -205,6 +246,154 @@ fn mine(
         println!(
             "{}saved to ~/.claude/state/{}/{out}",
             mine::summary(&mined),
+            member.slug
+        );
+    }
+    Ok(())
+}
+fn merge(
+    member_dir: PathBuf,
+    mut inputs: Vec<(String, persona_builder_ingest::corpus::Mode)>,
+    out: String,
+    holdout: Option<String>,
+    cutoff: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
+    use persona_builder_ingest::{
+        corpus::{self, Input, Mode},
+        filters::Filters,
+        mine::to_jsonl,
+        private::{read_private, validate_name, write_private},
+    };
+    validate_name(&out)?;
+    for (name, _) in &inputs {
+        validate_name(name)?;
+    }
+    let split = split_choice(holdout, cutoff)?;
+    let home = home()?;
+    let member = checked_member(&member_dir, &home)?;
+    let filters = Filters::compile(&member.filters)?;
+    if inputs.is_empty() {
+        let folder = persona_builder::member::private_state_dir(&member, &home)
+            .expect("checked state folder");
+        let names = match std::fs::read_dir(&folder) {
+            Ok(entries) => entries
+                .map(|entry| entry.map(|e| e.file_name().into_string().ok()))
+                .collect::<std::io::Result<Vec<_>>>()
+                .map_err(|source| Error::Io {
+                    path: folder.clone(),
+                    source,
+                })?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
+            Err(source) => {
+                return Err(Error::Io {
+                    path: folder,
+                    source,
+                });
+            }
+        };
+        inputs = corpus::discover(&names, &out);
+        if inputs.is_empty() {
+            return Err(Error::Invalid(format!(
+                "nothing to merge yet: ~/.claude/state/{} has no decisions-*.jsonl",
+                member.slug
+            )));
+        }
+    }
+    if inputs.iter().any(|(name, _)| name == &out) {
+        return Err(Error::Invalid(
+            "the output can't also be one of the inputs".into(),
+        ));
+    }
+    let bytes = inputs
+        .iter()
+        .map(|(name, _)| read_private(&home, &member.slug, name))
+        .collect::<Result<Vec<_>>>()?;
+    let borrowed: Vec<_> = inputs
+        .iter()
+        .zip(&bytes)
+        .map(|((name, mode), bytes)| Input {
+            name,
+            mode: *mode,
+            bytes,
+        })
+        .collect();
+    let merged = corpus::merge(&filters, &borrowed, &split)?;
+    if !dry_run {
+        write_private(
+            &home,
+            &member.slug,
+            &out,
+            to_jsonl(&merged.records).as_bytes(),
+        )?;
+    }
+    let names: Vec<_> = inputs
+        .iter()
+        .map(|(name, mode)| match mode {
+            Mode::History => name.clone(),
+            Mode::Train => format!("{name} (always training)"),
+            Mode::Round => format!("{name} (keeps its split)"),
+        })
+        .collect();
+    println!("merging: {}", names.join(", "));
+    print!("{}", corpus::merge_summary(&merged));
+    if dry_run {
+        println!("dry run: nothing written");
+    } else {
+        println!("saved to ~/.claude/state/{}/{out}", member.slug);
+    }
+    Ok(())
+}
+fn split_corpus(
+    member_dir: PathBuf,
+    corpus: String,
+    questions: String,
+    answers: String,
+    dry_run: bool,
+) -> Result<()> {
+    use persona_builder_ingest::{
+        corpus as corpus_ops,
+        mine::to_jsonl,
+        private::{read_private, validate_name, write_private},
+    };
+    for name in [&corpus, &questions, &answers] {
+        validate_name(name)?;
+    }
+    if corpus == questions || corpus == answers || questions == answers {
+        return Err(Error::Invalid(
+            "--corpus, --questions and --answers must be three different files".into(),
+        ));
+    }
+    let home = home()?;
+    let member = checked_member(&member_dir, &home)?;
+    let held = corpus_ops::split(
+        &member,
+        &corpus,
+        &read_private(&home, &member.slug, &corpus)?,
+    )?;
+    if !dry_run {
+        write_private(
+            &home,
+            &member.slug,
+            &questions,
+            to_jsonl(&held.questions).as_bytes(),
+        )?;
+        write_private(
+            &home,
+            &member.slug,
+            &answers,
+            to_jsonl(&held.answers).as_bytes(),
+        )?;
+    }
+    print!("{}", corpus_ops::split_summary(&held));
+    if dry_run {
+        println!("dry run: nothing written");
+    } else {
+        println!(
+            "saved to ~/.claude/state/{}/{questions} and {answers}",
             member.slug
         );
     }
@@ -492,6 +681,32 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             });
         }
         Some(Command::Forget { member_dir, yes }) => forget(member_dir, yes),
+        Some(Command::Merge {
+            member_dir,
+            inputs,
+            train,
+            rounds,
+            out,
+            holdout,
+            cutoff,
+            dry_run,
+        }) => {
+            use persona_builder_ingest::corpus::Mode;
+            let inputs = inputs
+                .into_iter()
+                .map(|n| (n, Mode::History))
+                .chain(train.into_iter().map(|n| (n, Mode::Train)))
+                .chain(rounds.into_iter().map(|n| (n, Mode::Round)))
+                .collect();
+            merge(member_dir, inputs, out, holdout, cutoff, dry_run)
+        }
+        Some(Command::Split {
+            member_dir,
+            corpus,
+            questions,
+            answers,
+            dry_run,
+        }) => split_corpus(member_dir, corpus, questions, answers, dry_run),
         Some(Command::Mine {
             member_dir,
             projects,
