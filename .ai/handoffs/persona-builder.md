@@ -42,7 +42,13 @@ One record per slice, newest first. Paraphrase only; no real person.
   the file is still 0600. A project folder swapped for a link between listing and reading is not
   caught (same user only). The summary prints timestamp text from the transcripts.
 - **Gates:** `/security-review` (a sub-agent): no findings; its three notes below the bar are in
-  Known limits. The Verifier (Fable): her first pass on `1d35cf0` ran out of run time before reporting; owed before the land.
+  Known limits. The Verifier (Fable): her first pass on `1d35cf0` ran out of run time before reporting;
+  her second pass, on `a306628`, passed with no must-fix or should-fix findings. She proved the `unsafe`
+  file code, the dry run writing nothing, the state folder check, error text, live parity and the
+  Python tie-break test, and found no real person in the diff. Her four notes: the parity tests skip
+  without Python unless `PERSONA_BUILDER_REQUIRE_PARITY=1` (`ci-local.sh` sets it); an existing
+  folder keeps its mode (Known limits); no folder fsync after the rename (durability only); a slug
+  may hold a line break, and still stays inside the state folder.
 - **Not verified:** a run on a real Claude Code history (the attended walk in PB8 covers it).
 
 ## PB2.1: the privacy filters and the privacy check, in Rust (2026-10-24, lane: V1)
