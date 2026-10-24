@@ -39,8 +39,7 @@ You will be dispatched once per part; do only the part your dispatch names, then
 - claude.ai help, "How can I create and manage projects?"
   (<https://support.claude.com/en/articles/9519177>): "+ New Project", "Set project instructions",
   and the "+" button to add files to the project's knowledge.
-- Flightdeck's managed block (same author, MIT): `cli/src/adapters/block.rs` in
-  `ziazon/flightdeck`. Part A ports its rules, quoted in A1, so you do not need that repo.
+- The managed-block rules in A1 follow an earlier tool by the same author; A1 quotes them in full.
 
 ## Rules
 
@@ -75,8 +74,7 @@ You will be dispatched once per part; do only the part your dispatch names, then
 
 ### A1. `builder/core/src/block.rs`: a managed block in a file the user owns
 
-A port of Flightdeck's `block.rs` with the marker `<!-- persona-builder:` in place of
-`<!-- flightdeck:`. Pure text in, text out:
+The marker is `<!-- persona-builder:`. Pure text in, text out:
 
 - `pub fn upsert(text: &str, id: &str, body: &str) -> Result<String>` and
   `pub fn remove(text: &str, id: &str) -> Result<String>` (errors are `Error::Invalid`), plus
@@ -448,3 +446,48 @@ were restored (back up with `cp`, restore with `cp`, confirm with `cmp`; never `
 or `git stash`); `bash scripts/ci-local.sh` passes with all Rust steps run. Report: the files
 changed, each red you saw (test name and failing assertion), each mutation's red, and the
 `ci-local.sh` tail. Do not commit; leave the changes in the worktree.
+
+## Review fixes (after the security review and the Verifier)
+
+Each fix test-first: write the test, see it red on its assertion, then fix.
+
+1. **A name that could forge an import.** A member folder may come from someone else, and
+   `RULES.md` is imported into every Claude Code session, so a name holding a line break and
+   `@~/…` would import any file. Add `pub(crate) fn check_name(what: &str, value: &str) ->
+   Result<()>` in `crew.rs`: 1 to 64 characters, no leading or trailing space, no control
+   character (`char::is_control`, which covers line breaks and tabs), and none of
+   `@ < > { } [ ] ( ) # \` and the backtick. Otherwise
+   `Invalid("the <what> {value:?} can't be used: a name is one line of up to 64 characters without @ < > { } [ ] ( ) # \\ or backticks")`.
+   `turn_on` and `pack` check `member.name` (`what` = `name`) and `member.principal`
+   (`principal`) before writing anything. Tests: names with `\n@~/.ssh/x`, `@x`, a backtick,
+   `{{SLUG}}`, a tab, and 65 characters are each refused by `on` and by `pack` with nothing written;
+   `Mo Lee`, `Zoë` and `Sam O'Neil` are accepted.
+2. **A skill that runs commands.** Before installing, check the member's `SKILL.md`: it starts
+   with a `---` line and has a closing `---` line; between them a line `name: <slug>` exactly;
+   no line there starting `hooks:` or `allowed-tools:`; and no `` !` `` anywhere in the file.
+   Messages (`<path>` is the member's `SKILL.md`):
+   `Invalid("<path> has no front matter (the lines between ---)")`,
+   `Invalid("<path> must be named <slug> (a line name: <slug>)")`,
+   `Invalid("<path> asks for <hooks|allowed-tools>, which can run commands without asking. Persona Builder turns on only a skill without them")`,
+   `Invalid("<path> runs a shell command (!`). Persona Builder turns on only a skill without one")`.
+   The template's `SKILL.md` passes. Tests: one per refusal, nothing written.
+3. **A symlinked `skills/` folder** (Verifier must-fix). In `install_record::check_path`, skip
+   both the symlink refusal and the canonical-prefix test for the ancestor
+   `<claude_home>/skills` (`continue`); every other ancestor keeps both checks. Test: with
+   `<claude_home>/skills` a symlink to a folder outside `claude_home`, `on` then `off` works, the
+   skill lands in the target folder and is removed again, and the link stays.
+4. **Refresh after the user changed an installed file.** When turning the same assistant on again
+   and the inner turn-off leaves anything, stop (rolling back) with
+   `Invalid("<path> changed after <Name> was turned on. Move it away, then turn <Name> on again")`
+   for the first item left. Test: edit the installed `SKILL.md`, turn on again, get this message,
+   and find the disk as before.
+5. **A record naming files it never adds.** `install_record::read` refuses an `added` path equal
+   to `<claude_home>/CLAUDE.md` or to the record itself. Test: a record listing `CLAUDE.md` with its
+   exact text is refused by `off`, and `CLAUDE.md` stays.
+6. Rename `failed_install_rolls_back_every_created_path` to
+   `persona_builder_file_is_refused_before_any_write`; it tests an early refusal, and the late
+   rollback tests already cover rollback.
+
+Not fixed, and recorded as known limits: `off` refuses (rather than reporting) when the user
+replaced a recorded folder with a symlink; a dangling-symlink `CLAUDE.md` and `pack --out` under a
+missing parent give the system's own error.
