@@ -78,3 +78,9 @@ pub fn chose_existing(shown: &str) -> String {
 pub fn chose_github(full: &str) -> String {
     format!("Your assistant will be saved to {full} on GitHub, a private repo.")
 }
+
+pub fn branch_in_use(branch: &str) -> String {
+    format!(
+        "The branch {branch} is open in your repo right now, so Persona Builder didn't save. Switch to another branch, then try again."
+    )
+}

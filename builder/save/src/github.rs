@@ -169,7 +169,7 @@ impl<'a> Github<'a> {
                 ("scope", SCOPE.into()),
             ],
         )?;
-        let body = sign_in_body(&response)?;
+        let body = sign_in_body(&response, &[200])?;
         let device_code = body["device_code"]
             .as_str()
             .filter(|s| (1..=256).contains(&s.chars().count()) && !s.chars().any(char::is_control))
@@ -221,7 +221,7 @@ impl<'a> Github<'a> {
                     ),
                 ],
             )?;
-            let body = sign_in_body(&response)?;
+            let body = sign_in_body(&response, &[200, 400])?;
             if let Some(token) = body.get("access_token") {
                 let token = token
                     .as_str()
@@ -424,8 +424,8 @@ fn unreachable() -> Error {
 fn unexpected() -> Error {
     Error::Invalid(text::sign_in_failed("unexpected reply"))
 }
-fn sign_in_body(response: &HttpResponse) -> Result<Value> {
-    if response.status != 200 {
+fn sign_in_body(response: &HttpResponse, statuses: &[u16]) -> Result<Value> {
+    if !statuses.contains(&response.status) {
         return Err(unexpected());
     }
     let body: Value = serde_json::from_slice(&response.body).map_err(|_| unexpected())?;

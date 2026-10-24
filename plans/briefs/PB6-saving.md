@@ -200,7 +200,7 @@ impl<'a> Github<'a> {
   total would pass `expires_in`, stop with `SIGN_IN_EXPIRED` without polling again. Poll
   `POST <login>/login/oauth/access_token`, form `client_id`, `device_code`,
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`. A reply with string `access_token`:
-  it must be 1–255 bytes of `A-Za-z0-9._~:+/=-` (else `sign_in_failed("unexpected reply")`) → return
+  it must be 1–255 bytes of `A-Za-z0-9._~:+/=_-` (letters, digits and `. _ ~ : + / = -`) (else `sign_in_failed("unexpected reply")`) → return
   it as a `Secret`. A reply with string `error`: `authorization_pending` → poll again;
   `slow_down` → interval = the reply's `interval` if it is larger than the current one plus 5, else
   current + 5; `expired_token` → `SIGN_IN_EXPIRED`; `access_denied` → `SIGN_IN_CANCELLED`; any other
@@ -284,7 +284,7 @@ impl Keychain {
     pub fn github() -> Self;                               // service "persona-builder.github"
     pub fn with_service(service: &str) -> Result<Self>;    // 1–64 of a-z 0-9 . -
 }
-pub fn storable(token: &Secret) -> bool;                    // 1–1024 bytes of A-Za-z0-9._~:+/=-
+pub fn storable(token: &Secret) -> bool;                    // 1–1024 bytes of A-Za-z0-9._~:+/=_-
 pub fn store_line(service: &str, token: &Secret) -> Result<Secret>;
 pub struct MemoryStore { /* Mutex<Option<String>> */ }      // for tests and previews
 impl MemoryStore { pub fn new() -> Self }                   // and Default

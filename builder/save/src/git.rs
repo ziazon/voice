@@ -280,6 +280,19 @@ pub fn commit_folder(
     {
         return Err(Error::Invalid("bad branch or folder".into()));
     }
+    let reference = format!("refs/heads/{branch}");
+    let worktrees = checked(
+        git.repo_command(env, git_dir, "worktree")
+            .args(["list", "--porcelain"]),
+        "worktree",
+        None,
+    )?;
+    if worktrees
+        .lines()
+        .any(|line| line.strip_prefix("branch ") == Some(reference.as_str()))
+    {
+        return Err(Error::Invalid(text::branch_in_use(branch)));
+    }
     let mut files = Vec::new();
     list(folder, folder, &mut files)?;
     files.sort();
@@ -294,7 +307,6 @@ pub fn commit_folder(
             input,
         )
     };
-    let reference = format!("refs/heads/{branch}");
     let parent_output = output(
         git.repo_command(env, git_dir, "rev-parse").args([
             "--verify",

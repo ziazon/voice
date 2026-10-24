@@ -60,6 +60,11 @@ impl MemberPaths {
             Some(relative) => home.join(relative),
             None => PathBuf::from(&member.state_dir),
         };
+        if !state_dir.is_absolute() {
+            return Err(Error::Invalid(
+                "member config: state_dir must start with ~/ or /".into(),
+            ));
+        }
         Ok(Self {
             member,
             dir,

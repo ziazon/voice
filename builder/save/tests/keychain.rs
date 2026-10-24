@@ -16,6 +16,7 @@ fn storable_accepts_alphabet_and_length_boundaries() {
     for value in [
         "a".to_owned(),
         "AZaz09._~:+/=-".to_owned(),
+        "gho_0123456789abcdefghijklmnopqrstuvwxyz".into(),
         "a".repeat(1024),
     ] {
         assert!(storable(&Secret::new(value)));

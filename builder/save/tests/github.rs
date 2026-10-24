@@ -297,7 +297,12 @@ fn finish_refuses_malformed_tokens() {
 }
 #[test]
 fn finish_accepts_token_alphabet_and_boundaries() {
-    for value in ["a".to_owned(), "AZaz09._~:+/=-".into(), "a".repeat(255)] {
+    for value in [
+        "a".to_owned(),
+        "AZaz09._~:+/=-".into(),
+        "gho_0123456789abcdefghijklmnopqrstuvwxyz".into(),
+        "a".repeat(255),
+    ] {
         finish(
             vec![reply(200, json!({"access_token":value}))],
             900,

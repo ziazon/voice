@@ -18,8 +18,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   "filesystem only" rule stays true. Sign-in is an OAuth app's device flow with the `repo` scope,
   the only scope that can make a private repo; the client ID is unset until V-Q1 is answered, and
   sign-in says it is not set up. A save to a person's own repo goes to a `persona/<slug>` branch
-  built from a scratch index, as the guided build's step 14 does today, so their branch, index and
-  work tree never change. The GitHub backup is a bare repo in the state folder, pushed with the
+  of its own (the guided build's step 14 also saves to a branch, `crew/<slug>`), built from a
+  scratch index, so their index and work tree never change; if that branch is checked out
+  anywhere, the save is refused rather than moving it. The GitHub backup is a bare repo in the state folder, pushed with the
   token as an environment header scoped to `https://github.com/`, the person's git config off.
   Every push address must read back private from GitHub's API before every push; any other host
   is refused, since nothing else can be confirmed. The privacy check is a seam: the CLI's `push`
@@ -54,12 +55,26 @@ One record per slice, newest first. Paraphrase only; no real person.
   run as a `#!` interpreter, so the git wrapper now resolves the real interpreter; APFS refuses
   non-UTF-8 file names, so that case is skipped where the filesystem refuses it; one test deleted
   the folder holding its own record. Codex stopped on that one rather than bend the code.
+- **Gates:** `/security-review` (run as a sub-agent): no high-confidence findings; two low notes
+  kept below. The Verifier (Fable) failed the first pass on one must-fix, that the token alphabet had
+  no `_` and so would refuse real `gho_…` tokens. That was a misread: the alphabet's literal is
+  `._~:+/=-`, whose second character is `_`. Realistic `gho_` fixtures now pin it. Her
+  should-fixes, all fixed test-first:
+  a save moved the person's `persona/<slug>` branch when it was checked out (now refused); a poll
+  reply with status 400, as RFC 8628 sends, was treated as unexpected; a relative `state_dir` was
+  accepted.
 - **Known limits:** an existing state folder keeps its mode (only one Persona Builder creates gets
-  0700). A file swapped for a link between listing and hashing would be read through the link
+  0700), and `backup.git` takes the umask's modes inside it. The folder is committed whole except
+  `private.json` and `.DS_Store`: `.gitignore` is not read, so PB2's privacy check must cover any
+  other file kept there. Copies of the token outside `Secret` (form fields, the git header, the
+  child's environment, visible to the same user while git runs) are not zeroed. The Keychain item
+  can be read by any process of the same user through `/usr/bin/security`. A lost `backup.git` on
+  a second Mac makes the next push a non-fast-forward, refused, with no recovery yet; a git failure
+  after GitHub made the repo leaves the repo, so a retry under the same name is refused. A file swapped for a link between listing and hashing would be read through the link
   (same-user only). The person's own `pre-push` hook runs on a save to their repo, with Persona
   Builder's cleared environment. A non-GitHub remote cannot be used at all.
 - **Not verified:** a real sign-in, repo creation and push (they need V-Q1's client ID and PB2's
-  privacy check: PB6.1, card `51dkJ0YE`, with Zia); Linux (the Keychain is macOS only).
+  privacy check: PB6.1, card `51dkJ0YE`, an attended walk); Linux (the Keychain is macOS only).
 
 ## PB1: the member format in Rust, the neutral base, one field pack (2026-10-24, lane: V1)
 
