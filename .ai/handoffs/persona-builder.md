@@ -58,6 +58,18 @@ One record per slice, newest first. Paraphrase only; no real person.
   path, and the entry cap's limit is stated above.
 - **Not verified:** a real claude.ai export, and a multi-gigabyte one (the attended walk in PB8
   covers a real export).
+- **Skills Review (PB2 complete: PB2.1 to PB2.4 landed):**
+  - ✅ tdd-skill: each test file red first; 24 mutations, each caught.
+  - ✅ security-and-hardening: zip caps, links and pipes refused, errors that name places only;
+    both review findings fixed.
+  - ✅ source-driven-development: the `zip` crate's source, RustSec and Python 3.12's own behaviour
+    were read or measured before each decision. The first draft assumed `zip` refuses repeated
+    names; the source showed it merges them.
+  - ⚠️ plain-language: the messages Persona Builder writes are plain, but the `zip` crate's own
+    error text still reaches the person inside "can't be read (…)".
+  - ⚠️ codex division: Codex was at a hard limit, so Claude built PB2.3 directly, as the rule allows.
+  - ✅ project-config: `scripts/ci-local.sh` with parity required, run with at most 2 test workers
+    while the machine was loaded.
 
 ## PB2.4: merge and split the corpus, in Rust (2026-10-24, lane: V1)
 
