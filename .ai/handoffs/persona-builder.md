@@ -2,6 +2,44 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB2.4: merge and split the corpus, in Rust (2026-10-24, lane: V1)
+
+- **What:** `persona_builder_ingest` gains `corpus` (`merge`, `split`, `read_records`, `discover`),
+  ported from `crew_decisions.py`'s `cmd_merge`, `cmd_split` and `read_jsonl`: the same records in the
+  same order, the same JSONL bytes, the same printed lines. `private.rs` gains `read_private`, which
+  reads a corpus file through the same `O_NOFOLLOW` folder walk as `write_private` and creates
+  nothing. The CLI gains `persona-builder merge <member_dir>` (named inputs, or the state folder's
+  `decisions-*.jsonl` sorted into history, interview and rounds as `install.sh` does) and
+  `persona-builder split <member_dir>`, both with `--dry-run`. Every file is a plain name in
+  `~/.claude/state/<slug>/`. The Python's `read_jsonl` now splits at `\n` only: with `splitlines` a
+  record holding U+2028 or U+0085 (which `json.dumps` writes raw) failed to read. Brief:
+  `plans/briefs/PB2.4-merge-and-split.md`.
+- **Who wrote it:** Codex, from the brief and one fix round; Claude wrote the brief and this record
+  and reviewed every line.
+- **Decisions made at pickup:** the Python's order of checks is kept, so an error lands where the
+  Python's would. Python reads in text mode, which turns `\r\n` and a lone `\r` into `\n`; Rust does
+  the same (Codex found this one and stopped, as the brief asked). Three differences are deliberate,
+  each with its own test: only whole numbers are copied (Python and serde_json write floats
+  differently; `-0` is refused); JSON serde_json refuses (`NaN`, a lone surrogate, deep nesting) is
+  an error; an `id`, `timestamp` or `kind` that is not a string is refused. On any error Rust writes
+  nothing (the Python's `split` can leave a questions file behind).
+- **Dependency intake:** none.
+- **Verified:** every new test file went red on its assertion first. Parity runs the real Python on
+  11 invented cases (two machines, the interview, rounds, filters tightened since mining, ties, Unicode
+  line separators, odd key orders and duplicate keys, CRLF and bare CR) with both test members and 6
+  split settings, then runs the Python `split` on each result, comparing every file's bytes and the
+  printed lines. Four mutations, each restored and checked with `cmp`, each failing a test: no bare-CR
+  translation, `read_private` following a file link, interview and round records moving the cutoff,
+  no duplicate check. `bash scripts/ci-local.sh` passed (151 Python tests, 330 Rust tests).
+- **Known limits:** `split` writes its two files one after the other, so a failure between them can
+  leave a new questions file beside an old answers file. Discovery skips file names that aren't
+  UTF-8. Reading follows the same walk as writing, so a link anywhere under the home folder is
+  refused.
+- **Gates:** `/security-review` (a sub-agent): no findings; its two notes (fields the filters don't
+  read, and `split` not re-filtering) match the Python, and the files stay in the state folder.
+  The Verifier (Fable): pending.
+- **Not verified:** a merge of real corpora (the attended walk in PB8 covers it).
+
 ## PB2.2: mine Claude Code transcripts, in Rust (2026-10-24, lane: V1)
 
 - **What:** `persona_builder_ingest` gains `mine` and `folders`, ported from `crew_decisions.py`'s
