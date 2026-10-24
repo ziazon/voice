@@ -33,13 +33,23 @@ One record per slice, newest first. Paraphrase only; no real person.
   dropped, a missing record key, `save push` using the save's file list (an untracked, ignored file
   with a hit is still refused), and `folder_files` skipping `private.json`. Two missed at first and
   got the last two parity cases. `bash scripts/ci-local.sh` passed.
-- **Known limits:** `\b`, `\w` and case folding follow Unicode in both engines but are not proven
-  identical beyond the template's patterns and the tested text. Python's `$` also matches before a
+- **Known limits:** the two engines differ on some Unicode text, proven by the Verifier: Rust's `\w`
+  and `\b` count combining marks as word characters and Python's do not, so a number or word followed
+  by a combining accent in decomposed text (`1234567` then U+0301, `hoa` then U+0301) is a hit in
+  Python and not in Rust; Python's `\s` matches U+001C to U+001F and Rust's does not; an email whose
+  first letter carries a combining accent is a hit in Rust only. Not fixed in this slice. The save
+  lists the folder twice, once for the check and once for the commit, and `hash-object` reads the
+  files again, so a file written between them by the same user is pushed unchecked. File names are
+  not matched against the filters. A `member.json` key that trips a filter is named by its parent,
+  but a child hit's path still holds that key (as in the Python). Python's `$` also matches before a
   final newline; Rust's does not (no template pattern uses `$`). The CLI's check, like the Python,
   lists only tracked files in a clone, so an untracked file there is not checked; `save push` does
   not have that gap. A file swapped for a link inside a listed folder between listing and reading is
   refused at the last step only (`O_NOFOLLOW` covers the file, not its parent folders; same user).
   `core.fsmonitor` is turned off for the two git calls, but that is not tested.
+- **Gates:** `/security-review` (a sub-agent): no high-confidence findings; its three low notes are
+  in Known limits. The Verifier (Fable) passed `2a00fde`; her one should-fix, to record the proven
+  engine differences, is the Known limits text above.
 - **Not verified:** a real `save push` past the check (it needs V-Q1's client ID: PB6.1).
 
 ## PB5: turn it on and off, the claude.ai Project pack, forget (2026-10-24, lane: V2)
