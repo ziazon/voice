@@ -18,6 +18,7 @@ use std::{
 };
 
 const CAP: u64 = 2 * 1024 * 1024 * 1024;
+const MAX_ENTRIES: usize = 100_000;
 const CONVERSATIONS: &str = "conversations.json";
 const MINE_MARKS: [&str; 3] = ["y", "yes", "mine"];
 const OPENING_WORDS: usize = 8;
@@ -134,6 +135,11 @@ fn from_zip(file: File) -> Result<(usize, Vec<u8>)> {
     let unreadable =
         |e: &dyn std::fmt::Display| invalid(format!("the export zip can't be read ({e})"));
     let mut archive = zip::ZipArchive::new(file).map_err(|e| unreadable(&e))?;
+    if archive.len() > MAX_ENTRIES {
+        return Err(invalid(
+            "the export zip holds more than 100,000 files, so Persona Builder won't open it",
+        ));
+    }
     let mut files = 0;
     let mut found = vec![];
     for index in 0..archive.len() {
@@ -213,6 +219,9 @@ pub fn read_export(path: &Path) -> Result<Export> {
         (&mut file).take(4).read_to_end(&mut magic).map_err(io)?;
         file.seek(SeekFrom::Start(0)).map_err(io)?;
         if magic == b"PK\x03\x04" || magic == b"PK\x05\x06" {
+            if metadata.len() > CAP {
+                return Err(invalid("the export zip is bigger than the 2 GB cap"));
+            }
             from_zip(file)?
         } else {
             (1, read_capped(path, file, metadata.len())?)
@@ -252,6 +261,18 @@ fn list(export: &Export) -> Result<&[Value]> {
         .map(Vec::as_slice)
         .ok_or_else(|| invalid("the export's conversations.json isn't a list of conversations"))
 }
+/// Control characters escaped, so a crafted key can't send terminal escapes.
+fn shown(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() {
+                c.escape_unicode().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
 #[derive(Default)]
 struct Entry {
     types: BTreeSet<&'static str>,
@@ -288,7 +309,9 @@ fn key_tree(items: &[&Value], prefix: &str, tree: &mut Tree) {
         entry.types.extend(values.iter().map(|v| type_name(v)));
         entry.count += values.len();
         entry.of += objects.len();
-        if key == "sender" {
+        // Only the message senders' values are shown: a `sender` elsewhere (a tool's input) may
+        // hold a person's name.
+        if path == ".chat_messages[].sender" {
             entry
                 .values
                 .extend(values.iter().filter_map(|v| v.as_str()).map(str::to_owned));
@@ -321,9 +344,14 @@ pub fn inspect(export: &Export) -> Result<Inspection> {
     );
     for (path, e) in &tree.order {
         let types = e.types.iter().copied().collect::<Vec<_>>().join("|");
-        text += &format!("  {path}: {types} ({}/{})", e.count, e.of);
+        text += &format!("  {}: {types} ({}/{})", shown(path), e.count, e.of);
         if !e.values.is_empty() {
-            let values = e.values.iter().cloned().collect::<Vec<_>>().join(", ");
+            let values = e
+                .values
+                .iter()
+                .map(|v| shown(v))
+                .collect::<Vec<_>>()
+                .join(", ");
             text += &format!(" values: {values}");
         }
         text.push('\n');

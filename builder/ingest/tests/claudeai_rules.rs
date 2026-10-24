@@ -820,3 +820,41 @@ fn holdout_is_checked() {
         );
     }
 }
+
+#[test]
+fn inspect_shows_only_message_senders_and_escapes_control_characters() {
+    let value = json!([{"uuid": "c", "name": "t", "created_at": "2026-03-01", "bad\u{1b}[2Jkey": 1,
+        "chat_messages": [{"sender": "human\u{7}", "created_at": "2026-03-01", "text": "x",
+            "content": [{"type": "tool_use", "input": {"sender": SENTINEL}}]}]}]);
+    let text = claudeai::inspect(&export(value)).unwrap().text;
+    assert!(!text.contains(SENTINEL) && !text.contains('\u{1b}') && !text.contains('\u{7}'));
+    assert!(text.contains("  .bad\\u{1b}[2Jkey: int (1/1)\n"), "{text}");
+    assert!(text.contains(" values: human\\u{7}\n"), "{text}");
+    assert!(
+        text.contains("  .chat_messages[].content[].input.sender: str (1/1)\n"),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_zip_itself_is_capped() {
+    let k = Kit::new("claudeai-zip-caps");
+    let big = k.path("big.zip");
+    let file = fs::File::create(&big).unwrap();
+    use std::io::Write;
+    (&file).write_all(b"PK\x03\x04").unwrap();
+    file.set_len(2 * 1024 * 1024 * 1024 + 1).unwrap();
+    assert_eq!(
+        error(claudeai::read_export(&big)),
+        "the export zip is bigger than the 2 GB cap"
+    );
+    let many = k.path("many.zip");
+    let out = Command::new("python3").arg("-I").arg("-c")
+        .arg("import sys,zipfile\nwith zipfile.ZipFile(sys.argv[1],'w') as z:\n for i in range(100001): z.writestr(str(i),'')")
+        .arg(&many).output().unwrap();
+    assert!(out.status.success());
+    assert_eq!(
+        error(claudeai::read_export(&many)),
+        "the export zip holds more than 100,000 files, so Persona Builder won't open it"
+    );
+}

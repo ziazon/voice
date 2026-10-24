@@ -63,12 +63,16 @@ methods it reads; anything else is refused.
      not just the zip. A zip that lists any name twice is refused (Python reads the last one, and
      refuses only a repeated `conversations.json`): the `zip` crate keeps one entry per name, so a
      repeated name would hide an entry and change the file count. A compression method other than
-     stored or deflate, and an encrypted entry, are refused.
+     stored or deflate, and an encrypted entry, are refused. The zip file itself must be at most
+     2 GB and hold at most 100,000 entries (the `zip` crate loads the whole central directory). A
+     zip is recognised by its first four bytes only, so a zip behind a junk prefix (Python finds its
+     end record) is read as JSON and refused.
   5. **Encoding and JSON.** `conversations.json` must be UTF-8; a leading UTF-8 byte-order mark is
      skipped in every form (Python skips it only inside a zip). UTF-16 and UTF-32 (which Python
      detects inside a zip) are refused. `NaN`, `Infinity` and nesting deeper than 128 are refused,
-     as serde_json does. An integer outside the 64-bit range, and `-0`, are reported by `inspect` as
-     `float` (Python says `int`).
+     as serde_json does, and so are a lone surrogate escape (`"\ud800"`) and an exponent that
+     overflows (`1e400`) even in a field nothing reads. An integer outside the 64-bit range, and
+     `-0`, are reported by `inspect` as `float` (Python says `int`).
   6. **The review file must exist** for `mark` and `mine`:
      `there's no review file yet: run persona-builder claudeai titles first`. Python treats a missing
      file as empty (`mark` then writes a header-only file; `mine` mines nothing).
@@ -77,6 +81,16 @@ methods it reads; anything else is refused.
   8. **`--title` patterns** are compiled by the `regex` crate. A pattern it can't compile (a
      look-around, a backreference, `\Z`) is refused:
      `--title is not a valid pattern, or it uses look-around or a backreference, which Persona Builder can't read`.
+     Some patterns compile in both and mean different things: `[[:alpha:]]` is a POSIX class in
+     Rust and a plain set in Python, and so are the set operations `&&`, `--` and `~~` inside a
+     class; `\p{L}` compiles only in Rust. Such patterns are read Rust's way.
+  9. **`--holdout`** must be a finite number from 0 to 1 (`2`, `inf`, `nan`, `" 0.5"` and `0_5` are
+     refused, which Python takes and, with no questions in a claude.ai corpus, ignores), and
+     `--holdout` with `--cutoff` is a usage error, as in `mine` (PB2.2's difference 4).
+  10. **`inspect` shows `sender` values at `.chat_messages[].sender` only** (Python shows them for a
+     `sender` key at any depth, where a tool's input could hold a person's name), and prints any
+     control character in a key or value escaped (`\u{1b}`), so a crafted export can't send
+     terminal escapes. Found by the security review.
 
 ### Reading the export (port of `export_files`)
 
