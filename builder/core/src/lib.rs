@@ -6,11 +6,17 @@
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub mod autonomy;
+pub mod block;
 pub mod crew;
 pub mod error;
 pub mod fields;
+pub mod forget;
+pub mod install;
+mod install_fs;
+mod install_record;
 pub mod json;
 pub mod member;
+pub mod pack;
 
 #[cfg(test)]
 mod test_support;

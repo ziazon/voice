@@ -1,6 +1,10 @@
 use clap::{Parser, Subcommand};
-use persona_builder::error::Error;
-use persona_builder::{error::Result, json::to_python_json, member::read_member};
+use persona_builder::{
+    error::{Error, Result},
+    install::{self, FileState, Places},
+    json::to_python_json,
+    member::read_member,
+};
 use persona_builder_save::{
     flow::{self, Choice, GithubRemotes, MemberPaths, NotBuiltYet, RemoteCheck, Saved, Saver},
     git::Git,
@@ -26,6 +30,34 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Delete a member's private history and build drafts.
+    Forget {
+        member_dir: PathBuf,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Make files for a claude.ai Project.
+    Pack {
+        member_dir: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Turn an assistant on in Claude Code.
+    On {
+        member_dir: PathBuf,
+        #[arg(long)]
+        claude_home: Option<PathBuf>,
+    },
+    /// Turn the assistant off in Claude Code.
+    Off {
+        #[arg(long)]
+        claude_home: Option<PathBuf>,
+    },
+    /// Show the assistant turned on in Claude Code.
+    Status {
+        #[arg(long)]
+        claude_home: Option<PathBuf>,
+    },
     /// Choose where to keep an assistant and save it.
     Save {
         #[command(subcommand)]
@@ -209,8 +241,144 @@ fn save_push(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+fn places(claude_home: Option<PathBuf>) -> Result<Places> {
+    let home = std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| Error::Invalid("HOME is not set".into()))?;
+    let home = PathBuf::from(home);
+    let claude_home = claude_home.unwrap_or_else(|| {
+        std::env::var_os("CLAUDE_CONFIG_DIR")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".claude"))
+    });
+    Ok(Places { home, claude_home })
+}
+fn forget(member_dir: PathBuf, yes: bool) -> Result<()> {
+    let home = places(None)?.home;
+    let member = read_member(&member_dir.join("member.json"))?;
+    let forgotten = persona_builder::forget::forget(&member_dir, &home, yes)?;
+    if !forgotten.existed {
+        println!(
+            "Nothing to forget: {} is not there.",
+            forgotten.path.display()
+        );
+    } else if yes {
+        println!(
+            "Deleted {} files in {}. {}'s own files in {} are untouched.",
+            forgotten.files,
+            forgotten.path.display(),
+            member.name,
+            member_dir.display()
+        );
+    } else {
+        println!(
+            "This deletes {} files in {}: the history {} learned from and the drafts of each build.",
+            forgotten.files,
+            forgotten.path.display(),
+            member.name
+        );
+        println!(
+            "{}'s own files in {} stay.",
+            member.name,
+            member_dir.display()
+        );
+        println!(
+            "To go ahead: persona-builder forget {} --yes",
+            member_dir.display()
+        );
+    }
+    Ok(())
+}
+fn pack(member_dir: PathBuf, out: PathBuf) -> Result<()> {
+    let member = read_member(&member_dir.join("member.json"))?;
+    let paths = persona_builder::pack::pack(&member_dir, &out)?;
+    println!(
+        "Made {}'s claude.ai Project pack in {}:",
+        member.name,
+        out.display()
+    );
+    for path in paths {
+        println!(
+            "  {}",
+            path.file_name().expect("pack file has a name").display()
+        );
+    }
+    println!(
+        "To use it: in claude.ai, make a new Project, paste instructions.md into \"Set project"
+    );
+    println!(
+        "instructions\", and add the other files to the Project's knowledge with the + button."
+    );
+    Ok(())
+}
+fn turn_on(member_dir: PathBuf, claude_home: Option<PathBuf>) -> Result<()> {
+    let on = install::turn_on(&member_dir, &places(claude_home)?)?;
+    println!("{} is on in Claude Code.", on.name);
+    println!("Added the skill /{} in {}.", on.slug, on.skill.display());
+    println!("Added one line to {}:", on.claude_md.display());
+    println!("  {}", on.import_line);
+    println!(
+        "Start a new Claude Code session to use {0}. To turn {0} off: persona-builder off",
+        on.name
+    );
+    Ok(())
+}
+fn turn_off(claude_home: Option<PathBuf>) -> Result<()> {
+    let off = install::turn_off(&places(claude_home)?)?;
+    match off.name {
+        None => println!("No assistant is on in Claude Code."),
+        Some(name) if off.left.is_empty() => {
+            println!("{name} is off. Everything Persona Builder added is removed.")
+        }
+        Some(name) => {
+            println!("{name} is off. These were left in place:");
+            for left in off.left {
+                println!("  {}: {}", left.path.display(), left.why);
+            }
+        }
+    }
+    Ok(())
+}
+fn status(claude_home: Option<PathBuf>) -> Result<()> {
+    match install::status(&places(claude_home)?)? {
+        None => println!("No assistant is on in Claude Code."),
+        Some(status) => {
+            println!("{} is on in Claude Code.", status.name);
+            println!(
+                "The line in CLAUDE.md: {}",
+                if status.line { "there" } else { "missing" }
+            );
+            for (path, state) in status.files {
+                let state = match state {
+                    FileState::Present => "there",
+                    FileState::Changed => "changed",
+                    FileState::Missing => "missing",
+                };
+                println!("{}: {state}", path.display());
+            }
+            if status.out_of_date {
+                println!(
+                    "{} has changed since it was turned on. To update it: persona-builder on {}",
+                    status.name,
+                    status.member_dir.display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Some(Command::Forget { member_dir, yes }) => forget(member_dir, yes),
+        Some(Command::Pack { member_dir, out }) => pack(member_dir, out),
+        Some(Command::On {
+            member_dir,
+            claude_home,
+        }) => turn_on(member_dir, claude_home),
+        Some(Command::Off { claude_home }) => turn_off(claude_home),
+        Some(Command::Status { claude_home }) => status(claude_home),
         Some(Command::Member {
             command: MemberCommand::Show { path },
         }) => {
