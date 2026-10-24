@@ -20,7 +20,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   member file, so moving the repo does not break it. `--claude-home` defaults to
   `$CLAUDE_CONFIG_DIR`, else `~/.claude`. Sources (Claude Code memory and skills docs, the claude.ai
   Projects help page) are cited in the brief.
-- **Who wrote it:** Codex, from the brief, in three parts plus two fix rounds; Claude reviewed it.
+- **Who wrote it:** Codex, from the brief, in three parts plus four fix rounds; Claude reviewed it.
   No new dependency.
 - **Verified:** every test went red on its assertion first; mutations on the line break before an
   appended block, the changed-file comparison, the record's containment check, the dropped `Where`
@@ -36,9 +36,18 @@ One record per slice, newest first. Paraphrase only; no real person.
   `skills/` folder was refused (fixed), plus nits: a refresh's message after a user edit (fixed), a
   record listing `CLAUDE.md` (refused now), and a test named for rollback that tested an early
   refusal (renamed). A delta Verifier pass confirmed those six fixes and found three more
-  (brief items 7 to 9: a `skills` link back to the Claude Code folder, front-matter keys by
-  allowlist, one message); **open as of this record**.
-- **Known limits:** `off` refuses rather than reports when the user replaced a recorded folder with
+  (brief items 7 to 9), fixed in `a6006a5`: a `skills` link that points back into the Claude Code
+  folder is refused, front-matter keys are checked against an allowlist, and a refresh names why a
+  file was left. A second security review and Verifier on that commit both found that a lone
+  carriage return hid a second key from the allowlist (YAML breaks a line there, Rust's line split
+  does not; Claude Code parses front matter with Bun's YAML parser, read from its binary). Fixed in
+  `ff82b8f` (items 10 to 12): a `SKILL.md` holding a lone carriage return, a Unicode line break or
+  another control character is refused, so is a tab-indented front-matter line, and the overlap
+  refusal has its own message. A third Verifier pass on `ff82b8f`: PASS, no findings in the diff.
+  Every fix in both rounds was red first, and a mutation of each turned its test red.
+- **Known limits:** `on` with `skills` linked back into the Claude Code folder creates
+  `skills/<slug>/` through the link before it is refused, then removes it again (the disk ends as
+  it began); `off` refuses rather than reports when the user replaced a recorded folder with
   a symlink; a dangling-symlink `CLAUDE.md` and `pack --out` under a missing folder give the
   system's own error. The installed skill still calls the Python `similar` and `record` commands;
   a later slice moves it to `persona-builder`.
