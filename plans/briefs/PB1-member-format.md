@@ -118,7 +118,8 @@ pub struct Codebook { categories, domains, escalates, signals: Vec<String>,
   PRONOUNS, PRINCIPAL, PRINCIPAL_SLUG, PRINCIPAL_PRONOUNS, REPO, DATE` (as `{{KEY}}`); for
   `member.json`, parse the template's, fill every string value and every object key the same way
   (recursively, lists included), and write it with `to_python_json`. Return the filled `Member`.
-  Files are written with the default mode; folders are created with `create_dir_all`.
+  Files are written with the default mode. The target's parents are created with `create_dir_all`, and the
+  target and each folder inside it with `create_dir`, so a failed fill removes only what it made.
 - `pub struct MemberDir { pub dir: PathBuf, pub member: Member, pub has_lens: bool }` and
   `MemberDir::open(dir: &Path) -> Result<MemberDir>`: `read_member(dir/member.json)`, then require
   `IDENTITY.md, SKILL.md, autonomy.md, decisions.md` (`Invalid("<dir>: missing <file>")`, the first
