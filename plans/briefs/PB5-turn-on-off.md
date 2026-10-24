@@ -491,3 +491,27 @@ Each fix test-first: write the test, see it red on its assertion, then fix.
 Not fixed, and recorded as known limits: `off` refuses (rather than reporting) when the user
 replaced a recorded folder with a symlink; a dangling-symlink `CLAUDE.md` and `pack --out` under a
 missing parent give the system's own error.
+
+## Delta review fixes (after the second Verifier pass)
+
+Each test-first, as above.
+
+7. **A `skills` link that points back at the Claude Code folder** (must-fix). With
+   `<claude_home>/skills` a symlink to `claude_home` (or to any folder that contains it), a
+   hand-edited record listing `<claude_home>/skills/CLAUDE.md` passes `read` and `off` deletes
+   `CLAUDE.md`. In `install_record::check_path`, after canonicalizing `skills`, refuse when
+   `claude_home.starts_with(&canonical_root)` (the link resolves to `claude_home` or an ancestor
+   of it), with the same `invalid()` message. Test: exactly that setup; `off` is refused and
+   `CLAUDE.md` stays.
+8. **Front-matter keys, by allowlist** (should-fix). The line-prefix test lets `hooks : …`,
+   `"hooks": …`, `'hooks': …`, `? hooks` and merge keys through. Instead, for each front-matter
+   line that does not start with a space or tab: refuse a line starting with `?`, `<<`, `&` or
+   `*`; take the text before the first `:`, trim it and strip one pair of surrounding `"` or `'`;
+   refuse any key outside `name, description, argument-hint, user-invocable,
+   disable-model-invocation, model, context, agent, paths` with
+   `Invalid("<path> asks for <key>, which Persona Builder does not turn on. Remove it, then turn <Name> on again")`,
+   keeping the existing message for `hooks` and `allowed-tools` in every spelling. Tests: each
+   spelling above is refused; the template's `SKILL.md` passes.
+9. Fix 4's message uses the item's own reason: `"<path> <why>. Move it away, then turn <Name> on again"`
+   is wrong for "it still holds other files"; say
+   `"<path> was left in place (<why>). Move it away, then turn <Name> on again"` for every item.
