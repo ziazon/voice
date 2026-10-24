@@ -663,7 +663,7 @@ fn refresh_refuses_user_changes_and_restores_the_install() {
         assert_eq!(
             result.unwrap_err().to_string(),
             format!(
-                "{} changed after Ari was turned on. Move it away, then turn Ari on again",
+                "{} was left in place (you changed it after it was turned on). Move it away, then turn Ari on again",
                 path.display()
             )
         );
@@ -702,4 +702,103 @@ fn record_cannot_claim_claude_file_or_itself() {
             assert_eq!(tree(&f.places.claude_home), before);
         }
     }
+}
+
+#[test]
+fn record_through_overlapping_skills_link_is_refused() {
+    for target_relative in ["", "persona-builder", ".."] {
+        let f = Fixture::new();
+        f.on();
+        fs::remove_file(f.path("skills/ari/SKILL.md")).unwrap();
+        fs::remove_dir(f.path("skills/ari")).unwrap();
+        fs::remove_dir(f.path("skills")).unwrap();
+        let target = f.path(target_relative).canonicalize().unwrap();
+        symlink(&target, f.path("skills")).unwrap();
+        let file = target.join("CLAUDE.md");
+        fs::write(&file, "keep").unwrap();
+        let claimed = f.path("skills/CLAUDE.md");
+        let record_path = f.path("persona-builder/installed.json");
+        let mut record: serde_json::Value =
+            serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+        record["added"] = serde_json::json!([
+            {"kind": "file", "path": claimed, "text": "keep"}
+        ]);
+        fs::write(&record_path, serde_json::to_string(&record).unwrap()).unwrap();
+        let before = tree(&f.places.home);
+        let result = turn_off(&f.places);
+        assert!(
+            matches!(&result, Err(Error::Invalid(_))),
+            "overlapping skills link was not refused: {result:?}"
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            format!(
+                "{}: {} is outside the Claude Code folder: fix or remove installed.json",
+                record_path.display(),
+                claimed.display()
+            )
+        );
+        assert_eq!(fs::read_to_string(file).unwrap(), "keep");
+        assert_eq!(tree(&f.places.home), before);
+    }
+}
+
+#[test]
+fn skill_front_matter_rejects_disallowed_key_spellings() {
+    for (line, key) in [
+        ("hooks : x", "hooks"),
+        ("\"hooks\": x", "hooks"),
+        ("'hooks': x", "hooks"),
+        ("'allowed-tools': x", "allowed-tools"),
+        ("\"allowed-tools\" : x", "allowed-tools"),
+        ("? hooks", "? hooks"),
+        ("<<: *x", "<<"),
+        ("&a x", "&a x"),
+        ("*a", "*a"),
+        ("shell: x", "shell"),
+        ("shell", "shell"),
+        ("description", "description"),
+    ] {
+        let message = if matches!(key, "hooks" | "allowed-tools") {
+            format!(
+                "asks for {key}, which can run commands without asking. Persona Builder turns on only a skill without them"
+            )
+        } else {
+            format!(
+                "asks for {key}, which Persona Builder does not turn on. Remove it, then turn Ari on again"
+            )
+        };
+        refused_skill(&format!("---\nname: ari\n{line}\n---\n"), &message);
+    }
+}
+
+#[test]
+fn skill_front_matter_accepts_allowed_keys_comments_and_indented_lines() {
+    let f = Fixture::new();
+    fs::write(
+        f.member.join("SKILL.md"),
+        "---\nname: ari\ndescription: >\n  Ari helps with decisions.\n\tMore description.\n\n# comment\nargument-hint: choice\nuser-invocable: true\ndisable-model-invocation: false\nmodel: inherit\ncontext: fork\nagent: general-purpose\npaths: []\n---\n",
+    )
+    .unwrap();
+    f.on();
+    assert!(f.off().left.is_empty());
+}
+
+#[test]
+fn refresh_reports_leftover_folder_reason_and_restores_the_install() {
+    let f = Fixture::new();
+    f.on();
+    let path = f.path("persona-builder/ari");
+    fs::write(path.join("notes.md"), "keep").unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_on(&f.member, &f.places);
+    assert!(matches!(&result, Err(Error::Invalid(_))));
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{} was left in place (it still holds other files). Move it away, then turn Ari on again",
+            path.display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
 }

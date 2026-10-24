@@ -61,6 +61,12 @@ pub(super) fn check_path(path: &Path, claude_home: &Path) -> Result<()> {
         if parent == claude_home.join("skills") {
             if exists(&parent)? {
                 canonical_root = io(&parent, fs::canonicalize(&parent))?;
+                if io(&parent, fs::symlink_metadata(&parent))?.is_symlink()
+                    && (claude_home.starts_with(&canonical_root)
+                        || canonical_root.starts_with(claude_home))
+                {
+                    return Err(invalid());
+                }
             }
             continue;
         }

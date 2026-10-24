@@ -80,7 +80,7 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
     let source = member_dir.join("SKILL.md");
     refuse_symlink(&source)?;
     let skill_text = io(&source, fs::read_to_string(&source))?;
-    check_skill(&source, &skill_text, &member.slug)?;
+    check_skill(&source, &skill_text, &member.slug, &member.name)?;
     let mut journal = Journal::default();
     if let Some(record) = install_record::read(&places.claude_home)? {
         if record.slug != member.slug {
@@ -94,9 +94,9 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
         let turned_off = off(&places, record, &mut journal)?;
         if let Some(left) = turned_off.left.first() {
             return Err(Error::Invalid(format!(
-                "{} changed after {} was turned on. Move it away, then turn {} on again",
+                "{} was left in place ({}). Move it away, then turn {} on again",
                 left.path.display(),
-                member.name,
+                left.why,
                 member.name
             )));
         }
@@ -185,7 +185,7 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
     })
 }
 
-fn check_skill(path: &Path, text: &str, slug: &str) -> Result<()> {
+fn check_skill(path: &Path, text: &str, slug: &str, name: &str) -> Result<()> {
     let lines: Vec<_> = text.lines().collect();
     let end = if lines.first() == Some(&"---") {
         lines
@@ -209,13 +209,43 @@ fn check_skill(path: &Path, text: &str, slug: &str) -> Result<()> {
             path.display()
         )));
     }
-    for key in ["hooks", "allowed-tools"] {
-        if front_matter
-            .iter()
-            .any(|line| line.starts_with(&format!("{key}:")))
-        {
+    for line in front_matter {
+        if line.starts_with([' ', '\t']) || line.trim().is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let key = line.split_once(':').map_or(*line, |(key, _)| key).trim();
+        let key = key
+            .strip_prefix('"')
+            .and_then(|key| key.strip_suffix('"'))
+            .or_else(|| {
+                key.strip_prefix('\'')
+                    .and_then(|key| key.strip_suffix('\''))
+            })
+            .unwrap_or(key);
+        if matches!(key, "hooks" | "allowed-tools") {
             return Err(Error::Invalid(format!(
                 "{} asks for {key}, which can run commands without asking. Persona Builder turns on only a skill without them",
+                path.display()
+            )));
+        }
+        if line.starts_with(['?', '&', '*'])
+            || line.starts_with("<<")
+            || !line.contains(':')
+            || !matches!(
+                key,
+                "name"
+                    | "description"
+                    | "argument-hint"
+                    | "user-invocable"
+                    | "disable-model-invocation"
+                    | "model"
+                    | "context"
+                    | "agent"
+                    | "paths"
+            )
+        {
+            return Err(Error::Invalid(format!(
+                "{} asks for {key}, which Persona Builder does not turn on. Remove it, then turn {name} on again",
                 path.display()
             )));
         }
