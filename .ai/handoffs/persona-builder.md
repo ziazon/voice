@@ -35,7 +35,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   `allowed-tools` or `` !` `` lines. The Verifier (Fable) passed the rest and found a symlinked
   `skills/` folder was refused (fixed), plus nits: a refresh's message after a user edit (fixed), a
   record listing `CLAUDE.md` (refused now), and a test named for rollback that tested an early
-  refusal (renamed). A delta Verifier pass covered the fixes.
+  refusal (renamed). A delta Verifier pass confirmed those six fixes and found three more
+  (brief items 7 to 9: a `skills` link back to the Claude Code folder, front-matter keys by
+  allowlist, one message); **open as of this record**.
 - **Known limits:** `off` refuses rather than reports when the user replaced a recorded folder with
   a symlink; a dangling-symlink `CLAUDE.md` and `pack --out` under a missing folder give the
   system's own error. The installed skill still calls the Python `similar` and `record` commands;
