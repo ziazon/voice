@@ -222,7 +222,9 @@ impl<'a> Github<'a> {
                 ],
             )?;
             let body = sign_in_body(&response, &[200, 400])?;
-            if let Some(token) = body.get("access_token") {
+            if response.status == 200
+                && let Some(token) = body.get("access_token")
+            {
                 let token = token
                     .as_str()
                     .filter(|s| {

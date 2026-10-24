@@ -174,6 +174,24 @@ fn poll_400_denied_is_cancelled() {
 }
 
 #[test]
+fn poll_400_with_token_is_unexpected() {
+    let http = FakeHttp::new(vec![
+        start_reply(),
+        reply(
+            400,
+            json!({"access_token": TOKEN, "token_type": "bearer", "scope": "repo"}),
+        ),
+    ]);
+    let github = Github::new(&http, Endpoints::github(), "Iv1.invented").unwrap();
+    let result = github.finish_sign_in(&device(&github), &mut |_| {});
+    assert_eq!(
+        result.err().map(|error| error.to_string()),
+        Some(text::sign_in_failed("unexpected reply"))
+    );
+    http.assert_drained();
+}
+
+#[test]
 fn poll_401_is_unexpected_even_with_error_body() {
     let http = FakeHttp::new(vec![
         start_reply(),

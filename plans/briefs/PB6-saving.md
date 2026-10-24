@@ -200,7 +200,7 @@ impl<'a> Github<'a> {
   total would pass `expires_in`, stop with `SIGN_IN_EXPIRED` without polling again. Poll
   `POST <login>/login/oauth/access_token`, form `client_id`, `device_code`,
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`. A reply with string `access_token`:
-  it must be 1–255 bytes of `A-Za-z0-9._~:+/=_-` (letters, digits and `. _ ~ : + / = -`) (else `sign_in_failed("unexpected reply")`) → return
+  it must be 1–255 bytes of `A-Za-z0-9._~:+/=-` (letters, digits and `. _ ~ : + / = -`) (else `sign_in_failed("unexpected reply")`) → return
   it as a `Secret`. A reply with string `error`: `authorization_pending` → poll again;
   `slow_down` → interval = the reply's `interval` if it is larger than the current one plus 5, else
   current + 5; `expired_token` → `SIGN_IN_EXPIRED`; `access_denied` → `SIGN_IN_CANCELLED`; any other
@@ -284,7 +284,7 @@ impl Keychain {
     pub fn github() -> Self;                               // service "persona-builder.github"
     pub fn with_service(service: &str) -> Result<Self>;    // 1–64 of a-z 0-9 . -
 }
-pub fn storable(token: &Secret) -> bool;                    // 1–1024 bytes of A-Za-z0-9._~:+/=_-
+pub fn storable(token: &Secret) -> bool;                    // 1–1024 bytes of A-Za-z0-9._~:+/=-
 pub fn store_line(service: &str, token: &Secret) -> Result<Secret>;
 pub struct MemoryStore { /* Mutex<Option<String>> */ }      // for tests and previews
 impl MemoryStore { pub fn new() -> Self }                   // and Default
@@ -548,3 +548,21 @@ All the tests above went red on their assertion first and are green; `cargo fmt 
 and `bash scripts/ci-local.sh` pass. Report: each file you added or changed, the red you saw for
 each test file, and anything in this brief you could not do as written (stop and say so rather than
 changing a rule).
+
+## Delta after the second Verifier pass (2026-10-24)
+
+One should-fix, test-first, nothing else changes:
+
+- **A token only from a 200 reply.** `Github::finish_sign_in` (`builder/save/src/github.rs`) accepts
+  status 200 or 400 from the poll, then reads `access_token` before `error` whatever the status. A
+  `400 {"access_token":"gho_…"}` is therefore stored as the token. RFC 8628 §3.5 sends errors with
+  400 and a token only on success, so: read `access_token` only when the reply's status is 200. A
+  400 must carry `error` and goes through the existing `match`; a 400 with `access_token` and no
+  `error` fails with `sign_in_failed("unexpected reply")`, and one with both is handled by its
+  `error`. Leave 200 replies (GitHub sends `authorization_pending` with 200), `start_sign_in`, the
+  slow-down and expiry rules exactly as they are.
+- **Test** (in `builder/save/tests/verifier_fixes.rs`, beside `poll_400_denied_is_cancelled`, same
+  helpers): `poll_400_with_token_is_unexpected`: start reply, then
+  `reply(400, json!({"access_token": TOKEN, "token_type": "bearer", "scope": "repo"}))` (the file's fixture constant);
+  the result's error string equals `text::sign_in_failed("unexpected reply")`, and
+  `http.assert_drained()`. It must fail on its assertion before the fix (today it returns `Ok`).

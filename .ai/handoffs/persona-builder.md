@@ -62,7 +62,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   should-fixes, all fixed test-first:
   a save moved the person's `persona/<slug>` branch when it was checked out (now refused); a poll
   reply with status 400, as RFC 8628 sends, was treated as unexpected; a relative `state_dir` was
-  accepted.
+  accepted. Her second pass, on those fixes, passed with one should-fix, also fixed test-first: a
+  400 reply carrying `access_token` was taken as the token; a token is now read only from a 200
+  reply (one test, which fails when the status check is removed).
 - **Known limits:** an existing state folder keeps its mode (only one Persona Builder creates gets
   0700), and `backup.git` takes the umask's modes inside it. The folder is committed whole except
   `private.json` and `.DS_Store`: `.gitignore` is not read, so PB2's privacy check must cover any
@@ -72,7 +74,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   a second Mac makes the next push a non-fast-forward, refused, with no recovery yet; a git failure
   after GitHub made the repo leaves the repo, so a retry under the same name is refused. A file swapped for a link between listing and hashing would be read through the link
   (same-user only). The person's own `pre-push` hook runs on a save to their repo, with Persona
-  Builder's cleared environment. A non-GitHub remote cannot be used at all.
+  Builder's cleared environment. A non-GitHub remote cannot be used at all. The check that the
+  `persona/<slug>` branch is not checked out runs before the branch moves, so a checkout in
+  between still moves it (same-user only). A worktree whose folder was deleted but not pruned
+  still counts as having the branch checked out, so the save is refused until `git worktree prune`
+  runs; the message does not say so yet.
 - **Not verified:** a real sign-in, repo creation and push (they need V-Q1's client ID and PB2's
   privacy check: PB6.1, card `51dkJ0YE`, an attended walk); Linux (the Keychain is macOS only).
 
