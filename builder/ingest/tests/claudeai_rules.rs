@@ -824,6 +824,7 @@ fn holdout_is_checked() {
 #[test]
 fn inspect_shows_only_message_senders_and_escapes_control_characters() {
     let value = json!([{"uuid": "c", "name": "t", "created_at": "2026-03-01", "bad\u{1b}[2Jkey": 1,
+        "chat_messages[].sender": SENTINEL, "chat_messages[]": {"sender": SENTINEL},
         "chat_messages": [{"sender": "human\u{7}", "created_at": "2026-03-01", "text": "x",
             "content": [{"type": "tool_use", "input": {"sender": SENTINEL}}]}]}]);
     let text = claudeai::inspect(&export(value)).unwrap().text;

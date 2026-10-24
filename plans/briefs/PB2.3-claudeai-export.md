@@ -64,7 +64,10 @@ methods it reads; anything else is refused.
      refuses only a repeated `conversations.json`): the `zip` crate keeps one entry per name, so a
      repeated name would hide an entry and change the file count. A compression method other than
      stored or deflate, and an encrypted entry, are refused. The zip file itself must be at most
-     2 GB and hold at most 100,000 entries (the `zip` crate loads the whole central directory). A
+     2 GB and hold at most 100,000 entries. The entry cap bounds the walk, not memory: the `zip` crate
+     parses the whole central directory first (about 350 bytes per entry), so a crafted zip under
+     2 GB listing tens of millions of entries can use many gigabytes before it is refused. The 2 GB
+     cap is the only resource bound; this is the person's own machine and their own file. A
      zip is recognised by its first four bytes only, so a zip behind a junk prefix (Python finds its
      end record) is read as JSON and refused.
   5. **Encoding and JSON.** `conversations.json` must be UTF-8; a leading UTF-8 byte-order mark is
@@ -88,7 +91,9 @@ methods it reads; anything else is refused.
      refused, which Python takes and, with no questions in a claude.ai corpus, ignores), and
      `--holdout` with `--cutoff` is a usage error, as in `mine` (PB2.2's difference 4).
   10. **`inspect` shows `sender` values at `.chat_messages[].sender` only** (Python shows them for a
-     `sender` key at any depth, where a tool's input could hold a person's name), and prints any
+     `sender` key at any depth, where a tool's input could hold a person's name), checked by place
+     (the `sender` key of an element of a conversation's `chat_messages`), never by the printed path,
+     since a key may itself hold `.` or `[]`; and it prints any
      control character in a key or value escaped (`\u{1b}`), so a crafted export can't send
      terminal escapes. Found by the security review.
 

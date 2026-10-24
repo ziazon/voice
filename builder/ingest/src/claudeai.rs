@@ -295,8 +295,9 @@ impl Tree {
         &mut self.order[at].1
     }
 }
-/// Every key under prefix: the types seen and how many of the objects carry it.
-fn key_tree(items: &[&Value], prefix: &str, tree: &mut Tree) {
+/// Every key under prefix: the types seen and how many of the objects carry it. `messages` says
+/// the items are the elements of a conversation's `chat_messages` list.
+fn key_tree(items: &[&Value], prefix: &str, messages: bool, tree: &mut Tree) {
     let objects: Vec<&Map<String, Value>> = items.iter().filter_map(|v| v.as_object()).collect();
     let keys: BTreeSet<&str> = objects
         .iter()
@@ -310,8 +311,8 @@ fn key_tree(items: &[&Value], prefix: &str, tree: &mut Tree) {
         entry.count += values.len();
         entry.of += objects.len();
         // Only the message senders' values are shown: a `sender` elsewhere (a tool's input) may
-        // hold a person's name.
-        if path == ".chat_messages[].sender" {
+        // hold a person's name. Checked by place, not by path, since a key may hold `.` or `[]`.
+        if messages && key == "sender" {
             entry
                 .values
                 .extend(values.iter().filter_map(|v| v.as_str()).map(str::to_owned));
@@ -322,11 +323,12 @@ fn key_tree(items: &[&Value], prefix: &str, tree: &mut Tree) {
             .flatten()
             .collect();
         if !children.is_empty() {
-            key_tree(&children, &format!("{path}[]"), tree);
+            let messages = prefix.is_empty() && key == "chat_messages";
+            key_tree(&children, &format!("{path}[]"), messages, tree);
         }
         let nested: Vec<&Value> = values.iter().copied().filter(|v| v.is_object()).collect();
         if !nested.is_empty() {
-            key_tree(&nested, &path, tree);
+            key_tree(&nested, &path, false, tree);
         }
     }
 }
@@ -336,7 +338,12 @@ fn key_tree(items: &[&Value], prefix: &str, tree: &mut Tree) {
 pub fn inspect(export: &Export) -> Result<Inspection> {
     let conversations = list(export)?;
     let mut tree = Tree::default();
-    key_tree(&conversations.iter().collect::<Vec<_>>(), "", &mut tree);
+    key_tree(
+        &conversations.iter().collect::<Vec<_>>(),
+        "",
+        false,
+        &mut tree,
+    );
     let mut text = format!(
         "files: {}\nconversations.json: list of {}\n",
         export.files,
