@@ -19,6 +19,7 @@ member and no real person's data.
 | `builder/cli/` | The `persona-builder` command | `builder/cli/tests/` |
 | `builder/save/` | Saving an assistant (persona_builder_save): an existing repo, a private GitHub repo, or this Mac only; GitHub sign-in, the Keychain, git | `builder/save/tests/` |
 | `builder/ingest/` | Reading histories into the corpus (persona_builder_ingest): the privacy filters, the privacy check, mining Claude Code transcripts and the claude.ai export, merging and splitting the corpus | `builder/ingest/tests/` |
+| `builder/agent/` | The model calls (persona_builder_agent): the agent list, the person's own Claude Code checked and called with no tools, the ledger of what each call cost, the daily cap | `builder/agent/tests/` |
 
 All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck). The
 Rust checks (fmt, clippy, tests) need stable Rust and are skipped when `cargo` is missing.

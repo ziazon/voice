@@ -247,6 +247,86 @@ pub fn read_private(home: &Path, slug: &str, name: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// An exclusive `flock` on the member's state folder, held until dropped: one build per assistant.
+#[derive(Debug)]
+pub struct StateLock(#[allow(dead_code)] OwnedFd);
+
+/// Lock the member's state folder (created 0700 when missing), or refuse when another build holds it.
+/// `flock` locks belong to the open file description, so a second lock in the same process conflicts too.
+pub fn lock_state(home: &Path, slug: &str) -> Result<StateLock> {
+    let (directory, path) = state_directory(home, slug, true)?;
+    // SAFETY: directory is a live descriptor owned by this function.
+    if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
+        let source = std::io::Error::last_os_error();
+        if source.raw_os_error() == Some(libc::EWOULDBLOCK) {
+            return Err(Error::Invalid(
+                "Persona Builder is already building this assistant. Wait for that to finish, then try again"
+                    .into(),
+            ));
+        }
+        return Err(io(&path, source));
+    }
+    Ok(StateLock(directory))
+}
+
+/// A plain-named folder inside the member's state folder, created 0700, never through a link, and
+/// refused unless only this user can open it.
+pub fn private_folder(home: &Path, slug: &str, name: &str) -> Result<PathBuf> {
+    if !plain(name, &[""]) || name.is_empty() {
+        return Err(Error::Invalid(
+            "the folder name must be a plain name".into(),
+        ));
+    }
+    let (directory, path) = state_directory(home, slug, true)?;
+    let path = path.join(name);
+    let part = CString::new(name).expect("validated folder name");
+    let folder = File::from(open_directory(&directory, &part, &path, true)?);
+    let metadata = folder.metadata().map_err(|e| io(&path, e))?;
+    // SAFETY: geteuid has no preconditions.
+    let me = unsafe { libc::geteuid() };
+    if metadata.permissions().mode() & 0o077 != 0
+        || std::os::unix::fs::MetadataExt::uid(&metadata) != me
+    {
+        return Err(Error::Invalid(format!(
+            "{} can be opened by others on this Mac, so Persona Builder stopped. Make it a folder only you can open, then try again",
+            path.display()
+        )));
+    }
+    Ok(path)
+}
+
+/// [`read_private`], or `None` when the state folder or the file does not exist.
+pub fn read_private_optional(home: &Path, slug: &str, name: &str) -> Result<Option<Vec<u8>>> {
+    validate_private_name(name)?;
+    let (directory, path) = match state_directory(home, slug, false) {
+        Ok(found) => found,
+        Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(None);
+        }
+        Err(other) => return Err(other),
+    };
+    let target = CString::new(name).expect("validated file name");
+    // SAFETY: stat is plain data; an all-zero value is valid and is overwritten by fstatat.
+    let mut status: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: directory is live, target is terminated and status is a valid out pointer.
+    let found = unsafe {
+        libc::fstatat(
+            directory.as_raw_fd(),
+            target.as_ptr(),
+            &mut status,
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if found < 0 {
+        let source = std::io::Error::last_os_error();
+        if source.kind() == std::io::ErrorKind::NotFound {
+            return Ok(None);
+        }
+        return Err(io(&path.join(name), source));
+    }
+    read_private(home, slug, name).map(Some)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

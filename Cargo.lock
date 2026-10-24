@@ -318,11 +318,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "persona-builder-agent"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "persona-builder",
+ "persona-builder-ingest",
+ "serde_json",
+]
+
+[[package]]
 name = "persona-builder-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
  "persona-builder",
+ "persona-builder-agent",
  "persona-builder-ingest",
  "persona-builder-save",
 ]

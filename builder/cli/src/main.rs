@@ -125,6 +125,26 @@ enum Command {
         #[command(subcommand)]
         command: MemberCommand,
     },
+    /// List the agents Persona Builder can build with.
+    Agents,
+    /// Check your own Claude Code.
+    Claude {
+        #[command(subcommand)]
+        command: ClaudeCommand,
+    },
+    /// Show what building this assistant has spent today.
+    Spend {
+        member_dir: PathBuf,
+        /// The daily limit, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
+        daily_cap_usd: f64,
+    },
+}
+
+#[derive(Subcommand)]
+enum ClaudeCommand {
+    /// Check that Claude Code is installed and signed in.
+    Check,
 }
 
 #[derive(Subcommand)]
@@ -642,6 +662,32 @@ fn folders(member_dir: PathBuf, projects: Option<PathBuf>) -> Result<()> {
     );
     Ok(())
 }
+fn agents() -> Result<()> {
+    for agent in persona_builder_agent::agents::AGENTS {
+        println!("{}  {}", agent.id, agent.name);
+    }
+    Ok(())
+}
+fn claude_check() -> Result<()> {
+    use persona_builder_agent::{claude, text};
+    let home = home()?;
+    let path = std::env::var_os("PATH");
+    let ready = claude::find(path.as_deref(), &home)?.check(&home)?;
+    println!("{}", text::ready(&ready.version));
+    Ok(())
+}
+fn spend(member_dir: PathBuf, daily_cap_usd: f64) -> Result<()> {
+    use persona_builder_agent::{
+        ledger::{Cap, Session},
+        text,
+    };
+    let home = home()?;
+    let member = checked_member(&member_dir, &home)?;
+    let cap = Cap::new(daily_cap_usd, Cap::DEFAULT_CALL_USD.min(daily_cap_usd))?;
+    let session = Session::open(&home, &member.slug, cap)?;
+    println!("{}", text::spend(session.spent_today()?, cap.daily_usd()));
+    Ok(())
+}
 fn github_client(http: &UreqHttp) -> Result<Github<'_>> {
     Github::new(
         http,
@@ -1018,6 +1064,14 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             },
             SaveCommand::Push { path } => save_push(path),
         },
+        Some(Command::Agents) => agents(),
+        Some(Command::Claude {
+            command: ClaudeCommand::Check,
+        }) => claude_check(),
+        Some(Command::Spend {
+            member_dir,
+            daily_cap_usd,
+        }) => spend(member_dir, daily_cap_usd),
         None => Ok(()),
     };
     result.map(|()| std::process::ExitCode::SUCCESS)
