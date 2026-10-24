@@ -733,9 +733,10 @@ fn record_through_overlapping_skills_link_is_refused() {
         assert_eq!(
             result.unwrap_err().to_string(),
             format!(
-                "{}: {} is outside the Claude Code folder: fix or remove installed.json",
+                "{}: {} points back into the Claude Code folder. Point it at a folder outside {}, then try again",
                 record_path.display(),
-                claimed.display()
+                f.path("skills").display(),
+                f.places.claude_home.display()
             )
         );
         assert_eq!(fs::read_to_string(file).unwrap(), "keep");
@@ -777,7 +778,7 @@ fn skill_front_matter_accepts_allowed_keys_comments_and_indented_lines() {
     let f = Fixture::new();
     fs::write(
         f.member.join("SKILL.md"),
-        "---\nname: ari\ndescription: >\n  Ari helps with decisions.\n\tMore description.\n\n# comment\nargument-hint: choice\nuser-invocable: true\ndisable-model-invocation: false\nmodel: inherit\ncontext: fork\nagent: general-purpose\npaths: []\n---\n",
+        "---\nname: ari\ndescription: >\n  Ari helps with decisions.\n\n# comment\nargument-hint: choice\nuser-invocable: true\ndisable-model-invocation: false\nmodel: inherit\ncontext: fork\nagent: general-purpose\npaths: []\n---\n",
     )
     .unwrap();
     f.on();
@@ -798,6 +799,68 @@ fn refresh_reports_leftover_folder_reason_and_restores_the_install() {
         format!(
             "{} was left in place (it still holds other files). Move it away, then turn Ari on again",
             path.display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
+}
+
+#[test]
+fn skill_with_uncheckable_characters_is_refused() {
+    for line in [
+        "description: x\rallowed-tools: Bash(*)",
+        "description: x\rhooks: y",
+        "description: x\u{2028}hooks: y",
+        "description: x\u{0085}hooks: y",
+        "description: x\u{2029}hooks: y",
+        "description: x\0",
+        "description: x\u{007f}",
+        "description: x\u{000b}",
+    ] {
+        refused_skill(
+            &format!("---\nname: ari\n{line}\n---\n"),
+            "holds a character Persona Builder can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn Ari on again",
+        );
+    }
+    refused_skill(
+        "---\nname: ari\n---\nbody\r",
+        "holds a character Persona Builder can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn Ari on again",
+    );
+}
+
+#[test]
+fn skill_with_crlf_line_endings_is_accepted() {
+    let f = Fixture::new();
+    let path = f.member.join("SKILL.md");
+    let text = fs::read_to_string(&path).unwrap().replace('\n', "\r\n");
+    fs::write(path, &text).unwrap();
+    let on = f.on();
+    assert_eq!(fs::read_to_string(on.skill.join("SKILL.md")).unwrap(), text);
+    assert!(f.off().left.is_empty());
+}
+
+#[test]
+fn skill_front_matter_with_tab_indentation_is_refused() {
+    for line in ["\thooks: y", "\tMore description."] {
+        refused_skill(
+            &format!("---\nname: ari\ndescription: >\n{line}\n---\n"),
+            "indents a front-matter line with a tab. Use spaces, then turn Ari on again",
+        );
+    }
+}
+
+#[test]
+fn turning_on_through_overlapping_skills_link_is_refused() {
+    let f = Fixture::new();
+    symlink(&f.places.claude_home, f.path("skills")).unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_on(&f.member, &f.places);
+    assert!(matches!(&result, Err(Error::Invalid(_))));
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{} points back into the Claude Code folder. Point it at a folder outside {}, then try again",
+            f.path("skills").display(),
+            f.places.claude_home.display()
         )
     );
     assert_eq!(tree(&f.places.claude_home), before);

@@ -65,7 +65,11 @@ pub(super) fn check_path(path: &Path, claude_home: &Path) -> Result<()> {
                     && (claude_home.starts_with(&canonical_root)
                         || canonical_root.starts_with(claude_home))
                 {
-                    return Err(invalid());
+                    return Err(Error::Invalid(format!(
+                        "{} points back into the Claude Code folder. Point it at a folder outside {}, then try again",
+                        parent.display(),
+                        claude_home.display()
+                    )));
                 }
             }
             continue;

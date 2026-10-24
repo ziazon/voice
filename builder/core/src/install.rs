@@ -186,6 +186,19 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
 }
 
 fn check_skill(path: &Path, text: &str, slug: &str, name: &str) -> Result<()> {
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
+        if matches!(character, '\u{0085}' | '\u{2028}' | '\u{2029}')
+            || (character.is_control()
+                && !matches!(character, '\t' | '\n')
+                && !(character == '\r' && characters.peek() == Some(&'\n')))
+        {
+            return Err(Error::Invalid(format!(
+                "{} holds a character Persona Builder can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn {name} on again",
+                path.display()
+            )));
+        }
+    }
     let lines: Vec<_> = text.lines().collect();
     let end = if lines.first() == Some(&"---") {
         lines
@@ -210,7 +223,13 @@ fn check_skill(path: &Path, text: &str, slug: &str, name: &str) -> Result<()> {
         )));
     }
     for line in front_matter {
-        if line.starts_with([' ', '\t']) || line.trim().is_empty() || line.starts_with('#') {
+        if line.starts_with('\t') {
+            return Err(Error::Invalid(format!(
+                "{} indents a front-matter line with a tab. Use spaces, then turn {name} on again",
+                path.display()
+            )));
+        }
+        if line.starts_with(' ') || line.trim().is_empty() || line.starts_with('#') {
             continue;
         }
         let key = line.split_once(':').map_or(*line, |(key, _)| key).trim();
