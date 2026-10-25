@@ -466,6 +466,17 @@ pub fn push(
             detail = detail.replace(token.expose(), "[hidden]");
         }
     }
+    let mut start = 0;
+    while let Some(scheme) = detail[start..].find("://") {
+        let authority = start + scheme + 3;
+        let end = detail[authority..]
+            .find(['/', ' '])
+            .map_or(detail.len(), |end| authority + end);
+        if let Some(at) = detail[authority..end].find('@') {
+            detail.replace_range(authority..authority + at + 1, "");
+        }
+        start = authority;
+    }
     Err(Error::Invalid(text::push_failed(
         &detail.chars().take(300).collect::<String>(),
     )))

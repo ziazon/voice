@@ -367,3 +367,32 @@ Claude's review of the screens:
    and after the reload that radio is still checked.
 2. **No empty repo name.** With the github choice checked, "Keep this choice" is disabled while
    the trimmed name is empty. Test it.
+
+## Fix-up pass 3: from the security review and the Verifier (decided, do not reopen)
+
+1. **A cancelled or superseded sign-in never saves.** In `github_sign_in_finish_in`, after
+   `finish_sign_in_until` returns a token and after `account()` succeeds, take the `SignIns` lock,
+   check that this attempt's `cancel` flag is still unset, and call `tokens.save` while holding
+   the lock; a set flag answers `text::SIGN_IN_CANCELLED` and saves nothing. `github_sign_out_in`
+   takes `sign_ins: &SignIns` too: under the same lock it sets the current flag and drops any
+   waiting code, then forgets the token (the zero-argument form passes `sign_ins()`). Tests: a
+   cancel made from inside the fake `Http::send` that answers the token leaves the store empty and
+   answers `SIGN_IN_CANCELLED`; a sign-out during a waiting finish makes that finish answer
+   `SIGN_IN_CANCELLED` with the store empty.
+2. **A choice must still be what the person saw.** `SaveChoiceRequest` gains `kind: SaveKind`.
+   `save_choose_in` answers `CHANGED` when `choices[choice]` is missing or its kind differs.
+   `Save.vue` sends the checked option's `kind`. Tests: Rust (a request whose kind doesn't match
+   the index answers `CHANGED` and writes no `save.json`) and Vitest (the request carries `kind`).
+   Regenerate the types.
+3. **No sign-in details in git's error line.** In `builder/save/src/git.rs`'s `push`, before the
+   detail goes into `text::push_failed`, remove any `user:password@` or `token@` from a URL in it:
+   for each `://`, if an `@` comes before the next `/`, space or end of the line, drop the text
+   from after `://` up to and including that `@`. Test with
+   `fatal: unable to access 'https://someone:invented-pat@github.com/x/y.git/': error` →
+   `…'https://github.com/x/y.git/'…`.
+
+Run `CARGO_NET_OFFLINE=true cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
+-- -D warnings`, `cargo test -p persona-builder-save -p persona-builder-api -p persona-builder-cli
+-p persona-builder-app --locked` (socket tests may fail in your sandbox: say which), and
+`pnpm --offline -C builder/ui typecheck` and `test`. Mutation checks with `cp`/`cmp`: drop the
+post-token cancel check (red), drop the kind check (red), drop the userinfo strip (red). Don't commit.

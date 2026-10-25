@@ -98,6 +98,11 @@ fn choice(index: u32, name: Option<&str>) -> SaveChoiceRequest {
     SaveChoiceRequest {
         slug: "ari".into(),
         choice: index,
+        kind: if index == 0 {
+            SaveKind::Github
+        } else {
+            SaveKind::Local
+        },
         name: name.map(str::to_owned),
     }
 }
@@ -148,7 +153,7 @@ fn account(scope: &str) -> HttpResponse {
         .push(("x-oauth-scopes".into(), scope.into()));
     response
 }
-fn github(http: &FakeHttp) -> Github<'_> {
+fn github(http: &dyn Http) -> Github<'_> {
     Github::new(http, Endpoints::github(), "test.client").unwrap()
 }
 
@@ -514,10 +519,11 @@ fn finish_refuses_token_without_repo_scope() {
 
 #[test]
 fn sign_out_forgets_token() {
+    let sign_ins = SignIns::new();
     let tokens = MemoryStore::new();
     tokens.save(&Secret::new("test-token".into())).unwrap();
     assert_eq!(
-        github_sign_out_in(&tokens).unwrap().message,
+        github_sign_out_in(&sign_ins, &tokens).unwrap().message,
         text::SIGNED_OUT
     );
     assert!(tokens.load().unwrap().is_none());
@@ -581,11 +587,11 @@ fn dto_json_uses_camel_case_and_requests_refuse_extra_keys() {
     }
     assert_eq!(
         serde_json::to_value(choice(1, None)).unwrap(),
-        json!({"slug":"ari","choice":1,"name":null})
+        json!({"slug":"ari","choice":1,"kind":"local","name":null})
     );
     assert!(
         serde_json::from_value::<SaveChoiceRequest>(
-            json!({"slug":"ari","choice":0,"name":null,"extra":1})
+            json!({"slug":"ari","choice":0,"kind":"github","name":null,"extra":1})
         )
         .is_err()
     );
@@ -594,4 +600,72 @@ fn dto_json_uses_camel_case_and_requests_refuse_extra_keys() {
         serde_json::from_value::<LinkRequest>(json!({"link":"githubDevice","extra":1})).is_err()
     );
     assert!(serde_json::from_value::<LinkRequest>(json!({"link":"https://example.com"})).is_err());
+}
+
+#[test]
+fn cancel_during_token_reply_never_saves() {
+    struct CancelOnToken<'a> {
+        http: FakeHttp,
+        sign_ins: &'a SignIns,
+    }
+    impl Http for CancelOnToken<'_> {
+        fn send(&self, request: &HttpRequest<'_>) -> Result<HttpResponse> {
+            let response = self.http.send(request)?;
+            if request.url.ends_with("/oauth/access_token") {
+                github_sign_in_cancel_in(self.sign_ins).unwrap();
+            }
+            Ok(response)
+        }
+    }
+    let sign_ins = SignIns::new();
+    let tokens = MemoryStore::new();
+    let http = CancelOnToken {
+        http: FakeHttp::new(vec![code(), token(), account("repo")]),
+        sign_ins: &sign_ins,
+    };
+    let github = github(&http);
+    github_sign_in_start_in(&sign_ins, Some(&github)).unwrap();
+    let answer = github_sign_in_finish_in(&sign_ins, Some(&github), &tokens, &mut |_| {});
+    assert!(tokens.load().unwrap().is_none());
+    assert_eq!(answer.unwrap_err().message, text::SIGN_IN_CANCELLED);
+    http.http.drained();
+}
+
+#[test]
+fn sign_out_during_waiting_finish_cancels_and_keeps_store_empty() {
+    let http = FakeHttp::new(vec![code(), token(), account("repo")]);
+    let github = github(&http);
+    let sign_ins = SignIns::new();
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("previous-token".into())).unwrap();
+    github_sign_in_start_in(&sign_ins, Some(&github)).unwrap();
+    let mut signed_out = false;
+    let answer = github_sign_in_finish_in(&sign_ins, Some(&github), &tokens, &mut |_| {
+        if !signed_out {
+            signed_out = true;
+            assert_eq!(
+                github_sign_out_in(&sign_ins, &tokens).unwrap().message,
+                text::SIGNED_OUT
+            );
+            assert!(tokens.load().unwrap().is_none());
+        }
+    });
+    assert!(signed_out);
+    assert!(tokens.load().unwrap().is_none());
+    assert_eq!(answer.unwrap_err().message, text::SIGN_IN_CANCELLED);
+    assert_eq!(http.requests.borrow().len(), 1);
+}
+
+#[test]
+fn mismatched_choice_kind_is_changed_without_writing_a_record() {
+    let home = Home::new();
+    let member = home.make();
+    let tokens = MemoryStore::new();
+    for kind in [SaveKind::Github, SaveKind::Existing] {
+        let mut request = choice(1, None);
+        request.kind = kind;
+        let answer = save_choose_in(&home.0, request, &git(), None, &tokens);
+        assert!(!member.state_dir.join("save.json").exists());
+        assert_eq!(answer.unwrap_err().message, CHANGED);
+    }
 }

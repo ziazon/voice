@@ -220,6 +220,13 @@ pub fn github_sign_in_finish_in(
     let account = github
         .account(&token)
         .map_err(|error| map_error(error, SIGN_IN))?;
+    let _state = sign_ins
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if cancel.load(Ordering::SeqCst) {
+        return Err(failure(text::SIGN_IN_CANCELLED));
+    }
     tokens
         .save(&token)
         .map_err(|error| map_error(error, SIGN_IN))?;
@@ -234,7 +241,13 @@ pub fn github_sign_in_cancel_in(sign_ins: &SignIns) -> Result<()> {
     state.code = None;
     Ok(())
 }
-pub fn github_sign_out_in(tokens: &dyn TokenStore) -> Result<dto::Said> {
+pub fn github_sign_out_in(sign_ins: &SignIns, tokens: &dyn TokenStore) -> Result<dto::Said> {
+    let mut state = sign_ins
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.cancel.store(true, Ordering::SeqCst);
+    state.code = None;
     tokens
         .forget()
         .map_err(|error| map_error(error, SIGN_OUT))?;
@@ -253,6 +266,14 @@ pub fn save_choose_in(
     let choice = options
         .choices
         .get(request.choice as usize)
+        .filter(|choice| {
+            matches!(
+                (choice, &request.kind),
+                (flow::Choice::Existing { .. }, dto::SaveKind::Existing)
+                    | (flow::Choice::Github { .. }, dto::SaveKind::Github)
+                    | (flow::Choice::Local { .. }, dto::SaveKind::Local)
+            )
+        })
         .ok_or_else(|| failure(CHANGED))?;
     let saver = Saver {
         git,
@@ -360,7 +381,7 @@ pub fn github_sign_in_cancel() -> Result<()> {
     github_sign_in_cancel_in(sign_ins())
 }
 pub fn github_sign_out() -> Result<dto::Said> {
-    github_sign_out_in(&Keychain::github())
+    github_sign_out_in(sign_ins(), &Keychain::github())
 }
 pub fn save_choose(request: dto::SaveChoiceRequest) -> Result<dto::Said> {
     let home = home(CHOOSE)?;

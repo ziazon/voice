@@ -121,6 +121,7 @@ pub enum SaveKind {
 pub struct SaveChoiceRequest {
     pub slug: String,
     pub choice: u32,
+    pub kind: SaveKind,
     pub name: Option<String>,
 }
 

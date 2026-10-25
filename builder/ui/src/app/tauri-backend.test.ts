@@ -31,7 +31,7 @@ it.each([
   ['agreeConsent', 'agree_consent', { slug: 'example' }],
   ['saveOptions', 'save_options', { slug: 'example' }],
   ['openLink', 'open_link', { link: 'githubSignup' }],
-  ['saveChoose', 'save_choose', { slug: 'example', choice: 0, name: 'example-assistant' }],
+  ['saveChoose', 'save_choose', { slug: 'example', choice: 0, kind: 'github', name: 'example-assistant' }],
   ['savePush', 'save_push', { slug: 'example' }],
 ] as const)('maps %s with a request argument', async (method, command, request) => {
   vi.mocked(invoke).mockClear().mockResolvedValue('answer')

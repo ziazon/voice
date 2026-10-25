@@ -48,13 +48,14 @@ async function openSignup() {
   }
 }
 async function keep() {
-  if (keeping.value || saving.value || signingOut.value || needsSignIn.value || needsName.value) return
+  const checkedKind = kind.value
+  if (!checkedKind || keeping.value || saving.value || signingOut.value || needsSignIn.value || needsName.value) return
   keeping.value = true
   error.value = ''
   message.value = ''
   info.value = ''
   try {
-    const answer = await backend.saveChoose({ slug: props.assistant.slug, choice: choice.value, name: kind.value === 'github' ? name.value.trim() : null })
+    const answer = await backend.saveChoose({ slug: props.assistant.slug, choice: choice.value, kind: checkedKind, name: kind.value === 'github' ? name.value.trim() : null })
     message.value = answer.message
     await load()
   } catch (failure) {

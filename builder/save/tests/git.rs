@@ -530,3 +530,58 @@ fn folder_files_refuses_links_even_with_excluded_names() {
         Some(text::links_in_folder("nested/private.json"))
     );
 }
+
+#[test]
+fn failing_push_strips_url_userinfo_before_showing_the_detail() {
+    use std::os::unix::fs::PermissionsExt;
+    let scratch = Scratch::new("push-userinfo");
+    let program = scratch.0.join("failing-git");
+    for (detail, shown) in [
+        (
+            "fatal: unable to access 'https://someone:invented-pat@github.com/x/y.git/': error",
+            "fatal: unable to access 'https://github.com/x/y.git/': error",
+        ),
+        (
+            "fatal: https://invented-token@github.com/x",
+            "fatal: https://github.com/x",
+        ),
+        (
+            "fatal: https://invented-token@github.com",
+            "fatal: https://github.com",
+        ),
+        (
+            "fatal: https://invented-token@github.com error",
+            "fatal: https://github.com error",
+        ),
+        (
+            "fatal: https://first@github.com/x https://second@github.com/y",
+            "fatal: https://github.com/x https://github.com/y",
+        ),
+        (
+            "fatal: https://github.com/x@y",
+            "fatal: https://github.com/x@y",
+        ),
+        (
+            "fatal: https://github.com error@host",
+            "fatal: https://github.com error@host",
+        ),
+        ("fatal: https://github.com/x", "fatal: https://github.com/x"),
+    ] {
+        fs::write(
+            &program,
+            format!("#!/bin/sh\ncat <<'DETAIL' >&2\n{detail}\nDETAIL\nexit 1\n"),
+        )
+        .unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        let error = saving::push(
+            &Git::at(program.clone()),
+            Env::User,
+            &scratch.0,
+            "missing",
+            "main",
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), text::push_failed(shown));
+    }
+}

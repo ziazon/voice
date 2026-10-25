@@ -65,7 +65,7 @@ it.each(['github', 'existing'] as const)('requires sign-in for %s, but lets a lo
   expect(wrapper.text()).not.toContain('Sign in to GitHub')
   expect(button(wrapper, 'Keep this choice').attributes('disabled')).toBeUndefined()
   await button(wrapper, 'Keep this choice').trigger('click')
-  expect(backend.saveChoose).toHaveBeenCalledExactlyOnceWith({ slug: 'example', choice: 1, name: null })
+  expect(backend.saveChoose).toHaveBeenCalledExactlyOnceWith({ slug: 'example', choice: 1, kind: 'local', name: null })
 })
 it('keeps the local choice and typed repo name after reloading options', async () => {
   const backend = fakeBackend({
@@ -106,7 +106,7 @@ it('trims the github name, announces keeping, shows the answer and reloads the s
   expect(wrapper.findAll('button').some(item => item.text() === 'Save now')).toBe(false)
   await wrapper.get('input[type="text"]').setValue(' example-copy ')
   await button(wrapper, 'Keep this choice').trigger('click')
-  expect(backend.saveChoose).toHaveBeenCalledExactlyOnceWith({ slug: 'example', choice: 0, name: 'example-copy' })
+  expect(backend.saveChoose).toHaveBeenCalledExactlyOnceWith({ slug: 'example', choice: 0, kind: 'github', name: 'example-copy' })
   expect(button(wrapper, 'Keeping it…').attributes('disabled')).toBeDefined()
   pending.resolve({ message: 'Your choice is kept.' })
   await flushPromises()
