@@ -97,3 +97,26 @@ ledger), one at a time, inside one `Session` (the state lock) held for the whole
   `## Reports` order; the template lines.
 - `builder/cli/tests/build.rs`: a whole build on an invented member writes both files and prints the
   progress; signed out spends nothing and writes nothing.
+
+## After the gates
+
+`/security-review` (a sub-agent): no high or medium; four lows. The Verifier (Fable): pass with three
+should-fixes, no must-fix. All seven are fixed, each with a test proved by a mutation:
+
+- **Pre-flight before spending** (Verifier): `draft::preflight` checks both target files (a real
+  file or none) and that `measurements.md` can be read, before Claude Code is checked or any call is
+  made; `measurements.md` is read again just before the write, so an edit during the build is kept.
+- **No held-out labels without a test** (Verifier): below 30 held-out questions the held-out parts
+  are not labelled (they serve only the score).
+- **Every category in a group** (Verifier): checked before any call (`text::no_group`).
+- **Hidden characters** (security L1): a point holding a control character, a line or paragraph
+  separator, an invisible format character (zero-width, bidi, soft hyphen, BOM) or `<` is a misfit.
+- **Stale staged files** (security L2): staged names carry the pid, the time and a counter, and each
+  write first removes `.decisions.md.persona-builder-*` and `.measurements.md.persona-builder-*`
+  regular files (never a link).
+- **A distil prompt's size** (security L3): a record's `msg`, `own` and `notes` are cut to 600
+  characters in the distil prompt, and a group whose prompt is still over 700,000 bytes stops the
+  build before it is sent (`text::too_big`). Splitting a large group is left for later.
+- **A linked `briefs/`** (security L4): `draft::read_codebook` refuses it.
+- Also: `label_schema`'s `domain` is nullable (a codebook may name no domains), and only
+  `YYYY-MM-DD` dates reach the front matter (the security review's hardening note).

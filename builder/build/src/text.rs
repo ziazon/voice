@@ -114,3 +114,15 @@ pub fn live(categories: &[String]) -> String {
         )
     }
 }
+
+pub fn no_group(category: &str) -> String {
+    format!(
+        "Your assistant's settings put the kind of decision {category} in no group (codebook.groups), so the build couldn't write about it. Add it to a group, then try again."
+    )
+}
+
+pub fn too_big(what: &str, rows: usize) -> String {
+    format!(
+        "{what}: its {rows} records are more than one step can read at once, so the build stopped before spending on it. Splitting a large group is not built yet."
+    )
+}

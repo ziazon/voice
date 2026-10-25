@@ -95,7 +95,7 @@ pub fn label_schema() -> Value {
             "type": "object", "additionalProperties": false,
             "required": ["id", "category", "domain", "escalates", "signal", "reason"],
             "properties": {
-                "id": {"type": "string"}, "category": {"type": "string"}, "domain": {"type": "string"},
+                "id": {"type": "string"}, "category": {"type": "string"}, "domain": nullable("string"),
                 "escalates": strings(), "signal": nullable("string"), "reason": nullable("string")
             }
         }}}
@@ -309,18 +309,40 @@ pub fn group_categories(book: &Book, group: &Group) -> Vec<(String, usize)> {
             ordered.push((category.clone(), n));
         }
     }
-    // Every category of a row is in the codebook (`tally` checked the labels); none is left.
+    // Every category of a row is in the codebook (`check-labels` checked each part); none is left.
     ordered
 }
+
+/// The most characters of a record's own words (`msg`, `own`, `notes`) a distil call reads: the
+/// gist of a long message is enough to learn how they decide.
+pub const DISTIL_TEXT_CHARS: usize = 600;
+/// The most bytes a distil call's prompt may hold, so no call is paid for that a model's context
+/// can't take; a larger group stops the build before it is sent.
+pub const DISTIL_BYTES: usize = 700_000;
 
 pub fn distil_prompt(group: &Group, categories: &[(String, usize)]) -> String {
     let named: String = categories
         .iter()
         .map(|(category, n)| format!("- {category}: {n} records\n"))
         .collect();
+    let rows: Vec<Map<String, Value>> = group
+        .rows
+        .iter()
+        .map(|row| {
+            let mut row = row.clone();
+            for key in ["msg", "own", "notes"] {
+                if let Some(Value::String(words)) = row.get_mut(key)
+                    && words.chars().count() > DISTIL_TEXT_CHARS
+                {
+                    *words = words.chars().take(DISTIL_TEXT_CHARS).collect();
+                }
+            }
+            row
+        })
+        .collect();
     format!(
         "Write how the person decides, one section for each kind of decision below.\n\nThe kinds of decision:\n{named}\nThe records, one JSON object per line:\n\n{}",
-        to_jsonl(&group.rows)
+        to_jsonl(&rows)
     )
 }
 
@@ -331,6 +353,19 @@ const LISTS: [(&str, &str, usize); 5] = [
     ("rules", "Standing rules", 6),
     ("precedents", "Precedents", 8),
 ];
+
+/// A character a point never holds: control characters, line and paragraph separators, the
+/// invisible ones that could split a word past the shingle check or the filters, and `<`, which
+/// would start hidden markup in the Markdown the assistant reads.
+fn hidden(c: char) -> bool {
+    c.is_control()
+        || c == '<'
+        || matches!(c, '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{FEFF}')
+        || ('\u{200B}'..='\u{200F}').contains(&c)
+        || ('\u{2028}'..='\u{202E}').contains(&c)
+        || ('\u{2060}'..='\u{206F}').contains(&c)
+        || ('\u{FFF9}'..='\u{FFFB}').contains(&c)
+}
 
 fn dated(point: &str) -> bool {
     let bytes = point.as_bytes();
@@ -406,6 +441,12 @@ pub fn check_distil_reply(
                 if point.is_empty() || point.contains(['\n', '\r']) {
                     return Err(Misfit::plain(format!(
                         "{category}: {key} point {} must be one line of text",
+                        at + 1
+                    )));
+                }
+                if point.chars().any(hidden) {
+                    return Err(Misfit::plain(format!(
+                        "{category}: {key} point {} holds a character a point never has (a control or invisible character, or <)",
                         at + 1
                     )));
                 }
@@ -645,6 +686,18 @@ pub struct Counts {
     pub mined_through: String,
 }
 
+/// `YYYY-MM-DD` digits and dashes, so a crafted timestamp never adds a line to the front matter.
+fn is_date(date: &str) -> bool {
+    date.len() == 10
+        && date.bytes().enumerate().all(|(at, b)| {
+            if at == 4 || at == 7 {
+                b == b'-'
+            } else {
+                b.is_ascii_digit()
+            }
+        })
+}
+
 pub fn counts(records: &Records) -> Counts {
     let mut counts = Counts::default();
     for (_, record) in records {
@@ -663,7 +716,7 @@ pub fn counts(records: &Records) -> Counts {
             counts.messages += 1;
         }
         let date: String = text("timestamp").chars().take(10).collect();
-        if date.is_empty() {
+        if !is_date(&date) {
             continue;
         }
         if counts.first.is_empty() || date < counts.first {
@@ -802,14 +855,28 @@ pub fn build(
     progress: &mut dyn FnMut(&str),
 ) -> Result<Built> {
     let member = inputs.member;
+    if let Some(category) = inputs.book.categories.iter().find(|c| {
+        !inputs
+            .book
+            .groups
+            .iter()
+            .any(|(_, group)| group.contains(c))
+    }) {
+        return Err(Error::Invalid(text::no_group(category)));
+    }
     let records = read_records(inputs.corpus_name, inputs.corpus)?;
     let counts = counts(&records);
-    let parts = parts(inputs.corpus_name, &records)?;
+    let heldout = split(member, inputs.corpus_name, inputs.corpus)?;
+    let tested = heldout.questions.len() >= MIN_HELD;
+    // Held-out labels only place each test question in a kind: without a test, none is paid for.
+    let parts: Vec<Part> = parts(inputs.corpus_name, &records)?
+        .into_iter()
+        .filter(|part| tested || part.mode == Mode::Train)
+        .collect();
     let trained = parts.iter().any(|part| part.mode == Mode::Train);
     if !trained {
         return Err(Error::Invalid(text::NOTHING_TO_BUILD.into()));
     }
-    let heldout = split(member, inputs.corpus_name, inputs.corpus)?;
     progress(&text::reading(
         crate::interview::answered(&records),
         heldout.questions.len(),
@@ -848,13 +915,12 @@ pub fn build(
     for (at, group) in groups.iter().enumerate() {
         let what = text::distilling(at + 1, groups.len());
         let categories = group_categories(inputs.book, group);
-        let (written, reused) = asker.ask(
-            "distil",
-            DISTIL_SYSTEM,
-            &schema,
-            &distil_prompt(group, &categories),
-            &what,
-            |reply| {
+        let prompt = distil_prompt(group, &categories);
+        if prompt.len() > DISTIL_BYTES {
+            return Err(Error::Invalid(text::too_big(&what, group.rows.len())));
+        }
+        let (written, reused) =
+            asker.ask("distil", DISTIL_SYSTEM, &schema, &prompt, &what, |reply| {
                 check_distil_reply(
                     &categories,
                     inputs.corpus_name,
@@ -862,8 +928,7 @@ pub fn build(
                     inputs.filters,
                     reply,
                 )
-            },
-        )?;
+            })?;
         rendered.extend(written);
         progress(&text::step_line(&what, reused));
     }
@@ -875,7 +940,7 @@ pub fn build(
         .collect();
 
     let held = heldout.questions.len();
-    let backtest = if held < MIN_HELD {
+    let backtest = if !tested {
         progress(&text::too_few(held));
         None
     } else {
