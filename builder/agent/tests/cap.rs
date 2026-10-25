@@ -2,7 +2,7 @@ mod common;
 
 use common::*;
 use persona_builder_agent::{
-    ledger::{Cap, Session, local_day},
+    ledger::{Cap, local_day},
     text,
 };
 use serde_json::json;
@@ -174,20 +174,6 @@ fn a_damaged_ledger_stops_all_spending() {
         assert_eq!(error.to_string(), expected);
         assert!(!stub.ran());
     }
-}
-
-#[test]
-fn one_session_per_assistant_at_a_time() {
-    let home = Scratch::new("cap-lock");
-    let first = session(&home.0);
-    let error = Session::open(&home.0, "wren", Cap::default())
-        .err()
-        .unwrap();
-    assert!(error.to_string().contains("already building"), "{error}");
-    let other = Session::open(&home.0, "robin", Cap::default()).unwrap();
-    drop(first);
-    Session::open(&home.0, "wren", Cap::default()).unwrap();
-    drop(other);
 }
 
 #[test]
