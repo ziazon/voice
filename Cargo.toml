@@ -1,5 +1,5 @@
 [workspace]
-members = ["builder/core", "builder/cli", "builder/save", "builder/ingest", "builder/agent", "builder/steps", "builder/build", "builder/keystore"]
+members = ["builder/core", "builder/cli", "builder/save", "builder/ingest", "builder/agent", "builder/steps", "builder/build", "builder/keystore", "builder/grow"]
 resolver = "3"
 
 [workspace.package]

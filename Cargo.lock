@@ -945,6 +945,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "persona-builder-grow"
+version = "0.1.0"
+dependencies = [
+ "persona-builder",
+ "persona-builder-ingest",
+ "persona-builder-steps",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "persona-builder-ingest"
 version = "0.1.0"
 dependencies = [
