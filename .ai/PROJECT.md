@@ -17,14 +17,17 @@ member and no real person's data.
 | `builder/core/` | The Persona Builder core library (persona_builder): the member format, the dial, field packs, turning an assistant on and off in Claude Code, the claude.ai Project pack, forget | `builder/core/src/`, `builder/core/tests/` |
 | `crew/_fields/` | Field packs: starter decisions and words per kind of work | `builder/core/tests/` |
 | `builder/cli/` | The `persona-builder` command | `builder/cli/tests/` |
-| `builder/save/` | Saving an assistant (persona_builder_save): an existing repo, a private GitHub repo, or this Mac only; GitHub sign-in, the Keychain, git | `builder/save/tests/` |
+| `builder/save/` | Saving an assistant (persona_builder_save): an existing repo, a private GitHub repo, or this computer only; GitHub sign-in, the computer's password store, git | `builder/save/tests/` |
+| `builder/keystore/` | The password store off a Mac (persona_builder_keystore): Windows' Credential Manager, the Secret Service on Linux; its own crate so both targets are checked from a Mac | `builder/keystore/tests/`, the cross-target checks in `ci-local.sh` |
 | `builder/ingest/` | Reading histories into the corpus (persona_builder_ingest): the privacy filters, the privacy check, mining Claude Code transcripts and the claude.ai export, merging and splitting the corpus | `builder/ingest/tests/` |
 | `builder/agent/` | The model calls (persona_builder_agent): the agent list, the person's own Claude Code checked and called with no tools, the ledger of what each call cost, the daily cap | `builder/agent/tests/` |
 | `builder/steps/` | The build's steps that need no model (persona_builder_steps): chunking the corpus, checking labels, the tally, the distiller's input, scoring the backtest, finding similar past decisions, the shingle check, importing a question round | `builder/steps/tests/`, `builder/cli/tests/steps_parity.rs` |
 | `builder/build/` | The build's steps that call a model (persona_builder_build): the interview when the history is thin, drafted through the person's own Claude Code and answered into training records; the build itself (`persona-builder build`: label, distil, the blind backtest, then the member's `decisions.md` and `measurements.md`) | `builder/build/tests/`, `builder/cli/tests/interview.rs`, `builder/cli/tests/build.rs` |
 
 All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck). The
-Rust checks (fmt, clippy, tests) need stable Rust and are skipped when `cargo` is missing.
+Rust checks (fmt, clippy, tests) need stable Rust and are skipped when `cargo` is missing. The
+Windows and Linux checks of `builder/keystore` need those targets (`rustup target add
+x86_64-pc-windows-msvc x86_64-unknown-linux-gnu`) and are skipped, each with a printed line, without.
 
 ## Rules that bind every change
 
