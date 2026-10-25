@@ -12,7 +12,9 @@ a *member*, and it lives in `crew/<slug>/` of your own private copy.
 
 - **It reads** your Claude Code history on your Mac (`~/.claude/projects/`) and, if you choose, a
   claude.ai data export. From these it keeps the questions Claude asked you with the option you
-  picked, and the messages you typed. On the route without a Claude history (below), it reads
+  picked, and the messages you typed. You can add more sources, each read only once you consent
+  to it: the mail you sent (a local Gmail export, never your inbox), your own project folders (for
+  the lens), and your answers to the assistant itself on a rebuild. On the route without a Claude history (below), it reads
   instead the documents the principal chooses and their answers to question rounds.
 - **Filters run first.** Records about your own health, family, legal matters or household money
   are dropped, and so is anything holding a secret, someone else's identifier, an email address, a
@@ -67,7 +69,8 @@ Claude history of the Mac it runs on.
 | --- | --- |
 | `crew/_template/` | The member template: identity, decision model, autonomy dial, measurements, report, skill, sub-agent briefs. "Crew" is just the folder's name for the set of members you build |
 | `bootstrap/` | `PROMPT.md` (the guided build), `PROMPT-extra-mac.md`, `install.sh` |
-| `scripts/crew_decisions.py` | Mines, splits, tallies, labels and scores your decision history; imports question rounds and reads documents for the lens; every command takes `--member <member.json>` |
+| `scripts/crew_decisions.py` | Mines, splits, tallies, labels and scores your decision history; imports question rounds and reads documents for the lens; reads the extra sources in `private.json` (`sources`); every command takes `--member <member.json>` |
+| `scripts/crew_mail.py` | Reads sent mail from an mbox (a Gmail export) for the `mbox` source, with quotes and signatures cut |
 | `scripts/crew_documents.py` | Reads text, Markdown, Word and PDF files for the lens step (PDF through poppler's `pdftotext`) |
 | `scripts/slack_mine.py`, `scripts/slack_select.py` | Optional: turn a Slack JSON export into samples and candidate decision threads for persona work (see below) |
 | `scripts/crew_personas.py` | Optional: decision cards, per-person decision models, blind backtests and a panel (see below) |

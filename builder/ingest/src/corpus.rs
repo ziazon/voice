@@ -198,7 +198,8 @@ pub fn discover(names: &[String], out: &str) -> Vec<(String, Mode)> {
         .iter()
         .filter(|s| s.starts_with("decisions-") && s.ends_with(".jsonl") && s.as_str() != out)
         .map(|s| {
-            let mode = if s == "decisions-interview.jsonl" {
+            // The interview and the assistant's live log always train, like install.sh's step 6.
+            let mode = if s == "decisions-interview.jsonl" || s == "decisions-live.jsonl" {
                 Mode::Train
             } else if s.starts_with("decisions-round-") {
                 Mode::Round

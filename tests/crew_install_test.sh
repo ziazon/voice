@@ -137,6 +137,56 @@ run "$main" main --role main
 cmp -s "$corpus" "$scratch/first.jsonl" || fail "a rerun changed the merged corpus"
 check "$main/.claude/state/ari/claudeai-review.tsv" "^y	" "a rerun lost the review mark"
 
+# Robin adds two extra sources: sent mail from a Takeout mbox, and Ari's live log. Neither is read
+# until private.json gives it a consent date; the live answers always train, even the newest.
+state="$main/.claude/state/ari"
+python3 -I - "$state" "$main/projects/voice/crew/ari/private.json" <<'PYSRC'
+import json, sys
+from email.message import EmailMessage
+from pathlib import Path
+state, private = Path(sys.argv[1]), Path(sys.argv[2])
+mail = EmailMessage()
+mail["From"], mail["To"], mail["Date"] = "Robin <robin@example.com>", "sam@example.org", "Tue, 01 Dec 2026 10:00:00 +0000"
+mail["X-Gmail-Labels"] = "Sent"
+mail.set_content("Open the term with the fieldwork story.\n\nOn Mon, Sam <sam@example.org> wrote:\n> hi\n")
+(state / "sources").mkdir(exist_ok=True)
+(state / "sources/mail.mbox").write_bytes(b"From x Tue Dec 01 10:00:00 2026\n" + mail.as_bytes())
+(state / "live.jsonl").write_text(json.dumps({
+    "timestamp": "2026-12-02T10:00:00Z", "work": "x.md", "kind": "escalated", "category": "scope",
+    "tier": "medium", "question": "Drop the second reading?", "ari_pick": "Keep it", "rule": None,
+    "robin_answer": "drop it, the first one carries the week"}) + "\n")
+config = json.loads(private.read_text())
+config["sources"] = [
+    {"name": "mail", "kind": "mbox", "path": str(state / "sources/mail.mbox"), "own_addresses": ["robin@example.com"]},
+    {"name": "live", "kind": "live"}]
+private.write_text(json.dumps(config))
+PYSRC
+run "$main" main --role main
+check "$scratch/out" "== 6. Extra sources" "missing extra sources step header"
+check "$scratch/out" "mail: no consent yet, not read" "an unconsented source was not reported"
+grep -q "fieldwork story" "$corpus" && fail "an unconsented source was mined"
+python3 -I - "$main/projects/voice/crew/ari/private.json" <<'PYSRC'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+config = json.loads(path.read_text())
+for source in config["sources"]:
+    source["consent"] = "2026-10-25"
+path.write_text(json.dumps(config))
+PYSRC
+run "$main" main --role main
+check "$scratch/out" "mail: read 1 messages; kept 1 you sent" "the mbox was not read"
+check "$scratch/out" "decisions-live.jsonl (always training)" "the live log was not merged as training"
+[ "$(file_mode "$state/decisions-src-mail.jsonl")" = 600 ] || fail "the mail corpus is not owner-only"
+check "$corpus" "fieldwork story" "the sent mail was not merged"
+grep -q "sam@example.org" "$corpus" && fail "a recipient reached the corpus"
+python3 -I - "$corpus" <<'PYSRC'
+import json, sys
+records = [json.loads(line) for line in open(sys.argv[1])]
+live = [r for r in records if r["project"] == "live"]
+assert [(r["own_words"], r["split"]) for r in live] == [("drop it, the first one carries the week", "train")], live
+PYSRC
+
 
 # The executable clone is authoritative, regardless of cwd, HOME, or clone folder name.
 odd="$scratch/a clone elsewhere"
@@ -258,7 +308,12 @@ PYROUND
   printf '%s\n' '{"id":"message:stale","kind":"message","timestamp":"2026-09-01T10:00:00Z","project":"world","text":"STALE_HISTORY_MUST_NOT_MERGE"}' \
     > "$state/decisions-old.jsonl"
   cp "$state/decisions-old.jsonl" "$scratch/stale-history.jsonl"
+  printf '%s\n' '{"timestamp":"2026-09-01T10:00:00Z","question":"Q?","ari_pick":"A","robin_answer":"LIVE_MUST_NOT_MERGE"}' \
+    > "$state/live.jsonl"
+  cp "$state/decisions-old.jsonl" "$state/decisions-live.jsonl"
   run "$relay" relay --no-history
+  check "$scratch/out" "ignored (--no-history): decisions-live.jsonl" "a live corpus was not ignored"
+  check "$scratch/out" "skipped (--no-history): the extra sources" "the extra sources ran on the relay Mac"
   check "$scratch/out" "ignored (--no-history): decisions-old.jsonl" "stale history was not reported as ignored"
   cmp -s "$state/decisions-old.jsonl" "$scratch/stale-history.jsonl" || fail "--no-history changed the stale corpus"
   python3 -I - "$state" <<'PYROUND'

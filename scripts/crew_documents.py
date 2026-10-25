@@ -40,6 +40,23 @@ def walk(root):
     return sorted(paths, key=lambda p: p.as_posix())
 
 
+def glob_regex(pattern):
+    """A path pattern as a regex over a relative POSIX path: `*` and `?` stay inside one folder,
+    `**` crosses folders, and `**/` also matches no folder at all."""
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        else:
+            out.append({"*": "[^/]*", "?": "[^/]"}.get(pattern[i], re.escape(pattern[i])))
+            i += 1
+    return re.compile("".join(out))
+
+
 def docx_paragraphs(path):
     with zipfile.ZipFile(path) as archive:
         info = archive.getinfo("word/document.xml")

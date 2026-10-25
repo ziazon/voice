@@ -17,8 +17,14 @@ principal's pronouns, and the privacy filters (excluded folders, personal topics
       of the reply it answered. Drops excluded folders, and records on a personal topic or holding a
       secret. The newest share of questions, and every message from that point on, is split
       "heldout" for the backtest.
-  documents --dir FOLDER --out-dir DIR [--size 6000] [--pdftotext PATH]
-      Read the principal's documents into filtered private lens inputs and an inventory.
+  documents [--dir FOLDER] [--sources] --out-dir DIR [--size 6000] [--pdftotext PATH]
+      Read the principal's documents into filtered private lens inputs and an inventory; with
+      --sources, also each consented folder source's files marked y in its review.
+  sources list | review --name N [--projects DIR] | mark --name N --as y|n --path GLOB... | mine [--name N]
+      The extra sources in private.json, each read only once it has a consent date. `mine` reads
+      sent mail from an mbox into decisions-src-<name>.jsonl and the live log into
+      decisions-live.jsonl (training only); `review` lists a folder's files for marking, with
+      files Claude Code wrote or edited starting as not mine.
   round --name NAME --questions Q.json --answers A.json [--heldout] [--out PATH]
       Import an off-Claude question round, training by default or held out as a whole round.
   merge [--in FILE...] [--train FILE...] [--rounds FILE...] --out decisions.jsonl
@@ -65,6 +71,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import crew_documents  # noqa: E402
+import crew_mail  # noqa: E402
 
 NOISE = {"try again", "continue", "retry"}
 REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
@@ -100,6 +107,7 @@ class Member:
     queue_answerer: str
     codebook: dict
     principal_subject: str
+    sources: object
 
     @property
     def pick_field(self):
@@ -153,7 +161,8 @@ def load_member(config):
                   pasted=tuple(f["pasted_prefixes"]), mark=mark, queues=config.get("queues"),
                   queue_answerer=config.get("queue_answerer"),
                   codebook=config.get("codebook") or {},
-                  principal_subject=config.get("principal_pronouns", "they/them").split("/")[0])
+                  principal_subject=config.get("principal_pronouns", "they/them").split("/")[0],
+                  sources=config.get("sources"))
 
 
 def read_json(path):
@@ -169,6 +178,8 @@ def read_member(path):
     path = Path(path).expanduser()
     config = read_json(path)
     validate_config(config, path)
+    if "sources" in config:
+        raise Failed(f"member config: {path.name}: sources belong in private.json, never in a committed file")
     private = path.with_name("private.json")
     if not private.is_file():
         return config
@@ -1046,18 +1057,62 @@ def document_parts(m, source, paragraphs):
     return parts, dropped
 
 
+def document_roots(m, args):
+    """(root, prefix, allowed) for --dir and every consented folder source: a source reads only the
+    files its review marks y, each named <source>/<path>."""
+    roots = []
+    if args.dir:
+        root = Path(args.dir).expanduser()
+        if root.is_symlink() or not root.is_dir():
+            raise Failed("documents: dir must be a directory, not a symlink")
+        roots.append((root, "", None))
+    for source in sources(m) if args.sources else []:
+        if source["kind"] != "folder":
+            continue
+        name = source["name"]
+        if not source.get("consent"):
+            print(f"{name}: no consent yet, not read")
+            continue
+        rows = read_file_review(review_file(m, source))
+        if rows is None:
+            print(f"{name}: no review yet (sources review --name {name})")
+            continue
+        root = folder_root(source)
+        covered = set(folder_files(m, source, root, Counter()))
+        roots.append((root, name + "/", {r["path"] for r in rows if r["mine"] == "y"} & covered))
+    return roots
+
+
 def cmd_documents(m, args):
-    root, output = Path(args.dir).expanduser(), Path(args.out_dir).expanduser()
+    output = Path(args.out_dir).expanduser()
+    if not (args.dir or args.sources):
+        raise Failed("documents needs --dir, --sources or both")
     resolved = output.resolve()
     if any(os.path.lexists(parent / ".git") for parent in (resolved, *resolved.parents)):
         raise Failed("out dir must not be inside a git work tree")
     if args.size <= 0:
         raise Failed("documents: size must be positive")
-    if root.is_symlink() or not root.is_dir():
-        raise Failed("documents: dir must be a directory, not a symlink")
     inventory, parts, totals, dropped = [], [], Counter(), Counter()
+    for root, prefix, allowed in document_roots(m, args):
+        read_documents(m, args, root, prefix, allowed, inventory, parts, totals, dropped)
+    os.close(private_directory(output))
+    for path in output.glob("documents-*.jsonl"):
+        path.unlink()
+    chunks = 0
+    for chunks, records in enumerate(pack_words(parts, args.size, lambda r: r["text"]), 1):
+        write_jsonl(output / f"documents-{chunks:02d}.jsonl", records)
+    write_jsonl(output / "inventory.jsonl", inventory)
+    print(f"read {totals['documents']} documents into {len(parts)} parts ({totals['words']} words) "
+          f"in {chunks} chunks; listed {totals['images']} images; skipped {totals['skipped']} files")
+    print(f"dropped {dropped['personal']} personal and {dropped['secret']} secret paragraphs")
+    return 0
+
+
+def read_documents(m, args, root, prefix, allowed, inventory, parts, totals, dropped):
     for relative in crew_documents.walk(root):
-        source = relative.as_posix()
+        if allowed is not None and relative.as_posix() not in allowed:
+            continue
+        source = prefix + relative.as_posix()
         if m.personal.search(source) or m.secret.search(source):
             inventory.append({"source": "[filtered]", "kind": "skipped", "reason": "filtered"})
             totals["skipped"] += 1
@@ -1080,17 +1135,6 @@ def cmd_documents(m, args):
         dropped.update(counts)
         totals["documents"] += 1
         totals["words"] += words
-    os.close(private_directory(output))
-    for path in output.glob("documents-*.jsonl"):
-        path.unlink()
-    chunks = 0
-    for chunks, records in enumerate(pack_words(parts, args.size, lambda r: r["text"]), 1):
-        write_jsonl(output / f"documents-{chunks:02d}.jsonl", records)
-    write_jsonl(output / "inventory.jsonl", inventory)
-    print(f"read {totals['documents']} documents into {len(parts)} parts ({totals['words']} words) "
-          f"in {chunks} chunks; listed {totals['images']} images; skipped {totals['skipped']} files")
-    print(f"dropped {dropped['personal']} personal and {dropped['secret']} secret paragraphs")
-    return 0
 
 
 def round_error(number, message):
@@ -1275,6 +1319,405 @@ def cmd_claudeai(m, args):
     return {"inspect": cmd_claudeai_inspect, "titles": cmd_claudeai_titles, "mark": cmd_claudeai_mark,
             "mine": cmd_claudeai_mine}[args.step](m, args)
 
+
+
+# Extra sources: what a principal adds beyond their Claude history, listed under `sources` in the
+# gitignored private.json. A source without a `consent` date is listed and never read; the build
+# writes the date only after the principal says yes (PROMPT.md step 5b).
+SOURCE_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+SOURCE_COMMON = {"name", "kind", "consent"}
+SOURCE_KEYS = {"folder": {"path", "include", "exclude"},
+               "live": {"path"},
+               "mbox": {"path", "own_addresses", "exclude_to", "after", "before"}}
+MAIL_SKIPS = ("not from you", "not in Sent", "to excluded recipients", "outside the dates", "undated",
+              "with no plain text", "unreadable", "too big", "too long", "empty once stripped",
+              "filtered whole")
+NOT_SENT = {"Drafts", "Spam", "Trash"}
+FILE_REVIEW_COLUMNS = ("mine", "modified", "kind", "claude", "path")
+FOLDER_SKIPS = ("excluded", "filtered names", "odd names", "links", "not included")
+AGENT_FILES = {"AGENTS.md", "CLAUDE.md", "GEMINI.md"}
+AGENT_FOLDERS = {"node_modules"}
+WRITE_TOOLS = {"Write": "wrote", "Edit": "edited", "MultiEdit": "edited", "NotebookEdit": "edited"}
+
+
+def is_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
+def string_list(value):
+    return isinstance(value, list) and all(isinstance(v, str) and v for v in value)
+
+
+def check_source(source, where, earlier):
+    """One registry entry's errors name the entry and the key, never a value: values are paths
+    and addresses."""
+    if not isinstance(source, dict):
+        raise Failed(f"{where} must be an object")
+    name = source.get("name")
+    if not isinstance(name, str) or not SOURCE_NAME.fullmatch(name):
+        raise Failed(f"{where}: name must be 1 to 40 lowercase letters, digits or hyphens")
+    where += f" ({name})"
+    if any(s["name"] == name for s in earlier):
+        raise Failed(f"{where}: name is used twice")
+    kind = source.get("kind")
+    if kind not in SOURCE_KEYS:
+        raise Failed(f"{where}: kind must be one of {', '.join(sorted(SOURCE_KEYS))}")
+    if kind == "live" and any(s["kind"] == "live" for s in earlier):
+        raise Failed(f"{where}: only one live source")
+    unknown = sorted(set(source) - SOURCE_COMMON - SOURCE_KEYS[kind])
+    if unknown:
+        raise Failed(f"{where}: unknown key {', '.join(unknown)}")
+    for key in ("consent", "after", "before"):
+        if key in source and not is_date(source[key]):
+            raise Failed(f"{where}: {key} must be a YYYY-MM-DD date")
+    if "path" in source and not (isinstance(source["path"], str) and source["path"]):
+        raise Failed(f"{where}: path must be a non-empty string")
+    if kind != "live" and "path" not in source:
+        raise Failed(f"{where}: path is required")
+    if kind == "mbox":
+        if not (string_list(source.get("own_addresses")) and source["own_addresses"]
+                and all("@" in a for a in source["own_addresses"])):
+            raise Failed(f"{where}: own_addresses must be a non-empty list of addresses")
+        if "exclude_to" in source:
+            compile_pattern(f"{where}: exclude_to", source["exclude_to"])
+    for key in ("include", "exclude"):
+        if key in source and not string_list(source[key]):
+            raise Failed(f"{where}: {key} must be a list of strings")
+
+
+def sources(m):
+    if m.sources is None:
+        return []
+    if not isinstance(m.sources, list):
+        raise Failed("private.json: sources must be a list")
+    checked = []
+    for i, source in enumerate(m.sources):
+        check_source(source, f"private.json: sources[{i}]", checked)
+        checked.append(source)
+    return checked
+
+
+def named_source(m, name, kind=None):
+    source = next((s for s in sources(m) if s["name"] == name), None)
+    if source is None:
+        raise Failed(f"no source named {name}")
+    if kind and source["kind"] != kind:
+        raise Failed(f"{name}: review is for {kind} sources")
+    if not source.get("consent"):
+        raise Failed(f"{name}: no consent yet, not read")
+    return source
+
+
+def cmd_sources_list(m, args):
+    listed = sources(m)
+    if not listed:
+        print("no sources in private.json")
+    for s in listed:
+        consent = f"consent {s['consent']}" if s.get("consent") else "no consent yet: not read"
+        print(f"{s['name']}\t{s['kind']}\t{consent}")
+    return 0
+
+
+def mail_record(m, source, message, own, excluded, dropped):
+    """The message record for one mail, or the reason it is skipped. Recipients, the subject and
+    every other header are read only to decide, and never stored."""
+    sender = crew_mail.addresses(message, "From")
+    if not sender or sender[0] not in own:
+        return "not from you"
+    labels = crew_mail.labels(message)
+    if labels is not None and ("Sent" not in labels or labels & NOT_SENT):
+        return "not in Sent"
+    if excluded and any(excluded.search(a) for a in crew_mail.addresses(message, "To", "Cc", "Bcc")):
+        return "to excluded recipients"
+    when = crew_mail.date(message)
+    if when is None:
+        return "undated"
+    if when[:10] < source.get("after", "") or when[:10] > source.get("before", "9999"):
+        return "outside the dates"
+    text = crew_mail.plain_text(message)
+    if text is None:
+        return "with no plain text"
+    paragraphs = [flat(p) for p in crew_mail.own_words(text)]
+    if not paragraphs:
+        return "empty once stripped"
+    kept = []
+    for paragraph in paragraphs:
+        reason = "secret" if m.secret.search(paragraph) else "personal" if m.personal.search(paragraph) else None
+        if reason:
+            dropped[reason] += 1
+        else:
+            kept.append(paragraph)
+    if not kept:
+        return "filtered whole"
+    text = "\n\n".join(kept)
+    if len(text) > MAX_MESSAGE_CHARS:
+        return "too long"
+    return message_record(f"src-{source['name']}", when, source["name"], text, "")
+
+
+def mine_mbox(m, source):
+    name, path = source["name"], Path(source["path"]).expanduser()
+    if not os.path.lexists(path):
+        raise Failed(f"{name}: no mbox at the source's path")
+    if path.is_symlink() or not path.is_file():
+        raise Failed(f"{name}: the mbox must be a regular file, not a link")
+    own = {a.lower() for a in source["own_addresses"]}
+    excluded = compile_pattern(f"{name}: exclude_to", source["exclude_to"]) if "exclude_to" in source else None
+    kept, skipped, dropped, records, read = [], Counter(), Counter(), Counter(), 0
+    for raw in crew_mail.messages(path):
+        read += 1
+        if raw is None:
+            skipped["too big"] += 1
+            continue
+        try:
+            result = mail_record(m, source, crew_mail.parse(raw), own, excluded, dropped)
+        except (crew_mail.Unreadable, *crew_mail.UNREADABLE):
+            result = "unreadable"
+        if isinstance(result, str):
+            skipped[result] += 1
+            continue
+        reason = privacy(m, result)
+        if reason:
+            records[reason] += 1
+        else:
+            kept.append(result)
+    kept.sort(key=lambda r: (r["timestamp"], r["id"]))
+    # Every record trains here; the merge splits the whole corpus once.
+    mark_split(kept, 0, "9999")
+    write_jsonl(m.state(f"decisions-src-{name}.jsonl"), kept)
+    print(f"{name}: read {read} messages; kept {len(kept)} you sent")
+    print(f"{name}: skipped " + ", ".join(f"{skipped[k]} {k}" for k in MAIL_SKIPS))
+    print(f"{name}: dropped {dropped['personal']} personal and {dropped['secret']} secret paragraphs, "
+          f"{records['personal']} personal and {records['secret']} secret records")
+
+
+def asked(text):
+    return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def history_questions(m):
+    """Every question already in a corpus file: an escalation asked in Claude Code is mined there."""
+    known = set()
+    for path in m.state_dir.glob("decisions-*.jsonl"):
+        if path.name == "decisions-live.jsonl":
+            continue
+        for r in read_jsonl(path):
+            if isinstance(r, dict) and r.get("kind") == "question" and isinstance(r.get("question"), str):
+                known.add(asked(r["question"]))
+    return known
+
+
+def live_record(m, line):
+    """A question record for one answered live line, or the reason it is skipped. The member's pick
+    is the one recommended option; the principal's answer is that pick or their own words."""
+    if not isinstance(line, dict):
+        return "unreadable lines"
+    answer = line.get(m.answer_field)
+    if not isinstance(answer, str) or not answer.strip():
+        return "with no answer from you"
+    question, pick = line.get("question"), line.get(m.pick_field)
+    if not (isinstance(question, str) and question.strip() and isinstance(pick, str) and pick.strip()):
+        return "unreadable lines"
+    try:
+        when = utc(line.get("timestamp"))
+    except Failed:
+        return "unreadable lines"
+    label = f"{pick.strip()} (Recommended)"
+    picks, own_words = ([label], "") if answer.strip() == pick.strip() else ([], answer.strip())
+    record = {"id": record_id("question", "live", when, question), "kind": "question", "timestamp": when,
+              "project": "live", "header": "", "question": question, "multiSelect": False,
+              "options": [{"label": label, "description": ""}], "recommended": label,
+              "picks": picks, "own_words": own_words, "notes": "",
+              "outcome": outcome(picks, own_words, label), "split": "train"}
+    record[m.pick_field] = label
+    return record
+
+
+def mine_live(m, source):
+    name = source["name"]
+    path = Path(source.get("path") or m.state("live.jsonl")).expanduser()
+    if not os.path.lexists(path):
+        print(f"{name}: no log yet")
+        return
+    if path.is_symlink() or not path.is_file():
+        raise Failed(f"{name}: the log must be a regular file, not a link")
+    known = history_questions(m)
+    kept, skipped, dropped = [], Counter(), Counter()
+    for text in path.read_text().split("\n"):
+        if not text.strip():
+            continue
+        try:
+            result = live_record(m, json.loads(text))
+        except (ValueError, RecursionError):
+            result = "unreadable lines"
+        if isinstance(result, dict) and asked(result["question"]) in known:
+            result = "already in the history"
+        if isinstance(result, str):
+            skipped[result] += 1
+            continue
+        reason = privacy(m, result)
+        if reason:
+            dropped[reason] += 1
+        else:
+            kept.append(result)
+    kept.sort(key=lambda r: (r["timestamp"], r["id"]))
+    write_jsonl(m.state("decisions-live.jsonl"), kept)
+    print(f"{name}: kept {len(kept)} answers; skipped {skipped['with no answer from you']} with no answer "
+          f"from you, {skipped['already in the history']} already in the history, "
+          f"{skipped['unreadable lines']} unreadable lines")
+    print(f"{name}: dropped {dropped['personal']} personal records, {dropped['secret']} secret records")
+
+
+def mine_folder(m, source):
+    print(f"{source['name']}: a folder feeds the lens (documents --sources)")
+
+
+def cmd_sources_mine(m, args):
+    chosen = [s for s in sources(m) if args.name in (None, s["name"])]
+    if args.name and not chosen:
+        raise Failed(f"no source named {args.name}")
+    if not chosen:
+        print("no sources in private.json")
+    for source in chosen:
+        if not source.get("consent"):
+            print(f"{source['name']}: no consent yet, not read")
+            continue
+        {"mbox": mine_mbox, "live": mine_live, "folder": mine_folder}[source["kind"]](m, source)
+    return 0
+
+
+def claude_touched(projects):
+    """Each file a Claude Code session on this Mac wrote or edited, by path ("wrote" wins). Only the
+    tool calls' file paths are read, never what was written."""
+    touched = {}
+    root = Path(projects).expanduser()
+    if not root.is_dir():
+        return touched
+    for path in sorted(root.rglob("*.jsonl")):
+        if path.is_symlink():
+            continue
+        for record in read_session(path):
+            message = record.get("message") if isinstance(record, dict) and record.get("type") == "assistant" else None
+            content = message.get("content") if isinstance(message, dict) else None
+            for block in content if isinstance(content, list) else []:
+                how = WRITE_TOOLS.get(block.get("name")) if isinstance(block, dict) else None
+                inputs = block.get("input") if how and block.get("type") == "tool_use" else None
+                target = (inputs.get("file_path") or inputs.get("notebook_path")) if isinstance(inputs, dict) else None
+                if not isinstance(target, str):
+                    continue
+                for key in {os.path.normpath(target), os.path.realpath(target)}:
+                    if touched.get(key) != "wrote":
+                        touched[key] = how
+    return touched
+
+
+def folder_root(source):
+    root = Path(source["path"]).expanduser()
+    if root.is_symlink() or not root.is_dir():
+        raise Failed(f"{source['name']}: the folder must be a folder, not a link")
+    return root
+
+
+def folder_files(m, source, root, skipped):
+    """The relative paths the source covers, as the review lists them."""
+    include = [crew_documents.glob_regex(p) for p in source.get("include", [])]
+    exclude = [crew_documents.glob_regex(p) for p in source.get("exclude", [])]
+    for relative in crew_documents.walk(root):
+        path = relative.as_posix()
+        reason = ("links" if (root / relative).is_symlink() else
+                  "excluded" if any(p.fullmatch(path) for p in exclude) else
+                  "not included" if include and not any(p.fullmatch(path) for p in include) else
+                  "odd names" if re.search(r"[\t\n\r]", path) else
+                  "filtered names" if m.personal.search(path) or m.secret.search(path) else None)
+        if reason:
+            skipped[reason] += 1
+        else:
+            yield path
+
+
+def review_file(m, source):
+    return m.state_dir / "sources" / f"{source['name']}-review.tsv"
+
+
+def read_file_review(path):
+    if not path.exists():
+        return None
+    lines = path.read_text().split("\n")
+    if tuple(lines[0].split("\t")) != FILE_REVIEW_COLUMNS:
+        raise Failed(f"{path.name}: not a review file (header must be {' '.join(FILE_REVIEW_COLUMNS)})")
+    rows = []
+    for number, line in enumerate(lines[1:], 2):
+        if not line.strip():
+            continue
+        cells = line.split("\t")
+        if len(cells) != len(FILE_REVIEW_COLUMNS):
+            raise Failed(f"{path.name}: line {number} does not have {len(FILE_REVIEW_COLUMNS)} columns")
+        rows.append(dict(zip(FILE_REVIEW_COLUMNS, cells)))
+    return rows
+
+
+def write_file_review(path, rows):
+    private_write(path, "\t".join(FILE_REVIEW_COLUMNS) + "\n" +
+                  "".join("\t".join(r[c] for c in FILE_REVIEW_COLUMNS) + "\n" for r in rows))
+
+
+def file_kind(path):
+    suffix = Path(path).suffix.lower()
+    if suffix in crew_documents.IMAGES:
+        return "image"
+    return {".docx": "docx", ".pdf": "pdf", ".md": "text", ".markdown": "text", ".txt": "text"}.get(suffix, "other")
+
+
+def cmd_sources_review(m, args):
+    source = named_source(m, args.name, "folder")
+    root, review = folder_root(source), review_file(m, source)
+    marks = {r["path"]: r["mine"] for r in read_file_review(review) or []}
+    touched = claude_touched(args.projects)
+    skipped, flagged, rows = Counter(), Counter(), []
+    for path in folder_files(m, source, root, skipped):
+        full = root / path
+        claude = (touched.get(os.path.normpath(str(full))) or touched.get(os.path.realpath(full)) or
+                  ("agent" if Path(path).name in AGENT_FILES or AGENT_FOLDERS & set(Path(path).parts) else ""))
+        if path not in marks and claude:
+            flagged["agent" if claude == "agent" else "claude"] += 1
+        modified = datetime.fromtimestamp(full.lstat().st_mtime, timezone.utc).date().isoformat()
+        rows.append({"mine": marks.get(path, "n" if claude else ""), "modified": modified,
+                     "kind": file_kind(path), "claude": claude, "path": path})
+    write_file_review(review, rows)
+    print(f"{source['name']}: listed {len(rows)} files; {sum(flagged.values())} start as not mine "
+          f"({flagged['claude']} Claude wrote or edited, {flagged['agent']} agent files); skipped "
+          + ", ".join(f"{skipped[k]} {k}" for k in FOLDER_SKIPS))
+    return 0
+
+
+def cmd_sources_mark(m, args):
+    source = named_source(m, args.name, "folder")
+    if not (args.path or args.unmarked or args.all):
+        raise Failed("mark needs --path, --unmarked or --all")
+    review = review_file(m, source)
+    rows = read_file_review(review)
+    if rows is None:
+        raise Failed(f"{source['name']}: no review yet (sources review --name {source['name']})")
+    patterns = [crew_documents.glob_regex(p) for p in args.path]
+    changed = 0
+    for row in rows:
+        if args.all or (args.unmarked and not row["mine"]) or any(p.fullmatch(row["path"]) for p in patterns):
+            row["mine"] = args.mark
+            changed += 1
+    write_file_review(review, rows)
+    print(f"{source['name']}: marked {changed} files {args.mark}")
+    return 0
+
+
+def cmd_sources(m, args):
+    return {"list": cmd_sources_list, "review": cmd_sources_review, "mark": cmd_sources_mark,
+            "mine": cmd_sources_mine}[args.step](m, args)
 
 
 # Labelling. The member's codebook names the categories, domains, escalation classes and message
@@ -1481,7 +1924,7 @@ def cmd_privacy_check(m, args):
     return 1 if hits else 0
 
 
-COMMANDS = {"mine": cmd_mine, "tally": cmd_tally, "split": cmd_split, "score": cmd_score,
+COMMANDS = {"sources": cmd_sources, "mine": cmd_mine, "tally": cmd_tally, "split": cmd_split, "score": cmd_score,
             "similar": cmd_similar, "record": cmd_record, "pending": cmd_pending, "claudeai": cmd_claudeai,
             "documents": cmd_documents, "round": cmd_round, "merge": cmd_merge, "folders": cmd_folders,
             "chunk": cmd_chunk, "check-labels": cmd_check_labels, "distil-in": cmd_distil_in,
@@ -1555,6 +1998,21 @@ def parser_for(m, description):
     p.add_argument("--out", required=True)
     p.add_argument("--holdout", type=float, default=0.15)
     p.add_argument("--cutoff")
+    srcs = sub.add_parser("sources", help="the extra sources in private.json: list, review, mark, mine")
+    steps = srcs.add_subparsers(dest="step", required=True)
+    steps.add_parser("list")
+    p = steps.add_parser("review", help="list a folder source's files for the principal to mark")
+    p.add_argument("--name", required=True)
+    p.add_argument("--projects", default="~/.claude/projects",
+                   help="Claude Code transcripts: files a session wrote or edited start as not mine")
+    p = steps.add_parser("mark")
+    p.add_argument("--name", required=True)
+    p.add_argument("--as", dest="mark", required=True, choices=("y", "n"))
+    p.add_argument("--path", action="append", default=[], help="a path pattern (*, ?, **)")
+    p.add_argument("--unmarked", action="store_true")
+    p.add_argument("--all", action="store_true")
+    p = steps.add_parser("mine", help="read every consented mbox and live source into its corpus file")
+    p.add_argument("--name")
     p = sub.add_parser("merge")
     p.add_argument("--in", dest="inputs", nargs="*", default=[])
     p.add_argument("--rounds", nargs="*", default=[], help="question-round files: each record keeps its imported split")
@@ -1563,7 +2021,8 @@ def parser_for(m, description):
     p.add_argument("--holdout", type=float, default=0.15)
     p.add_argument("--cutoff")
     p = sub.add_parser("documents")
-    p.add_argument("--dir", required=True)
+    p.add_argument("--dir", help="a folder of documents the principal chose")
+    p.add_argument("--sources", action="store_true", help="also the files marked mine in each folder source")
     p.add_argument("--out-dir", required=True)
     p.add_argument("--size", type=int, default=6000)
     p.add_argument("--pdftotext")

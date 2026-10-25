@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Set up an assistant's build on this Mac: check the tools, update this voice clone,
-# fill crew/<slug>/ from the template, and mine this Mac's Claude Code history into the member's
-# private state dir. Safe to run again: each run refreshes the corpus and keeps every mark.
+# fill crew/<slug>/ from the template, and mine this Mac's Claude Code history, the claude.ai
+# export and every consented extra source (private.json's `sources`) into the member's private
+# state dir. Safe to run again: each run refreshes the corpus and keeps every mark.
 #
 #   install.sh --name Ari --principal Robin               mine this Mac (the main one), merge
 #   install.sh --name Ari --principal Robin --role extra --to robin@main.local
@@ -13,7 +14,8 @@
 # gitignored crew/<slug>/private.json, and DIR/crew/* replaces template files when crew/<slug>/ is
 # first filled), --repo-dir DIR (default: this script's clone), --export ZIP (main role; default
 # <state>/claudeai-export.zip when present), --project-field KEY (from `claudeai inspect`).
-# --no-history (main role only): skip this Mac's history and export; merge question rounds instead.
+# --no-history (main role only): skip this Mac's history, export and extra sources; merge question
+# rounds instead.
 # Environment: CLAUDE_PROJECTS (default ~/.claude/projects), CREW_HOST.
 #
 # Nothing here reads another person's data or sends anything anywhere except an extra Mac's own
@@ -40,7 +42,7 @@ while [ "$#" -gt 0 ]; do
     --kit) need_value "$@"; kit="$2"; shift 2 ;;
     --export) need_value "$@"; export_zip="$2"; shift 2 ;;
     --project-field) need_value "$@"; project_field="$2"; shift 2 ;;
-    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
   esac
 done
@@ -250,13 +252,28 @@ else
   fi
 fi
 
-echo "== 6. Merge every machine's corpus"
+echo "== 6. Extra sources"
+if [ "$no_history" = 1 ]; then
+  # This Mac's mail and the assistant's live log belong to the adult running the build.
+  echo "skipped (--no-history): the extra sources (a folder source still feeds the lens)"
+else
+  crew_run sources mine
+fi
+
+echo "== 7. Merge every corpus"
 inputs=() train=() rounds=()
 for f in "$state"/decisions-*.jsonl; do
   [ -e "$f" ] || continue
   case "$(basename "$f")" in
     decisions-interview.jsonl) train+=("$f") ;;
     decisions-round-*.jsonl) rounds+=("$f") ;;
+    decisions-live.jsonl)
+      if [ "$no_history" = 1 ]; then
+        echo "ignored (--no-history): $(basename "$f")"
+      else
+        train+=("$f")
+      fi
+      ;;
     *)
       if [ "$no_history" = 1 ]; then
         echo "ignored (--no-history): $(basename "$f")"
@@ -271,8 +288,14 @@ if [ "${#inputs[@]}" = 0 ] && [ "${#train[@]}" = 0 ] && [ "${#rounds[@]}" = 0 ];
   exit 0
 fi
 echo "merging (a file from a Mac that no longer exists, or an old host name, should be deleted):"
-for f in ${inputs[@]+"${inputs[@]}"} ${train[@]+"${train[@]}"} ${rounds[@]+"${rounds[@]}"}; do
+for f in ${inputs[@]+"${inputs[@]}"}; do
   echo "  $(date -r "$f" '+%Y-%m-%d %H:%M')  $(basename "$f")"
+done
+for f in ${train[@]+"${train[@]}"}; do
+  echo "  $(date -r "$f" '+%Y-%m-%d %H:%M')  $(basename "$f") (always training)"
+done
+for f in ${rounds[@]+"${rounds[@]}"}; do
+  echo "  $(date -r "$f" '+%Y-%m-%d %H:%M')  $(basename "$f") (keeps its split)"
 done
 merge=(merge --out "$state/decisions.jsonl" --holdout 0.15)
 [ "${#inputs[@]}" = 0 ] || merge+=(--in "${inputs[@]}")

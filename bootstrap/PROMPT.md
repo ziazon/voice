@@ -2,7 +2,8 @@
 
 An AI assistant answers a decision the way you would, says how sure it is, and hands the question
 back when it is yours. It is built from your own answers and messages to Claude Code (and, if you
-like, claude.ai). Everything raw stays on your Mac; only a paraphrased model is committed.
+like, claude.ai, your sent mail and your own documents). Everything raw stays on your Mac; only a
+paraphrased model is committed.
 
 **Before you start:** make a private copy of this repo (the README's *Build one* step 1: a new
 private GitHub repo, not a fork, because a fork of a public repo is public) and clone it into a folder
@@ -44,7 +45,8 @@ wherever a step says *ask*. Expect about two to three hours, most of it sub-agen
 ## 1. Consent, and the names
 
 Tell the principal, in plain words: what will be read (their Claude Code history on this Mac and any
-others they add, and the claude.ai conversations they mark as theirs), what is dropped automatically
+others they add, the claude.ai conversations they mark as theirs, and any other source they add at
+step 5b, each asked separately), what is dropped automatically
 (their own health, family, legal and household-money matters, any secret, and any record with
 another person's identifier, an email address, a phone number or a long number), where it stays
 (`~/.claude/state/<slug>/` on this Mac), and what gets shared (only the paraphrased model in
@@ -113,7 +115,7 @@ install command.
 
 ## 5. Your claude.ai conversations (optional)
 
-*Ask:* "Include your claude.ai conversations?" (Yes / Skip). If they skip, go to step 6.
+*Ask:* "Include your claude.ai conversations?" (Yes / Skip). If they skip, go to step 5b.
 
 1. They request the export: claude.ai → Settings → Privacy → **Export data**. The link arrives by
    email and expires after 24 hours. It downloads a small JSON manifest, not the data: the
@@ -123,11 +125,11 @@ install command.
    from a shell they return 403), so **they** click the `conversations-000.zip` link; you cannot
    download it for them. Then you move it:
    `mv ~/Downloads/conversations-000.zip ~/.claude/state/$S/claudeai-export.zip`
-   If the manifest lists more than one `conversations-` zip, stop this step, skip to step 6, and
+   If the manifest lists more than one `conversations-` zip, stop this step, skip to step 5b, and
    suggest they report upstream that the conversations came in parts (the adapter reads one).
 2. Re-run the step 3 install command. Its first claude.ai step, `claudeai inspect`, prints the
    export's field names (never content) and stops if the export's shape is not what the adapter
-   reads. **If it stops, stop this step**, skip to step 6, and suggest they report the field names
+   reads. **If it stops, stop this step**, skip to step 5b, and suggest they report the field names
    (they hold no content) upstream. If inspect shows a project field (for example
    `.project.name`), re-run install with `--project-field project.name` so the review list shows
    each conversation's project.
@@ -156,6 +158,69 @@ install command.
 4. Re-run the step 3 install command: it mines only the conversations marked mine, then merges
    every corpus into `~/.claude/state/$S/decisions.jsonl`.
 
+## 5b. Other sources (optional)
+
+*Ask* (multi-select): "Add anything else of yours to <Name>'s build?" (Sent mail, from a Gmail
+export / Project folders, your own documents / Your answers to <Name>, on a rebuild / Nothing else).
+Each source is one entry under `sources` in `crew/<slug>/private.json`. **A source is never read
+until its entry has a `consent` date:** write the entry without one, and add
+`"consent": "<today, YYYY-MM-DD>"` only after the principal says yes to that source below.
+`$C sources list` shows every source and whether it may be read (never a path or an address).
+
+**Sent mail.** Say in plain words: only mail they sent is read, matched by their own addresses
+(and, in a Gmail export, by Gmail's Sent label); received mail, drafts, spam and trash are skipped
+unread. Every header, the recipients, the subject, quoted replies, forwarded text and signatures are
+cut before anything is kept. A paragraph holding an email address, a phone number, a long number, a
+secret or one of their personal topics is dropped, and the rest of that mail kept. What is kept
+stays in `~/.claude/state/<slug>/`, as their own messages.
+
+1. **They** export it: at takeout.google.com, select only Mail, and in its options only the Sent
+   label; the export arrives as a download link by email and holds an `.mbox` file. (Follow what
+   Google's page shows; it changes.) Any other mail app's mbox works too; one with no Gmail labels
+   counts every mail from their addresses. Then move it:
+   `mkdir -p ~/.claude/state/$S/sources && mv "<the .mbox file>" ~/.claude/state/$S/sources/mail.mbox && chmod 600 ~/.claude/state/$S/sources/mail.mbox`
+2. *Ask* for every address they send from, and whether to leave any mail out: mail to certain
+   people (`exclude_to`, a regex matched against each recipient address, such as a family member's
+   address or a personal domain) or outside a date window (`after`, `before`, `YYYY-MM-DD`). Write
+   the entry:
+   `{"name": "mail", "kind": "mbox", "path": "~/.claude/state/<slug>/sources/mail.mbox", "own_addresses": ["<address>"]}`
+3. *Ask:* "Include your sent mail?" (Yes / Not now). On yes, add the consent date and run
+   `$C sources mine --name mail`. Show its three count lines (they hold no mail text). If little was
+   kept, the skip line says why: a missing address (`not from you`) or labels (`not in Sent`).
+
+**Project folders.** They feed the lens (*The lens* below), not the decisions, and are read where
+they are: nothing is moved or changed.
+
+1. For each folder they name, write an entry:
+   `{"name": "<short name>", "kind": "folder", "path": "<the folder>"}`, with `include` or
+   `exclude` path patterns if they want them (`["drafts/**"]`: `*` stays in one folder, `**`
+   crosses folders).
+2. *Ask:* "Read <folder> for the lens?" (Yes / No). On yes, add the consent date and run
+   `$C sources review --name <short name>`. It lists every file in
+   `~/.claude/state/$S/sources/<short name>-review.tsv` (mine, modified, kind, claude, path). A
+   file a Claude Code session on this Mac wrote or edited, and an agent file (`AGENTS.md`,
+   `CLAUDE.md`, `GEMINI.md`, anything under `node_modules`), starts as `n`, with the `claude`
+   column saying why. Only the paths of those writes are read from the transcripts, never what was
+   written. Hidden files and folders (a name starting with `.`) are never listed.
+3. Show the list as tables of about 40 rows. They mark theirs; you apply the marks, confirming each
+   pattern first:
+
+   ```bash
+   $C sources mark --name <short name> --path '<pattern>' --as y      # or --unmarked, --all
+   ```
+
+   Unmarked files are left out, and re-running `review` keeps every mark. Files someone else wrote
+   are not theirs, even in their folder. Then run *The lens* with `--sources`.
+
+**Your answers to <Name>.** Only on a rebuild, once <Name> has been in use: `$C record` keeps each
+of <Name>'s picks and, when the principal answered, what they said, in
+`~/.claude/state/$S/live.jsonl`. *Ask:* "Use your answers to <Name> to train the rebuild?" (Yes /
+No). On yes, write `{"name": "live", "kind": "live", "consent": "<today>"}`. Each answered line
+becomes a training question, never a test one; a question already mined from the Claude Code
+history is skipped, so nothing counts twice.
+
+Re-run the step 3 install command: it reads every consented mail and live source and merges them.
+
 ## 6. Your domains
 
 Unless the kit already supplied a codebook (`codebook` in `private.json`), *ask* the principal for
@@ -167,7 +232,7 @@ table in `crew/<slug>/briefs/codebook.md` with one row per domain and a plain de
 ## 7. Inventory, and the interview if the history is thin
 
 Show the merged counts: answered questions, typed messages, held out for the test, by source (each
-Mac, claude.ai). If there are fewer than about 150 answered questions, run the calibration
+Mac, claude.ai, sent mail, answers to <Name>). If there are fewer than about 150 answered questions, run the calibration
 interview in `$REPO/crew/$S/interview.md`: draft its twenty questions from their
 domains, show the list, then ask them four at a time, written to
 `~/.claude/state/$S/decisions-interview.jsonl` in the shape it shows. Then re-run the step 3 install
@@ -318,7 +383,9 @@ Run the steps above with these changes:
   school, friends' names and where they live are typical additions to `filters.personal` in
   `private.json`.
 - **Step 3.** Add `--no-history` to the install command. It fills `crew/<slug>/`, reads no Claude
-  Code history and no export, and reports that there is nothing to merge yet. Skip steps 4 and 5.
+  Code history, no export and no mail or live source, and reports that there is nothing to merge
+  yet. Skip steps 4 and 5. At step 5b offer project folders only: this Mac's mail and its live log
+  are the adult's.
 - **Step 7 becomes the lens and round 1.** Run *The lens* below. Then draft round 1 (about twenty
   questions) as `interview.md` describes, show the draft to the adult (and the principal), turn it
   into the form, and when the answers come back import them with `$C round --name 1 …` and re-run
@@ -337,7 +404,10 @@ Run the steps above with these changes:
 Any principal can add this: a short file on how they build things, distilled from their own work.
 Ask them (or the adult) to put the files they choose in one folder: text, Markdown, Word (`.docx`)
 and PDF files are read, images are listed by file name only, and nothing else is opened. Move the
-folder into the state dir, so the raw text lives only there, and confirm their original copy can go:
+folder into the state dir, so the raw text lives only there, and confirm their original copy can go.
+Project folders from step 5b stay where they are: add `--sources` to the `documents` command, and it
+also reads every file marked `y` in their reviews, named `<short name>/<path>`. With only folders,
+use `--sources` alone, without `--dir`:
 
 ```bash
 mkdir -p ~/.claude/state/$S && mv "<their folder>" ~/.claude/state/$S/raw && chmod -R go-rwx ~/.claude/state/$S/raw

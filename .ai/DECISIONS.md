@@ -25,6 +25,20 @@
   dependency: the kit stays standard-library only, and a missing tool is a skip that says how to
   fix it.
 
+## 2026-10-25: extra sources, each behind a consent date
+
+- **Sources live in the gitignored `private.json`** as a `sources` list (kind, path, the kind's
+  options); `member.json` may not hold one. A source is read only once its `consent` date is set,
+  which the build writes after the principal's yes.
+- **Mail comes from a local mbox** (Google Takeout), sent mail only, never a live mail connector:
+  the kit reads only local files, and the agent never sees received mail. The filters run per
+  paragraph, so one address in a mail drops that paragraph, not the mail.
+- **Project folders feed the lens only,** read in place; files Claude wrote or edited start as not
+  mine. Documents are not decisions, so they stay out of the decision corpus.
+- **The live log trains, never tests** (`decisions-live.jsonl` is Train in install.sh and in the
+  Rust `discover`), and skips a question already mined from the history.
+- The Rust port of `sources` waits for the app's sources screen.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.

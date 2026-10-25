@@ -260,6 +260,7 @@ fn discover_and_duplicates_across_modes_and_empty_inputs() {
         "decisions-z.jsonl",
         "decisions-A.jsonl",
         "decisions-interview.jsonl",
+        "decisions-live.jsonl",
         "decisions-round-b.jsonl",
         "decisions-round-a.jsonl",
         "other.jsonl",
@@ -275,6 +276,7 @@ fn discover_and_duplicates_across_modes_and_empty_inputs() {
             ("decisions-A.jsonl".into(), Mode::History),
             ("decisions-z.jsonl".into(), Mode::History),
             ("decisions-interview.jsonl".into(), Mode::Train),
+            ("decisions-live.jsonl".into(), Mode::Train),
             ("decisions-round-a.jsonl".into(), Mode::Round),
             ("decisions-round-b.jsonl".into(), Mode::Round)
         ]
