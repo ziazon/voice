@@ -90,7 +90,7 @@ fn links_at_every_level_are_refused() {
             .to_string();
         let expected = if depth == 3 {
             format!(
-                "{} is a link: Persona Builder reads your history only from a real file. Move it away and try again",
+                "{} is a link: Persona Builder reads only real files, never links. Move it away and try again",
                 shown.display()
             )
         } else {

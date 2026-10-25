@@ -694,7 +694,7 @@ fn similar_reads_only_the_option_labels() {
 }
 
 #[test]
-fn distil_in_never_panics_on_an_unchecked_label() {
+fn distil_in_names_a_label_that_is_not_an_object() {
     let book = book(&member()).unwrap();
     let corpus = records(&[message("message:a", "train", SENTINEL)]);
     assert_eq!(

@@ -3,7 +3,7 @@
 use crate::{
     book::Book,
     input::{Record, Records, first},
-    labels::category,
+    labels::{category, label},
 };
 use persona_builder::error::{Error, Result};
 use serde_json::{Map, Value};
@@ -44,15 +44,7 @@ pub fn distil_in(
             continue;
         }
         let id = r.id()?;
-        let label = match labels.get(id) {
-            Some(Value::Object(label)) => label,
-            Some(_) => {
-                return Err(Error::Invalid(format!(
-                    "{labels_name}: the label for {id} is not a JSON object"
-                )));
-            }
-            None => return Err(Error::Invalid(format!("{labels_name}: no label for {id}"))),
-        };
+        let label = label(labels_name, labels, id)?;
         let name = category(labels_name, labels, id)?;
         let Some(&at) = group_of.get(name) else {
             return Err(Error::Invalid(format!(

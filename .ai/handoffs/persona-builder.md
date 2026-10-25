@@ -2,6 +2,46 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB3.1: the build's steps that need no model, in Rust (2026-10-24, lane: V1)
+
+- **What:** a new crate `builder/steps` (`persona_builder_steps`) ports eight commands of
+  `crew_decisions.py` at parity: `chunk`, `check-labels`, `tally`, `distil-in`, `score`, `similar`,
+  `shingle` and `round`, each a `persona-builder <cmd> <member_dir>` command with the Python's flags.
+  Every file is `NAME` or `FOLDER/NAME` inside the member's state folder: `private.rs` gains
+  `read_private_at`, `write_private_at` and `place`, and `.json` joins the private file endings. The
+  ingest crate makes public what the steps share (`privacy::searchable`, `mine::outcome`,
+  `mine::Mark`, `corpus::exact_numbers`, a `dates` module). Brief: `plans/briefs/PB3.1-build-steps.md`.
+- **Who wrote it:** Claude, directly. Codex was at a hard usage limit until 2026-10-30 (probed at
+  pickup).
+- **Decisions made at pickup:** the accepted differences in the brief (files not paths, every JSON
+  input checked whole, odd types refused, `check-labels` reporting a bad label instead of crashing,
+  an empty codebook list counted as missing, `similar`'s weights summed in byte order); the parity
+  test runs the binary against the Python, so it covers the commands and the library together.
+- **Found at pickup:** CPython 3.12's `sum()` of floats is compensated (Neumaier); a plain running
+  sum differed from it in about a quarter of 200,000 random trials, so `similar` uses the same sum.
+  The brief's first draft claimed the Python takes other scripts' digits in `round`'s date; it
+  does not (`strptime` refuses them), so that difference was dropped.
+- **Verified:** `builder/cli/tests/steps_parity.rs`: about 50 runs per case, three cases, two
+  members, stdout, exit codes and every written file byte for byte, with modes. The tests were
+  written with the code, so they were proved by mutation instead of a red first: 25 mutations, one
+  per claim, each restored and checked with `cmp`; 20 failed the parity test at once, 5 survived (no
+  fixture reached them), and after five fixtures were added all 25 failed it. A unit test pins the
+  compensated sum (a plain sum fails it). `builder/steps/tests/rules.rs`: 11 tests of every refusal's
+  words, a sentinel word never in an error, and the Python's own exit code beside each.
+  `builder/ingest/tests/private_at.rs`: 5 tests, each mutation-checked. `bash scripts/ci-local.sh`
+  green (426 Rust, 151 Python tests).
+- **Gates:** `/security-review` (a sub-agent): no high or medium finding; three lows (the state
+  folder itself unchecked, two `expect`s a direct library caller could reach, model-written label
+  keys echoed in errors). The Verifier (Fable): pass with should-fixes, no must-fix (two more
+  accepted differences, `similar` reading a field the Python does not, the panics, a link message,
+  copies). All applied except the echoed keys (parity, recorded in `.ai/SECURITY.md`); the new tests
+  went red first. The delta pass (Opus): pass with should-fixes, wording and one helper, all applied.
+  `bash scripts/ci-local.sh` green again (431 Rust tests).
+- **Not verified:** a Python older than 3.12 as the oracle (its float `sum()` is not compensated, so
+  `similar`'s order can differ at near-ties); the steps on a real person's corpus (owed to PB8).
+- **Known limits:** `chunk` leaves older chunk files beyond the ones it writes, as the Python does;
+  PB3.3 must take the chunk list from the library, never the folder.
+
 ## PB3.2: the Claude driver (2026-10-24, lane: V1)
 
 - **What:** a new crate `builder/agent` (`persona_builder_agent`), the one road every model call

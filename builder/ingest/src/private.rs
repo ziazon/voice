@@ -195,7 +195,8 @@ fn state_directory(home: &Path, slug: &str, create: bool) -> Result<(OwnedFd, Pa
 }
 
 /// The member's state folder, or a plain folder inside it: made 0700 when `create`, never through a
-/// link, and refused unless only this user can open it.
+/// link. The state folder is refused when others can change it, a folder inside it when others can
+/// open it.
 fn place_directory(
     home: &Path,
     slug: &str,
@@ -313,7 +314,7 @@ pub fn read_private_at(
         let source = std::io::Error::last_os_error();
         if source.raw_os_error() == Some(libc::ELOOP) {
             return Err(Error::Invalid(format!(
-                "{} is a link: Persona Builder reads your history only from a real file. Move it away and try again",
+                "{} is a link: Persona Builder reads only real files, never links. Move it away and try again",
                 path.display()
             )));
         }

@@ -38,8 +38,8 @@ Rust-only test:
 3. **Odd types the Python only tolerates by accident are refused:** a corpus `outcome` that is not one
    of `took_rec`, `other_option`, `own_words`, `no_rec` (the Python adds 1 to any key of the tally row
    with that name); a `timestamp`, `id`, `text`, option `label` or `description`, and in `similar` a
-   `project`, `question` or `outcome`, and in `score` a `picks` (the Python reads a string's letters),
-   that is not a string; `--size` or `--n` below 1 and a negative
+   `project`, `question` or `outcome`, that is not a string, and in `score` a `picks` given as text
+   rather than a list (the Python reads the text's letters); `--size` or `--n` below 1 and a negative
    `--k` (the Python crashes on 0 and slices from the end for a negative `--k`); `--k 0` prints
    nothing, as the Python does.
 4. **`check-labels` reports, never crashes.** It is the gate the model's labels pass, and its
@@ -154,21 +154,28 @@ Every test above went red on its assertion first and is green; `bash scripts/ci-
 ## After the gates (2026-10-24)
 
 `/security-review` (a sub-agent): no high or medium finding; three lows. The Verifier (Fable): pass with
-should-fixes, no must-fix. Applied, each with a test that went red first:
+should-fixes, no must-fix. Applied, items 1 to 3 and 5 each with a test that went red first; item 4 pins behaviour that was
+already there:
 
 1. **The state folder itself is checked** (security low 1): a state folder others can change is
    refused on every read and write, as a sub-folder already was (`private_at.rs`).
-2. **No panic on an unchecked file** (security low 2, Verifier 4): `score` and `distil_in` return an
-   error for a prediction or label that is not an object, for PB3.3 and PB3.4, which call the library
-   directly.
+2. **No panic on an unchecked file** (security low 2, Verifier 4): `score` returns an error, where it
+   panicked, for a prediction that is not an object, and `distil_in` names a label that is not an
+   object (it already refused one, as having no category), for PB3.3 and PB3.4, which call the
+   library directly.
 3. **`similar` reads only the option labels** (Verifier 2), as the Python does: a record whose
    options have no description is a precedent.
 4. **Two more accepted differences** (Verifier 1 and 3): `round`'s ASCII-only date (difference 7;
-   the earlier note that the Python refuses other digits was wrong for a year-only case) and `score`'s
+   the earlier note that the Python refuses other digits held only when every digit is another
+   script's) and `score`'s
    `picks` as text, each pinned beside the Python's exit 0.
-5. **A link at a file says so** (Verifier 5): "… is a link: Persona Builder reads your history only
-   from a real file", in place of the folder message.
+5. **A link at a file says so** (Verifier 5): "… is a link: Persona Builder reads only real files,
+   never links", in place of the folder message.
 6. **Fewer copies** (Verifier 6): `chunk` moves records into parts, `similar_json` takes the hits.
 
 Kept, as the Python does: a label key or category the model wrote can appear in an error (security
 low 3, recorded in `.ai/SECURITY.md`); `shingle --doc` reads any path the person names.
+
+The delta Verifier pass (Opus): pass with should-fixes, no must-fix, all applied: difference 3's
+wording matched to the code, one label helper for `distil_in` and `category`, the test name and these
+notes made exact, the `place_directory` comment and the link message reworded.

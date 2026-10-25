@@ -181,16 +181,28 @@ pub fn check_labels(
     }
 }
 
+/// The label for a record, which must be an object.
+pub(crate) fn label<'a>(
+    labels_name: &str,
+    labels: &'a Map<String, Value>,
+    id: &str,
+) -> Result<&'a Map<String, Value>> {
+    match labels.get(id) {
+        Some(Value::Object(label)) => Ok(label),
+        Some(_) => Err(Error::Invalid(format!(
+            "{labels_name}: the label for {id} is not a JSON object"
+        ))),
+        None => Err(Error::Invalid(format!("{labels_name}: no label for {id}"))),
+    }
+}
+
 /// A label's category, which must be text.
 pub(crate) fn category<'a>(
     labels_name: &str,
     labels: &'a Map<String, Value>,
     id: &str,
 ) -> Result<&'a str> {
-    let label = labels
-        .get(id)
-        .ok_or_else(|| Error::Invalid(format!("{labels_name}: no label for {id}")))?;
-    match label.get("category") {
+    match label(labels_name, labels, id)?.get("category") {
         Some(Value::String(category)) => Ok(category),
         Some(_) => Err(Error::Invalid(format!(
             "{labels_name}: the label for {id} has a category that is not text"
