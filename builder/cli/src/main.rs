@@ -226,6 +226,21 @@ enum Command {
         #[command(subcommand)]
         command: InterviewCommand,
     },
+    /// Build your assistant from your history: sort your decisions, learn how you decide, and test it on questions it hasn't seen.
+    Build {
+        member_dir: PathBuf,
+        /// Your merged history: a file in your assistant's private folder.
+        #[arg(long, default_value = "decisions.jsonl")]
+        corpus: String,
+        #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
+        model: String,
+        /// The daily limit, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
+        daily_cap_usd: f64,
+        /// The most one call may spend, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
+        call_cap_usd: f64,
+    },
     /// Show what building this assistant has spent today.
     Spend {
         member_dir: PathBuf,
@@ -1029,6 +1044,84 @@ fn spend(member_dir: PathBuf, daily_cap_usd: f64) -> Result<()> {
     println!("{}", text::spend(session.spent_today()?, cap.daily_usd()));
     Ok(())
 }
+struct BuildArgs {
+    corpus: String,
+    model: String,
+    daily_cap_usd: f64,
+    call_cap_usd: f64,
+}
+/// The most a member's codebook brief, and its measurements file, may hold.
+const CODEBOOK_MOST: u64 = 64 * 1024;
+const MEASUREMENTS_MOST: u64 = 1024 * 1024;
+fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
+    use persona_builder_agent::{
+        claude,
+        ledger::{Cap, Session, local_day},
+        text as spend_text,
+    };
+    use persona_builder_build::{
+        build::{self, Inputs},
+        draft, interview, text,
+    };
+    use persona_builder_ingest::{corpus::read_records, filters::Filters, private};
+    use persona_builder_steps::book::book;
+    let (member, home) = member_and_home(&member_dir)?;
+    let book = book(&member)?;
+    let codebook = draft::read_text(&member_dir.join("briefs/codebook.md"), CODEBOOK_MOST)?
+        .ok_or_else(|| Error::Invalid(text::NO_CODEBOOK.into()))?;
+    let (folder, name) = private::place(&args.corpus)?;
+    private::validate_name(name)?;
+    let corpus = private::read_private_at(&home, &member.slug, folder, name)?;
+    let answered = interview::answered(&read_records(&args.corpus, &corpus)?);
+    let filters = Filters::compile(&member.filters)?;
+    let cap = Cap::new(args.daily_cap_usd, args.call_cap_usd)?;
+    let path = std::env::var_os("PATH");
+    let claude = claude::find(path.as_deref(), &home)?;
+    claude.check(&home)?;
+    let session = Session::open(&home, &member.slug, cap)?;
+    if answered < interview::THIN_BELOW {
+        println!("{}", text::thin_history(answered));
+    }
+    let built = build::build(
+        &claude,
+        &session,
+        &home,
+        &Inputs {
+            member: &member,
+            book: &book,
+            codebook: &codebook,
+            corpus_name: &args.corpus,
+            corpus: &corpus,
+            filters: &filters,
+            model: &args.model,
+        },
+        &mut |line| println!("{line}"),
+    )?;
+    println!("{}", text::CHECKING);
+    let decisions = draft::decisions(&member, &book, &built);
+    let entries = draft::entries(
+        &book,
+        &built,
+        &args.model,
+        &local_day(std::time::SystemTime::now()),
+    );
+    draft::check_private(&filters, &decisions, &entries)?;
+    let existing = draft::read_text(&member_dir.join(draft::MEASUREMENTS), MEASUREMENTS_MOST)?;
+    let measurements = draft::measurements(existing.as_deref(), &member, &entries);
+    draft::write(&member_dir, &decisions, &measurements)?;
+    println!("{}", text::written(&member_dir.display().to_string()));
+    if let Some(test) = &built.backtest {
+        println!(
+            "{}",
+            text::live(&draft::live_categories(&book, &test.score))
+        );
+    }
+    println!(
+        "{}",
+        spend_text::spend(session.spent_today()?, cap.daily_usd())
+    );
+    Ok(())
+}
 struct DraftArgs {
     corpus: String,
     labels: Option<String>,
@@ -1599,6 +1692,21 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 replace,
             } => interview_answer(member_dir, answers, questions, replace),
         },
+        Some(Command::Build {
+            member_dir,
+            corpus,
+            model,
+            daily_cap_usd,
+            call_cap_usd,
+        }) => build(
+            member_dir,
+            BuildArgs {
+                corpus,
+                model,
+                daily_cap_usd,
+                call_cap_usd,
+            },
+        ),
         Some(Command::Spend {
             member_dir,
             daily_cap_usd,

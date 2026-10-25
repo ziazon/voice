@@ -21,7 +21,7 @@ member and no real person's data.
 | `builder/ingest/` | Reading histories into the corpus (persona_builder_ingest): the privacy filters, the privacy check, mining Claude Code transcripts and the claude.ai export, merging and splitting the corpus | `builder/ingest/tests/` |
 | `builder/agent/` | The model calls (persona_builder_agent): the agent list, the person's own Claude Code checked and called with no tools, the ledger of what each call cost, the daily cap | `builder/agent/tests/` |
 | `builder/steps/` | The build's steps that need no model (persona_builder_steps): chunking the corpus, checking labels, the tally, the distiller's input, scoring the backtest, finding similar past decisions, the shingle check, importing a question round | `builder/steps/tests/`, `builder/cli/tests/steps_parity.rs` |
-| `builder/build/` | The build's steps that call a model (persona_builder_build): the interview when the history is thin, drafted through the person's own Claude Code and answered into training records | `builder/build/tests/`, `builder/cli/tests/interview.rs` |
+| `builder/build/` | The build's steps that call a model (persona_builder_build): the interview when the history is thin, drafted through the person's own Claude Code and answered into training records; the build itself (`persona-builder build`: label, distil, the blind backtest, then the member's `decisions.md` and `measurements.md`) | `builder/build/tests/`, `builder/cli/tests/interview.rs`, `builder/cli/tests/build.rs` |
 
 All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck). The
 Rust checks (fmt, clippy, tests) need stable Rust and are skipped when `cargo` is missing.

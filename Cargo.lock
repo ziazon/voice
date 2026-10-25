@@ -331,11 +331,13 @@ dependencies = [
 name = "persona-builder-build"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "persona-builder",
  "persona-builder-agent",
  "persona-builder-ingest",
  "persona-builder-steps",
  "serde_json",
+ "sha1_smol",
 ]
 
 [[package]]
