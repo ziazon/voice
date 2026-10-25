@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-new-assistant"
+description = "Enables the new_assistant command without any pre-configured scope."
+commands.allow = ["new_assistant"]
+
+[[permission]]
+identifier = "deny-new-assistant"
+description = "Denies the new_assistant command without any pre-configured scope."
+commands.deny = ["new_assistant"]

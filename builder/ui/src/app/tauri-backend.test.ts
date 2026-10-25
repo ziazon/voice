@@ -10,3 +10,22 @@ it('asks for app_info and returns its answer', async () => {
   expect(await tauriBackend.appInfo()).toEqual(answer)
   expect(invoke).toHaveBeenCalledExactlyOnceWith('app_info')
 })
+
+it.each([
+  ['listAssistants', 'list_assistants'],
+  ['consentText', 'consent_text'],
+  ['claudeCheck', 'claude_check'],
+] as const)('maps %s to its command', async (method, command) => {
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(await tauriBackend[method]()).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command)
+})
+it.each([
+  ['newAssistant', 'new_assistant', { name: 'Example', pronouns: 'they/them', principal: 'Sample', principalPronouns: 'they/them' }],
+  ['showAssistantFolder', 'show_assistant_folder', { slug: 'example' }],
+  ['agreeConsent', 'agree_consent', { slug: 'example' }],
+] as const)('maps %s with a request argument', async (method, command, request) => {
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(await (tauriBackend[method] as (value: typeof request) => Promise<unknown>)(request)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
+})

@@ -2752,6 +2752,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha1_smol",
 ]
 
 [[package]]
@@ -2768,7 +2769,9 @@ dependencies = [
 name = "persona-builder-api"
 version = "0.1.0"
 dependencies = [
+ "persona-builder",
  "persona-builder-agent",
+ "persona-builder-ingest",
  "serde",
  "serde_json",
  "ts-rs",

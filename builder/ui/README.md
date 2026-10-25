@@ -3,6 +3,8 @@
 `@persona-builder/screens` is the app's Vue screens as a source package that another app can mount.
 It uses Tabler's CSS and a host-provided `Backend` for the app's commands.
 
+The screens so far: assistants, a new one, permission, connect Claude.
+
 Node and pnpm 10 or later are needed. From the repo root, run the desktop app with:
 
 ```sh

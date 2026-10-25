@@ -15,7 +15,7 @@ member and no real person's data.
 | `scripts/slack_mine.py`, `slack_select.py` | Optional Slack export miners, driven by `--config` | `tests/slack_*_test.py` |
 | `scripts/crew_personas.py` | Optional decision cards, per-person models, blind backtests, panels | `tests/crew_personas_test.py` |
 | `docs/spec/growth-loop.md` | The growth loop spec any persona app implements, with its JSON Schemas | `tests/growth_loop_spec_test.py`, `builder/grow/tests/` |
-| `builder/core/` | The Persona Builder core library (persona_builder): the member format, the dial, field packs, turning an assistant on and off in Claude Code, the claude.ai Project pack, forget | `builder/core/src/`, `builder/core/tests/` |
+| `builder/core/` | The Persona Builder core library (persona_builder): the member format, the dial, field packs, turning an assistant on and off in Claude Code, the claude.ai Project pack, forget, the template compiled in, and where the app keeps assistants (`~/.claude/crew/<slug>/`) | `builder/core/src/`, `builder/core/tests/` |
 | `crew/_fields/` | Field packs: starter decisions and words per kind of work | `builder/core/tests/` |
 | `builder/cli/` | The `persona-builder` command | `builder/cli/tests/` |
 | `builder/save/` | Saving an assistant (persona_builder_save): an existing repo, a private GitHub repo, or this computer only; GitHub sign-in, the computer's password store, git | `builder/save/tests/` |
@@ -25,7 +25,7 @@ member and no real person's data.
 | `builder/steps/` | The build's steps that need no model (persona_builder_steps): chunking the corpus, checking labels, the tally, the distiller's input, scoring the backtest, finding similar past decisions, the shingle check, importing a question round | `builder/steps/tests/`, `builder/cli/tests/steps_parity.rs` |
 | `builder/build/` | The build's steps that call a model (persona_builder_build): the interview when the history is thin, drafted through the person's own Claude Code and answered into training records; the build itself (`persona-builder build`: label, distil, the blind backtest, then the member's `decisions.md` and `measurements.md`) | `builder/build/tests/`, `builder/cli/tests/interview.rs`, `builder/cli/tests/build.rs` |
 | `builder/grow/` | Kept answers (persona_builder_grow): the growth loop's records, its rule checks and the private store of signals and cases; drafts refreshes, takes the person's answer, then tests an approved change and keeps or undoes it | `builder/grow/tests/`, `builder/cli/tests/keep.rs`, `builder/cli/tests/refresh.rs` |
-| `builder/api/` | The app's commands, without Tauri, and the CLI-parity table | `builder/api/tests/`, `builder/cli/tests/app_parity.rs` |
+| `builder/api/` | The app's commands, without Tauri, and the CLI-parity table | `builder/api/tests/`, `builder/api/tests/assistants.rs`, `builder/cli/tests/app_parity.rs` |
 | `builder/app/` | The Persona Builder app's window and its locked-down bridge | `builder/app/tests/lockdown.rs` |
 | `builder/ui/` | The app's screens as a package another app can mount | `pnpm -C builder/ui test` |
 

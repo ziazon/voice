@@ -7,6 +7,7 @@ pub enum Error {
         source: std::io::Error,
     },
     Invalid(String),
+    Exists(String),
 }
 
 impl std::fmt::Display for Error {
@@ -14,6 +15,7 @@ impl std::fmt::Display for Error {
         match self {
             Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
             Self::Invalid(message) => f.write_str(message),
+            Self::Exists(slug) => write!(f, "{slug} exists"),
         }
     }
 }
@@ -22,7 +24,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io { source, .. } => Some(source),
-            Self::Invalid(_) => None,
+            Self::Invalid(_) | Self::Exists(_) => None,
         }
     }
 }

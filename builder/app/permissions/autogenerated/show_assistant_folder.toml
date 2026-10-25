@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-assistant-folder"
+description = "Enables the show_assistant_folder command without any pre-configured scope."
+commands.allow = ["show_assistant_folder"]
+
+[[permission]]
+identifier = "deny-show-assistant-folder"
+description = "Denies the show_assistant_folder command without any pre-configured scope."
+commands.deny = ["show_assistant_folder"]

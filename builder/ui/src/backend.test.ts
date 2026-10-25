@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import { expect, it, vi } from 'vitest'
 import { provideBackend, useBackend } from './backend'
+import { fakeBackend } from './test-support'
 
 it('throws a plain message without a backend', () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -11,7 +12,7 @@ it('throws a plain message without a backend', () => {
 })
 
 it('provides a host backend to its screens', () => {
-  const backend = { appInfo: async () => ({ version: '1.2.3', agents: [] }) }
+  const backend = fakeBackend()
   const child = defineComponent({ setup() { return () => h('span', useBackend() === backend ? 'provided' : 'missing') } })
   const host = defineComponent({ setup() { provideBackend(backend); return () => h(child) } })
   const wrapper = mount(host)

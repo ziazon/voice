@@ -1,5 +1,11 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import type { AppInfo } from './types/generated/AppInfo'
+import type { Assistant } from './types/generated/Assistant'
+import type { NewAssistantRequest } from './types/generated/NewAssistantRequest'
+import type { SlugRequest } from './types/generated/SlugRequest'
+import type { ConsentText } from './types/generated/ConsentText'
+import type { Consent } from './types/generated/Consent'
+import type { ClaudeStatus } from './types/generated/ClaudeStatus'
 
 /**
  * Everything the screens ask of the app. A host gives its own backend.
@@ -7,7 +13,15 @@ import type { AppInfo } from './types/generated/AppInfo'
  * the Rust side handed out; Rust finds every path itself and opens every native picker itself.
  * A host app must keep the same rule.
  */
-export interface Backend { appInfo(): Promise<AppInfo> }
+export interface Backend {
+  appInfo(): Promise<AppInfo>
+  listAssistants(): Promise<Assistant[]>
+  newAssistant(request: NewAssistantRequest): Promise<Assistant>
+  showAssistantFolder(request: SlugRequest): Promise<void>
+  consentText(): Promise<ConsentText>
+  agreeConsent(request: SlugRequest): Promise<Consent>
+  claudeCheck(): Promise<ClaudeStatus>
+}
 
 export const backendKey: InjectionKey<Backend> = Symbol('persona-builder-backend')
 

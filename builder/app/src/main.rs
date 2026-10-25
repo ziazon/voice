@@ -8,7 +8,15 @@ fn main() {
                 .on_navigation(|_, url| navigation::is_allowed_navigation(url, tauri::is_dev()))
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![commands::app_info])
+        .invoke_handler(tauri::generate_handler![
+            commands::app_info,
+            commands::list_assistants,
+            commands::new_assistant,
+            commands::show_assistant_folder,
+            commands::consent_text,
+            commands::agree_consent,
+            commands::claude_check,
+        ])
         .run(tauri::generate_context!())
     {
         eprintln!("Persona Builder couldn't start: {error}");

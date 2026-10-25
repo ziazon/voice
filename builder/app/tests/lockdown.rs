@@ -34,6 +34,18 @@ fn list_after(text: &str, marker: &str) -> Vec<String> {
 #[test]
 fn lockdown_1_command_lists_agree_in_order() {
     let expected = COMMANDS;
+    assert_eq!(
+        expected,
+        [
+            "app_info",
+            "list_assistants",
+            "new_assistant",
+            "show_assistant_folder",
+            "consent_text",
+            "agree_consent",
+            "claude_check",
+        ]
+    );
     let capability = json("capabilities/default.json");
     let allowed: Vec<_> = capability["permissions"]
         .as_array()
@@ -52,6 +64,17 @@ fn lockdown_1_command_lists_agree_in_order() {
         PARITY.iter().map(|row| row.app).collect::<Vec<_>>(),
         expected
     );
+}
+
+#[test]
+fn assistant_commands_run_off_the_main_thread() {
+    let commands = source("src/commands.rs");
+    for command in &COMMANDS[1..] {
+        assert!(
+            commands.contains(&format!("#[tauri::command(async)]\npub fn {command}(")),
+            "{command} must run on the async runtime",
+        );
+    }
 }
 
 #[test]

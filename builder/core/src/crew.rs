@@ -24,7 +24,7 @@ pub fn slugify(text: &str) -> Option<String> {
     if slug.is_empty() { None } else { Some(slug) }
 }
 
-pub(crate) fn check_name(what: &str, value: &str) -> Result<()> {
+pub fn check_name(what: &str, value: &str) -> Result<()> {
     if !(1..=64).contains(&value.chars().count())
         || value.trim() != value
         || value
@@ -64,6 +64,33 @@ pub struct NewMember<'a> {
 }
 
 pub fn new_member(template: &Path, target: &Path, new: &NewMember<'_>) -> Result<Member> {
+    create_member(target, new, |values| {
+        copy_template(template, target, values, Path::new(""))
+    })
+}
+
+pub fn new_member_embedded(target: &Path, new: &NewMember<'_>) -> Result<Member> {
+    create_member(target, new, |values| {
+        for (relative, text) in crate::template::FILES {
+            let path = target.join(relative);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|source| Error::Io {
+                    path: parent.to_owned(),
+                    source,
+                })?;
+            }
+            std::fs::write(&path, filled(Path::new(relative), text, values)?)
+                .map_err(|source| Error::Io { path, source })?;
+        }
+        Ok(())
+    })
+}
+
+fn create_member(
+    target: &Path,
+    new: &NewMember<'_>,
+    copy: impl FnOnce(&[(&str, &str)]) -> Result<()>,
+) -> Result<Member> {
     match std::fs::symlink_metadata(target) {
         Ok(_) => return Err(Error::Invalid(format!("{} exists", target.display()))),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -98,8 +125,8 @@ pub fn new_member(template: &Path, target: &Path, new: &NewMember<'_>) -> Result
         path: target.to_owned(),
         source,
     })?;
-    let result = copy_template(template, target, &values, true)
-        .and_then(|()| crate::member::read_member(&target.join("member.json")));
+    let result =
+        copy(&values).and_then(|()| crate::member::read_member(&target.join("member.json")));
     if result.is_err() {
         let _ = std::fs::remove_dir_all(target);
     }
@@ -138,9 +165,10 @@ fn copy_template(
     source: &Path,
     target: &Path,
     values: &[(&str, &str)],
-    top_level: bool,
+    relative: &Path,
 ) -> Result<()> {
     use std::fs;
+    let top_level = relative.as_os_str().is_empty();
     crate::member::refuse_symlink(source)?;
     let entries = fs::read_dir(source).map_err(|error| Error::Io {
         path: source.to_owned(),
@@ -163,40 +191,48 @@ fn copy_template(
                 path: destination.clone(),
                 source,
             })?;
-            copy_template(&path, &destination, values, false)?;
+            copy_template(
+                &path,
+                &destination,
+                values,
+                &relative.join(entry.file_name()),
+            )?;
             continue;
         }
         if top_level && entry.file_name() == "README.md" {
             continue;
         }
-        if !top_level && entry.file_name() == "member.json" {
-            fs::copy(&path, &destination).map_err(|source| Error::Io {
-                path: destination,
-                source,
-            })?;
-            continue;
-        }
+        let relative = relative.join(entry.file_name());
         let text = fs::read_to_string(&path).map_err(|source| Error::Io {
             path: path.clone(),
             source,
         })?;
-        let filled = if top_level && entry.file_name() == "member.json" {
-            let value = serde_json::from_str(&text).map_err(|error| {
-                Error::Invalid(format!(
-                    "member config: {} is not JSON ({error})",
-                    path.display()
-                ))
-            })?;
-            crate::json::to_python_json(&fill_json(value, values))?
-        } else {
-            fill(&text, values)
-        };
+        let filled = filled(&relative, &text, values)?;
         fs::write(&destination, filled).map_err(|source| Error::Io {
             path: destination,
             source,
         })?;
     }
     Ok(())
+}
+
+fn filled(relative: &Path, text: &str, values: &[(&str, &str)]) -> Result<String> {
+    if relative == Path::new("member.json") {
+        let value = serde_json::from_str(text).map_err(|error| {
+            Error::Invalid(format!(
+                "member config: {} is not JSON ({error})",
+                relative.display()
+            ))
+        })?;
+        crate::json::to_python_json(&fill_json(value, values))
+    } else if relative
+        .file_name()
+        .is_some_and(|name| name == "member.json")
+    {
+        Ok(text.to_owned())
+    } else {
+        Ok(fill(text, values))
+    }
 }
 
 pub struct MemberDir {
@@ -426,7 +462,7 @@ mod tests {
         fs::create_dir(&template).unwrap();
         fs::write(template.join("file.md"), "text").unwrap();
         let target = scratch.path().join("new");
-        let result = copy_template(&template, &target, &[], true);
+        let result = copy_template(&template, &target, &[], Path::new(""));
         assert!(
             result.is_err(),
             "copy_template must require a target owned by new_member"

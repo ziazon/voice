@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agree-consent"
+description = "Enables the agree_consent command without any pre-configured scope."
+commands.allow = ["agree_consent"]
+
+[[permission]]
+identifier = "deny-agree-consent"
+description = "Denies the agree_consent command without any pre-configured scope."
+commands.deny = ["agree_consent"]

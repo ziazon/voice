@@ -5,8 +5,10 @@
 /// The version every Persona Builder surface reports, from this crate's `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub mod assistants;
 pub mod autonomy;
 pub mod block;
+pub mod consent;
 pub mod crew;
 pub mod error;
 pub mod fields;
@@ -17,6 +19,7 @@ mod install_record;
 pub mod json;
 pub mod member;
 pub mod pack;
+pub mod template;
 
 #[cfg(test)]
 mod test_support;

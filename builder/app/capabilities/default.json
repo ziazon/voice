@@ -4,6 +4,12 @@
     "main"
   ],
   "permissions": [
-    "allow-app-info"
+    "allow-app-info",
+    "allow-list-assistants",
+    "allow-new-assistant",
+    "allow-show-assistant-folder",
+    "allow-consent-text",
+    "allow-agree-consent",
+    "allow-claude-check"
   ]
 }

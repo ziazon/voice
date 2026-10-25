@@ -1,3 +1,5 @@
+pub mod assistants;
+pub use assistants::*;
 pub mod dto;
 pub mod parity;
 

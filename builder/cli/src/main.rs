@@ -17,6 +17,8 @@ use persona_builder_save::{
 use persona_builder_steps::input::RecordList as Records;
 use std::path::PathBuf;
 
+mod assistants;
+
 /// The `persona-builder` command: a thin layer over the core library.
 #[derive(Parser)]
 #[command(
@@ -31,6 +33,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Make a new assistant in your Claude folder
+    New {
+        name: String,
+        #[arg(long)]
+        principal: String,
+        #[arg(long, default_value = "they/them")]
+        pronouns: String,
+        #[arg(long, default_value = "they/them")]
+        principal_pronouns: String,
+    },
+    /// List your assistants
+    Assistants,
+    /// Your permission for Persona Builder to read your history
+    Consent {
+        #[command(subcommand)]
+        command: ConsentCommand,
+    },
     /// Delete a member's private history and build drafts.
     Forget {
         member_dir: PathBuf,
@@ -355,6 +374,14 @@ enum InterviewCommand {
         #[arg(long)]
         replace: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum ConsentCommand {
+    /// Show what you agree to before Persona Builder reads your history
+    Show,
+    /// Agree, for one assistant
+    Agree { member_dir: PathBuf },
 }
 
 #[derive(Subcommand)]
@@ -1786,6 +1813,20 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
 
 fn run(cli: Cli) -> Result<std::process::ExitCode> {
     let result = match cli.command {
+        Some(Command::New {
+            name,
+            principal,
+            pronouns,
+            principal_pronouns,
+        }) => assistants::make(&name, &pronouns, &principal, &principal_pronouns),
+        Some(Command::Assistants) => assistants::list(),
+        Some(Command::Consent { command }) => match command {
+            ConsentCommand::Show => {
+                assistants::show_consent();
+                Ok(())
+            }
+            ConsentCommand::Agree { member_dir } => assistants::agree(member_dir),
+        },
         Some(Command::PrivacyCheck { folder }) => {
             let report = persona_builder_ingest::check::privacy_check(&folder)?;
             print!("{}", persona_builder_ingest::check::render(&report));

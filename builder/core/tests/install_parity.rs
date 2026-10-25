@@ -1,7 +1,7 @@
 mod common;
 
 use common::{Scratch, checked, copy_tree, parity_tools_available, repo};
-use persona_builder::crew::{NewMember, new_member};
+use persona_builder::crew::{NewMember, new_member, new_member_embedded};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -141,21 +141,39 @@ fn parity_case(name: &str, slug: &str, pronouns: &str, principal: &str, principa
             "new_member must accept installer inputs: {filled:?}"
         );
         let python_files = files(&fork.join("crew").join(slug));
-        let rust_files = files(&target);
-        assert_eq!(
-            rust_files.keys().collect::<Vec<_>>(),
-            python_files.keys().collect::<Vec<_>>(),
-            "Rust and install.sh must create exactly the same file set"
-        );
-        for (path, expected) in python_files {
-            assert_eq!(
-                rust_files[&path],
-                expected,
-                "file bytes differ: {}",
-                path.display()
-            );
-        }
+        let embedded_target = scratch.0.join("embedded").join(slug);
+        new_member_embedded(
+            &embedded_target,
+            &NewMember {
+                name,
+                pronouns,
+                principal,
+                principal_pronouns,
+                repo_shown: "~/projects/voice",
+                date: &before,
+            },
+        )
+        .unwrap();
+        compare_files(&python_files, &target);
+        compare_files(&python_files, &embedded_target);
         return;
+    }
+}
+
+fn compare_files(expected: &BTreeMap<PathBuf, Vec<u8>>, target: &Path) {
+    let actual = files(target);
+    assert_eq!(
+        actual.keys().collect::<Vec<_>>(),
+        expected.keys().collect::<Vec<_>>(),
+        "Rust and install.sh must create exactly the same file set"
+    );
+    for (path, bytes) in expected {
+        assert_eq!(
+            &actual[path],
+            bytes,
+            "file bytes differ: {}",
+            path.display()
+        );
     }
 }
 

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-check"
+description = "Enables the claude_check command without any pre-configured scope."
+commands.allow = ["claude_check"]
+
+[[permission]]
+identifier = "deny-claude-check"
+description = "Denies the claude_check command without any pre-configured scope."
+commands.deny = ["claude_check"]

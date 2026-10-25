@@ -1,0 +1,70 @@
+/// `crew/_template/`, compiled in, without its top-level README.md (install.sh deletes it).
+/// Paths are relative to the template folder, `/`-separated. `tests/template_embedded.rs`
+/// checks this list against the folder, file for file and byte for byte.
+pub const FILES: &[(&str, &str)] = &[
+    (
+        "IDENTITY.md",
+        include_str!("../../../crew/_template/IDENTITY.md"),
+    ),
+    ("SKILL.md", include_str!("../../../crew/_template/SKILL.md")),
+    (
+        "autonomy.md",
+        include_str!("../../../crew/_template/autonomy.md"),
+    ),
+    (
+        "briefs/backtest-brief.md",
+        include_str!("../../../crew/_template/briefs/backtest-brief.md"),
+    ),
+    (
+        "briefs/card-brief.md",
+        include_str!("../../../crew/_template/briefs/card-brief.md"),
+    ),
+    (
+        "briefs/codebook.md",
+        include_str!("../../../crew/_template/briefs/codebook.md"),
+    ),
+    (
+        "briefs/distil-brief.md",
+        include_str!("../../../crew/_template/briefs/distil-brief.md"),
+    ),
+    (
+        "briefs/label-brief.md",
+        include_str!("../../../crew/_template/briefs/label-brief.md"),
+    ),
+    (
+        "briefs/lens-brief.md",
+        include_str!("../../../crew/_template/briefs/lens-brief.md"),
+    ),
+    (
+        "briefs/panel-seat.md",
+        include_str!("../../../crew/_template/briefs/panel-seat.md"),
+    ),
+    (
+        "briefs/persona-backtest-brief.md",
+        include_str!("../../../crew/_template/briefs/persona-backtest-brief.md"),
+    ),
+    (
+        "briefs/persona-model-brief.md",
+        include_str!("../../../crew/_template/briefs/persona-model-brief.md"),
+    ),
+    (
+        "decisions.md",
+        include_str!("../../../crew/_template/decisions.md"),
+    ),
+    (
+        "interview.md",
+        include_str!("../../../crew/_template/interview.md"),
+    ),
+    (
+        "measurements.md",
+        include_str!("../../../crew/_template/measurements.md"),
+    ),
+    (
+        "member.json",
+        include_str!("../../../crew/_template/member.json"),
+    ),
+    (
+        "report.md",
+        include_str!("../../../crew/_template/report.md"),
+    ),
+];
