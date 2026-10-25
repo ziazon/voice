@@ -12,8 +12,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   answer, under labels that don't say which version wrote it (a shared answer is graded once). It
   saves the measurement first, then keeps the change (`decisions.md` staged and renamed, the tests
   made `active`) or undoes it (`decisions.md` never written, the tests stay `new`). Either way
-  `measurements.md` gains a `## <date>: refresh (<id>)` entry. A rerun makes no call and finishes
-  what is left. The report, and `persona-builder report`, show a growth line. New:
+  `measurements.md` gains a `## <date>: refresh (<id>)` entry. A rerun makes no model call and
+  finishes what is left. The report, and `persona-builder report`, show a growth line. New:
   `builder/grow/src/apply.rs`, `apply_reply.rs`, `prompts/answer.md`, `prompts/grade.md`;
   `diff::added_lines`; `draft::write_measurements`, `write_decisions`; `build::batches` generic.
   Brief: `plans/briefs/PB4.3b-refresh-apply.md`.
@@ -32,7 +32,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   well a real model answers and grades is unmeasured.
 - **Follow-up, not built:** the repeat Verifier's low should-fixes. A trailing `\r` on an added
   diff line passes the hidden-character check (it reads as a line ending; hand-edited records only).
-  The duplicate-approval test checks only that it errs. `finish` re-reads the proposal instead of
+  The duplicate-approval test checks that it errs before any call, not which error. `finish` re-reads the proposal instead of
   being handed the checked one. Also still open from PB4.3a: a later `build` drops kept refresh
   edits.
 
