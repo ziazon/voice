@@ -228,6 +228,26 @@ fn timestamp(seconds: i128) -> Option<String> {
     ))
 }
 
+/// Every question checked by the Python's rules, in its order, with the numbers seen.
+fn questions(questions_file: &Map<String, Value>) -> Result<(Vec<Question>, HashSet<u64>)> {
+    let questions = questions_file
+        .get("questions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| failed("questions must be a list"))?;
+    let mut seen = HashSet::new();
+    let questions = questions
+        .iter()
+        .map(|q| question(q, &mut seen))
+        .collect::<Result<Vec<_>>>()?;
+    Ok((questions, seen))
+}
+
+/// A questions file checked by `round`'s rules alone, before anyone answers it.
+pub fn check_questions(questions_file: &Map<String, Value>) -> Result<()> {
+    questions(questions_file).map(|_| ())
+}
+
+#[derive(Debug)]
 pub struct Round {
     pub name: String,
     pub split: &'static str,
@@ -247,15 +267,7 @@ pub fn round(
     heldout: bool,
 ) -> Result<Round> {
     validate_name(name)?;
-    let questions = questions_file
-        .get("questions")
-        .and_then(Value::as_array)
-        .ok_or_else(|| failed("questions must be a list"))?;
-    let mut seen = HashSet::new();
-    let questions = questions
-        .iter()
-        .map(|q| question(q, &mut seen))
-        .collect::<Result<Vec<_>>>()?;
+    let (questions, seen) = questions(questions_file)?;
     let noon = noon(answers_file.get("answered"))?;
     let answers = answers_file
         .get("answers")

@@ -221,12 +221,49 @@ enum Command {
         #[command(subcommand)]
         command: ClaudeCommand,
     },
+    /// Interview yourself when your history is thin: twenty questions, then your answers.
+    Interview {
+        #[command(subcommand)]
+        command: InterviewCommand,
+    },
     /// Show what building this assistant has spent today.
     Spend {
         member_dir: PathBuf,
         /// The daily limit, in US dollars as Claude Code estimates them.
         #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
         daily_cap_usd: f64,
+    },
+}
+
+#[derive(Subcommand)]
+enum InterviewCommand {
+    /// Draft twenty questions from your areas of work, more of them on the kinds of decision your history holds least of.
+    Draft {
+        member_dir: PathBuf,
+        #[arg(long, default_value = "decisions.jsonl")]
+        corpus: String,
+        /// Labels from an earlier build, to find the kinds of decision your history holds least of.
+        #[arg(long)]
+        labels: Option<String>,
+        #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
+        model: String,
+        /// The daily limit, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
+        daily_cap_usd: f64,
+        /// The most one call may spend, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
+        call_cap_usd: f64,
+        /// Draft new questions in place of the ones waiting for your answers.
+        #[arg(long)]
+        replace: bool,
+    },
+    /// Keep your answers to the interview as training for your assistant.
+    Answer {
+        member_dir: PathBuf,
+        #[arg(long)]
+        answers: String,
+        #[arg(long, default_value = persona_builder_build::interview::QUESTIONS_FILE)]
+        questions: String,
     },
 }
 
@@ -987,6 +1024,99 @@ fn spend(member_dir: PathBuf, daily_cap_usd: f64) -> Result<()> {
     println!("{}", text::spend(session.spent_today()?, cap.daily_usd()));
     Ok(())
 }
+struct DraftArgs {
+    corpus: String,
+    labels: Option<String>,
+    model: String,
+    daily_cap_usd: f64,
+    call_cap_usd: f64,
+    replace: bool,
+}
+fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
+    use persona_builder_agent::{
+        claude,
+        ledger::{Cap, Session},
+        text as spend_text,
+    };
+    use persona_builder_build::{interview, text};
+    use persona_builder_ingest::{
+        corpus::read_records,
+        private::{read_private_optional, write_private},
+    };
+    use persona_builder_steps::{book::book, input::pretty, input::read_objects, labels::tally};
+    let (member, home) = member_and_home(&member_dir)?;
+    let book = book(&member)?;
+    let records = match read_private_optional(&home, &member.slug, &args.corpus)? {
+        Some(bytes) => read_records(&args.corpus, &bytes)?,
+        None => Vec::new(),
+    };
+    let answered = interview::answered(&records);
+    if answered >= interview::THIN_BELOW {
+        println!("{}", text::enough(answered));
+        return Ok(());
+    }
+    if !args.replace
+        && read_private_optional(&home, &member.slug, interview::QUESTIONS_FILE)?.is_some()
+    {
+        return Err(Error::Invalid(text::ALREADY_DRAFTED.into()));
+    }
+    let rows = match &args.labels {
+        Some(labels) => {
+            let given = read_objects(labels, &json_at(&home, &member.slug, labels)?)?;
+            Some(tally(&args.corpus, &records, labels, &given)?)
+        }
+        None => None,
+    };
+    let weights = interview::weights(&book, rows.as_deref())?;
+    let cap = Cap::new(args.daily_cap_usd, args.call_cap_usd)?;
+    let path = std::env::var_os("PATH");
+    let claude = claude::find(path.as_deref(), &home)?;
+    claude.check(&home)?;
+    let session = Session::open(&home, &member.slug, cap)?;
+    let drafted = interview::draft(&claude, &session, &args.model, &book, &weights)?;
+    write_private(
+        &home,
+        &member.slug,
+        interview::QUESTIONS_FILE,
+        pretty(&serde_json::Value::Object(drafted)).as_bytes(),
+    )?;
+    println!("{}", text::drafted(interview::COUNT, rows.is_some()));
+    println!(
+        "saved to ~/.claude/state/{}/{}",
+        member.slug,
+        interview::QUESTIONS_FILE
+    );
+    println!("{}", text::swap(&member_dir.display().to_string()));
+    println!(
+        "{}",
+        spend_text::spend(session.spent_today()?, cap.daily_usd())
+    );
+    Ok(())
+}
+fn interview_answer(member_dir: PathBuf, answers: String, questions: String) -> Result<()> {
+    use persona_builder_build::{interview, text};
+    use persona_builder_ingest::{filters::Filters, mine::to_jsonl, private::write_private};
+    use persona_builder_steps::input::read_object;
+    let (member, home) = member_and_home(&member_dir)?;
+    let filters = Filters::compile(&member.filters)?;
+    let asked = read_object(&questions, &json_at(&home, &member.slug, &questions)?)?;
+    let answered = read_object(&answers, &json_at(&home, &member.slug, &answers)?)?;
+    let kept = interview::answer(&member, &filters, &asked, &answered)?;
+    write_private(
+        &home,
+        &member.slug,
+        interview::OUT,
+        to_jsonl(&kept.records).as_bytes(),
+    )?;
+    print!("{}", interview::summary(&kept));
+    println!(
+        "saved to ~/.claude/state/{}/{}",
+        member.slug,
+        interview::OUT
+    );
+    println!("{}", text::merge_next(&member_dir.display().to_string()));
+    Ok(())
+}
 fn github_client(http: &UreqHttp) -> Result<Github<'_>> {
     Github::new(
         http,
@@ -1419,6 +1549,32 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         Some(Command::Claude {
             command: ClaudeCommand::Check,
         }) => claude_check(),
+        Some(Command::Interview { command }) => match command {
+            InterviewCommand::Draft {
+                member_dir,
+                corpus,
+                labels,
+                model,
+                daily_cap_usd,
+                call_cap_usd,
+                replace,
+            } => interview_draft(
+                member_dir,
+                DraftArgs {
+                    corpus,
+                    labels,
+                    model,
+                    daily_cap_usd,
+                    call_cap_usd,
+                    replace,
+                },
+            ),
+            InterviewCommand::Answer {
+                member_dir,
+                answers,
+                questions,
+            } => interview_answer(member_dir, answers, questions),
+        },
         Some(Command::Spend {
             member_dir,
             daily_cap_usd,
