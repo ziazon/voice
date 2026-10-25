@@ -42,7 +42,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   takes the state lock, which creates the state folder if it were missing (permission already made
   it, so nothing changes in practice); two Claude Code folders with the same project name would
   share a list key on the screen (a render warning only).
-- **Rebased on PB7.6a** (`a6ac8ca`, landed meanwhile): the shared lists (commands, capability,
+- **Rebased on PB7.6a** (`a6ac8ca`, landed meanwhile; the slice `6fd13ae` is now `ce69a57`, the lock
+  test `33c1a96` now `d7e85dc`, and the earlier shas above are the pre-rebase ones): the shared lists (commands, capability,
   handler, parity, DTOs, the screens' backend) carry both slices, PB7.6a's first; the side list
   enables *Your history* after permission and *Save* without it, as PB7.6a has it; its test of the
   unavailable steps now covers four to six, since step three says *Needs your permission first*.
