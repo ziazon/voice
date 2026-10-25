@@ -114,8 +114,11 @@ impl Endpoints {
 pub const SCOPE: &str = "repo";
 /// API version: https://docs.github.com/en/rest/about-the-rest-api/api-versions
 pub const API_VERSION: &str = "2026-03-10";
-/// Persona Builder's registered GitHub OAuth App (device flow on). None until it is registered.
-const CLIENT_ID: Option<&str> = None;
+/// Persona Builder's registered GitHub OAuth App (device flow on, expiring tokens off). An OAuth
+/// App's client ID ships in the app; the device flow needs no client secret ("The `client_secret` is
+/// not needed for the device flow"):
+/// https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow
+const CLIENT_ID: Option<&str> = Some("Ov23lihBQMOVFHgJOJhZ");
 pub fn client_id() -> Option<&'static str> {
     option_env!("PERSONA_BUILDER_GITHUB_CLIENT_ID").or(CLIENT_ID)
 }

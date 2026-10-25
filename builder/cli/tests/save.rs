@@ -117,7 +117,7 @@ fn clean_github_save_passes_privacy_before_sign_in() {
     github_record(&fixture);
     refused(
         fixture.run(&["save", "push", fixture.path()]),
-        text::NOT_SET_UP,
+        text::SIGN_IN_FIRST,
     );
 }
 fn private_github_save(ignored: bool) {
@@ -154,15 +154,11 @@ fn ignored_untracked_private_file_is_still_refused() {
 }
 
 #[test]
-fn choose_github_without_built_in_client_id_fails_before_anything_else() {
-    assert!(
-        persona_builder_save::github::client_id().is_none(),
-        "run this test without a compiled-in client id"
-    );
+fn choose_github_asks_for_sign_in_before_anything_else() {
     let fixture = Fixture::new();
     refused(
         fixture.run(&["save", "choose", fixture.path(), "github", "x"]),
-        text::NOT_SET_UP,
+        text::SIGN_IN_FIRST,
     );
     assert!(!fixture.home.join(".claude/state/wren/save.json").exists());
 }
