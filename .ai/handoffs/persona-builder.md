@@ -8,8 +8,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   folders will be read and which are left out, counts first, then reads. For claude.ai they choose
   their download (a zip, or the folder their Mac unzipped) in a native window Rust opens (`rfd
   =0.17.2`; the webview never names a path), see that it can be read, mark which chats are theirs,
-  and read those. *Put it together* merges both into `decisions.jsonl`. Eight new app commands in
-  `builder/api/src/history.rs`, each in the parity table (15 in all): every one first checks the slug
+  and read those. *Put it together* merges both into `decisions.jsonl`. Eight new app commands, in
+  `builder/api/src/history.rs` (the file window itself in `builder/app/src/commands.rs`), each in the
+  parity table (15 in all): every one first checks the slug
   against the listing, that the history lives in the private Claude folder, and the current
   agreement, in Rust; every writer holds the state lock for the whole command. The chosen download's
   path is kept as `claudeai-export.json` in the state folder (Forget removes it with the rest).
@@ -25,7 +26,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   source).
 - **Who wrote it:** Codex, in two passes (the slice; the Verifier's test fix). Claude briefed, reviewed (one fix: a stray blank line in
   the bridge's imports), wrote this record, ran the gates outside Codex's sandbox and committed.
-- **Verified:** `ci-local.sh` green on `6fd13ae` (835 Rust tests, 77 screen tests, plus the Python
+- **Verified:** `ci-local.sh` green on `6fd13ae` and again on `b44f1b9` (836 Rust tests with the
+  lock test; on `6fd13ae` 835, 77 screen tests, plus the Python
   suites, fmt, clippy and the build). Codex's mutation checks, each red and restored by `cmp`: the
   consent check dropped (a read accepted), a dry run that writes (a file appeared), the progress
   throttle removed (251 messages, not 101), an ingest error's text passed to the screens (the temp
