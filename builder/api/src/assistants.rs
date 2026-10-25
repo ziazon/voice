@@ -231,7 +231,7 @@ pub fn clear_consent(home: &Path, slug: &str) -> persona_builder::error::Result<
     remove_private(home, slug, "consent.json")
 }
 
-fn opener_args(dir: &Path) -> (&'static str, Vec<OsString>) {
+pub(crate) fn opener_args(dir: &Path) -> (&'static str, Vec<OsString>) {
     #[cfg(target_os = "macos")]
     return ("/usr/bin/open", vec![OsString::from("-R"), dir.into()]);
     #[cfg(target_os = "linux")]

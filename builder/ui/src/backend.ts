@@ -1,3 +1,8 @@
+import type { ClaudeCodeStatus } from './types/generated/ClaudeCodeStatus'
+import type { TurnOffRequest } from './types/generated/TurnOffRequest'
+import type { ClaudeAiFiles } from './types/generated/ClaudeAiFiles'
+import type { ForgetPreview } from './types/generated/ForgetPreview'
+import type { ForgetRequest } from './types/generated/ForgetRequest'
 import { inject, provide, type InjectionKey } from 'vue'
 import type { AppInfo } from './types/generated/AppInfo'
 import type { Assistant } from './types/generated/Assistant'
@@ -52,6 +57,14 @@ export interface Backend {
   markClaudeaiChats(request: MarkChatsRequest): Promise<ChatList>
   readClaudeai(request: SlugRequest, onProgress: (progress: ReadProgress) => void): Promise<ClaudeaiCounts>
   mergeHistories(request: SlugRequest): Promise<MergeCounts>
+  claudeCodeStatus(request: SlugRequest): Promise<ClaudeCodeStatus>
+  turnOn(request: SlugRequest): Promise<Said>
+  turnOff(request: TurnOffRequest): Promise<Said>
+  claudeAiFiles(request: SlugRequest): Promise<ClaudeAiFiles>
+  makeClaudeAiFiles(request: SlugRequest): Promise<ClaudeAiFiles>
+  showClaudeAiFiles(request: SlugRequest): Promise<void>
+  forgetPreview(request: SlugRequest): Promise<ForgetPreview>
+  forget(request: ForgetRequest): Promise<Said>
 }
 
 export const backendKey: InjectionKey<Backend> = Symbol('persona-builder-backend')

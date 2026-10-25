@@ -173,3 +173,59 @@ pub fn merge_histories(
 ) -> Result<persona_builder_api::dto::MergeCounts, persona_builder_api::dto::Failure> {
     persona_builder_api::merge_histories(request)
 }
+
+#[tauri::command(async)]
+pub fn claude_code_status(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::ClaudeCodeStatus, persona_builder_api::dto::Failure> {
+    persona_builder_api::claude_code_status(request)
+}
+
+#[tauri::command(async)]
+pub fn turn_on(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::Said, persona_builder_api::dto::Failure> {
+    persona_builder_api::turn_on(request)
+}
+
+#[tauri::command(async)]
+pub fn turn_off(
+    request: persona_builder_api::dto::TurnOffRequest,
+) -> Result<persona_builder_api::dto::Said, persona_builder_api::dto::Failure> {
+    persona_builder_api::turn_off(request)
+}
+
+#[tauri::command(async)]
+pub fn claude_ai_files(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::ClaudeAiFiles, persona_builder_api::dto::Failure> {
+    persona_builder_api::claude_ai_files(request)
+}
+
+#[tauri::command(async)]
+pub fn make_claude_ai_files(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::ClaudeAiFiles, persona_builder_api::dto::Failure> {
+    persona_builder_api::make_claude_ai_files(request)
+}
+
+#[tauri::command(async)]
+pub fn show_claude_ai_files(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<(), persona_builder_api::dto::Failure> {
+    persona_builder_api::show_claude_ai_files(request)
+}
+
+#[tauri::command(async)]
+pub fn forget_preview(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::ForgetPreview, persona_builder_api::dto::Failure> {
+    persona_builder_api::forget_preview(request)
+}
+
+#[tauri::command(async)]
+pub fn forget(
+    request: persona_builder_api::dto::ForgetRequest,
+) -> Result<persona_builder_api::dto::Said, persona_builder_api::dto::Failure> {
+    persona_builder_api::forget(request)
+}

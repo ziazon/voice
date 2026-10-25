@@ -7,11 +7,20 @@ import Consent from './screens/Consent.vue'
 import ConnectClaude from './screens/ConnectClaude.vue'
 import Save from './screens/Save.vue'
 import Sources from './screens/Sources.vue'
+import TurnOn from './screens/TurnOn.vue'
+import ClaudeAiFiles from './screens/ClaudeAiFiles.vue'
+import Forget from './screens/Forget.vue'
 import type { Assistant } from './types/generated/Assistant'
 import type { Consent as ConsentAnswer } from './types/generated/Consent'
 import { steps } from './steps'
 
 const view = ref<'home' | 'new' | 'consent' | 'connect' | 'sources' | 'save'>('home')
+const resets = ref(0)
+function forgotten() {
+  if (!assistant.value) return
+  assistant.value = { ...assistant.value, consent: { agreed: false, agreedOn: null } }
+  resets.value += 1
+}
 const assistant = ref<Assistant | null>(null)
 function open(chosen: Assistant) {
   assistant.value = chosen
@@ -77,7 +86,12 @@ function home() {
             <Consent v-else-if="view === 'consent' && assistant" :key="assistant.slug" :assistant="assistant" @agreed="agreed" @next="goToStep('connect')" />
             <ConnectClaude v-else-if="view === 'connect'" @next="goToStep('sources')" />
             <Sources v-else-if="view === 'sources' && assistant" :key="assistant.slug" :assistant="assistant" />
-            <Save v-else-if="view === 'save' && assistant" :key="assistant.slug" :assistant="assistant" />
+            <template v-else-if="view === 'save' && assistant">
+              <Save :key="`save-${assistant.slug}-${resets}`" :assistant="assistant" />
+              <TurnOn :key="`on-${assistant.slug}-${resets}`" :assistant="assistant" />
+              <ClaudeAiFiles :key="`files-${assistant.slug}-${resets}`" :assistant="assistant" />
+              <Forget :key="`forget-${assistant.slug}-${resets}`" :assistant="assistant" @forgotten="forgotten" />
+            </template>
           </main>
         </div>
       </div>

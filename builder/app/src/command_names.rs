@@ -23,4 +23,12 @@ pub const COMMANDS: &[&str] = &[
     "mark_claudeai_chats",
     "read_claudeai",
     "merge_histories",
+    "claude_code_status",
+    "turn_on",
+    "turn_off",
+    "claude_ai_files",
+    "make_claude_ai_files",
+    "show_claude_ai_files",
+    "forget_preview",
+    "forget",
 ];

@@ -26,6 +26,14 @@
     "allow-list-claudeai-chats",
     "allow-mark-claudeai-chats",
     "allow-read-claudeai",
-    "allow-merge-histories"
+    "allow-merge-histories",
+    "allow-claude-code-status",
+    "allow-turn-on",
+    "allow-turn-off",
+    "allow-claude-ai-files",
+    "allow-make-claude-ai-files",
+    "allow-show-claude-ai-files",
+    "allow-forget-preview",
+    "allow-forget"
   ]
 }

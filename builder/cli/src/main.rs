@@ -1655,10 +1655,7 @@ fn places(claude_home: Option<PathBuf>) -> Result<Places> {
         .ok_or_else(|| Error::Invalid("HOME is not set".into()))?;
     let home = PathBuf::from(home);
     let claude_home = claude_home.unwrap_or_else(|| {
-        std::env::var_os("CLAUDE_CONFIG_DIR")
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".claude"))
+        persona_builder_api::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref())
     });
     Ok(Places { home, claude_home })
 }

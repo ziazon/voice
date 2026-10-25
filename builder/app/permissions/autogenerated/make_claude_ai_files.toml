@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-make-claude-ai-files"
+description = "Enables the make_claude_ai_files command without any pre-configured scope."
+commands.allow = ["make_claude_ai_files"]
+
+[[permission]]
+identifier = "deny-make-claude-ai-files"
+description = "Denies the make_claude_ai_files command without any pre-configured scope."
+commands.deny = ["make_claude_ai_files"]

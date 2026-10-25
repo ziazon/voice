@@ -32,6 +32,14 @@ fn main() {
             commands::mark_claudeai_chats,
             commands::read_claudeai,
             commands::merge_histories,
+            commands::claude_code_status,
+            commands::turn_on,
+            commands::turn_off,
+            commands::claude_ai_files,
+            commands::make_claude_ai_files,
+            commands::show_claude_ai_files,
+            commands::forget_preview,
+            commands::forget,
         ])
         .run(tauri::generate_context!())
     {

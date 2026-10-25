@@ -11,6 +11,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// The refusal shared with the app when the assistant has no kinds of question yet.
+pub fn no_kinds_yet(name: &str) -> String {
+    format!("{name} has no kinds of question yet. Build {name} first, then make the pack")
+}
+
 /// Write the instructions first, then each non-empty kind of question in file order.
 /// Failed writes roll back only the files and directory created by this call.
 pub fn pack(member_dir: &Path, out: &Path) -> Result<Vec<PathBuf>> {
@@ -30,10 +35,7 @@ pub fn pack(member_dir: &Path, out: &Path) -> Result<Vec<PathBuf>> {
     let decisions = read(&member_dir.join("decisions.md"))?;
     let areas = areas(&decisions)?;
     if areas.is_empty() {
-        return Err(Error::Invalid(format!(
-            "{0} has no kinds of question yet. Build {0} first, then make the pack",
-            member.member.name
-        )));
+        return Err(Error::Invalid(no_kinds_yet(&member.member.name)));
     }
     let instructions = instructions(&member, &decisions, &areas)?;
     let mut journal = Journal::default();

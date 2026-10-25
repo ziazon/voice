@@ -96,4 +96,36 @@ pub const PARITY: &[Parity] = &[
         app: "merge_histories",
         cli: &[&["merge"]],
     },
+    Parity {
+        app: "claude_code_status",
+        cli: &[&["status"]],
+    },
+    Parity {
+        app: "turn_on",
+        cli: &[&["on"]],
+    },
+    Parity {
+        app: "turn_off",
+        cli: &[&["off"]],
+    },
+    Parity {
+        app: "claude_ai_files",
+        cli: &[&["pack"]],
+    },
+    Parity {
+        app: "make_claude_ai_files",
+        cli: &[&["pack"]],
+    },
+    Parity {
+        app: "show_claude_ai_files",
+        cli: &[&["pack"]],
+    },
+    Parity {
+        app: "forget_preview",
+        cli: &[&["forget"]],
+    },
+    Parity {
+        app: "forget",
+        cli: &[&["forget"]],
+    },
 ];

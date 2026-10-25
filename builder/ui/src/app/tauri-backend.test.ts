@@ -38,6 +38,14 @@ it.each([
   ['openLink', 'open_link', { link: 'githubSignup' }],
   ['saveChoose', 'save_choose', { slug: 'example', choice: 0, kind: 'github', name: 'example-assistant' }],
   ['savePush', 'save_push', { slug: 'example' }],
+  ['claudeCodeStatus', 'claude_code_status', { slug: 'ari' }],
+  ['turnOn', 'turn_on', { slug: 'ari' }],
+  ['turnOff', 'turn_off', { slug: 'ari' }],
+  ['claudeAiFiles', 'claude_ai_files', { slug: 'ari' }],
+  ['makeClaudeAiFiles', 'make_claude_ai_files', { slug: 'ari' }],
+  ['showClaudeAiFiles', 'show_claude_ai_files', { slug: 'ari' }],
+  ['forgetPreview', 'forget_preview', { slug: 'ari' }],
+  ['forget', 'forget', { slug: 'ari', files: 7 }],
 ] as const)('maps %s with a request argument', async (method, command, request) => {
   vi.mocked(invoke).mockClear().mockResolvedValue('answer')
   expect(tauriBackend[method]).toBeTypeOf('function')

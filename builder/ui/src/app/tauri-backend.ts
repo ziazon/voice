@@ -1,3 +1,6 @@
+import type { ClaudeCodeStatus } from '../types/generated/ClaudeCodeStatus'
+import type { ClaudeAiFiles } from '../types/generated/ClaudeAiFiles'
+import type { ForgetPreview } from '../types/generated/ForgetPreview'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type { Backend } from '../backend'
 import type { AppInfo } from '../types/generated/AppInfo'
@@ -48,4 +51,12 @@ export const tauriBackend: Backend = {
     return invoke<ClaudeaiCounts>('read_claudeai', { request, onProgress: channel })
   },
   mergeHistories: request => invoke<MergeCounts>('merge_histories', { request }),
+  claudeCodeStatus: request => invoke<ClaudeCodeStatus>('claude_code_status', { request }),
+  turnOn: request => invoke<Said>('turn_on', { request }),
+  turnOff: request => invoke<Said>('turn_off', { request }),
+  claudeAiFiles: request => invoke<ClaudeAiFiles>('claude_ai_files', { request }),
+  makeClaudeAiFiles: request => invoke<ClaudeAiFiles>('make_claude_ai_files', { request }),
+  showClaudeAiFiles: request => invoke<void>('show_claude_ai_files', { request }),
+  forgetPreview: request => invoke<ForgetPreview>('forget_preview', { request }),
+  forget: request => invoke<Said>('forget', { request }),
 }

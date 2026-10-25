@@ -60,6 +60,14 @@ fn lockdown_1_command_lists_agree_in_order() {
             "mark_claudeai_chats",
             "read_claudeai",
             "merge_histories",
+            "claude_code_status",
+            "turn_on",
+            "turn_off",
+            "claude_ai_files",
+            "make_claude_ai_files",
+            "show_claude_ai_files",
+            "forget_preview",
+            "forget",
         ]
     );
     let capability = json("capabilities/default.json");

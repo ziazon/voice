@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-claude-ai-files"
+description = "Enables the show_claude_ai_files command without any pre-configured scope."
+commands.allow = ["show_claude_ai_files"]
+
+[[permission]]
+identifier = "deny-show-claude-ai-files"
+description = "Denies the show_claude_ai_files command without any pre-configured scope."
+commands.deny = ["show_claude_ai_files"]

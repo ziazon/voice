@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-forget-preview"
+description = "Enables the forget_preview command without any pre-configured scope."
+commands.allow = ["forget_preview"]
+
+[[permission]]
+identifier = "deny-forget-preview"
+description = "Denies the forget_preview command without any pre-configured scope."
+commands.deny = ["forget_preview"]
