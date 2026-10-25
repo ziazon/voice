@@ -120,3 +120,9 @@ should-fixes, no must-fix. All seven are fixed, each with a test proved by a mut
 - **A linked `briefs/`** (security L4): `draft::read_codebook` refuses it.
 - Also: `label_schema`'s `domain` is nullable (a codebook may name no domains), and only
   `YYYY-MM-DD` dates reach the front matter (the security review's hardening note).
+
+The delta Verifier (Opus): pass with three should-fixes, no must-fix, all applied, each proved by a
+mutation: tag characters (U+E0000 to E007F), variation selectors and the other invisible fillers join
+the refused characters; the distil prompt drops its own angle brackets and says to write "under" or
+"less than" instead of `<`; a test pins the pre-flight's `decisions.md` check. Her note on body dates
+is applied too: the backtest's date range takes only `YYYY-MM-DD` dates.

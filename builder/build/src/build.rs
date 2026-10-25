@@ -365,6 +365,16 @@ fn hidden(c: char) -> bool {
         || ('\u{2028}'..='\u{202E}').contains(&c)
         || ('\u{2060}'..='\u{206F}').contains(&c)
         || ('\u{FFF9}'..='\u{FFFB}').contains(&c)
+        || matches!(
+            c,
+            '\u{034F}' | '\u{115F}' | '\u{1160}' | '\u{3164}' | '\u{FFA0}'
+        )
+        || ('\u{FE00}'..='\u{FE0F}').contains(&c)
+        || ('\u{13430}'..='\u{1343F}').contains(&c)
+        || ('\u{1BCA0}'..='\u{1BCA3}').contains(&c)
+        || ('\u{1D173}'..='\u{1D17A}').contains(&c)
+        || ('\u{E0000}'..='\u{E007F}').contains(&c)
+        || ('\u{E0100}'..='\u{E01EF}').contains(&c)
 }
 
 fn dated(point: &str) -> bool {
@@ -984,7 +994,8 @@ pub fn build(
             .questions
             .iter()
             .filter_map(|q| q.get("timestamp").and_then(Value::as_str))
-            .map(|t| t.chars().take(10).collect())
+            .map(|t| t.chars().take(10).collect::<String>())
+            .filter(|date| is_date(date))
             .collect();
         Some(Backtest {
             score,
