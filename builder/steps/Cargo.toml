@@ -1,0 +1,12 @@
+[package]
+name = "persona-builder-steps"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+persona-builder = { path = "../core" }
+persona-builder-ingest = { path = "../ingest" }
+regex = "=1.13.1"
+serde_json = { version = "1", features = ["preserve_order"] }

@@ -15,3 +15,7 @@ persona-builder = { path = "../core" }
 persona-builder-save = { path = "../save" }
 persona-builder-ingest = { path = "../ingest" }
 persona-builder-agent = { path = "../agent" }
+persona-builder-steps = { path = "../steps" }
+
+[dev-dependencies]
+serde_json = "1"

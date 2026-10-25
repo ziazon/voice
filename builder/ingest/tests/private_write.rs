@@ -83,7 +83,7 @@ fn rejects_unsafe_names_and_slugs_before_creating_folders() {
         "../x.jsonl",
         "a/b.jsonl",
         ".x.jsonl",
-        "x.json",
+        "x.jso",
         "x\0.jsonl",
         "x.txt",
         "x.tsv/",
@@ -93,7 +93,7 @@ fn rejects_unsafe_names_and_slugs_before_creating_folders() {
             write_private(&home.0, "wren", name, b"private")
                 .unwrap_err()
                 .to_string(),
-            "the file name must be a plain name ending .jsonl or .tsv"
+            "the file name must be a plain name ending .jsonl, .json or .tsv"
         );
     }
     for slug in [

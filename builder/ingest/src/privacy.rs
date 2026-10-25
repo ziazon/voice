@@ -1,28 +1,42 @@
 use crate::filters::{Filters, Kind};
 use persona_builder::error::{Error, Result};
-use serde_json::Value;
+use serde_json::{Map, Value};
+
+/// A record or an option: anything whose fields are read by name.
+trait Fields {
+    fn field(&self, key: &str) -> Option<&Value>;
+}
+impl Fields for Value {
+    fn field(&self, key: &str) -> Option<&Value> {
+        self.get(key)
+    }
+}
+impl Fields for Map<String, Value> {
+    fn field(&self, key: &str) -> Option<&Value> {
+        self.get(key)
+    }
+}
 
 fn lacks(key: &str) -> Error {
     Error::Invalid(format!("a record lacks {key}"))
 }
-fn string<'a>(record: &'a Value, key: &str) -> Result<&'a str> {
+fn string<'a>(record: &'a (impl Fields + ?Sized), key: &str) -> Result<&'a str> {
     record
-        .get(key)
+        .field(key)
         .and_then(Value::as_str)
         .ok_or_else(|| lacks(key))
 }
-fn array<'a>(record: &'a Value, key: &str) -> Result<&'a [Value]> {
+fn array<'a>(record: &'a (impl Fields + ?Sized), key: &str) -> Result<&'a [Value]> {
     record
-        .get(key)
+        .field(key)
         .and_then(Value::as_array)
         .map(Vec::as_slice)
         .ok_or_else(|| lacks(key))
 }
 
-/// The exact single-space joins used by Python's searchable() and filtered().
-pub fn filtered_text(record: &Value) -> Result<String> {
-    let kind = string(record, "kind")?;
-    let searchable = if kind == "message" {
+/// A record's own words, joined as Python's searchable() joins them.
+pub fn searchable(record: &Map<String, Value>) -> Result<String> {
+    Ok(if string(record, "kind")? == "message" {
         string(record, "text")?.to_owned()
     } else {
         let question = string(record, "question")?;
@@ -44,7 +58,13 @@ pub fn filtered_text(record: &Value) -> Result<String> {
             string(record, "notes")?,
         ]
         .join(" ")
-    };
+    })
+}
+
+/// The exact single-space joins used by Python's searchable() and filtered().
+pub fn filtered_text(record: &Value) -> Result<String> {
+    let kind = string(record, "kind")?;
+    let searchable = searchable(record.as_object().ok_or_else(|| lacks("kind"))?)?;
     let optional = |key| match record.get(key) {
         None => Ok(""),
         Some(value) => value.as_str().ok_or_else(|| lacks(key)),

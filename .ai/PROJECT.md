@@ -20,6 +20,7 @@ member and no real person's data.
 | `builder/save/` | Saving an assistant (persona_builder_save): an existing repo, a private GitHub repo, or this Mac only; GitHub sign-in, the Keychain, git | `builder/save/tests/` |
 | `builder/ingest/` | Reading histories into the corpus (persona_builder_ingest): the privacy filters, the privacy check, mining Claude Code transcripts and the claude.ai export, merging and splitting the corpus | `builder/ingest/tests/` |
 | `builder/agent/` | The model calls (persona_builder_agent): the agent list, the person's own Claude Code checked and called with no tools, the ledger of what each call cost, the daily cap | `builder/agent/tests/` |
+| `builder/steps/` | The build's steps that need no model (persona_builder_steps): chunking the corpus, checking labels, the tally, the distiller's input, scoring the backtest, finding similar past decisions, the shingle check, importing a question round | `builder/steps/tests/`, `builder/cli/tests/steps_parity.rs` |
 
 All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck). The
 Rust checks (fmt, clippy, tests) need stable Rust and are skipped when `cargo` is missing.

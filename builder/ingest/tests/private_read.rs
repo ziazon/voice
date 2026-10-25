@@ -55,7 +55,7 @@ fn missing_folders_and_bad_names_create_nothing() {
         "../x.jsonl",
         "a/b.jsonl",
         ".x.jsonl",
-        "x.json",
+        "x.jso",
         "x\0.jsonl",
         "x.txt",
         "x.tsv/",
@@ -63,7 +63,7 @@ fn missing_folders_and_bad_names_create_nothing() {
     ] {
         assert_eq!(
             read_private(&s.0, "wren", name).unwrap_err().to_string(),
-            "the file name must be a plain name ending .jsonl or .tsv"
+            "the file name must be a plain name ending .jsonl, .json or .tsv"
         );
     }
     assert!(listing(&s.0).is_empty());

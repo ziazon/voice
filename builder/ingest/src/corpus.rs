@@ -44,7 +44,8 @@ fn shape(name: &str, line: usize, key: &str) -> Error {
         &format!("a record has an unexpected shape ({key})"),
     )
 }
-fn exact_numbers(value: &Value) -> bool {
+/// True when every number in the value is a whole number serde_json keeps exactly.
+pub fn exact_numbers(value: &Value) -> bool {
     match value {
         Value::Number(n) => !n.is_f64() && (n.as_i64().is_some() || n.as_u64().is_some()),
         Value::Array(a) => a.iter().all(exact_numbers),

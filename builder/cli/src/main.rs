@@ -14,6 +14,7 @@ use persona_builder_save::{
     secret::Secret,
     text,
 };
+use persona_builder_steps::input::RecordList as Records;
 use std::path::PathBuf;
 
 /// The `persona-builder` command: a thin layer over the core library.
@@ -103,6 +104,94 @@ enum Command {
         answers: String,
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Cut your history into parts small enough to label.
+    Chunk {
+        member_dir: PathBuf,
+        #[arg(long, default_value = "decisions.jsonl")]
+        corpus: String,
+        #[arg(long, default_value = "chunks")]
+        out_dir: String,
+        #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..))]
+        size: u64,
+    },
+    /// Check one part's labels against the assistant's kinds of decision.
+    CheckLabels {
+        member_dir: PathBuf,
+        #[arg(long)]
+        chunk: String,
+        #[arg(long)]
+        labels: String,
+        #[arg(long, value_parser = ["train", "heldout"])]
+        mode: String,
+    },
+    /// Count how you decided, for each kind of decision.
+    Tally {
+        member_dir: PathBuf,
+        #[arg(long, default_value = "decisions.jsonl")]
+        corpus: String,
+        #[arg(long)]
+        labels: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Group your labelled decisions, ready to be written up.
+    DistilIn {
+        member_dir: PathBuf,
+        #[arg(long, default_value = "decisions.jsonl")]
+        corpus: String,
+        #[arg(long)]
+        labels: String,
+        #[arg(long, default_value = "distil")]
+        out_dir: String,
+    },
+    /// Score the test's guesses against what you really chose.
+    Score {
+        member_dir: PathBuf,
+        #[arg(long, default_value = "heldout-answers.jsonl")]
+        answers: String,
+        #[arg(long)]
+        labels: String,
+        #[arg(long)]
+        predictions: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Find the past decisions closest to a question.
+    Similar {
+        member_dir: PathBuf,
+        #[arg(long, default_value = "decisions.jsonl")]
+        corpus: String,
+        #[arg(long)]
+        query: String,
+        #[arg(long, default_value_t = 6)]
+        k: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check that a draft repeats no run of words from your history.
+    Shingle {
+        member_dir: PathBuf,
+        #[arg(long)]
+        doc: PathBuf,
+        #[arg(long = "corpus", num_args = 1.., required = true)]
+        corpora: Vec<String>,
+        #[arg(long, default_value_t = 6, value_parser = clap::value_parser!(u64).range(1..))]
+        n: u64,
+    },
+    /// Add a round of questions you answered outside Claude.
+    Round {
+        member_dir: PathBuf,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        questions: String,
+        #[arg(long)]
+        answers: String,
+        #[arg(long)]
+        heldout: bool,
+        #[arg(long)]
+        out: Option<String>,
     },
     /// Read your claude.ai chats: check the export, list the chats, mark which are yours, and read them.
     Claudeai {
@@ -650,6 +739,213 @@ fn split_corpus(
     }
     Ok(())
 }
+/// A member whose state folder is the private one, with the home it lives under.
+fn member_and_home(
+    member_dir: &std::path::Path,
+) -> Result<(persona_builder::member::Member, PathBuf)> {
+    let home = home()?;
+    let member = checked_member(member_dir, &home)?;
+    Ok((member, home))
+}
+/// A corpus file, `NAME` or `FOLDER/NAME` inside the state folder.
+fn corpus_at(home: &std::path::Path, slug: &str, argument: &str) -> Result<Records> {
+    use persona_builder_ingest::{corpus::read_records, private};
+    let (folder, name) = private::place(argument)?;
+    private::validate_name(name)?;
+    read_records(
+        argument,
+        &private::read_private_at(home, slug, folder, name)?,
+    )
+}
+/// A JSON file, `NAME` or `FOLDER/NAME` inside the state folder.
+fn json_at(home: &std::path::Path, slug: &str, argument: &str) -> Result<Vec<u8>> {
+    use persona_builder_ingest::private;
+    let (folder, name) = private::place(argument)?;
+    private::validate_json_name(name)?;
+    private::read_private_at(home, slug, folder, name)
+}
+fn chunk(member_dir: PathBuf, corpus: String, out_dir: String, size: u64) -> Result<()> {
+    use persona_builder_ingest::private::{private_folder, write_private_at};
+    let (member, home) = member_and_home(&member_dir)?;
+    let records = corpus_at(&home, &member.slug, &corpus)?;
+    let size = usize::try_from(size).map_err(|_| Error::Invalid("--size is too large".into()))?;
+    let chunks = persona_builder_steps::chunk::chunk(&corpus, &records, size)?;
+    private_folder(&home, &member.slug, &out_dir)?;
+    for (name, text) in chunks.files() {
+        write_private_at(&home, &member.slug, Some(&out_dir), &name, text.as_bytes())?;
+    }
+    print!("{}", chunks.summary());
+    println!("saved to ~/.claude/state/{}/{out_dir}/", member.slug);
+    Ok(())
+}
+fn check_labels(
+    member_dir: PathBuf,
+    chunk: String,
+    labels: String,
+    mode: String,
+) -> Result<std::process::ExitCode> {
+    use persona_builder_steps::{book::book, input::read_object, labels as steps};
+    let (member, home) = member_and_home(&member_dir)?;
+    let book = book(&member)?;
+    let records = corpus_at(&home, &member.slug, &chunk)?;
+    let given = read_object(&labels, &json_at(&home, &member.slug, &labels)?)?;
+    let mode = if mode == "train" {
+        steps::Mode::Train
+    } else {
+        steps::Mode::Heldout
+    };
+    let problems = steps::label_problems(&book, &chunk, &records, &given, mode)?;
+    print!("{}", steps::render_problems(&problems));
+    Ok(if problems.is_empty() {
+        std::process::ExitCode::SUCCESS
+    } else {
+        std::process::ExitCode::FAILURE
+    })
+}
+fn tally(member_dir: PathBuf, corpus: String, labels: String, json: bool) -> Result<()> {
+    use persona_builder_steps::{input::read_objects, labels as steps};
+    let (member, home) = member_and_home(&member_dir)?;
+    let records = corpus_at(&home, &member.slug, &corpus)?;
+    let given = read_objects(&labels, &json_at(&home, &member.slug, &labels)?)?;
+    let rows = steps::tally(&corpus, &records, &labels, &given)?;
+    print!(
+        "{}",
+        if json {
+            steps::tally_json(&rows)
+        } else {
+            steps::tally_markdown(&rows)
+        }
+    );
+    Ok(())
+}
+fn distil_in(member_dir: PathBuf, corpus: String, labels: String, out_dir: String) -> Result<()> {
+    use persona_builder_ingest::{
+        mine::to_jsonl,
+        private::{private_folder, write_private_at},
+    };
+    use persona_builder_steps::{book::book, distil, input::read_objects};
+    let (member, home) = member_and_home(&member_dir)?;
+    let book = book(&member)?;
+    let records = corpus_at(&home, &member.slug, &corpus)?;
+    let given = read_objects(&labels, &json_at(&home, &member.slug, &labels)?)?;
+    let groups = distil::distil_in(&book, &corpus, &records, &labels, &given)?;
+    private_folder(&home, &member.slug, &out_dir)?;
+    for group in &groups {
+        write_private_at(
+            &home,
+            &member.slug,
+            Some(&out_dir),
+            &format!("{}.jsonl", group.name),
+            to_jsonl(&group.rows).as_bytes(),
+        )?;
+    }
+    print!("{}", distil::summary(&groups));
+    println!("saved to ~/.claude/state/{}/{out_dir}/", member.slug);
+    Ok(())
+}
+fn score(
+    member_dir: PathBuf,
+    answers: String,
+    labels: String,
+    predictions: String,
+    json: bool,
+) -> Result<()> {
+    use persona_builder_steps::{input::read_objects, score as steps};
+    let (member, home) = member_and_home(&member_dir)?;
+    let records = corpus_at(&home, &member.slug, &answers)?;
+    let given = read_objects(&labels, &json_at(&home, &member.slug, &labels)?)?;
+    let guesses = read_objects(&predictions, &json_at(&home, &member.slug, &predictions)?)?;
+    let result = steps::score(&member, &answers, &records, &labels, &given, &guesses)?;
+    print!(
+        "{}",
+        if json {
+            steps::score_json(&member, &result)?
+        } else {
+            steps::score_markdown(&member, &result)
+        }
+    );
+    Ok(())
+}
+fn similar(member_dir: PathBuf, corpus: String, query: String, k: usize, json: bool) -> Result<()> {
+    use persona_builder_steps::similar as steps;
+    let (member, home) = member_and_home(&member_dir)?;
+    let records = corpus_at(&home, &member.slug, &corpus)?;
+    let hits = steps::similar(&member, &corpus, &records, &query, k)?;
+    print!(
+        "{}",
+        if json {
+            steps::similar_json(&hits)
+        } else {
+            steps::similar_text(&member, &hits)
+        }
+    );
+    Ok(())
+}
+fn shingle(
+    member_dir: PathBuf,
+    doc: PathBuf,
+    corpora: Vec<String>,
+    n: u64,
+) -> Result<std::process::ExitCode> {
+    use persona_builder_steps::shingle;
+    let (member, home) = member_and_home(&member_dir)?;
+    let doc = expand_home(doc, &home);
+    let bytes = std::fs::read(&doc).map_err(|source| Error::Io {
+        path: doc.clone(),
+        source,
+    })?;
+    let text = String::from_utf8(bytes)
+        .map_err(|_| Error::Invalid(format!("{} is not UTF-8 text", doc.display())))?;
+    let read = corpora
+        .iter()
+        .map(|name| corpus_at(&home, &member.slug, name))
+        .collect::<Result<Vec<_>>>()?;
+    let pairs: Vec<_> = corpora
+        .iter()
+        .map(String::as_str)
+        .zip(read.iter().map(Vec::as_slice))
+        .collect();
+    let n = usize::try_from(n).map_err(|_| Error::Invalid("--n is too large".into()))?;
+    let hits = shingle::overlaps(&text, &pairs, n)?;
+    print!("{}", shingle::render(&hits));
+    Ok(if hits.is_empty() {
+        std::process::ExitCode::SUCCESS
+    } else {
+        std::process::ExitCode::FAILURE
+    })
+}
+fn round(
+    member_dir: PathBuf,
+    name: String,
+    questions: String,
+    answers: String,
+    heldout: bool,
+    out: Option<String>,
+) -> Result<()> {
+    use persona_builder_ingest::{
+        filters::Filters,
+        mine::to_jsonl,
+        private::{validate_name, write_private},
+    };
+    use persona_builder_steps::{input::read_object, round as steps};
+    steps::validate_name(&name)?;
+    let out = out.unwrap_or_else(|| steps::default_out(&name));
+    validate_name(&out)?;
+    let (member, home) = member_and_home(&member_dir)?;
+    let filters = Filters::compile(&member.filters)?;
+    let asked = read_object(&questions, &json_at(&home, &member.slug, &questions)?)?;
+    let answered = read_object(&answers, &json_at(&home, &member.slug, &answers)?)?;
+    let imported = steps::round(&member, &filters, &name, &asked, &answered, heldout)?;
+    write_private(
+        &home,
+        &member.slug,
+        &out,
+        to_jsonl(&imported.records).as_bytes(),
+    )?;
+    print!("{}", steps::summary(&imported));
+    println!("saved to ~/.claude/state/{}/{out}", member.slug);
+    Ok(())
+}
 fn folders(member_dir: PathBuf, projects: Option<PathBuf>) -> Result<()> {
     use persona_builder_ingest::{filters::Filters, mine};
     let home = home()?;
@@ -960,6 +1256,58 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 std::process::ExitCode::FAILURE
             });
         }
+        Some(Command::CheckLabels {
+            member_dir,
+            chunk,
+            labels,
+            mode,
+        }) => return check_labels(member_dir, chunk, labels, mode),
+        Some(Command::Shingle {
+            member_dir,
+            doc,
+            corpora,
+            n,
+        }) => return shingle(member_dir, doc, corpora, n),
+        Some(Command::Chunk {
+            member_dir,
+            corpus,
+            out_dir,
+            size,
+        }) => chunk(member_dir, corpus, out_dir, size),
+        Some(Command::Tally {
+            member_dir,
+            corpus,
+            labels,
+            json,
+        }) => tally(member_dir, corpus, labels, json),
+        Some(Command::DistilIn {
+            member_dir,
+            corpus,
+            labels,
+            out_dir,
+        }) => distil_in(member_dir, corpus, labels, out_dir),
+        Some(Command::Score {
+            member_dir,
+            answers,
+            labels,
+            predictions,
+            json,
+        }) => score(member_dir, answers, labels, predictions, json),
+        Some(Command::Similar {
+            member_dir,
+            corpus,
+            query,
+            k,
+            json,
+        }) => similar(member_dir, corpus, query, k, json),
+        Some(Command::Round {
+            member_dir,
+            name,
+            questions,
+            answers,
+            heldout,
+            out,
+        }) => round(member_dir, name, questions, answers, heldout, out),
         Some(Command::Forget { member_dir, yes }) => forget(member_dir, yes),
         Some(Command::Merge {
             member_dir,

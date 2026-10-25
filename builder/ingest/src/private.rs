@@ -119,13 +119,48 @@ pub fn validate_review_name(name: &str) -> Result<()> {
     }
     Ok(())
 }
-fn validate_private_name(name: &str) -> Result<()> {
-    if !plain(name, &[".jsonl", ".tsv"]) {
+pub fn validate_json_name(name: &str) -> Result<()> {
+    if !plain(name, &[".json"]) {
         return Err(Error::Invalid(
-            "the file name must be a plain name ending .jsonl or .tsv".into(),
+            "the file name must be a plain name ending .json".into(),
         ));
     }
     Ok(())
+}
+fn validate_private_name(name: &str) -> Result<()> {
+    if !plain(name, &[".jsonl", ".tsv", ".json"]) {
+        return Err(Error::Invalid(
+            "the file name must be a plain name ending .jsonl, .json or .tsv".into(),
+        ));
+    }
+    Ok(())
+}
+fn validate_folder_name(name: &str) -> Result<()> {
+    if !plain(name, &[""]) || name.is_empty() {
+        return Err(Error::Invalid(
+            "the folder name must be a plain name".into(),
+        ));
+    }
+    Ok(())
+}
+/// Split a file argument into its folder, if any, and its name: `NAME` or `FOLDER/NAME` inside the
+/// member's state folder, never deeper and never a path of its own.
+pub fn place(argument: &str) -> Result<(Option<&str>, &str)> {
+    let wrong = || {
+        Error::Invalid(format!(
+            "{argument}: a file here is NAME or FOLDER/NAME inside the assistant's private folder"
+        ))
+    };
+    match argument.split_once('/') {
+        None => Ok((None, argument)),
+        Some((folder, name)) => {
+            validate_folder_name(folder).map_err(|_| wrong())?;
+            if name.contains('/') {
+                return Err(wrong());
+            }
+            Ok((Some(folder), name))
+        }
+    }
 }
 
 fn state_directory(home: &Path, slug: &str, create: bool) -> Result<(OwnedFd, PathBuf)> {
@@ -159,10 +194,44 @@ fn state_directory(home: &Path, slug: &str, create: bool) -> Result<(OwnedFd, Pa
     Ok((directory, path))
 }
 
+/// The member's state folder, or a plain folder inside it: made 0700 when `create`, never through a
+/// link, and refused unless only this user can open it.
+fn place_directory(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    create: bool,
+) -> Result<(OwnedFd, PathBuf)> {
+    let (directory, state) = state_directory(home, slug, create)?;
+    let Some(folder) = folder else {
+        return Ok((directory, state));
+    };
+    validate_folder_name(folder)?;
+    // The assistant's folder may be readable by others (an older build left 0750), never writable.
+    let parent = File::from(directory.try_clone().map_err(|e| io(&state, e))?);
+    only_mine(&parent, &state, 0o022, "changed")?;
+    let path = state.join(folder);
+    let part = CString::new(folder).expect("validated folder name");
+    let inner = File::from(open_directory(&directory, &part, &path, create)?);
+    only_mine(&inner, &path, 0o077, "opened")?;
+    Ok((OwnedFd::from(inner), path))
+}
+
 /// Atomically replace a JSONL or review file in the member's private state folder.
 pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Result<PathBuf> {
+    write_private_at(home, slug, None, name, bytes)
+}
+
+/// [`write_private`], into `folder` inside the state folder when one is given.
+pub fn write_private_at(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    name: &str,
+    bytes: &[u8],
+) -> Result<PathBuf> {
     validate_private_name(name)?;
-    let (directory, path) = state_directory(home, slug, true)?;
+    let (directory, path) = place_directory(home, slug, folder, true)?;
     let destination = path.join(name);
     let target = CString::new(name).expect("validated file name");
     let (mut temporary, mut file) = loop {
@@ -212,6 +281,16 @@ pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Resul
 
 /// Read a corpus or review file from the private state folder.
 pub fn read_private(home: &Path, slug: &str, name: &str) -> Result<Vec<u8>> {
+    read_private_at(home, slug, None, name)
+}
+
+/// [`read_private`], from `folder` inside the state folder when one is given; creates nothing.
+pub fn read_private_at(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    name: &str,
+) -> Result<Vec<u8>> {
     validate_private_name(name)?;
     let missing = |error| match error {
         Error::Io { path, source } if source.kind() == std::io::ErrorKind::NotFound => {
@@ -219,7 +298,7 @@ pub fn read_private(home: &Path, slug: &str, name: &str) -> Result<Vec<u8>> {
         }
         other => other,
     };
-    let (directory, path) = state_directory(home, slug, false).map_err(missing)?;
+    let (directory, path) = place_directory(home, slug, folder, false).map_err(missing)?;
     let path = path.join(name);
     let name = CString::new(name).expect("validated file name");
     // SAFETY: directory is live and name is terminated; flags refuse links and avoid blocking on pipes.
@@ -272,20 +351,8 @@ pub fn lock_state(home: &Path, slug: &str) -> Result<StateLock> {
 /// A plain-named folder inside the member's state folder, created 0700, never through a link, and
 /// refused unless only this user can open it.
 pub fn private_folder(home: &Path, slug: &str, name: &str) -> Result<PathBuf> {
-    if !plain(name, &[""]) || name.is_empty() {
-        return Err(Error::Invalid(
-            "the folder name must be a plain name".into(),
-        ));
-    }
-    let (directory, state) = state_directory(home, slug, true)?;
-    // The assistant's folder may be readable by others (an older build left 0750), never writable.
-    let parent = File::from(directory.try_clone().map_err(|e| io(&state, e))?);
-    only_mine(&parent, &state, 0o022, "changed")?;
-    let path = state.join(name);
-    let part = CString::new(name).expect("validated folder name");
-    let folder = File::from(open_directory(&directory, &part, &path, true)?);
-    only_mine(&folder, &path, 0o077, "opened")?;
-    Ok(path)
+    validate_folder_name(name)?;
+    place_directory(home, slug, Some(name), true).map(|(_, path)| path)
 }
 
 /// Refuse a folder another user owns, or whose mode has any bit of `others` set; `how` says what

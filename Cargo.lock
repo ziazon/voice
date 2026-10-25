@@ -336,6 +336,8 @@ dependencies = [
  "persona-builder-agent",
  "persona-builder-ingest",
  "persona-builder-save",
+ "persona-builder-steps",
+ "serde_json",
 ]
 
 [[package]]
@@ -363,6 +365,16 @@ dependencies = [
  "serde_json",
  "ureq",
  "zeroize",
+]
+
+[[package]]
+name = "persona-builder-steps"
+version = "0.1.0"
+dependencies = [
+ "persona-builder",
+ "persona-builder-ingest",
+ "regex",
+ "serde_json",
 ]
 
 [[package]]

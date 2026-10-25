@@ -1,6 +1,7 @@
 pub mod check;
 pub mod claudeai;
 pub mod corpus;
+pub mod dates;
 pub mod filters;
 pub mod mine;
 pub mod privacy;

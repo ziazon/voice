@@ -454,7 +454,8 @@ pub(crate) fn own_message(filters: &Filters, text: String) -> Option<String> {
         Some(text)
     }
 }
-fn outcome(picks: &[String], own: &str, recommended: Option<&str>) -> &'static str {
+/// The Python's `outcome`: own words win, then whether the recommendation was picked.
+pub fn outcome(picks: &[String], own: &str, recommended: Option<&str>) -> &'static str {
     if !own.is_empty() {
         "own_words"
     } else {
@@ -513,6 +514,20 @@ pub(crate) fn mark_split(records: &mut [Map<String, Value>], split: &Split) -> O
         );
     }
     cutoff
+}
+/// The gate marks a label carries: `(Recommended)`, `(Recommended · <Name>)` or `(<Name>)`.
+pub struct Mark(Regex);
+impl Mark {
+    pub fn new(mark_word: &str) -> Result<Self> {
+        mark_pattern(mark_word).map(Self)
+    }
+    /// The Python's `bare`: the label without its marks, stripped as `str.strip()` strips.
+    pub fn bare(&self, label: &str) -> String {
+        self.0
+            .replace_all(label, "")
+            .trim_matches(py_space)
+            .to_owned()
+    }
 }
 fn mark_pattern(mark_word: &str) -> Result<Regex> {
     const SPACE: &str = r"[\s\x1c-\x1f]";
