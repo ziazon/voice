@@ -115,9 +115,9 @@ pub fn score(
     };
     for a in Record::all(answers_name, answers) {
         let id = a.id()?;
-        let p = predictions[id]
-            .as_object()
-            .expect("predictions are objects");
+        let p = predictions[id].as_object().ok_or_else(|| {
+            Error::Invalid(format!("the prediction for {id} is not a JSON object"))
+        })?;
         let tier = p
             .get("confidence")
             .and_then(Value::as_str)

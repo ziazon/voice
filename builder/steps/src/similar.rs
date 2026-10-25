@@ -52,11 +52,7 @@ fn precedent(member: &Member, r: Record) -> Result<Map<String, Value>> {
     p.insert("project".into(), Value::from(project));
     p.insert("header".into(), Value::from(r.str("header")?));
     p.insert("question".into(), Value::from(r.str("question")?));
-    let options: Vec<Value> = r
-        .options()?
-        .into_iter()
-        .map(|(l, _)| Value::from(l))
-        .collect();
+    let options: Vec<Value> = r.labels()?.into_iter().map(Value::from).collect();
     p.insert("options".into(), Value::from(options));
     p.insert("recommended".into(), r.get("recommended")?.clone());
     let pick_field = member.pick_field();
@@ -154,10 +150,8 @@ pub fn similar(
         .collect()
 }
 
-pub fn similar_json(hits: &[Map<String, Value>]) -> String {
-    pretty(&Value::Array(
-        hits.iter().cloned().map(Value::Object).collect(),
-    ))
+pub fn similar_json(hits: Vec<Map<String, Value>>) -> String {
+    pretty(&Value::Array(hits.into_iter().map(Value::Object).collect()))
 }
 
 fn text<'a>(hit: &'a Map<String, Value>, key: &str) -> &'a str {

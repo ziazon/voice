@@ -44,13 +44,21 @@ pub fn distil_in(
             continue;
         }
         let id = r.id()?;
+        let label = match labels.get(id) {
+            Some(Value::Object(label)) => label,
+            Some(_) => {
+                return Err(Error::Invalid(format!(
+                    "{labels_name}: the label for {id} is not a JSON object"
+                )));
+            }
+            None => return Err(Error::Invalid(format!("{labels_name}: no label for {id}"))),
+        };
         let name = category(labels_name, labels, id)?;
         let Some(&at) = group_of.get(name) else {
             return Err(Error::Invalid(format!(
                 "category {name} is in no codebook group"
             )));
         };
-        let label = labels[id].as_object().expect("labels are objects");
         groups[at].rows.push(row(r, label, labels_name, id)?);
     }
     Ok(groups)

@@ -874,7 +874,7 @@ fn similar(member_dir: PathBuf, corpus: String, query: String, k: usize, json: b
     print!(
         "{}",
         if json {
-            steps::similar_json(&hits)
+            steps::similar_json(hits)
         } else {
             steps::similar_text(&member, &hits)
         }

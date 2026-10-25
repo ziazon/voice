@@ -123,3 +123,24 @@ fn places_are_a_name_or_one_folder_and_a_name() {
         );
     }
 }
+
+#[test]
+fn a_state_folder_others_can_change_is_refused() {
+    let s = Scratch::new("private-at-state");
+    write_private(&s.0, "wren", "x.jsonl", b"x").unwrap();
+    let state = s.0.join(".claude/state/wren");
+    fs::set_permissions(&state, fs::Permissions::from_mode(0o777)).unwrap();
+    for result in [
+        write_private(&s.0, "wren", "y.jsonl", b"y").map(|_| ()),
+        read_private_at(&s.0, "wren", None, "x.jsonl").map(|_| ()),
+    ] {
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("can be changed by others"), "{error}");
+    }
+    assert!(!state.join("y.jsonl").exists());
+    fs::set_permissions(&state, fs::Permissions::from_mode(0o750)).unwrap();
+    assert_eq!(
+        read_private_at(&s.0, "wren", None, "x.jsonl").unwrap(),
+        b"x"
+    );
+}

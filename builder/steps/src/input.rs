@@ -85,6 +85,17 @@ impl<'a> Record<'a> {
             .map(|v| v.as_str().ok_or_else(|| self.shape(key)))
             .collect()
     }
+    /// The options' labels, each a string (all the Python's `searchable` and `precedent` read).
+    pub fn labels(&self) -> Result<Vec<&'a str>> {
+        self.array("options")?
+            .iter()
+            .map(|o| {
+                o.get("label")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| self.shape("options"))
+            })
+            .collect()
+    }
     /// The options' labels and descriptions, each a string.
     pub fn options(&self) -> Result<Vec<(&'a str, &'a str)>> {
         self.array("options")?

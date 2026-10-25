@@ -88,13 +88,18 @@ fn links_at_every_level_are_refused() {
         let err = read_private(&s.0, "wren", "x.jsonl")
             .unwrap_err()
             .to_string();
-        assert_eq!(
-            err,
+        let expected = if depth == 3 {
+            format!(
+                "{} is a link: Persona Builder reads your history only from a real file. Move it away and try again",
+                shown.display()
+            )
+        } else {
             format!(
                 "{} is a link or not a folder: Persona Builder writes your history only into a real folder. Move it away and try again",
                 shown.display()
             )
-        );
+        };
+        assert_eq!(err, expected);
         assert!(listing(&target).is_empty());
     }
 }

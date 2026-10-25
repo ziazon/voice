@@ -44,7 +44,12 @@ pub fn chunk(name: &str, records: &Records, size: usize) -> Result<Chunks> {
         }
     }
     let parts = |records: Vec<Map<String, Value>>| -> Vec<Vec<Map<String, Value>>> {
-        records.chunks(size).map(<[_]>::to_vec).collect()
+        let mut records = records.into_iter().peekable();
+        let mut parts = Vec::new();
+        while records.peek().is_some() {
+            parts.push(records.by_ref().take(size).collect());
+        }
+        parts
     };
     Ok(Chunks {
         train_records: train.len(),

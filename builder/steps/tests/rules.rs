@@ -563,7 +563,7 @@ fn round_refuses_other_scripts_digits_and_reaches_the_last_second() {
         error(round(&m, &filters, "pilot", &q, &a, false)),
         "round: answered must be YYYY-MM-DD"
     );
-    // The Python's pattern takes them, then strptime refuses them.
+    // All of them in another script's digits: the Python's pattern takes them, strptime refuses them.
     let files = [
         ("q.json", one_question(json!({})).to_string()),
         (
@@ -593,4 +593,118 @@ fn round_refuses_other_scripts_digits_and_reaches_the_last_second() {
     let last = round(&m, &filters, "pilot", &q, &a, false).unwrap();
     assert_eq!(last.records[0]["timestamp"], "9999-12-31T23:59:59.000Z");
     assert_eq!(last.records[0]["id"], "question:pilot-43199");
+}
+
+#[test]
+fn round_refuses_other_scripts_digits_the_python_takes_in_the_year() {
+    let m = member();
+    let filters = Filters::compile(&m.filters).unwrap();
+    let answers = json!({"answered": "٢٠٢٦-10-1٢", "answers": {"1": {"pick": "A"}}});
+    let (q, a) = round_files(one_question(json!({})), answers.clone());
+    assert_eq!(
+        error(round(&m, &filters, "pilot", &q, &a, false)),
+        "round: answered must be YYYY-MM-DD"
+    );
+    let files = [
+        ("q.json", one_question(json!({})).to_string()),
+        ("a.json", answers.to_string()),
+    ];
+    assert_eq!(
+        python(
+            &files,
+            &[
+                "round",
+                "--name",
+                "pilot",
+                "--questions",
+                "q.json",
+                "--answers",
+                "a.json"
+            ]
+        ),
+        0
+    );
+}
+
+#[test]
+fn score_refuses_picks_given_as_text_and_never_panics_on_a_bad_prediction() {
+    let m = member();
+    let mut answer = json!({"id": "question:a", "recommended": "Keep (Recommended)", "ada_pick": null,
+                            "picks": "Keep (Recommended)", "own_words": "", "notes": "", "outcome": "took_rec",
+                            "multiSelect": false});
+    let guesses = labels(json!({"question:a": {"pick": "Keep", "confidence": "high"}}));
+    let none = labels(json!({}));
+    assert_eq!(
+        error(score(
+            &m,
+            "a.jsonl",
+            &records(std::slice::from_ref(&answer)),
+            "l.json",
+            &none,
+            &guesses
+        )),
+        "a.jsonl:1: a record has an unexpected shape (picks)"
+    );
+    // The Python reads the text's letters as picks and finishes.
+    let files = [
+        ("a.jsonl", jsonl(std::slice::from_ref(&answer))),
+        ("l.json", "{}".into()),
+        ("p.json", Value::Object(guesses).to_string()),
+    ];
+    assert_eq!(
+        python(
+            &files,
+            &[
+                "score",
+                "--answers",
+                "a.jsonl",
+                "--labels",
+                "l.json",
+                "--predictions",
+                "p.json"
+            ]
+        ),
+        0
+    );
+    answer["picks"] = json!(["Keep (Recommended)"]);
+    let unchecked = labels(json!({"question:a": 5}));
+    assert_eq!(
+        error(score(
+            &m,
+            "a.jsonl",
+            &records(&[answer]),
+            "l.json",
+            &none,
+            &unchecked
+        )),
+        "the prediction for question:a is not a JSON object"
+    );
+}
+
+#[test]
+fn similar_reads_only_the_option_labels() {
+    let m = member();
+    let mut q = question("question:a", "train");
+    for option in q["options"].as_array_mut().unwrap() {
+        option.as_object_mut().unwrap().remove("description");
+    }
+    let hits = similar(&m, "c.jsonl", &records(&[q]), "keep queue drop", 6).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0]["options"], json!(["Keep (Recommended)", "Drop"]));
+}
+
+#[test]
+fn distil_in_never_panics_on_an_unchecked_label() {
+    let book = book(&member()).unwrap();
+    let corpus = records(&[message("message:a", "train", SENTINEL)]);
+    assert_eq!(
+        error(distil_in(
+            &book,
+            "c.jsonl",
+            &corpus,
+            "l.json",
+            &labels(json!({"message:a": "scope"}))
+        )),
+        "l.json: the label for message:a is not a JSON object"
+    );
 }

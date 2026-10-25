@@ -187,7 +187,8 @@ fn answer(q: &Question, value: Option<&Value>) -> Result<(Vec<String>, String, S
     Ok((labels, own_words, notes))
 }
 
-/// Seconds since 1970 of noon UTC on an ASCII `YYYY-MM-DD` date, as `strptime` validates it.
+/// Seconds since 1970 of noon UTC on a `YYYY-MM-DD` date in ASCII digits. The Python's pattern
+/// and `strptime` also take other scripts' digits in places (the year, a day's second digit).
 fn noon(answered: Option<&Value>) -> Result<i128> {
     let shape = || failed("answered must be YYYY-MM-DD");
     let answered = answered.and_then(Value::as_str).ok_or_else(shape)?;

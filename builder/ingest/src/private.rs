@@ -203,13 +203,13 @@ fn place_directory(
     create: bool,
 ) -> Result<(OwnedFd, PathBuf)> {
     let (directory, state) = state_directory(home, slug, create)?;
+    // The assistant's folder may be readable by others (an older build left 0750), never writable.
+    let parent = File::from(directory.try_clone().map_err(|e| io(&state, e))?);
+    only_mine(&parent, &state, 0o022, "changed")?;
     let Some(folder) = folder else {
         return Ok((directory, state));
     };
     validate_folder_name(folder)?;
-    // The assistant's folder may be readable by others (an older build left 0750), never writable.
-    let parent = File::from(directory.try_clone().map_err(|e| io(&state, e))?);
-    only_mine(&parent, &state, 0o022, "changed")?;
     let path = state.join(folder);
     let part = CString::new(folder).expect("validated folder name");
     let inner = File::from(open_directory(&directory, &part, &path, create)?);
@@ -310,10 +310,14 @@ pub fn read_private_at(
         )
     };
     if fd < 0 {
-        return Err(missing(directory_error(
-            &path,
-            std::io::Error::last_os_error(),
-        )));
+        let source = std::io::Error::last_os_error();
+        if source.raw_os_error() == Some(libc::ELOOP) {
+            return Err(Error::Invalid(format!(
+                "{} is a link: Persona Builder reads your history only from a real file. Move it away and try again",
+                path.display()
+            )));
+        }
+        return Err(missing(directory_error(&path, source)));
     }
     // SAFETY: openat returned a fresh valid descriptor, owned exactly once from here.
     let owned = unsafe { OwnedFd::from_raw_fd(fd) };
