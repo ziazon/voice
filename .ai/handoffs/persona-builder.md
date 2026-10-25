@@ -2,6 +2,47 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB4.1: "How well I know you", the plain report (2026-10-25, lane: V2)
+
+- **What:** every build now ends with a plain report instead of the old "passed the test on" line:
+  **Strong**, **Getting there** or **Thin**, overall and per kind of decision; for each area that
+  is not Strong, what would strengthen it (the interview, adding the claude.ai chats, time); and,
+  with fewer than 30 held-out questions, the honest line that there was too little to measure (plus
+  the interview pointer while the history is under 150 answered questions, since the interview
+  refuses above that). It is made from the build's own counts and test, with no model call and no
+  record text. The rules reuse the repo's thresholds: `build::live`, `build::THIN`,
+  `interview::THIN_BELOW`, `build::MIN_HELD`. It is kept as `report.json` in the state folder (0600
+  in 0700, the private writer), and the new `persona-builder report <member_dir>` prints it again;
+  it refuses a changed file (unknown fields, wrong schema or date, a hidden character in a name)
+  before printing anything. New module `builder/build/src/report.rs`; all the words are in
+  `text.rs`. Brief: `plans/briefs/PB4.1-how-well-i-know-you.md`.
+- **Who wrote it:** Codex (back from her usage limit), from the brief, in four passes: the build,
+  review cleanups, the gate fixes, the delta fixes. Claude wrote the brief, reviewed each pass and
+  ran the gates.
+- **Decisions made at pickup:** the report replaces `text::live` (removed; nothing else used it).
+  `serde` derive added to `builder/build` (already in `Cargo.lock` through `builder/core`: no new
+  crate). *At the gates:* a category that `decisions.md` lists live but that has no training rows
+  is a Strong area too (examples 0), so the two never disagree. A category name that is empty,
+  over 100 characters or holds a hidden character stops the build before any paid call.
+- **Verified:** 14 new unit tests (`builder/build/tests/report.rs`) and 3 new CLI tests plus one
+  changed (`builder/cli/tests/build.rs`). Codex saw each red on its assertion first; where a test
+  pinned behaviour that already existed, she broke the code on purpose, saw the red, and put it
+  back. The mutations the Verifier listed (the half rule `>=` → `>`, `<` → `<=` at 5 examples, the
+  claude.ai condition, Strong over Thin, the test score's fields, the 150 boundary, the empty-area
+  guard) all fail a test now. `ci-local.sh` green on the build Mac after the gate fixes (513 Rust,
+  152 Python tests), and on the final head (514 Rust, 152 Python).
+- **Gates:** `/security-review` (a sub-agent): no high or medium. One low (below) and one note: a
+  hidden character in a category name printed at build time and then made every `report` fail;
+  fixed. Verifier (Fable): pass, no must-fix; should-fixes in (the live-only areas, two missing
+  pins). Delta Verifier (Opus): pass; her two should-fixes in (one more pin, the name check before
+  spending); her ordering nit is accepted: live-only areas come after the tally's areas.
+- **Not verified:** a live build on a real history; every run here used the stub Claude and the
+  invented member.
+- **Known limits:** the report file is read whole before its 64 KiB limit applies
+  (`read_private_optional` has no bounded read). The folder is 0700 and must be the user's own, so
+  only the user could plant a huge file; recorded, not changed. The build says the history is thin
+  twice (the line before the build and the report's own).
+
 ## PB6.2: GitHub sign-in on Windows and Linux (2026-10-24, lane: V2)
 
 - **What:** the GitHub token now lives in the computer's own password store everywhere, not only

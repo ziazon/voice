@@ -23,6 +23,10 @@ counts, the codebook's own category names and fixed words, never a record's text
   with no training rows is not in it), in the codebook's category order (`book.categories`), then
   any tally category the codebook does not list, in tally order. `other` is an area like any other.
   An area's `examples` is `row.questions + row.messages`.
+  *Added at the gates:* then every category `draft::live_categories` lists live that is not yet an
+  area (held-out High picks, no training rows), as a Strong area with `examples: 0`, in that list's
+  order, so the report and `decisions.md` agree on what is live. A category name that is empty,
+  over 100 characters or holds a hidden character stops the build before any paid call.
 - **An area's level**, checked in this order:
   1. **Strong** when there is a backtest and `build::live(score.categories.get(area).and_then(|t| t[0].as_ref()))`
      is true (5 or more High picks, at least 90% right). With no backtest, no area is Strong.
