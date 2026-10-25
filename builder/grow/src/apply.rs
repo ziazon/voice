@@ -22,9 +22,10 @@ use persona_builder_steps::text_check::hidden;
 use std::{collections::BTreeMap, path::Path};
 
 #[derive(Debug)]
-pub enum Measured {
-    Done(Measurement),
-    Already(Measurement),
+pub struct Measured {
+    pub proposal: Proposal,
+    pub measurement: Measurement,
+    pub already: bool,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum Left {
@@ -57,6 +58,10 @@ fn candidate(before: &str, proposal: &Proposal) -> Result<String> {
     Ok(current)
 }
 
+fn unfit(line: &str) -> bool {
+    line.chars().count() > 512 || line.chars().any(hidden)
+}
+
 fn check_candidate(
     proposal: &Proposal,
     cases: &[Case],
@@ -66,18 +71,17 @@ fn check_candidate(
     let mut words = vec![proposal.summary.clone()];
     for change in &proposal.changes {
         words.push(change.why.clone());
-        words.extend(
-            diff::added_lines(&change.diff)
-                .into_iter()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .map(str::to_owned),
-        );
+        for line in diff::added_lines(&change.diff) {
+            if unfit(line) {
+                return Err(does_not_fit());
+            }
+            let line = line.trim();
+            if !line.is_empty() {
+                words.push(line.to_owned());
+            }
+        }
     }
-    if words
-        .iter()
-        .any(|line| line.chars().count() > 512 || line.chars().any(hidden))
-    {
+    if words.iter().any(|line| unfit(line)) {
         return Err(does_not_fit());
     }
     refresh::check_words(&words, cases, signals, filters).map_err(|_| does_not_fit())
@@ -125,7 +129,15 @@ pub fn measure(
         if measurement.approval != approval.id || measurement.base != proposal.base {
             return Err(does_not_fit());
         }
-        return Ok(Measured::Already(measurement));
+        if measurement.outcome == KeepOrRevert::Revert {
+            rules::check_measurement(&measurement, &proposal, &approval, &cases)
+                .map_err(|_| does_not_fit())?;
+        }
+        return Ok(Measured {
+            proposal,
+            measurement,
+            already: true,
+        });
     }
     draft::preflight(member_dir)?;
     let before = refresh::decisions(member_dir)?;
@@ -186,7 +198,11 @@ pub fn measure(
     measurement.reason = reason(&measurement);
     rules::check_measurement(&measurement, &proposal, &approval, &cases)?;
     store.save_measurement_unlocked(&measurement)?;
-    Ok(Measured::Done(measurement))
+    Ok(Measured {
+        proposal,
+        measurement,
+        already: false,
+    })
 }
 
 fn grade_answers(

@@ -196,10 +196,24 @@ pub fn apply(old: &str, diff: &str, file: &str) -> Result<String> {
     Ok(out)
 }
 
-/// Added content rows, excluding the two file headers.
+/// Added content rows, excluding the two file headers; one allowed `\r` is a CRLF file's line ending.
 pub fn added_lines(diff: &str) -> Vec<&str> {
-    diff.lines()
-        .skip(2)
-        .filter_map(|line| line.strip_prefix('+'))
-        .collect()
+    let mut rows = diff.split_terminator('\n').skip(2).peekable();
+    let mut crlf = false;
+    let mut added = Vec::new();
+    while let Some(row) = rows.next() {
+        if row.starts_with("@@ ") {
+            crlf = false;
+        } else if row.starts_with([' ', '-']) {
+            crlf =
+                row.ends_with('\r') && rows.peek().copied() != Some("\\ No newline at end of file");
+        } else if let Some(content) = row.strip_prefix('+') {
+            added.push(if crlf {
+                content.strip_suffix('\r').unwrap_or(content)
+            } else {
+                content
+            });
+        }
+    }
+    added
 }

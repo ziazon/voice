@@ -1398,7 +1398,11 @@ fn refresh_apply(
     claude.check(&home)?;
     let store = Store::open(&home, &member)?;
     let session = Session::open(&home, &member.slug, cap)?;
-    let measured = apply::measure(
+    let Measured {
+        proposal,
+        measurement,
+        already,
+    } = apply::measure(
         &claude,
         &session,
         &home,
@@ -1410,13 +1414,6 @@ fn refresh_apply(
         &id,
         &utc_now,
     )?;
-    let (measurement, already) = match measured {
-        Measured::Done(measurement) => (measurement, false),
-        Measured::Already(measurement) => (measurement, true),
-    };
-    let proposal = store
-        .proposal(&id)?
-        .ok_or_else(|| Error::Invalid(text::no_proposal(&id)))?;
     let finished = apply::finish(
         &store,
         &member,

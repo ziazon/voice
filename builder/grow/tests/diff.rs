@@ -99,3 +99,23 @@ fn added_lines_preserves_plus_content_and_excludes_headers() {
         vec!["++ content", "plain"]
     );
 }
+
+#[test]
+fn added_lines_allow_one_carriage_return_only_in_a_crlf_file() {
+    use persona_builder_grow::diff::added_lines;
+    assert_eq!(
+        added_lines(&unified("decisions.md", "a\r\n", "a\r\nb\r\n").unwrap()),
+        vec!["b"]
+    );
+    for (rows, expected) in [
+        (" a\n+b\r\n", "b\r"),
+        (" a\r\n+b\r\r\n", "b\r"),
+        ("+b\r\n a\r\n", "b\r"),
+        ("-a\r\n\\ No newline at end of file\n+b\r\n", "b\r"),
+        (" a\r\n+b\r\n@@ -5,1 +6,2 @@\n+b\r\n c\r\n", "b\r"),
+    ] {
+        let change = format!("--- a/decisions.md\n+++ b/decisions.md\n@@ -1,1 +1,2 @@\n{rows}");
+        let added = added_lines(&change);
+        assert_eq!(added.last().copied(), Some(expected), "{rows:?}");
+    }
+}
