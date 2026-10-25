@@ -541,6 +541,7 @@ nothing found prints the GitHub and Mac choices and the note; `save choose … l
 `save push …` prints `KEPT_LOCAL`; a `save.json` written as `Github` makes `save push` fail with
 `PRIVACY_NOT_BUILT` (proving the privacy check runs before any sign-in or network);
 `save choose … github x` fails with `NOT_SET_UP` while no client id is built in.
+(PB6.1 has since built the client id in, so these now ask for sign-in: `plans/briefs/PB6.1-client-id.md`.)
 
 ## Done when
 

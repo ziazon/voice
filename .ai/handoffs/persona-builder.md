@@ -2,6 +2,31 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB6.1: GitHub sign-in's client ID (2026-10-25, lane: V2)
+
+- **What:** the registered OAuth App's client ID is compiled in (`CLIENT_ID` in
+  `builder/save/src/github.rs`), so `save choose … github`, `save choose … here` and `save push`
+  go on to ask for sign-in instead of stopping at "isn't set up". The two CLI tests that expected
+  `NOT_SET_UP` now expect `SIGN_IN_FIRST`. Brief: `plans/briefs/PB6.1-client-id.md`.
+- **Who wrote it:** Claude, directly. Codex was at a hard usage limit until 2026-10-30 (probed at
+  pickup).
+- **Decisions made at pickup:** the `Option` and the `PERSONA_BUILDER_GITHUB_CLIENT_ID` build-time
+  override stay, so a fork with no app of its own sets `None` and gets the same plain refusal; no
+  test runs `save sign-in`, because it would call GitHub. Default `gitleaks` does not flag the
+  line (checked with the line staged), so it carries no `gitleaks:allow` marker.
+- **Verification:** red first: both tests failed on their assertion, printing `NOT_SET_UP`; green
+  after the change; the red run doubles as the mutation check (`None` makes both fail).
+  `bash scripts/ci-local.sh` green (431 Rust, 151 Python tests). The tests stay offline: with a
+  temporary `HOME`, `/usr/bin/security list-keychains` shows only the System keychain and the
+  lookup exits 44 (no token), checked by hand. `/security-review` (sub-agent): no findings.
+  Verifier (Fable): pass, nothing must-fix; her should-fix (these stale notes) is in.
+- **Supersedes:** the PB2.1 and PB6 records' notes that the client ID is unset and waits on V-Q1.
+- **Source:** GitHub, *Authorizing OAuth apps* § Device flow: the device code request takes
+  `client_id` and `scope`, and "The `client_secret` is not needed for the device flow".
+- **Not verified (owed, attended):** the live walk: `save sign-in` through GitHub's device page,
+  `save choose … github <name>` on an invented assistant (the repo reads back private), `save push`,
+  and a public repo refused.
+
 ## PB3.1: the build's steps that need no model, in Rust (2026-10-24, lane: V1)
 
 - **What:** a new crate `builder/steps` (`persona_builder_steps`) ports eight commands of
