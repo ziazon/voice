@@ -391,6 +391,14 @@ class Mail(Sources):
                     pass
         self.assertGreater(signal.getitimer(signal.ITIMER_REAL)[0], 25)
 
+    def test_an_over_long_mail_is_skipped_before_the_filters_run(self):
+        started = time.monotonic()
+        stdout, records = self.mine([mail(ROBIN, SAM, "Mon, 02 Mar 2026 10:00:00 +0000",
+                                          "Keep the quiz on Friday.\n\n" + "a" * 120000)])
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(records, [])
+        self.assertIn("1 too long", stdout)
+
     def test_recipients_and_dates_narrow_what_is_read(self):
         stdout, records = self.mine([
             mail(ROBIN, "Ada <ada@example.net>", "Mon, 02 Mar 2026 10:00:00 +0000", "a family plan"),

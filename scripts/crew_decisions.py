@@ -1453,6 +1453,10 @@ def mail_record(m, source, message, own, excluded, dropped):
     paragraphs = [flat(p) for p in crew_mail.own_words(text)]
     if not paragraphs:
         return "empty once stripped"
+    # Before the filters: a long token makes the address pattern slow, and Python 3.9's regex
+    # engine never yields to the timer.
+    if len("\n\n".join(paragraphs)) > MAX_MESSAGE_CHARS:
+        return "too long"
     kept = []
     for paragraph in paragraphs:
         reason = "secret" if m.secret.search(paragraph) else "personal" if m.personal.search(paragraph) else None
