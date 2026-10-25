@@ -2,6 +2,45 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB4.2: kept answers, the growth loop's records and store (2026-10-25, lane: V1)
+
+- **What:** every answer the person gives their assistant (a pick, a correction, a mark, a rule) can
+  now be kept on their own computer as a growth-loop signal, and becomes at once a case (a test the
+  assistant must pass at its next refresh), in the files `docs/spec/growth-loop.md` sets. A new
+  crate `builder/grow` (`persona_builder_grow`): the five records of the spec as typed Rust that
+  refuse unknown fields and check every schema rule serde cannot (`record.rs`); the rules that span
+  records, 2, 3, 4, 5, 7, 8 and 9, for PB4.3 to call (`rules.rs`); the private store under the
+  state folder's `growth/` (append-only `signals.jsonl` and `cases.jsonl`, one never-rewritten JSON
+  file per proposal, approval and measurement, all under the state lock; rule 8 checked at write
+  time) (`store.rs`); and `keep.rs`, which checks one answer (the filters, length limits, hidden
+  characters, the member's own areas) and keeps it with no model call. New commands `persona-builder
+  keep <member_dir> --signal <file>` and `persona-builder cases <member_dir>`. Ingest gains
+  `read_private_optional_at`, size-capped reads and `private_folder_exists`; the build's
+  hidden-character check moved to `persona_builder_steps::text_check` so the build, its report and
+  kept answers share one list. Brief: `plans/briefs/PB4.2-kept-answers.md`.
+- **Who wrote it:** Codex, in three passes and a fix-up pass (her sandbox cannot commit in a lane
+  worktree, so Claude committed); Claude briefed, reviewed and resolved the rebase onto PB4.1.
+- **Decisions made at pickup:** every signal makes exactly one `rubric` case whose `expected` is
+  the signal's `wanted` (the signal has no options, so no `choice` case can be made without a
+  model); ids are `<prefix>-<day>-<NNN>`, as the spec's examples; `persona` is the member's slug,
+  which must fit the spec's pattern; parity is pinned both ways (the examples round-trip through
+  Rust, every schema pattern and enum equals its Rust constant, and golden files Rust writes are
+  validated by the Python schema test).
+- **Verified:** `ci-local.sh` green after the rebase; about 130 new tests across the grow crate,
+  the CLI, ingest and steps, each red first; Codex's mutation checks per claim (over 200, every one
+  caught). Live proof on an invented member in a throwaway home: `cases` with none, `keep` writes
+  0600 files in a 0700 `growth/`, a personal hit is refused without echoing the words, `cases`
+  then counts one.
+- **Gates:** `/security-review` (a sub-agent): no high or medium, four lows, all fixed. Verifier
+  (Fable): pass with four should-fixes, all fixed. Delta Verifier (Opus): pass with three
+  should-fixes, all fixed. The brief's last section lists all thirteen fixes.
+- **Not verified:** nothing calls the proposal, approval and measurement writers yet (PB4.3 does);
+  the app (PB7) that writes the signal file does not exist yet.
+- **Skills Review:** ✅ tdd-skill (red first, mutations) · ✅ security-and-hardening (private I/O,
+  no echo, size caps) · ✅ plain-language (every refusal and summary line) · ✅ code-quality (review
+  plus two Verifier passes) · ⚠️ source-driven-development (no outside library; the spec is the
+  source).
+
 ## PB4.1: "How well I know you", the plain report (2026-10-25, lane: V2)
 
 - **What:** every build now ends with a plain report instead of the old "passed the test on" line:
