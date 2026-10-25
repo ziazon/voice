@@ -1,11 +1,11 @@
 //! App boundary: only the fixed, public sentences here can reach the webview.
 use crate::dto;
 use persona_builder::consent::Record;
-use persona_builder::{assistants, consent, crew, error::Error, member::read_member};
+use persona_builder::{assistants, consent, crew, error::Error};
 use persona_builder_agent::{claude, ledger::local_day, text};
-use persona_builder_ingest::private::{read_private_optional, write_private};
+use persona_builder_ingest::private::{read_private_optional, remove_private, write_private};
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::Command,
     time::SystemTime,
@@ -118,23 +118,21 @@ pub fn new_assistant_in(home: &Path, request: dto::NewAssistantRequest) -> Resul
         principal: &request.principal,
         principal_pronouns: &request.principal_pronouns,
     };
-    assistants::make(home, &new, &local_day(SystemTime::now()))
-        .map(|listed| dto::Assistant {
-            slug: listed.member.slug,
-            name: listed.member.name,
-            principal: listed.member.principal,
-            consent: dto::Consent { agreed: false, agreed_on: None },
-        })
-        .map_err(|error| match error {
-            Error::Exists(slug) => {
-                let path = assistants::crew_dir(home).join(&slug).join("member.json");
-                let name = read_member(&path).map(|member| member.name).unwrap_or(slug);
-                failure(&format!(
-                    "You already have an assistant called {name}. Pick another name, or open that one."
-                ))
-            }
-            _ => failure(MAKE),
-        })
+    let listed =
+        assistants::make(home, &new, &local_day(SystemTime::now())).map_err(
+            |error| match error {
+                Error::Exists(_) => failure(&format!(
+                    "You already have an assistant called {}. Pick another name, or open that one.",
+                    request.name
+                )),
+                _ => failure(MAKE),
+            },
+        )?;
+    if clear_consent(home, &listed.member.slug).is_err() {
+        let _ = std::fs::remove_dir_all(&listed.dir);
+        return Err(failure(MAKE));
+    }
+    Ok(assistant(home, listed))
 }
 pub fn new_assistant(request: dto::NewAssistantRequest) -> Result<dto::Assistant> {
     new_assistant_in(&home(MAKE)?, request)
@@ -171,23 +169,20 @@ pub fn show_assistant_folder_in(
     request: dto::SlugRequest,
     open: impl FnOnce(&Path) -> std::io::Result<()>,
 ) -> Result<()> {
-    let dir = assistants::assistant_dir(home, &request.slug).map_err(|_| failure(FIND))?;
-    if !dir.is_dir() {
-        return Err(failure(FIND));
-    }
+    let listed = assistants::list(home)
+        .map_err(|_| failure(FIND))?
+        .into_iter()
+        .find(|listed| listed.member.slug == request.slug)
+        .ok_or_else(|| failure(FIND))?;
+    let dir = listed.dir;
     let dir = dir.canonicalize().map_err(|_| failure(FIND))?;
     open(&dir).map_err(|_| failure("Persona Builder couldn't open the folder."))
 }
 pub fn show_assistant_folder(request: dto::SlugRequest) -> Result<()> {
     show_assistant_folder_in(&home(FIND)?, request, |dir| {
-        #[cfg(target_os = "macos")]
-        let program = "/usr/bin/open";
-        #[cfg(target_os = "linux")]
-        let program = "xdg-open";
-        #[cfg(target_os = "windows")]
-        let program = "explorer";
+        let (program, args) = opener_args(dir);
         // Wait to reap the child; ignore its exit code (explorer can open the folder and exit 1).
-        Command::new(program).arg(dir).status().map(|_| ())
+        Command::new(program).args(args).status().map(|_| ())
     })
 }
 pub fn claude_check_in(
@@ -219,10 +214,44 @@ pub fn claude_check_in(
     )
 }
 pub fn claude_check() -> Result<dto::ClaudeStatus> {
-    let home = home(text::FAILED)?;
+    let Ok(home) = home(text::FAILED) else {
+        return Ok(dto::ClaudeStatus {
+            ready: false,
+            message: text::FAILED.into(),
+            note: None,
+        });
+    };
     claude_check_in(
         &home,
         std::env::var_os("PATH").as_deref(),
         &claude::fallbacks(&home),
     )
+}
+
+/// Clear permission before returning a newly made assistant.
+pub fn clear_consent(home: &Path, slug: &str) -> persona_builder::error::Result<bool> {
+    remove_private(home, slug, "consent.json")
+}
+
+fn opener_args(dir: &Path) -> (&'static str, Vec<OsString>) {
+    #[cfg(target_os = "macos")]
+    return ("/usr/bin/open", vec![OsString::from("-R"), dir.into()]);
+    #[cfg(target_os = "linux")]
+    return ("xdg-open", vec![dir.into()]);
+    #[cfg(target_os = "windows")]
+    return ("explorer", vec![dir.into()]);
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn macos_opener_reveals_instead_of_launching() {
+        let dir = Path::new("/fictional/assistant.app");
+        assert_eq!(
+            opener_args(dir),
+            ("/usr/bin/open", vec![OsString::from("-R"), dir.into()])
+        );
+    }
 }

@@ -280,6 +280,29 @@ pub fn write_private_at(
     Ok(destination)
 }
 
+/// Remove a private file relative to its state folder, without following directory links.
+pub fn remove_private(home: &Path, slug: &str, name: &str) -> Result<bool> {
+    validate_private_name(name)?;
+    let (directory, path) = match place_directory(home, slug, None, false) {
+        Ok(value) => value,
+        Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(false);
+        }
+        Err(other) => return Err(other),
+    };
+    let target = CString::new(name).expect("validated file name");
+    // SAFETY: directory is live and target is a valid C string relative to that descriptor.
+    if unsafe { libc::unlinkat(directory.as_raw_fd(), target.as_ptr(), 0) } == 0 {
+        return Ok(true);
+    }
+    let source = std::io::Error::last_os_error();
+    if source.kind() == std::io::ErrorKind::NotFound {
+        Ok(false)
+    } else {
+        Err(io(&path.join(name), source))
+    }
+}
+
 /// Read a corpus or review file from the private state folder.
 pub fn read_private(home: &Path, slug: &str, name: &str) -> Result<Vec<u8>> {
     read_private_at(home, slug, None, name)

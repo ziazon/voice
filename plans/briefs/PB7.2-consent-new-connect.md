@@ -379,3 +379,48 @@ test both red) with `cp`/`cmp`. Run `CARGO_NET_OFFLINE=true cargo fmt --check`,
 `cargo clippy --workspace --all-targets --locked -- -D warnings`,
 `cargo test -p persona-builder -p persona-builder-api -p persona-builder-cli -p persona-builder-app --locked`,
 and `pnpm -C builder/ui typecheck`, `test` (offline). Don't commit.
+
+## Fix-up pass 2: from the security review and the Verifier (decided, do not reopen)
+
+1. **"Show in Finder" reveals, never opens, and only a listed assistant.** On macOS run
+   `/usr/bin/open -R <dir>` (`man open`: `-R` reveals the file in the Finder instead of opening
+   it, so a linked `….app` folder is shown, never launched). `show_assistant_folder_in` accepts
+   only a slug that `assistants::list` returns (as `agree_consent_in` does), then opens that
+   listed `dir` canonicalized. Linux `xdg-open` and Windows `explorer` stay as they are. Test: an
+   unlisted folder (no `member.json`) under `~/.claude/crew` gives the "couldn't find" sentence
+   and the opener is not called; a unit check that the macOS argv is `["-R", <dir>]` (factor the
+   argv into a small function `opener_args(dir) -> (program, Vec<OsString>)` so it is testable on
+   every OS, with a `cfg(target_os = "macos")` test for the `-R`).
+2. **A new assistant never inherits an old permission.** Add to `builder/ingest/src/private.rs`
+   `pub fn remove_private(home: &Path, slug: &str, name: &str) -> Result<bool>`: the name checked
+   by `validate_private_name`, the state folder opened the way `read_private_optional` opens it
+   (no state folder or no file: `Ok(false)`), the file removed with `unlinkat` on that folder's
+   descriptor (never a path), `Ok(true)` when removed; with its own tests (removed, missing file,
+   missing folder, a link in place of the state folder refused). In the api, `clear_consent(home,
+   slug)` calls it for `consent.json`. `new_assistant_in` and the CLI's `new` call it right after
+   `assistants::make` succeeds; if it fails, remove the folder `make` just made and answer the
+   `MAKE` sentence (CLI: exit 1 with it). `new_assistant_in` answers with `read_consent` (so the
+   answer and the listing agree). Replace the api test that pins an orphaned record being left in
+   place with one that writes a `consent.json` for `ari`, makes "Ari", and finds it not agreed in
+   both the answer and the listing, and the file gone.
+3. **The "already exists" sentence uses the request's own name**, not the existing folder's
+   `member.json`: "You already have an assistant called <the request's name>. Pick another name,
+   or open that one." Drop the `read_member` there.
+4. **The wording says what is read and what Forget does, exactly.** Two lines change; `VERSION`
+   stays 1 (no one has agreed yet), `WORDING_SHA1` is recomputed:
+   - "What it reads", first line: "The messages you typed to Claude Code on this computer,
+     including your answers to its questions, each with a short piece of what Claude said just
+     before it."
+   - "Nothing else", second line: "You can change your mind: Forget deletes the history it read
+     and its working files. What it wrote into your assistant's folder stays there until you
+     delete that folder."
+5. **Nits.** `claude_check()` with no `HOME` answers `ClaudeStatus { ready: false, message:
+   text::FAILED, note: None }` instead of failing. The CLI's `consent agree` prints the
+   `agreed_on` that `write_consent` returned, not a second `today()`. `Consent.vue` keys each
+   paragraph by its index, not its text.
+
+Mutation-check 1 (drop `-R`) and 2 (skip `clear_consent` in `new_assistant_in`) with `cp`/`cmp`.
+Run `CARGO_NET_OFFLINE=true cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
+-- -D warnings`, `cargo test -p persona-builder -p persona-builder-ingest -p persona-builder-api
+-p persona-builder-cli -p persona-builder-app --locked`, and `pnpm -C builder/ui typecheck` and
+`pnpm -C builder/ui test`. Don't commit.

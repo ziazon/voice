@@ -17,7 +17,7 @@ pub const SECTIONS: &[Section] = &[
     Section {
         heading: "What it reads",
         lines: &[
-            "The messages you typed to Claude Code on this computer, including your answers to its questions.",
+            "The messages you typed to Claude Code on this computer, including your answers to its questions, each with a short piece of what Claude said just before it.",
             "Your claude.ai chats, only if you download them and add them yourself.",
         ],
     },
@@ -39,12 +39,12 @@ pub const SECTIONS: &[Section] = &[
         heading: "Nothing else",
         lines: &[
             "Persona Builder sends nothing anywhere else. A copy goes to GitHub only if you choose that later.",
-            "You can change your mind: Forget deletes the history it read and everything it made from it.",
+            "You can change your mind: Forget deletes the history it read and its working files. What it wrote into your assistant's folder stays there until you delete that folder.",
         ],
     },
 ];
 /// SHA-1 (hex) of `plain_text()`. When changing the wording, bump VERSION and update this.
-pub const WORDING_SHA1: &str = "aae7004e8e1404bcad07ed30f6d26659b0c493cc";
+pub const WORDING_SHA1: &str = "ea150ac517ac4dd87c3bb9f73c3e572c665e2d98";
 pub fn plain_text() -> String {
     let mut text = format!("{TITLE}\n\n");
     for (index, section) in SECTIONS.iter().enumerate() {

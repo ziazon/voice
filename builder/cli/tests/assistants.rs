@@ -108,7 +108,7 @@ fn consent_show_prints_the_final_wording_and_version() {
         format!("{}Version 1.\n", persona_builder::consent::plain_text())
     );
     assert!(text.starts_with("Before Persona Builder reads anything\n\nWhat it reads\n"));
-    assert!(text.contains("You can change your mind: Forget deletes the history it read and everything it made from it.\n"));
+    assert!(text.contains("You can change your mind: Forget deletes the history it read and its working files. What it wrote into your assistant's folder stays there until you delete that folder.\n"));
     assert!(text.ends_with("Version 1.\n"));
 }
 
@@ -135,4 +135,28 @@ fn listing_does_not_count_bad_or_outdated_records_as_permission() {
             "record: {bad}"
         );
     }
+}
+
+#[test]
+fn new_clears_old_permission_and_rolls_back_when_clearing_fails() {
+    let home = Home::new();
+    let state = home.0.join(".claude/state/wren");
+    fs::create_dir_all(&state).unwrap();
+    let record = state.join("consent.json");
+    fs::write(&record, r#"{"version":1,"agreed_on":"2026-10-25"}"#).unwrap();
+    home.success(&["new", "Wren", "--principal", "Robin"]);
+    assert!(!record.exists());
+    assert!(
+        home.success(&["assistants"])
+            .contains("permission not given yet")
+    );
+    fs::remove_dir_all(home.0.join(".claude/crew/wren")).unwrap();
+    fs::create_dir(&record).unwrap();
+    let output = home.run(&["new", "Wren", "--principal", "Robin"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "persona-builder: Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again.\n"
+    );
+    assert!(!home.0.join(".claude/crew/wren").exists());
 }

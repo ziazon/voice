@@ -44,7 +44,7 @@ async function agree() {
         <h2 class="mb-4">{{ text.title }}</h2>
         <section v-for="section in text.sections" :key="section.heading" class="mb-4">
           <h3>{{ section.heading }}</h3>
-          <p v-for="line in section.lines" :key="line">{{ line }}</p>
+          <p v-for="(line, index) in section.lines" :key="index">{{ line }}</p>
         </section>
         <template v-if="assistant.consent.agreed">
           <p class="text-secondary">You agreed on {{ assistant.consent.agreedOn }}.</p>
