@@ -102,17 +102,20 @@ impl Setup {
         .unwrap();
     }
     fn proposal(&self, candidate: &str) -> Proposal {
+        self.proposal_from(BASE, candidate)
+    }
+    fn proposal_from(&self, base: &str, candidate: &str) -> Proposal {
         let p = Proposal {
             schema: PROPOSAL_V1.into(),
             id: "prop-2026-03-04-001".into(),
             persona: self.f.member.slug.clone(),
             persona_kind: PersonaKind::Person,
             created: NOW.into(),
-            base: version(BASE.as_bytes()),
+            base: version(base.as_bytes()),
             summary: "Start with a flexible first step.".into(),
             changes: vec![Change {
                 file: "decisions.md".into(),
-                diff: diff::unified("decisions.md", BASE, candidate).unwrap(),
+                diff: diff::unified("decisions.md", base, candidate).unwrap(),
                 why: "Leave room to reconsider.".into(),
             }],
             cases: vec![self.cases()[0].id.clone()],
@@ -151,10 +154,9 @@ impl Setup {
         )
     }
     fn measured(&self, id: &str) -> Measurement {
-        match self.measure(id).expect("approved change must be measured") {
-            Measured::Done(m) => m,
-            Measured::Already(_) => panic!("expected fresh measurement"),
-        }
+        let measured = self.measure(id).expect("approved change must be measured");
+        assert!(!measured.already);
+        measured.measurement
     }
     fn finish(&self, p: &Proposal, m: &Measurement) -> Result<apply::Finished> {
         let _session = Session::open(&self.f.home, &self.f.member.slug, Cap::default()).unwrap();
@@ -228,7 +230,14 @@ fn keep_saves_valid_measurement_before_files_and_activates_named_tests() {
     .unwrap();
     let p = s.approved(CANDIDATE);
     let before = s.snapshot();
-    let m = s.measured(&p.id);
+    let measured = s.measure(&p.id).unwrap();
+    assert!(!measured.already);
+    assert_eq!(measured.proposal, p);
+    assert_eq!(
+        measured.proposal,
+        s.store().proposal(&p.id).unwrap().unwrap()
+    );
+    let m = measured.measurement;
     assert_eq!(m.outcome, KeepOrRevert::Keep);
     assert_eq!(
         m.reason,
@@ -303,6 +312,20 @@ fn revert_for_new_failure_never_rewrites_decisions_and_unblocks_a_new_draft() {
             .unwrap()
             .contains("**Outcome:** undone.")
     );
+    let before = s.snapshot();
+    let calls = s.calls();
+    let saved = s.measure(&p.id).unwrap();
+    assert!(saved.already);
+    assert_eq!(saved.measurement, m);
+    assert_eq!(saved.proposal, p);
+    assert!(
+        s.finish(&saved.proposal, &saved.measurement)
+            .unwrap()
+            .left
+            .is_empty()
+    );
+    assert_eq!(s.calls(), calls);
+    assert_eq!(s.snapshot(), before);
     assert!(refresh::open(&s.store(), &s.dir).unwrap().is_none());
     let python = Command::new("python3")
         .args(["-c", "import sys; print(sys.executable)"])
@@ -663,7 +686,9 @@ fn full_apply_is_idempotent_even_after_named_tests_became_active() {
         .unwrap()
         .modified()
         .unwrap();
-    assert!(matches!(s.measure(&p.id).unwrap(),Measured::Already(saved) if saved==m));
+    let saved = s.measure(&p.id).unwrap();
+    assert!(saved.already);
+    assert_eq!(saved.measurement, m);
     assert!(s.finish(&p, &m).unwrap().left.is_empty());
     assert_eq!(s.calls(), 2);
     assert_eq!(s.snapshot(), before);
@@ -729,7 +754,9 @@ fn failed_file_write_keeps_measurement_and_resume_needs_no_more_calls() {
     assert!(s.finish(&p, &m).is_err());
     assert_eq!(s.store().measurements().unwrap(), vec![m.clone()]);
     fs::remove_dir(s.dir.join("measurements.md")).unwrap();
-    assert!(matches!(s.measure(&p.id).unwrap(), Measured::Already(_)));
+    let saved = s.measure(&p.id).unwrap();
+    assert!(saved.already);
+    assert_eq!(saved.measurement, m);
     assert_eq!(s.calls(), 2);
     s.finish(&p, &m).unwrap();
     assert_eq!(s.cases()[0].status, Status::Active);
@@ -816,10 +843,10 @@ fn finish_recomputes_reason_from_results() {
         &serde_json::to_vec(&m).unwrap(),
     )
     .unwrap();
-    let Measured::Already(saved) = s.measure(&p.id).unwrap() else {
-        panic!("saved run")
-    };
-    s.finish(&p, &saved).unwrap();
+    let saved = s.measure(&p.id).unwrap();
+    assert!(saved.already);
+    assert_eq!(saved.measurement, m);
+    s.finish(&saved.proposal, &saved.measurement).unwrap();
     let entry = fs::read_to_string(s.dir.join("measurements.md")).unwrap();
     assert!(entry.contains(persona_builder_grow::text::KEEP_REASON));
     assert!(!entry.contains(&m.reason));
@@ -861,7 +888,12 @@ fn duplicate_approvals_refuse_before_any_call() {
     )
     .unwrap();
     let before = s.snapshot();
-    assert!(s.measure(&p.id).is_err());
+    assert_eq!(
+        s.measure(&p.id)
+            .expect_err("duplicate approval")
+            .to_string(),
+        persona_builder_grow::text::rule(&p.id, persona_builder_grow::text::ALREADY_APPROVED)
+    );
     assert_eq!(s.calls(), 0);
     assert_eq!(s.snapshot(), before);
 }
@@ -873,4 +905,68 @@ fn earlier_drafts_include_plus_content_without_file_headers() {
     let prompt = refresh::refresh_prompt(&[], BASE, &s.cases(), &[], &[p]);
     assert!(prompt.contains("\n+++ reconsider this approach\n"));
     assert!(!prompt.contains("+++ b/decisions.md"));
+}
+
+#[test]
+fn stray_carriage_return_on_an_added_line_refuses_before_any_call() {
+    let s = Setup::new();
+    let mut p = s.approved(CANDIDATE);
+    p.changes[0].diff = p.changes[0].diff.replace(
+        "+- ADJUST the first step.\n",
+        "+- ADJUST the first step.\r\n",
+    );
+    s.rewrite(&p);
+    let before = s.snapshot();
+    assert_eq!(
+        s.measure(&p.id)
+            .expect_err("hidden added character")
+            .to_string(),
+        persona_builder_grow::text::CHANGE_DOES_NOT_FIT
+    );
+    assert_eq!(s.calls(), 0);
+    assert_eq!(s.snapshot(), before);
+}
+
+#[test]
+fn crlf_decisions_keep_their_line_endings() {
+    let s = Setup::new();
+    let base = BASE.replace('\n', "\r\n");
+    let candidate = CANDIDATE.replace('\n', "\r\n");
+    fs::write(s.dir.join("decisions.md"), &base).unwrap();
+    let p = s.proposal_from(&base, &candidate);
+    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap();
+    let m = s.measured(&p.id);
+    assert_eq!(m.outcome, KeepOrRevert::Keep);
+    s.finish(&p, &m).unwrap();
+    assert_eq!(
+        fs::read(s.dir.join("decisions.md")).unwrap(),
+        candidate.as_bytes()
+    );
+}
+
+#[test]
+fn resume_rechecks_an_undone_result_by_the_keep_rule() {
+    let s = Setup::new();
+    let p = s.approved(CANDIDATE);
+    let mut m = s.measured(&p.id);
+    assert_eq!(m.outcome, KeepOrRevert::Keep);
+    m.outcome = KeepOrRevert::Revert;
+    write_private_at(
+        &s.f.home,
+        &s.f.member.slug,
+        Some("growth"),
+        &format!("{}.json", m.id),
+        &serde_json::to_vec(&m).unwrap(),
+    )
+    .unwrap();
+    let before = s.snapshot();
+    let calls = s.calls();
+    assert_eq!(
+        s.measure(&p.id)
+            .expect_err("forged undone result")
+            .to_string(),
+        persona_builder_grow::text::CHANGE_DOES_NOT_FIT
+    );
+    assert_eq!(s.calls(), calls);
+    assert_eq!(s.snapshot(), before);
 }
