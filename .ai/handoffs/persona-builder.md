@@ -2,6 +2,56 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.3: your history, Claude Code and claude.ai (2026-10-25, lane: V1)
+
+- **What:** the app's *Your history* step. After permission, the person sees which Claude Code
+  folders will be read and which are left out, counts first, then reads. For claude.ai they choose
+  their download (a zip, or the folder their Mac unzipped) in a native window Rust opens (`rfd
+  =0.17.2`; the webview never names a path), see that it can be read, mark which chats are theirs,
+  and read those. *Put it together* merges both into `decisions.jsonl`. Eight new app commands, in
+  `builder/api/src/history.rs` (the file window itself in `builder/app/src/commands.rs`), each in the
+  parity table (23 in all, with PB7.6a's): every one first checks the slug
+  against the listing, that the history lives in the private Claude folder, and the current
+  agreement, in Rust; every writer holds the state lock for the whole command. The chosen download's
+  path is kept as `claudeai-export.json` in the state folder (Forget removes it with the rest).
+  Reads report progress through a Tauri channel (no capability needed in tauri 2.12.0), at most
+  101 messages. Ingest gained `mine_with_progress` (both sources), `DEFAULT_HOLDOUT`, `is_mine`,
+  `conversations` and `list_private` (the state folder listed through its checked descriptor; the
+  CLI's `merge` now uses it). Brief: `plans/briefs/PB7.3-sources.md`.
+- **Dependency intake (rfd =0.17.2):** the native file and folder picker, MIT, default features
+  off (`gtk3` only, for Linux builds). It is the only new package in `Cargo.lock`: everything it
+  uses is already there through Tauri. Pinned exactly; already in the local cargo cache, so built
+  offline. Called only from `choose_claudeai_export`; on macOS it hands the panel to the main
+  thread itself while the app runs (`src/backend/macos/utils.rs`, `run_on_main`, read in the cached
+  source).
+- **Who wrote it:** Codex, in two passes (the slice; the Verifier's test fix). Claude briefed, reviewed (one fix: a stray blank line in
+  the bridge's imports), wrote this record, ran the gates outside Codex's sandbox and committed.
+- **Verified:** `ci-local.sh` green on `6fd13ae` and again on `b44f1b9` (836 Rust tests with the
+  lock test; on `6fd13ae` 835, 77 screen tests, plus the Python
+  suites, fmt, clippy and the build). Codex's mutation checks, each red and restored by `cmp`: the
+  consent check dropped (a read accepted), a dry run that writes (a file appeared), the progress
+  throttle removed (251 messages, not 101), an ingest error's text passed to the screens (the temp
+  home's path leaked), the lock dropped from marking (it succeeded under a held lock), a command in
+  `COMMANDS` only (16 against 15), *Your history* enabled before permission, one *Yours* click
+  sending every chat. `/security-review` (sub-agent): no findings.
+  Verifier (Fable) on `6fd13ae`: pass, no must-fixes; she checked the consent gate and the lock on
+  every command, `list_private`'s descriptor handling, the channel's ACL exemption in tauri 2.12.0
+  and rfd's main-thread hand-off in the cargo registry. One should-fix, fixed in `33c1a96`: only two
+  of the six writers had a test proving they refuse while the state lock is held; the other four
+  now do, each mutation (that command's lock dropped) red. Two notes left as they are: a dry run
+  takes the state lock, which creates the state folder if it were missing (permission already made
+  it, so nothing changes in practice); two Claude Code folders with the same project name would
+  share a list key on the screen (a render warning only).
+- **Rebased on PB7.6a** (`a6ac8ca`, landed meanwhile): the shared lists (commands, capability,
+  handler, parity, DTOs, the screens' backend) carry both slices, PB7.6a's first; the side list
+  enables *Your history* after permission and *Save* without it, as PB7.6a has it; its test of the
+  unavailable steps now covers four to six, since step three says *Needs your permission first*.
+  `ci-local.sh` green on the rebased branch (868 Rust tests, 116 screen tests).
+- **Not verified:** the app was not run (no screen pass, no real file window): owed as a walk.
+  Codex's sandbox couldn't bind sockets or create a non-UTF-8 file name, so `list_private`'s
+  skip of such a name has no test on this file system; the screens' first red run was blocked by
+  the offline pnpm store, so their reds were seen only through the mutation checks.
+
 ## PB7.6a: save a copy, from the app (2026-10-25, lane: V2)
 
 - **What:** PB7.6 was split at pickup into PB7.6a (this) and PB7.6b (turn it on, the claude.ai
