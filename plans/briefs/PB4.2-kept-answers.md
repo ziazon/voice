@@ -246,7 +246,7 @@ anywhere: invented names only (Robin, as in the spec).
 ## After the gates: the fix-ups (decided, do not reopen)
 
 `/security-review` (a sub-agent): no high or medium, four lows. The Verifier (Fable): pass with four
-should-fixes, no must-fix. Claude's own review added four notes. All twelve are fixed, each with a
+should-fixes, no must-fix. Claude's own review added four notes. They overlap in two places (security L3 is the Verifier's 1; L4 is a review note), so ten fixes cover them all, each with a
 test proved red first:
 
 1. **`<` is allowed in a kept answer** (review). `keep` checks `hidden(c) && c != '<'` (the `<` rule
