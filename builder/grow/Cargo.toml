@@ -12,3 +12,6 @@ persona-builder-steps = { path = "../steps" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "=1.13.1"
+persona-builder-agent = { path = "../agent" }
+persona-builder-build = { path = "../build" }
+sha1_smol = "=1.0.1"

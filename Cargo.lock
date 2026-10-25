@@ -950,11 +950,14 @@ name = "persona-builder-grow"
 version = "0.1.0"
 dependencies = [
  "persona-builder",
+ "persona-builder-agent",
+ "persona-builder-build",
  "persona-builder-ingest",
  "persona-builder-steps",
  "regex",
  "serde",
  "serde_json",
+ "sha1_smol",
 ]
 
 [[package]]

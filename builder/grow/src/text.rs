@@ -18,7 +18,7 @@ pub const ALREADY_APPROVED: &str = "already has an approval";
 pub const REJECTED: &str = "was rejected, so it cannot have a measurement";
 pub fn base_moved(id: &str) -> String {
     format!(
-        "{id} was drafted for a different version. Draft a new proposal against the current version."
+        "{id} was drafted for a different version. Draft a new change with `persona-builder refresh propose`."
     )
 }
 pub fn case_changed(id: &str) -> String {
@@ -141,3 +141,59 @@ pub const TOO_MANY_IDS: &str =
 
 pub const KEPT: &str =
     "Kept your answer. It's now one of the tests your assistant is checked on at its next refresh.";
+
+pub const NOT_BUILT: &str = "Build your assistant first: there's nothing to refresh yet.";
+pub const DIFF_DOES_NOT_FIT: &str =
+    "That saved change doesn't fit your assistant's current decisions.";
+pub const DIFF_TOO_BIG: &str = "That change is too large to check. Try a smaller change.";
+pub const EDIT_DOES_NOT_FIT: &str = "That point doesn't fit your assistant's current decisions.";
+pub const DRAFTING: &str = "Drafting a change from your answers";
+pub const NOTHING_TO_REFRESH: &str =
+    "There's nothing new to learn from yet. Keep answering your assistant, then try again.";
+pub const NO_OPEN: &str = "No change is waiting for your answer.";
+pub const DAMAGED_PROPOSAL: &str = "That saved change looks damaged, so it wasn't shown. Draft a new one with `persona-builder refresh propose`.";
+pub const DIFF_BUG: &str = "The drafted change couldn't be checked, so nothing was saved.";
+pub const REPLY_SHAPE: &str = "The drafted change didn't have the expected shape.";
+pub const EDIT_COUNT: &str = "The drafted change needs between 1 and 10 points.";
+pub const REPLY_AREA: &str = "A point names an unknown area.";
+pub const REPLY_OLD: &str = "A point doesn't name the earlier point it replaces correctly.";
+pub const REPLY_CASES: &str = "A point must name your answers once each, from the ones given.";
+pub const REPLY_REPLACE: &str = "Two points replace the same earlier point.";
+pub const REPLY_APPLY: &str = "A point doesn't fit the current decisions.";
+pub const REPLY_PRIVATE: &str = "A point looks personal or secret; leave that detail out.";
+pub const REPLY_RECORDS: &str = "The saved answers couldn't be checked for repeated words.";
+pub fn reply_line(place: &str) -> String {
+    format!("The {place} must be a short, plain line of at most 400 characters.")
+}
+pub fn quoted(count: usize) -> String {
+    format!("{count} runs of 6 or more of your own words")
+}
+pub fn open_waiting(id: &str) -> String {
+    format!(
+        "A change is already waiting for your answer ({id}). Look at it with `persona-builder refresh show`, then approve or reject it."
+    )
+}
+pub fn open_approved(id: &str) -> String {
+    format!("You approved a change ({id}) that hasn't been tested and applied yet.")
+}
+pub fn approved(_id: &str) -> String {
+    "Approved. Your assistant changes only after the change is tested on all your answers and nothing gets worse.".into()
+}
+pub fn rejected(_id: &str) -> String {
+    "Rejected. Nothing changed. Your answers stay saved for the next refresh.".into()
+}
+pub fn no_proposal(id: &str) -> String {
+    format!("No saved change has that id ({id}).")
+}
+pub fn refresh_heading(date: &str, id: &str) -> String {
+    format!("Change drafted {date} ({id})")
+}
+pub fn learned(count: usize) -> String {
+    format!("Learned from {count} of your answers.")
+}
+pub fn refresh_commands(member: &std::path::Path, id: &str) -> [String; 2] {
+    [
+        format!("persona-builder refresh approve {} {id}", member.display()),
+        format!("persona-builder refresh reject {} {id}", member.display()),
+    ]
+}

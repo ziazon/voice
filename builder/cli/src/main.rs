@@ -226,6 +226,11 @@ enum Command {
         #[command(subcommand)]
         command: InterviewCommand,
     },
+    /// Draft a change from your answers, then approve or reject it.
+    Refresh {
+        #[command(subcommand)]
+        command: RefreshCommand,
+    },
     /// Keep an answer you gave your assistant, so it learns from it.
     Keep {
         member_dir: PathBuf,
@@ -258,6 +263,37 @@ enum Command {
         /// The daily limit, in US dollars as Claude Code estimates them.
         #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
         daily_cap_usd: f64,
+    },
+}
+
+#[derive(Subcommand)]
+enum RefreshCommand {
+    /// Draft a change to how your assistant decides, from the answers you've given it.
+    Propose {
+        member_dir: PathBuf,
+        #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
+        model: String,
+        /// The daily limit, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
+        daily_cap_usd: f64,
+        /// The most one call may spend, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
+        call_cap_usd: f64,
+    },
+    /// Show the change waiting for your answer.
+    Show {
+        member_dir: PathBuf,
+        proposal: Option<String>,
+    },
+    /// Approve a change to be tested before your assistant learns it.
+    Approve {
+        member_dir: PathBuf,
+        proposal: String,
+    },
+    /// Reject a change and keep your answers for the next refresh.
+    Reject {
+        member_dir: PathBuf,
+        proposal: String,
     },
 }
 
@@ -1254,6 +1290,91 @@ fn interview_answer(
     println!("{}", text::merge_next(&member_dir.display().to_string()));
     Ok(())
 }
+fn refresh_propose(
+    member_dir: PathBuf,
+    model: String,
+    daily_cap_usd: f64,
+    call_cap_usd: f64,
+) -> Result<()> {
+    use persona_builder_agent::{
+        claude,
+        ledger::{Cap, Session},
+        text as spend_text,
+    };
+    use persona_builder_grow::{
+        refresh::{self, Proposed},
+        store::{Store, utc_now},
+        text,
+    };
+    use persona_builder_ingest::filters::Filters;
+    let (member, home) = member_and_home(&member_dir)?;
+    let filters = Filters::compile(&member.filters)?;
+    let cap = Cap::new(daily_cap_usd, call_cap_usd)?;
+    let path = std::env::var_os("PATH");
+    let claude = claude::find(path.as_deref(), &home)?;
+    claude.check(&home)?;
+    let store = Store::open(&home, &member)?;
+    let session = Session::open(&home, &member.slug, cap)?;
+    match refresh::propose(
+        &claude,
+        &session,
+        &home,
+        &store,
+        &member,
+        &member_dir,
+        &filters,
+        &model,
+        &utc_now(),
+    )? {
+        Proposed::Nothing => println!("{}", text::NOTHING_TO_REFRESH),
+        Proposed::Drafted(proposal) => {
+            for line in refresh::render(&proposal, &member_dir) {
+                println!("{line}");
+            }
+        }
+    }
+    println!(
+        "{}",
+        spend_text::spend(session.spent_today()?, cap.daily_usd())
+    );
+    Ok(())
+}
+fn refresh_show(member_dir: PathBuf, proposal: Option<String>) -> Result<()> {
+    use persona_builder_grow::{refresh, store::Store, text};
+    let (member, home) = member_and_home(&member_dir)?;
+    let store = Store::open(&home, &member)?;
+    if let Some(proposal) = refresh::show(&store, &member_dir, proposal.as_deref())? {
+        for line in refresh::render(&proposal, &member_dir) {
+            println!("{line}");
+        }
+    } else {
+        println!("{}", text::NO_OPEN);
+    }
+    Ok(())
+}
+fn refresh_answer(
+    member_dir: PathBuf,
+    proposal: String,
+    decision: persona_builder_grow::record::Decision,
+) -> Result<()> {
+    use persona_builder_grow::{
+        record::Decision,
+        refresh,
+        store::{Store, utc_now},
+        text,
+    };
+    let (member, home) = member_and_home(&member_dir)?;
+    let store = Store::open(&home, &member)?;
+    refresh::answer(&store, &member_dir, &proposal, decision, &utc_now())?;
+    println!(
+        "{}",
+        match decision {
+            Decision::Approved => text::approved(&proposal),
+            Decision::Rejected => text::rejected(&proposal),
+        }
+    );
+    Ok(())
+}
 fn keep_answer(member_dir: PathBuf, signal: String) -> Result<()> {
     use persona_builder_grow::{
         keep,
@@ -1744,6 +1865,34 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 questions,
                 replace,
             } => interview_answer(member_dir, answers, questions, replace),
+        },
+        Some(Command::Refresh { command }) => match command {
+            RefreshCommand::Propose {
+                member_dir,
+                model,
+                daily_cap_usd,
+                call_cap_usd,
+            } => refresh_propose(member_dir, model, daily_cap_usd, call_cap_usd),
+            RefreshCommand::Show {
+                member_dir,
+                proposal,
+            } => refresh_show(member_dir, proposal),
+            RefreshCommand::Approve {
+                member_dir,
+                proposal,
+            } => refresh_answer(
+                member_dir,
+                proposal,
+                persona_builder_grow::record::Decision::Approved,
+            ),
+            RefreshCommand::Reject {
+                member_dir,
+                proposal,
+            } => refresh_answer(
+                member_dir,
+                proposal,
+                persona_builder_grow::record::Decision::Rejected,
+            ),
         },
         Some(Command::Keep { member_dir, signal }) => keep_answer(member_dir, signal),
         Some(Command::Cases { member_dir }) => cases(member_dir),

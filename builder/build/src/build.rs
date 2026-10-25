@@ -69,14 +69,14 @@ pub struct Misfit {
     pub shown: String,
 }
 impl Misfit {
-    fn new(told: impl Into<String>, shown: impl Into<String>) -> Self {
+    pub fn new(told: impl Into<String>, shown: impl Into<String>) -> Self {
         Misfit {
             told: told.into(),
             shown: shown.into(),
         }
     }
     /// A problem whose words are all the code's own, so it can be shown as it is.
-    fn plain(problem: impl Into<String>) -> Self {
+    pub fn plain(problem: impl Into<String>) -> Self {
         let problem = problem.into();
         Misfit::new(problem.clone(), problem)
     }
@@ -750,7 +750,7 @@ pub fn cache_name(step: &str, model: &str, system: &str, schema: &Value, prompt:
     format!("{step}-{}.json", hash.digest())
 }
 
-struct Asker<'a> {
+pub struct Asker<'a> {
     claude: &'a Claude,
     session: &'a Session,
     home: &'a Path,
@@ -760,7 +760,31 @@ struct Asker<'a> {
     reused: usize,
 }
 
-impl Asker<'_> {
+impl<'a> Asker<'a> {
+    pub fn new(
+        claude: &'a Claude,
+        session: &'a Session,
+        home: &'a Path,
+        slug: &'a str,
+        model: &'a str,
+    ) -> Self {
+        Self {
+            claude,
+            session,
+            home,
+            slug,
+            model,
+            calls: 0,
+            reused: 0,
+        }
+    }
+    pub fn calls(&self) -> usize {
+        self.calls
+    }
+    pub fn reused(&self) -> usize {
+        self.reused
+    }
+
     /// A reply kept by an earlier run, or `None`; a damaged one is asked for again.
     fn kept(&self, name: &str) -> Result<Option<Value>> {
         let folder = private_folder(self.home, self.slug, CACHE)?;
@@ -779,7 +803,7 @@ impl Asker<'_> {
 
     /// One step's call, reused from the cache when an earlier run paid for it, else asked once
     /// more when its reply does not fit. Answers the checked reply and whether it was reused.
-    fn ask<T>(
+    pub fn ask<T>(
         &mut self,
         step: &str,
         system: &str,
@@ -869,15 +893,7 @@ pub fn build(
         crate::interview::answered(&records),
         heldout.questions.len(),
     ));
-    let mut asker = Asker {
-        claude,
-        session,
-        home,
-        slug: &member.slug,
-        model: inputs.model,
-        calls: 0,
-        reused: 0,
-    };
+    let mut asker = Asker::new(claude, session, home, &member.slug, inputs.model);
 
     let schema = label_schema();
     let mut labels = Map::new();
@@ -987,7 +1003,7 @@ pub fn build(
         backtest,
         held,
         counts,
-        calls: asker.calls,
-        reused: asker.reused,
+        calls: asker.calls(),
+        reused: asker.reused(),
     })
 }
