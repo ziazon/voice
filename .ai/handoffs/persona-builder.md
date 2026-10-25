@@ -2,6 +2,40 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB4.3b: refresh, test the change, then keep or undo it (2026-10-25, lane: V1)
+
+- **What:** `persona-builder refresh apply <member_dir> <CHANGE>` takes an approved change on a
+  current version, applies its diffs strictly, and checks the result again as a draft is checked.
+  Then it answers every test the change names and every active test, on the old version and the
+  new, through the person's own Claude Code (one call per batch of about 40, never the right
+  answer). It grades written answers in a second call that sees only the right answer and the
+  answer, under labels that don't say which version wrote it (a shared answer is graded once). It
+  saves the measurement first, then keeps the change (`decisions.md` staged and renamed, the tests
+  made `active`) or undoes it (`decisions.md` never written, the tests stay `new`). Either way
+  `measurements.md` gains a `## <date>: refresh (<id>)` entry. A rerun makes no call and finishes
+  what is left. The report, and `persona-builder report`, show a growth line. New:
+  `builder/grow/src/apply.rs`, `apply_reply.rs`, `prompts/answer.md`, `prompts/grade.md`;
+  `diff::added_lines`; `draft::write_measurements`, `write_decisions`; `build::batches` generic.
+  Brief: `plans/briefs/PB4.3b-refresh-apply.md`.
+- **Who wrote it:** Codex, in three passes (the slice, finishing after she stopped on a
+  contradiction in the brief, the gate fix-ups); Claude briefed, reviewed, ran the gates outside
+  her sandbox and committed. Her stop was right: a choice test's right answer is one of its
+  options, so it is in the prompt by design. The blindness test now checks rubric answers and
+  signals for the sentinel, and that no prompt line carries `expected` or `match`.
+- **Verified:** `ci-local.sh` green on `dd7bebe` (750 Rust tests, 0 failed, plus the Python
+  suites, fmt, clippy, shellcheck and the keystore cross-checks). Codex ran 25, 46 and 12 mutation
+  checks across the three passes, each red and restored by `cmp`. `/security-review` (sub-agent):
+  two medium, no high, both fixed. Verifier (Fable) pass with two should-fixes, fixed in
+  `dd7bebe`; a repeat Verifier (Opus) on `dd7bebe` passed and reverted six of the new fixes, each
+  going red.
+- **Not verified:** a live run against a real Claude Code (the tests use a stub `claude`), so how
+  well a real model answers and grades is unmeasured.
+- **Follow-up, not built:** the repeat Verifier's low should-fixes. A trailing `\r` on an added
+  diff line passes the hidden-character check (it reads as a line ending; hand-edited records only).
+  The duplicate-approval test checks only that it errs. `finish` re-reads the proposal instead of
+  being handed the checked one. Also still open from PB4.3a: a later `build` drops kept refresh
+  edits.
+
 ## PB4.3a: refresh, draft the change, then approve or reject it (2026-10-25, lane: V1)
 
 - **What:** the first half of a refresh. `persona-builder refresh propose <member_dir>` sends up to
