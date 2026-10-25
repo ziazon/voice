@@ -2,6 +2,65 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.1: the app's frame and its locked-down bridge (2026-10-25, lane: V1)
+
+- **What:** the Persona Builder app starts. `builder/api` holds the app's commands as plain Rust
+  with no Tauri dependency (so another app's pane can call the same code), each answer a DTO
+  exported to TypeScript by ts-rs into `builder/ui/src/types/generated/`, plus the CLI-parity
+  table: every app command names the `persona-builder` commands that do the same, and a CLI test
+  runs each one. `builder/app` is the Tauri 2 window with one command (`app_info`: the version and
+  the agent list), a capability granting only that command and no `core:` permission, no plugin,
+  no global Tauri object, no file drops, a strict CSP, and a navigation guard that allows only the
+  app's own origin (and the dev server only when `tauri::is_dev()`). `builder/ui` is the screens
+  as a package (`@persona-builder/screens`) behind a `Backend` interface, with the seven steps
+  listed (*Not here yet*) and a Welcome screen; only `src/app/tauri-backend.ts` imports Tauri.
+  The rule for every later screen: the webview never names a file or folder. `ci-local.sh` checks
+  the generated types are current and committed, then runs the screens' install, typecheck, tests
+  and build, skipped with a printed line when pnpm is missing, older than 10, or unreadable. Brief:
+  `plans/briefs/PB7.1-app-frame.md`.
+- **Split:** PB7 split into PB7.1 to PB7.6 at pickup (frame; consent, new assistant, connect
+  Claude; sources; build and interview; report and review; save, turn on, forget). PB7.2 also
+  waits on V-Q5, where the app keeps a new assistant's folder.
+- **Who wrote it:** Codex, in four passes (she stopped, as the brief said to, when one npm package
+  was not cached offline; Claude fetched the pinned packages and she finished; then two fix-up
+  passes from the security review and the Verifier). Claude briefed, reviewed, ran the gates
+  outside her sandbox and committed. Claude's own review moved the command list to one file that
+  the build script and the test both include.
+- **Decisions made at pickup:** the reference app's stack and exact pins (Tauri 2.12.0,
+  tauri-build 2.7.0, ts-rs 12.0.1, Vue 3.5.43, Tabler 1.6.1, Vite 8.3.1, Vitest 5.0.2); dev port
+  5180; the identifier `dev.personabuilder.desktop` is a placeholder until signing (PB-D3) and
+  the app keeps no data under it; a placeholder icon (the real one is PB8's); no `core:`
+  permission until a screen needs one (PB7.4 adds the event ones).
+- **Dependency intake:** new crates `tauri` `=2.12.0`, `tauri-build` `=2.7.0` (Apache-2.0 OR
+  MIT) and `ts-rs` `=12.0.1` (MIT), the same pins the reference app runs; Cargo.lock adds 334 locked versions
+  and changes no existing one. Licenses in the tree are permissive (MIT, Apache-2.0, BSD,
+  ISC, Zlib, Unicode-3.0), plus five MPL-2.0 crates used unchanged. npm (exact pins, all MIT
+  except TypeScript, Apache-2.0, and the Tauri packages, Apache-2.0 OR MIT): `vue`,
+  `@tabler/core`, `@tauri-apps/api`; dev `@tauri-apps/cli`, `@vitejs/plugin-vue`,
+  `@vue/test-utils`, `happy-dom`, `typescript`, `vite`, `vitest`, `vue-tsc`. Every lockfile entry
+  has a sha512 hash and none is a git source. pnpm 10 and later don't run dependencies' install
+  scripts (pnpm 10.0.0 release notes), hence the version floor.
+- **Verified:** red first; Codex's mutation checks, each red and restored by `cmp`: an extra
+  `core:default`, a command in one list only, global Tauri on, file drops on, the other app's dev
+  port allowed, the error's own text shown, a Tauri import in a screen, an empty parity row, the
+  dev switch reverted, a renamed plugin dependency, Tauri in `builder/api`, a pnpm below 10.
+  `ci-local.sh` green on `475552c` (756 Rust tests, 12 screen tests, typecheck and build, the
+  Python suites, fmt, clippy, shellcheck, the keystore cross-checks) and again on the final head.
+  Live: the app built with the screens embedded (`--features tauri/custom-protocol`), opened, and
+  stayed up 8 seconds with nothing on stderr. `/security-review` (sub-agent): no high; a fixed
+  checkout path in the brief (removed) and two lows (the dev switch, old pnpm), fixed. Verifier
+  (Fable): all eight claims verified, three low should-fixes fixed; a repeat Verifier (Opus) on
+  the fixes.
+- **Not verified:** what the Welcome screen looks like, in light and dark (owed to the project owner's next
+  walk; screen control is not a runner's); `pnpm -C builder/ui tauri dev`; a build on Windows or
+  Linux.
+- **Known limits, for later slices:** the navigation guard allows only the macOS origin
+  (`tauri://localhost`); Windows and Linux use `http://tauri.localhost`, so a build for them needs
+  it added. Tauri always lets its internal channel fetch through, outside the app's command list.
+  From the repeat Verifier (low, not fixed): `ci-local.sh` stops with no message if `pnpm
+  --version` itself fails; the plugin check misses an underscore spelling (`tauri_plugin_x`); the
+  brief names the reference app once (a public open-source product, not jargon, so kept).
+
 ## PB4.3b: refresh, test the change, then keep or undo it (2026-10-25, lane: V1)
 
 - **What:** `persona-builder refresh apply <member_dir> <CHANGE>` takes an approved change on a
