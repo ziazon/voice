@@ -2,6 +2,42 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.2: your permission, a new assistant, connect Claude (2026-10-25, lane: V1)
+
+- **What:** the app's first working steps. A person sees their assistants, makes a new one in
+  `~/.claude/crew/<slug>/` (V-Q5) from the template compiled into the binary
+  (`template::FILES`, checked byte for byte against `crew/_template/`; the `install.sh` parity
+  test now covers the embedded path too), gives permission before anything is read, and checks
+  that their own Claude Code is installed and signed in (PB-D9). The permission is kept per
+  assistant as `consent.json` (`version`, `agreed_on`) in its private state folder, and counts only
+  at the wording's current version; the wording is pinned by a SHA-1 that a test checks. Making an
+  assistant clears any old record for its name. CLI: `persona-builder new`, `assistants`,
+  `consent show|agree`; app: six new commands (async, so the Claude check stays off the main
+  thread), each in the parity table; screens: Assistants, NewAssistant, Consent, ConnectClaude,
+  with Connect reachable only after permission. *Show in Finder* reveals the folder
+  (`open -R`). Brief: `plans/briefs/PB7.2-consent-new-connect.md`.
+- **Who wrote it:** Codex, in four passes (the Rust half; the screens; Claude's review fix-ups;
+  the gate fix-ups). Claude briefed, reviewed, wrote SECURITY's two rows and this record, ran the
+  gates outside her sandbox and committed.
+- **Verified:** `ci-local.sh` green on `c7d55c3` (803 Rust tests, 42 screen tests, plus the
+  Python suites). Codex's mutation checks, each red and restored by `cmp`: a template entry
+  dropped, the wording changed without its hash, the slug check skipped, a core error passed to
+  the screens, an old-version record accepted (api and CLI), an unmatched command, `String(error)`
+  in `failureMessage`, Connect enabled before permission, `-R` dropped, the old record left on a
+  new assistant. `/security-review` (sub-agent): one medium (the folder button could launch a
+  linked `.app`) and two lows (an old permission inherited by a new assistant of the same name;
+  an "already exists" sentence built from disk), all fixed in `c7d55c3`. Verifier (Fable) on
+  `db8a5da`: pass, with three should-fixes (the wording overstated Forget and left out the piece
+  of Claude's reply kept with each message; the inherited permission), all fixed.
+  Verifier repeat pass (Opus) on `c7d55c3`: pass, three nits left as they are (the screens' test
+  data still carries the first wording; the CLI repeats one api sentence; saved answers keep
+  Claude's whole question, which "your answers to its questions" already implies).
+- **Not verified:** the app itself was not run (no screen pass): owed as a walk. The Claude check
+  against a real Claude Code ran only through stubs here.
+- **For the owner to slice (noted under PB7.6):** an assistant the app makes has `{{REPO}}`
+  = `~/.claude`, so its `SKILL.md` points at `~/.claude/scripts/crew_decisions.py` for `similar`
+  and `record`, which the installed app doesn't have.
+
 ## PB4.3c: refresh apply, the last hardening from its review (2026-10-25, lane: V2)
 
 - **What:** the PB4.3b record's follow-ups, all about hand-edited private records.
