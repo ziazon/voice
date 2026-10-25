@@ -285,10 +285,15 @@ class Mail(Sources):
             mail(ROBIN, SAM, "Wed, 04 Mar 2026 15:00:00 +0000", "Thanks!\n\nI looked at the draft. Keep the lab short."),
             mail(ROBIN, SAM, "Wed, 04 Mar 2026 16:00:00 +0000", "Keep the lab short.\n\nYours sincerely,\nRobin Lee"),
             mail(ROBIN, SAM, "Wed, 04 Mar 2026 17:00:00 +0000", "Sent from my desk at 9: we keep the lab."),
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 18:00:00 +0000",
+                 "Yes.\n\nThanks!\n\nAlso, the room is 4B.\n\nBest,\nRobin"),
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 19:00:00 +0000",
+                 "Keep the lab short.\n\nBest,\nRobin\n\nPS: the quiz moves to Monday."),
         ])
         self.assertEqual([r["text"] for r in records], [
             "Thanks!\n\nI looked at the draft. Keep the lab short.", "Keep the lab short.",
-            "Sent from my desk at 9: we keep the lab."])
+            "Sent from my desk at 9: we keep the lab.", "Yes.\n\nThanks!\n\nAlso, the room is 4B.",
+            "Keep the lab short.\n\nPS: the quiz moves to Monday."])
 
     def test_other_writers_from_lines_split_and_a_from_line_inside_a_body_is_counted(self):
         def sent(hour):
@@ -600,6 +605,13 @@ class Folder(Sources):
         self.assertIn("teaching: cannot read the folder", proc.stderr)
         os.chmod(self.folder, 0o700)
         self.assertEqual(self.table()["syllabus.md"]["mine"], "y")
+        os.chmod(self.folder / "notes", 0)
+        self.addCleanup(os.chmod, self.folder / "notes", 0o700)
+        proc = self.crew("sources", "review", "--name", "teaching", "--projects", str(self.h.projects))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("cannot read a source file (Permission denied)", proc.stderr)
+        os.chmod(self.folder / "notes", 0o700)
+        self.assertIn("notes/week2.txt", self.table())
 
     def test_documents_needs_a_dir_or_sources_and_skips_a_source_with_no_review(self):
         proc = self.crew("documents", "--out-dir", str(self.h.root / "x"))

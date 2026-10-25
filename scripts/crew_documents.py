@@ -24,13 +24,18 @@ def ignored(name):
             name in {"__MACOSX", "Thumbs.db", "desktop.ini"})
 
 
-def walk(root):
-    """Relative file and symlink paths, sorted without following symlink directories."""
+def raise_error(error):
+    raise error
+
+
+def walk(root, strict=False):
+    """Relative file and symlink paths, sorted without following symlink directories. Strict, a
+    folder that cannot be listed raises its OSError instead of being skipped."""
     root = Path(root)
     if root.is_symlink():
         raise Unreadable("symlink")
     paths = []
-    for folder, dirs, files in os.walk(root, followlinks=False):
+    for folder, dirs, files in os.walk(root, followlinks=False, onerror=raise_error if strict else None):
         for name in dirs + files:
             if ignored(name):
                 continue

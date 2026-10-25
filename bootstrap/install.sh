@@ -187,7 +187,7 @@ if [ "$no_history" = 1 ]; then
 else
   host="$(printf '%s' "${CREW_HOST:-$(hostname -s)}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-$//')"
   # A host corpus must never take a source's, the interview's or a round's file name.
-  case "$host" in src-*|round-*|live|interview) host="host-$host" ;; esac
+  case "$host" in src-*|round-*|live|interview|claudeai) host="host-$host" ;; esac
   projects="${CLAUDE_PROJECTS:-$HOME/.claude/projects}"
   corpus="$state/decisions-$host.jsonl"
   if [ -d "$projects" ]; then

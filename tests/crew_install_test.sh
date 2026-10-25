@@ -95,9 +95,11 @@ refused "--to is needed" --name Ari --principal Robin --role extra
 refused "clone your fork" --name Ari --principal Robin --repo-dir "$scratch/nowhere"
 
 # A Mac whose name a source's file would take mines under host-<name>, so withdraw never deletes it.
-run "$extra" live --role extra --no-copy
-[ -f "$extra/.claude/state/ari/decisions-host-live.jsonl" ] || fail "a Mac named live did not mine under host-live"
-rm "$extra/.claude/state/ari/decisions-host-live.jsonl"
+for host in live claudeai; do
+  run "$extra" "$host" --role extra --no-copy
+  [ -f "$extra/.claude/state/ari/decisions-host-$host.jsonl" ] || fail "a Mac named $host did not mine under host-$host"
+  rm "$extra/.claude/state/ari/decisions-host-$host.jsonl"
+done
 
 # The extra Mac mines, drops the kit's folder, and copies its corpus to the main Mac's state dir.
 run "$extra" extra --role extra --to "$main/.claude/state/ari"

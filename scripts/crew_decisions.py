@@ -1677,7 +1677,8 @@ def folder_files(m, source, root, skipped):
     """The relative paths the source covers, as the review lists them."""
     include = [crew_documents.glob_matcher(p) for p in source.get("include", [])]
     exclude = [crew_documents.glob_matcher(p) for p in source.get("exclude", [])]
-    for relative in crew_documents.walk(root):
+    # Strict: a subfolder the walk cannot open must stop a review, not drop its rows and marks.
+    for relative in crew_documents.walk(root, strict=True):
         path = relative.as_posix()
         reason = ("links" if (root / relative).is_symlink() else
                   "excluded" if any(matches(path) for matches in exclude) else
