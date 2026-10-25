@@ -380,8 +380,18 @@ fn only_mine(folder: &File, path: &Path, others: u32, how: &str) -> Result<()> {
 
 /// [`read_private`], or `None` when the state folder or the file does not exist.
 pub fn read_private_optional(home: &Path, slug: &str, name: &str) -> Result<Option<Vec<u8>>> {
+    read_private_optional_at(home, slug, None, name)
+}
+
+/// [`read_private_optional`], from `folder` inside the state folder when one is given.
+pub fn read_private_optional_at(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    name: &str,
+) -> Result<Option<Vec<u8>>> {
     validate_private_name(name)?;
-    let (directory, path) = match state_directory(home, slug, false) {
+    let (directory, path) = match place_directory(home, slug, folder, false) {
         Ok(found) => found,
         Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
             return Ok(None);
@@ -407,7 +417,7 @@ pub fn read_private_optional(home: &Path, slug: &str, name: &str) -> Result<Opti
         }
         return Err(io(&path.join(name), source));
     }
-    read_private(home, slug, name).map(Some)
+    read_private_at(home, slug, folder, name).map(Some)
 }
 
 #[cfg(test)]

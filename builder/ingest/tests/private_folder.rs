@@ -2,7 +2,8 @@ mod common;
 
 use common::Scratch;
 use persona_builder_ingest::private::{
-    lock_state, private_folder, read_private_optional, write_private,
+    lock_state, private_folder, read_private_optional, read_private_optional_at, write_private,
+    write_private_at,
 };
 use std::{
     fs,
@@ -129,4 +130,47 @@ fn private_folder_refuses_an_assistant_folder_others_can_write() {
     fs::create_dir_all(&state).unwrap();
     fs::set_permissions(&state, fs::Permissions::from_mode(0o750)).unwrap();
     private_folder(&home.0, "wren", "agent").unwrap();
+}
+
+#[test]
+fn optional_at_missing_state_is_none_without_creating_it() {
+    let home = Scratch::new("optional-at-state");
+    let result = read_private_optional_at(&home.0, "robin", Some("growth"), "signals.jsonl");
+    assert!(matches!(result, Ok(None)), "{result:?}");
+    assert!(!home.0.join(".claude").exists());
+}
+
+#[test]
+fn optional_at_missing_folder_and_file_are_none() {
+    let home = Scratch::new("optional-at-missing");
+    write_private(&home.0, "robin", "other.jsonl", b"other\n").unwrap();
+    let result = read_private_optional_at(&home.0, "robin", Some("growth"), "signals.jsonl");
+    assert!(matches!(result, Ok(None)), "{result:?}");
+    private_folder(&home.0, "robin", "growth").unwrap();
+    let result = read_private_optional_at(&home.0, "robin", Some("growth"), "signals.jsonl");
+    assert!(matches!(result, Ok(None)), "{result:?}");
+}
+
+#[test]
+fn optional_at_reads_existing_file_and_refuses_file_links() {
+    let home = Scratch::new("optional-at-file");
+    let file =
+        write_private_at(&home.0, "robin", Some("growth"), "signals.jsonl", b"kept\n").unwrap();
+    let result = read_private_optional_at(&home.0, "robin", Some("growth"), "signals.jsonl");
+    assert_eq!(result.unwrap(), Some(b"kept\n".to_vec()));
+    fs::remove_file(&file).unwrap();
+    symlink(home.0.join("missing.jsonl"), &file).unwrap();
+    assert!(read_private_optional_at(&home.0, "robin", Some("growth"), "signals.jsonl").is_err());
+}
+
+#[test]
+fn optional_at_refuses_a_linked_subfolder_even_with_a_missing_file() {
+    let home = Scratch::new("optional-at-link");
+    write_private(&home.0, "robin", "other.jsonl", b"other\n").unwrap();
+    let target = home.0.join("elsewhere");
+    fs::create_dir(&target).unwrap();
+    symlink(&target, home.0.join(".claude/state/robin/growth")).unwrap();
+    let result = read_private_optional_at(&home.0, "robin", Some("growth"), "signals.jsonl");
+    assert!(result.is_err(), "{result:?}");
+    assert!(fs::read_dir(&target).unwrap().next().is_none());
 }
