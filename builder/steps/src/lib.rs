@@ -11,3 +11,4 @@ pub mod score;
 pub mod share;
 pub mod shingle;
 pub mod similar;
+pub mod text_check;

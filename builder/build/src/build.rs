@@ -26,6 +26,7 @@ use persona_builder_steps::{
     score::{Score, TIERS, score},
     shingle::overlaps,
     similar::{similar, similar_text},
+    text_check::hidden,
 };
 use serde_json::{Map, Value, json};
 use std::{
@@ -353,29 +354,6 @@ const LISTS: [(&str, &str, usize); 5] = [
     ("rules", "Standing rules", 6),
     ("precedents", "Precedents", 8),
 ];
-
-/// A character a point never holds: control characters, line and paragraph separators, the
-/// invisible ones that could split a word past the shingle check or the filters, and `<`, which
-/// would start hidden markup in the Markdown the assistant reads.
-pub(crate) fn hidden(c: char) -> bool {
-    c.is_control()
-        || c == '<'
-        || matches!(c, '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{FEFF}')
-        || ('\u{200B}'..='\u{200F}').contains(&c)
-        || ('\u{2028}'..='\u{202E}').contains(&c)
-        || ('\u{2060}'..='\u{206F}').contains(&c)
-        || ('\u{FFF9}'..='\u{FFFB}').contains(&c)
-        || matches!(
-            c,
-            '\u{034F}' | '\u{115F}' | '\u{1160}' | '\u{3164}' | '\u{FFA0}'
-        )
-        || ('\u{FE00}'..='\u{FE0F}').contains(&c)
-        || ('\u{13430}'..='\u{1343F}').contains(&c)
-        || ('\u{1BCA0}'..='\u{1BCA3}').contains(&c)
-        || ('\u{1D173}'..='\u{1D17A}').contains(&c)
-        || ('\u{E0000}'..='\u{E007F}').contains(&c)
-        || ('\u{E0100}'..='\u{E01EF}').contains(&c)
-}
 
 fn dated(point: &str) -> bool {
     let bytes = point.as_bytes();

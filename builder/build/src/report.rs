@@ -209,7 +209,7 @@ pub fn check(report: &Report) -> Result<()> {
 /// Check category names before making any model calls.
 pub fn check_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Result<()> {
     if names.into_iter().any(|name| {
-        name.is_empty() || name.chars().count() > 100 || name.chars().any(build::hidden)
+        name.is_empty() || name.chars().count() > 100 || name.chars().any(persona_builder_steps::text_check::hidden)
     }) {
         return Err(Error::Invalid(text::REPORT_BAD_NAME.into()));
     }
