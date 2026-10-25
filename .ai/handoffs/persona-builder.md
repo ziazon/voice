@@ -2,6 +2,46 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.6a: save a copy, from the app (2026-10-25, lane: V2)
+
+- **What:** PB7.6 was split at pickup into PB7.6a (this) and PB7.6b (turn it on, the claude.ai
+  files, forget). The app's *Save* step, reachable once an assistant is chosen (saving reads no
+  history, so it doesn't wait for permission): where to keep the assistant, the recommended place
+  picked; the free-account line with a button that has Rust open GitHub's signup page; GitHub
+  sign-in in the app, by the device flow (the code shown, GitHub's device page opened by Rust, a
+  wait the person can cancel); keep a choice (an existing repo picked by its place and kind in
+  Rust's own list, never a path); save, with the privacy check's result; sign out. Eight new
+  commands, each in the parity table. The device code stays in Rust (`SignIns`), the token goes
+  to the password store only, and a cancelled, superseded or signed-out sign-in saves nothing.
+  `text::is_said` is the only way a save-crate sentence reaches the screens; anything else is a
+  fixed fallback. `FolderPrivacy` and `UnavailableRemotes` moved from the CLI into the api; one
+  listed-assistant lookup now serves every slug command. Git's error line loses any
+  `user:password@` before it is shown. Brief: `plans/briefs/PB7.6a-save.md`.
+- **Who wrote it:** Codex, in four passes (the Rust half; the screens with Claude's review
+  fix-ups; two screen fixes; the gate fix-ups). Claude split the card, briefed, reviewed, ran the
+  gates outside her sandbox, wrote SECURITY's row and this record, and committed.
+- **Verified:** `ci-local.sh` green on `36e8071` (835 Rust tests, the socket tests included; 81
+  screen tests; the Python suites). Facts checked: GitHub's device-flow page is
+  `https://github.com/login/device`, and the app's part is to show the code
+  (docs.github.com, *Authorizing OAuth apps*, read 2026-10-25). Codex's mutation checks, each red
+  and restored by `cmp`: `is_said` accepting anything, the device code added to the answer, the
+  last cancel check dropped, an out-of-range choice accepted, the listed-slug check skipped (again
+  after the fix-up), a URL taken from GitHub's reply, a capability name dropped, the save step
+  enabled with no assistant, the post-token cancel check dropped, the kind check dropped, the
+  userinfo strip dropped. `/security-review` (sub-agent): no high or medium, four lows. Verifier
+  (Fable) on `d4acd74`: pass with three should-fixes (a cancelled sign-in could still save its
+  token; a choice by index could follow a shifted list; git's error line could carry a URL's
+  sign-in), all fixed in `36e8071`; the security review's matching lows with them. Verifier
+  repeat pass (Opus) on `36e8071`: pass.
+- **Left as they are (low):** two *existing* repos of the same kind can still swap places between
+  looking and choosing, which needs an assistant folder outside `~/.claude` in a second repo (the
+  app never makes one there); the userinfo strip cuts at the first `@`, so a password holding a
+  raw `@` (git wants `%40`) leaves its tail; `is_said` matches a sentence's shape, so a future
+  core error that happens to start or end like one would pass; `start` holds the sign-in lock
+  across its request (a cancel waits up to ureq's 30-second limit).
+- **Not verified:** the app was not run (no screen pass), and the live GitHub sign-in from the
+  app waits with V-Q4's walk: both owed. The real Keychain and browser opener ran only as stubs.
+
 ## PB7.2: your permission, a new assistant, connect Claude (2026-10-25, lane: V1)
 
 - **What:** the app's first working steps. A person sees their assistants, makes a new one in
