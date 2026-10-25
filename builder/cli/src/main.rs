@@ -1050,9 +1050,6 @@ struct BuildArgs {
     daily_cap_usd: f64,
     call_cap_usd: f64,
 }
-/// The most a member's codebook brief, and its measurements file, may hold.
-const CODEBOOK_MOST: u64 = 64 * 1024;
-const MEASUREMENTS_MOST: u64 = 1024 * 1024;
 fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     use persona_builder_agent::{
         claude,
@@ -1067,8 +1064,8 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     use persona_builder_steps::book::book;
     let (member, home) = member_and_home(&member_dir)?;
     let book = book(&member)?;
-    let codebook = draft::read_text(&member_dir.join("briefs/codebook.md"), CODEBOOK_MOST)?
-        .ok_or_else(|| Error::Invalid(text::NO_CODEBOOK.into()))?;
+    let codebook = draft::read_codebook(&member_dir)?;
+    draft::preflight(&member_dir)?;
     let (folder, name) = private::place(&args.corpus)?;
     private::validate_name(name)?;
     let corpus = private::read_private_at(&home, &member.slug, folder, name)?;
@@ -1106,7 +1103,10 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
         &local_day(std::time::SystemTime::now()),
     );
     draft::check_private(&filters, &decisions, &entries)?;
-    let existing = draft::read_text(&member_dir.join(draft::MEASUREMENTS), MEASUREMENTS_MOST)?;
+    let existing = draft::read_text(
+        &member_dir.join(draft::MEASUREMENTS),
+        draft::MEASUREMENTS_MOST,
+    )?;
     let measurements = draft::measurements(existing.as_deref(), &member, &entries);
     draft::write(&member_dir, &decisions, &measurements)?;
     println!("{}", text::written(&member_dir.display().to_string()));

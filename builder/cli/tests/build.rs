@@ -223,3 +223,21 @@ fn build_needs_the_codebook_brief() {
         text(&out.stderr)
     );
 }
+
+#[test]
+fn build_checks_the_member_folder_before_spending() {
+    let Some(python) = python() else { return };
+    let fixture = Fixture::new();
+    fixture.signed_in(&python);
+    fixture.write_state("decisions.jsonl", &corpus(32));
+    fs::remove_file(fixture.member.join("measurements.md")).unwrap();
+    std::os::unix::fs::symlink("/etc/hosts", fixture.member.join("measurements.md")).unwrap();
+    let out = fixture.run(&["build", &fixture.member()]);
+    assert!(!out.status.success());
+    assert!(
+        text(&out.stderr).contains("is a link"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert_eq!(fixture.calls(), 0);
+}

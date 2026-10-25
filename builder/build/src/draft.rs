@@ -32,6 +32,11 @@ const PLACEHOLDERS: [&str; 2] = [
     "## YYYY-MM-DD: calibration interview",
 ];
 const REPORTS: &str = "## Reports";
+/// The most the member's codebook brief, and its measurements file, may hold.
+pub const CODEBOOK_MOST: u64 = 64 * 1024;
+pub const MEASUREMENTS_MOST: u64 = 1024 * 1024;
+const STAGED: &str = ".persona-builder-";
+static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn pronouns(member: &Member) -> &str {
     member.pronouns.as_deref().unwrap_or("they/them")
@@ -321,7 +326,15 @@ impl Staged {
     fn new(dir: &Path, name: &str, text: &str) -> Result<Staged> {
         let target = dir.join(name);
         let mode = mode_of(&target)?;
-        let path = dir.join(format!(".{name}.persona-builder-{}", std::process::id()));
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let count = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = dir.join(format!(
+            ".{name}{STAGED}{}-{nanos}-{count}",
+            std::process::id()
+        ));
         let mut file = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -359,10 +372,60 @@ impl Drop for Staged {
 /// Write both files into the member's folder: staged beside them first, then renamed into place,
 /// `decisions.md` first. Any failure before the renames leaves the folder as it was.
 pub fn write(member_dir: &Path, decisions: &str, measurements: &str) -> Result<()> {
+    sweep(member_dir)?;
     let decisions = Staged::new(member_dir, DECISIONS, decisions)?;
     let measurements = Staged::new(member_dir, MEASUREMENTS, measurements)?;
     decisions.rename()?;
     measurements.rename()
+}
+
+/// Remove the staged files an interrupted run left (regular files only, never a link).
+fn sweep(member_dir: &Path) -> Result<()> {
+    for entry in fs::read_dir(member_dir).map_err(|e| io(member_dir, e))? {
+        let entry = entry.map_err(|e| io(member_dir, e))?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let left = [DECISIONS, MEASUREMENTS]
+            .iter()
+            .any(|target| name.starts_with(&format!(".{target}{STAGED}")));
+        if left
+            && entry
+                .file_type()
+                .map_err(|e| io(&entry.path(), e))?
+                .is_file()
+        {
+            fs::remove_file(entry.path()).map_err(|e| io(&entry.path(), e))?;
+        }
+    }
+    Ok(())
+}
+
+/// Before anything is spent: both files can be replaced (each a real file, or none yet), and the
+/// measurements file can be read. It is read again just before the write.
+pub fn preflight(member_dir: &Path) -> Result<()> {
+    mode_of(&member_dir.join(DECISIONS))?;
+    mode_of(&member_dir.join(MEASUREMENTS))?;
+    read_text(&member_dir.join(MEASUREMENTS), MEASUREMENTS_MOST).map(|_| ())
+}
+
+/// The member's own `briefs/codebook.md`: neither the folder nor the file a link.
+pub fn read_codebook(member_dir: &Path) -> Result<String> {
+    let briefs = member_dir.join("briefs");
+    match fs::symlink_metadata(&briefs) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(Error::Invalid(format!(
+                "{} is a link: Persona Builder reads only real folders, never links. Move it away and try again",
+                briefs.display()
+            )));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(Error::Invalid(text::NO_CODEBOOK.into()));
+        }
+        Err(source) => return Err(io(&briefs, source)),
+    }
+    read_text(&briefs.join("codebook.md"), CODEBOOK_MOST)?
+        .ok_or_else(|| Error::Invalid(text::NO_CODEBOOK.into()))
 }
 
 /// A text file in the member's folder, or `None` when it is not there: opened without following a
