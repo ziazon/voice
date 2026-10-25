@@ -2,6 +2,68 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB6.2: GitHub sign-in on Windows and Linux (2026-10-24, lane: V2)
+
+- **What:** the GitHub token now lives in the computer's own password store everywhere, not only
+  on a Mac. A new crate `builder/keystore` (`persona_builder_keystore`) opens Windows' Credential
+  Manager or the Secret Service on Linux through `keyring-core`; the save crate's new
+  `SystemStore` (in `keychain.rs`) reads, writes, reads back and forgets the token through it, and
+  `Keychain` uses it off macOS. The macOS path is unchanged. No store (a Linux machine with no
+  keyring running) is a plain refusal that offers keeping the assistant on this computer; there
+  is no file fallback. Every *this Mac* in the save wording and the CLI's `save` help now says
+  *this computer*; `MAC_ONLY` is gone; `KEYCHAIN_FAILED` names no OS store; `NEEDS_GIT` gives
+  `xcode-select --install` on macOS only and `https://git-scm.com/downloads` elsewhere.
+  `ci-local.sh` checks the keystore crate for `x86_64-pc-windows-msvc` and
+  `x86_64-unknown-linux-gnu` when those targets are installed. Brief:
+  `plans/briefs/PB6.2-other-os-sign-in.md`.
+- **Who wrote it:** Claude, directly. Codex was at a hard usage limit until 2026-10-30 (probed at
+  pickup).
+- **Decisions made at pickup:** `keyring` 4 is now a front for `keyring-core` plus one crate per
+  store, so the stores are named directly, each only on its own OS, pinned `=`. The stores get their
+  own crate because the save crate cannot be checked for another OS from a Mac: `ring` (under
+  `ureq`'s TLS) compiles C that needs that OS's system headers. Windows credentials are kept
+  `Local` (this computer), not the store's default `Enterprise`, which roams with a domain
+  profile. Linux uses the pure-Rust `zbus` store with `rt-async-io-crypto-rust` (no tokio, no
+  OpenSSL); its Secret Service session is encrypted. An error that carries the stored bytes
+  (`BadEncoding`, `BadDataFormat`) is wiped before it drops.
+- **Dependency intake:** `keyring-core =1.0.1`, `windows-native-keyring-store =1.1.0` (default
+  features off: `search` only adds `regex`), `zbus-secret-service-keyring-store =1.0.1`. Names
+  checked against crates.io. All three are new (2025) with one owner, who is also a co-owner of
+  `keyring` itself; 3 to 5.5 million downloads each (crates.io, read 2026-10-24). Under them:
+  `secret-service` 5.2.0 and `zbus` 5.19.0 on Linux (128 crates there in all), `windows-sys`
+  0.61.2 on Windows (7 crates there, the keystore's own dependencies included). Every licence is permissive (MIT, Apache-2.0, Unlicense, Unicode-3.0;
+  one MIT OR Apache-2.0 OR LGPL-2.1-or-later). The build scripts are the usual ones (`libc`,
+  `rustix`, `serde`, `proc-macro2` and the like). The standard library cannot reach either store,
+  and Windows has no command that reads a saved password back, so the macOS approach (driving the
+  OS's own command) does not carry over; on Linux it would mean `secret-tool`, an extra program
+  (whether desktops ship it was not checked). `Cargo.lock` is in this change.
+- **Verified:** 16 new tests, plus one live test that is ignored (for a hand run on a Windows or
+  Linux desktop): 3 in the keystore crate, 9 for `SystemStore` over keyring-core's mock
+  store and a test store that keeps something other than it was given, 4 on the wording; 2 CLI help tests changed. Before
+  the gates, 16 of the 17 then written were red on their assertion first against stubs; the
+  keystore's round trip over the mock passed on the stub too, since both built entries the same way. 11 mutations, each restored and checked with `cmp`, all
+  failed: among them the read back left out, the token check left out, no store reported as the
+  generic failure, and a type error in each OS's `open`, which the Windows and the Linux
+  `cargo check` each caught (so both OS branches really compile there). `ci-local.sh`
+  green on the build Mac (151 Python, 423 Rust tests, 1 ignored; both cross-target checks ran).
+- **Gates:** `/security-review` (a sub-agent): nothing exploitable; four lows. The Verifier
+  (Fable): pass, no must-fix; one should-fix (on Linux a store with no default collection, as on
+  WSL, or a dismissed unlock prompt reaches `KEYCHAIN_FAILED`, which offered no way out) and two
+  wrong counts in this record. Fixed after the gates: `KEYCHAIN_FAILED` also offers keeping the
+  assistant on this computer only; a loaded value the Keychain would refuse is not used as a token
+  (security low 1); the counts. A new test (red first) and a new assertion (red under a mutation). The other three lows are recorded
+  below, not changed.
+- **Not verified:** a live sign-in on a Windows and a Linux desktop (V-Q2); neither OS's store
+  has run here, only compiled. On Linux, the zbus store's docs warn about headless machines and
+  WSL (no default collection): there the refusal is expected, not proven.
+- **Known limits:** on Linux, `secret-service` keeps unwiped copies of the token in memory while
+  it encrypts and decrypts (upstream); in a session with no keyring running, any program of the same
+  user could claim the Secret Service name and receive the token (the Secret Service's own trust
+  model); a locked keyring waits on its unlock dialog with no time limit, as `secret-tool` does, so
+  a machine with no one to answer it would hang the command.
+- **Out of scope (left for later slices):** the README's "You need a Mac", PB8's macOS-only installer,
+  PB7's builds for other OSes, and the *this Mac* lines in `builder/agent` and `builder/ingest`.
+
 ## PB3.3: the build, label, distil, the blind backtest, write the member (2026-10-25, lane: V1)
 
 - **What:** `persona-builder build <member_dir>` runs `bootstrap/PROMPT.md` steps 8 to 11 through
