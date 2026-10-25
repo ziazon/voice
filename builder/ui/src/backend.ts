@@ -11,6 +11,16 @@ import type { LinkRequest } from './types/generated/LinkRequest'
 import type { SignInCode } from './types/generated/SignInCode'
 import type { Said } from './types/generated/Said'
 import type { SaveChoiceRequest } from './types/generated/SaveChoiceRequest'
+import type { ClaudeCodeFolders } from './types/generated/ClaudeCodeFolders'
+import type { ReadRequest } from './types/generated/ReadRequest'
+import type { ReadProgress } from './types/generated/ReadProgress'
+import type { ReadCounts } from './types/generated/ReadCounts'
+import type { ChooseExportRequest } from './types/generated/ChooseExportRequest'
+import type { ExportStatus } from './types/generated/ExportStatus'
+import type { ChatList } from './types/generated/ChatList'
+import type { MarkChatsRequest } from './types/generated/MarkChatsRequest'
+import type { ClaudeaiCounts } from './types/generated/ClaudeaiCounts'
+import type { MergeCounts } from './types/generated/MergeCounts'
 
 /**
  * Everything the screens ask of the app. A host gives its own backend.
@@ -34,6 +44,14 @@ export interface Backend {
   githubSignOut(): Promise<Said>
   saveChoose(request: SaveChoiceRequest): Promise<Said>
   savePush(request: SlugRequest): Promise<Said>
+  claudeCodeFolders(request: SlugRequest): Promise<ClaudeCodeFolders>
+  readClaudeCode(request: ReadRequest, onProgress: (progress: ReadProgress) => void): Promise<ReadCounts>
+  chooseClaudeaiExport(request: ChooseExportRequest): Promise<ExportStatus | null>
+  claudeaiExportStatus(request: SlugRequest): Promise<ExportStatus | null>
+  listClaudeaiChats(request: SlugRequest): Promise<ChatList>
+  markClaudeaiChats(request: MarkChatsRequest): Promise<ChatList>
+  readClaudeai(request: SlugRequest, onProgress: (progress: ReadProgress) => void): Promise<ClaudeaiCounts>
+  mergeHistories(request: SlugRequest): Promise<MergeCounts>
 }
 
 export const backendKey: InjectionKey<Backend> = Symbol('persona-builder-backend')

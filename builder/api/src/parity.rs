@@ -64,4 +64,36 @@ pub const PARITY: &[Parity] = &[
         app: "save_push",
         cli: &[&["save", "push"]],
     },
+    Parity {
+        app: "claude_code_folders",
+        cli: &[&["folders"]],
+    },
+    Parity {
+        app: "read_claude_code",
+        cli: &[&["mine"]],
+    },
+    Parity {
+        app: "choose_claudeai_export",
+        cli: &[&["claudeai", "inspect"]],
+    },
+    Parity {
+        app: "claudeai_export_status",
+        cli: &[&["claudeai", "inspect"]],
+    },
+    Parity {
+        app: "list_claudeai_chats",
+        cli: &[&["claudeai", "titles"]],
+    },
+    Parity {
+        app: "mark_claudeai_chats",
+        cli: &[&["claudeai", "mark"]],
+    },
+    Parity {
+        app: "read_claudeai",
+        cli: &[&["claudeai", "mine"]],
+    },
+    Parity {
+        app: "merge_histories",
+        cli: &[&["merge"]],
+    },
 ];

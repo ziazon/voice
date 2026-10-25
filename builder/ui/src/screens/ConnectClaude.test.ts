@@ -9,7 +9,8 @@ it('announces checking and shows ready with its note', async () => {
   await flushPromises()
   expect(wrapper.get('.alert-success').text()).toBe('Ready.')
   expect(wrapper.get('.text-secondary').text()).toBe('API key is set.')
-  expect(wrapper.find('button').exists()).toBe(false)
+  await button(wrapper, 'Next: your history').trigger('click')
+  expect(wrapper.emitted('next')).toEqual([[]])
 })
 it('shows not-ready text without links and checks again', async () => {
   const pending = deferred<{ ready: boolean; message: string; note: null }>()

@@ -12,7 +12,7 @@ it('shows Welcome and disables all steps before choosing an assistant', async ()
   ])
   for (const [index, item] of items.entries()) {
     expect(item.attributes('aria-disabled')).toBe('true')
-    expect(item.text()).toContain(index < 2 || index === 6 ? 'Choose an assistant first' : 'Not here yet')
+    expect(item.text()).toContain(index < 3 || index === 6 ? 'Choose an assistant first' : 'Not here yet')
   }
   expect(wrapper.get('main h1').text()).toBe('Persona Builder')
   expect(wrapper.text()).toContain('Version 1.2.3')
@@ -67,14 +67,39 @@ it('can go back from making a new assistant', async () => {
   expect(wrapper.get('main h1').text()).toBe('Persona Builder')
 })
 
-it('opens save without requiring permission and keeps steps three to six unavailable', async () => {
+it('keeps your history disabled until permission and opens it from a ready connect check', async () => {
+  const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) })
+  const wrapper = screen(PersonaBuilder, backend)
+  await flushPromises()
+  await button(wrapper, 'Open').trigger('click')
+  await flushPromises()
+  const sources = wrapper.findAll('ol li')[2]!
+  expect(sources.attributes('aria-disabled')).toBe('true')
+  expect(sources.text()).toContain('Needs your permission first')
+  expect(sources.get('button').attributes('disabled')).toBeDefined()
+  await sources.get('button').trigger('click')
+  expect(backend.claudeCodeFolders).not.toHaveBeenCalled()
+  expect(wrapper.get('main h2').text()).toBe('Before Persona Builder reads anything')
+  await button(wrapper, 'I agree').trigger('click')
+  await flushPromises()
+  expect(wrapper.findAll('ol li')[2]!.attributes('aria-disabled')).toBeUndefined()
+  expect(button(wrapper, 'Your history').attributes('disabled')).toBeUndefined()
+  await button(wrapper, 'Next: your history').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('main h2').text()).toBe('Your history')
+  expect(wrapper.get('[aria-current="step"]').text()).toBe('Your history')
+  expect(backend.claudeCodeFolders).toHaveBeenCalledWith({ slug: 'example' })
+  expect(wrapper.findAll('.card-title').map(item => item.text())).toEqual(['Claude Code', 'claude.ai (if you use it)', 'Put it together'])
+})
+
+it('opens save without requiring permission and keeps steps four to six unavailable', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) })
   const wrapper = screen(PersonaBuilder, backend)
   await flushPromises()
   await button(wrapper, 'Open').trigger('click')
   await flushPromises()
   const items = wrapper.findAll('ol li')
-  for (const item of items.slice(2, 6)) {
+  for (const item of items.slice(3, 6)) {
     expect(item.attributes('aria-disabled')).toBe('true')
     expect(item.text()).toContain('Not here yet')
   }

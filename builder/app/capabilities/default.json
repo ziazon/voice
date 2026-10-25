@@ -18,6 +18,14 @@
     "allow-github-sign-in-cancel",
     "allow-github-sign-out",
     "allow-save-choose",
-    "allow-save-push"
+    "allow-save-push",
+    "allow-claude-code-folders",
+    "allow-read-claude-code",
+    "allow-choose-claudeai-export",
+    "allow-claudeai-export-status",
+    "allow-list-claudeai-chats",
+    "allow-mark-claudeai-chats",
+    "allow-read-claudeai",
+    "allow-merge-histories"
   ]
 }

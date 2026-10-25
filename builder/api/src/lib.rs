@@ -18,3 +18,6 @@ pub fn app_info() -> dto::AppInfo {
 
 pub mod save;
 pub use save::*;
+
+pub mod history;
+pub use history::*;

@@ -33,11 +33,20 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     githubSignOut: vi.fn().mockResolvedValue({ message: 'You are signed out of GitHub.' }),
     saveChoose: vi.fn().mockResolvedValue({ message: 'Your choice is kept.' }),
     savePush: vi.fn().mockResolvedValue({ message: 'Your copy is saved.' }),
+    claudeCodeFolders: vi.fn().mockResolvedValue({ found: false, folders: [] }),
+    readClaudeCode: vi.fn().mockResolvedValue({ questions: 0, heldOut: 0, messages: 0, privateLeftOut: 0, first: null, last: null }),
+    chooseClaudeaiExport: vi.fn().mockResolvedValue(null),
+    claudeaiExportStatus: vi.fn().mockResolvedValue(null),
+    listClaudeaiChats: vi.fn().mockResolvedValue({ chats: [], mine: 0, notMine: 0, unmarked: 0 }),
+    markClaudeaiChats: vi.fn().mockResolvedValue({ chats: [], mine: 0, notMine: 0, unmarked: 0 }),
+    readClaudeai: vi.fn().mockResolvedValue({ chats: 0, messages: 0, privateLeftOut: 0 }),
+    mergeHistories: vi.fn().mockResolvedValue({ questions: 0, heldOut: 0, messages: 0, duplicates: 0, privateLeftOut: 0 }),
     ...overrides,
   }
 }
 const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()) })
+export function screen<T extends Parameters<typeof mount>[0]>(component: T, backend?: Backend, props?: object): ReturnType<typeof mount<T>>
 export function screen(component: Parameters<typeof mount>[0], backend = fakeBackend(), props = {}) {
   const wrapper = mount(component, { props, global: { provide: { [backendKey]: backend } } })
   wrappers.push(wrapper)

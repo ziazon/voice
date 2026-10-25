@@ -526,9 +526,11 @@ fn split_choice(
     let split = match cutoff {
         Some(cutoff) => mine::Split::Cutoff(cutoff),
         None => {
-            let holdout = holdout.as_deref().unwrap_or("0.15").parse::<f64>();
+            let holdout = match holdout {
+                Some(value) => value.parse::<f64>().ok(),
+                None => Some(mine::DEFAULT_HOLDOUT),
+            };
             let holdout = holdout
-                .ok()
                 .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
                 .ok_or_else(|| Error::Invalid("--holdout must be a number from 0 to 1".into()))?;
             mine::Split::Holdout(holdout)
@@ -756,7 +758,7 @@ fn merge(
         corpus::{self, Input, Mode},
         filters::Filters,
         mine::to_jsonl,
-        private::{read_private, validate_name, write_private},
+        private::{list_private, read_private, validate_name, write_private},
     };
     validate_name(&out)?;
     for (name, _) in &inputs {
@@ -767,27 +769,7 @@ fn merge(
     let member = checked_member(&member_dir, &home)?;
     let filters = Filters::compile(&member.filters)?;
     if inputs.is_empty() {
-        let folder = persona_builder::member::private_state_dir(&member, &home)
-            .expect("checked state folder");
-        let names = match std::fs::read_dir(&folder) {
-            Ok(entries) => entries
-                .map(|entry| entry.map(|e| e.file_name().into_string().ok()))
-                .collect::<std::io::Result<Vec<_>>>()
-                .map_err(|source| Error::Io {
-                    path: folder.clone(),
-                    source,
-                })?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
-            Err(source) => {
-                return Err(Error::Io {
-                    path: folder,
-                    source,
-                });
-            }
-        };
+        let names = list_private(&home, &member.slug)?;
         inputs = corpus::discover(&names, &out);
         if inputs.is_empty() {
             return Err(Error::Invalid(format!(
