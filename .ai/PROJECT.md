@@ -25,8 +25,8 @@ member and no real person's data.
 | `builder/steps/` | The build's steps that need no model (persona_builder_steps): chunking the corpus, checking labels, the tally, the distiller's input, scoring the backtest, finding similar past decisions, the shingle check, importing a question round | `builder/steps/tests/`, `builder/cli/tests/steps_parity.rs` |
 | `builder/build/` | The build's steps that call a model (persona_builder_build): the interview when the history is thin, drafted through the person's own Claude Code and answered into training records; the build itself (`persona-builder build`: label, distil, the blind backtest, then the member's `decisions.md` and `measurements.md`) | `builder/build/tests/`, `builder/cli/tests/interview.rs`, `builder/cli/tests/build.rs` |
 | `builder/grow/` | Kept answers (persona_builder_grow): the growth loop's records, its rule checks and the private store of signals and cases; drafts refreshes, takes the person's answer, then tests an approved change and keeps or undoes it | `builder/grow/tests/`, `builder/cli/tests/keep.rs`, `builder/cli/tests/refresh.rs` |
-| `builder/api/` | The app's commands, without Tauri, and the CLI-parity table | `builder/api/tests/`, `builder/api/tests/assistants.rs`, `builder/cli/tests/app_parity.rs` |
-| `builder/app/` | The Persona Builder app's window and its locked-down bridge | `builder/app/tests/lockdown.rs` |
+| `builder/api/` | The app's commands, without Tauri, `history.rs` (reading the histories), and the CLI-parity table | `builder/api/tests/`, `builder/api/tests/assistants.rs`, `builder/api/tests/history.rs`, `builder/cli/tests/app_parity.rs` |
+| `builder/app/` | The Persona Builder app's window, its locked-down bridge, and `rfd` as the native file window | `builder/app/tests/lockdown.rs` |
 | `builder/ui/` | The app's screens as a package another app can mount | `pnpm -C builder/ui test` |
 
 All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck). The

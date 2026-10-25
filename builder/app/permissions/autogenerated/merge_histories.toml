@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-merge-histories"
+description = "Enables the merge_histories command without any pre-configured scope."
+commands.allow = ["merge_histories"]
+
+[[permission]]
+identifier = "deny-merge-histories"
+description = "Denies the merge_histories command without any pre-configured scope."
+commands.deny = ["merge_histories"]

@@ -44,6 +44,14 @@ fn lockdown_1_command_lists_agree_in_order() {
             "consent_text",
             "agree_consent",
             "claude_check",
+            "claude_code_folders",
+            "read_claude_code",
+            "choose_claudeai_export",
+            "claudeai_export_status",
+            "list_claudeai_chats",
+            "mark_claudeai_chats",
+            "read_claudeai",
+            "merge_histories",
         ]
     );
     let capability = json("capabilities/default.json");

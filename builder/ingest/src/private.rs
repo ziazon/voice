@@ -5,7 +5,7 @@ use std::{
     fs::{self, File, OpenOptions, Permissions},
     io::{Read, Write},
     os::{
-        fd::{AsRawFd, FromRawFd, OwnedFd},
+        fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
         unix::{
             ffi::OsStrExt,
             fs::{OpenOptionsExt, PermissionsExt},
@@ -15,6 +15,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+pub const BUSY: &str = "Persona Builder is already working on this assistant in another window. Wait for it to finish, then try again";
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 const DIRECTORY_FLAGS: libc::c_int =
@@ -418,10 +420,7 @@ pub fn lock_state(home: &Path, slug: &str) -> Result<StateLock> {
     if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
         let source = std::io::Error::last_os_error();
         if source.raw_os_error() == Some(libc::EWOULDBLOCK) {
-            return Err(Error::Invalid(
-                "Persona Builder is already working on this assistant in another window. Wait for it to finish, then try again"
-                    .into(),
-            ));
+            return Err(Error::Invalid(BUSY.into()));
         }
         return Err(io(&path, source));
     }
@@ -524,6 +523,87 @@ fn read_private_optional_at_limit(
         return Err(io(&path.join(name), source));
     }
     read_private_at_limit(home, slug, folder, name, max).map(Some)
+}
+
+/// List regular UTF-8 file names without reopening the checked private state folder by path.
+pub fn list_private(home: &Path, slug: &str) -> Result<Vec<String>> {
+    let (directory, path) = match place_directory(home, slug, None, false) {
+        Ok(found) => found,
+        Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(vec![]);
+        }
+        Err(other) => return Err(other),
+    };
+    // SAFETY: directory owns a live descriptor. On success fdopendir takes ownership.
+    let stream = unsafe { libc::fdopendir(directory.as_raw_fd()) };
+    if stream.is_null() {
+        return Err(io(&path, std::io::Error::last_os_error()));
+    }
+    let descriptor = directory.into_raw_fd();
+    let stream = DirectoryStream(stream);
+    let mut names = vec![];
+    loop {
+        // SAFETY: errno is thread-local and the returned pointer is valid on this thread.
+        unsafe { *directory_errno() = 0 };
+        // SAFETY: stream owns a live directory stream, used only on this thread.
+        let entry = unsafe { libc::readdir(stream.0) };
+        if entry.is_null() {
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() != Some(0) {
+                return Err(io(&path, error));
+            }
+            break;
+        }
+        // SAFETY: readdir returned a live entry with a terminated name, valid until next readdir.
+        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+        let Ok(text) = name.to_str() else {
+            continue;
+        };
+        // SAFETY: stat is plain data, overwritten by fstatat before inspection.
+        let mut status: libc::stat = unsafe { std::mem::zeroed() };
+        // SAFETY: descriptor stays live through stream; name is terminated; status is writable.
+        if unsafe {
+            libc::fstatat(
+                descriptor,
+                name.as_ptr(),
+                &mut status,
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        } < 0
+        {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::NotFound {
+                continue;
+            }
+            return Err(io(&path.join(text), error));
+        }
+        if status.st_mode & libc::S_IFMT == libc::S_IFREG {
+            names.push(text.to_owned());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+struct DirectoryStream(*mut libc::DIR);
+
+impl Drop for DirectoryStream {
+    fn drop(&mut self) {
+        // SAFETY: this guard is the sole owner of the stream and its directory descriptor.
+        unsafe { libc::closedir(self.0) };
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn directory_errno() -> *mut libc::c_int {
+    // SAFETY: __error returns this thread's errno pointer.
+    unsafe { libc::__error() }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn directory_errno() -> *mut libc::c_int {
+    // SAFETY: __errno_location returns this thread's errno pointer.
+    unsafe { libc::__errno_location() }
 }
 
 #[cfg(test)]

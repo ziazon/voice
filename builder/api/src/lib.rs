@@ -15,3 +15,6 @@ pub fn app_info() -> dto::AppInfo {
             .collect(),
     }
 }
+
+pub mod history;
+pub use history::*;

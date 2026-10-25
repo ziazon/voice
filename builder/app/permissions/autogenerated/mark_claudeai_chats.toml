@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mark-claudeai-chats"
+description = "Enables the mark_claudeai_chats command without any pre-configured scope."
+commands.allow = ["mark_claudeai_chats"]
+
+[[permission]]
+identifier = "deny-mark-claudeai-chats"
+description = "Denies the mark_claudeai_chats command without any pre-configured scope."
+commands.deny = ["mark_claudeai_chats"]

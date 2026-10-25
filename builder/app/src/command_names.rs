@@ -7,4 +7,12 @@ pub const COMMANDS: &[&str] = &[
     "consent_text",
     "agree_consent",
     "claude_check",
+    "claude_code_folders",
+    "read_claude_code",
+    "choose_claudeai_export",
+    "claudeai_export_status",
+    "list_claudeai_chats",
+    "mark_claudeai_chats",
+    "read_claudeai",
+    "merge_histories",
 ];

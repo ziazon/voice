@@ -719,6 +719,14 @@ pub fn mark(rows: &mut [ReviewRow], selector: &Selector, mark: &str) -> usize {
     changed
 }
 
+pub fn conversations(export: &Export) -> Result<usize> {
+    Ok(list(export)?.len())
+}
+
+pub fn is_mine(mark: &str) -> bool {
+    MINE_MARKS.contains(&mark.trim_matches(py_space).to_lowercase().as_str())
+}
+
 /// The messages of every conversation marked as the person's own, filtered and split.
 pub fn mine(
     filters: &Filters,
@@ -726,12 +734,25 @@ pub fn mine(
     review: &[ReviewRow],
     split: &Split,
 ) -> Result<MinedExport> {
+    mine_with_progress(filters, export, review, split, &mut |_, _| {})
+}
+
+pub fn mine_with_progress(
+    filters: &Filters,
+    export: &Export,
+    review: &[ReviewRow],
+    split: &Split,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<MinedExport> {
     if matches!(split, Split::Holdout(h) if !h.is_finite() || !(0.0..=1.0).contains(h)) {
         return Err(invalid("--holdout must be a number from 0 to 1"));
     }
     let rows: HashMap<&str, &ReviewRow> = review.iter().map(|r| (r.uuid.as_str(), r)).collect();
     let mut m = MinedExport::default();
-    for (i, value) in list(export)?.iter().enumerate() {
+    let conversations = list(export)?;
+    let total = conversations.len();
+    progress(0, total);
+    for (i, value) in conversations.iter().enumerate() {
         let n = i + 1;
         let c = conversation(value, n)?;
         let id = uuid(c, n)?;
@@ -739,12 +760,13 @@ pub fn mine(
         let mark = row
             .map(|r| r.mine.trim_matches(py_space).to_lowercase())
             .unwrap_or_default();
-        let Some(row) = row.filter(|_| MINE_MARKS.contains(&mark.as_str())) else {
+        let Some(row) = row.filter(|_| is_mine(&mark)) else {
             if mark.is_empty() {
                 m.unmarked += 1;
             } else {
                 m.not_mine += 1;
             }
+            progress(n, total);
             continue;
         };
         m.read += 1;
@@ -784,6 +806,7 @@ pub fn mine(
                 },
             }
         }
+        progress(n, total);
     }
     m.records.sort_by(|a, b| {
         (a["timestamp"].as_str(), a["id"].as_str())

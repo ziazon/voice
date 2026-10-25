@@ -10,6 +10,14 @@
     "allow-show-assistant-folder",
     "allow-consent-text",
     "allow-agree-consent",
-    "allow-claude-check"
+    "allow-claude-check",
+    "allow-claude-code-folders",
+    "allow-read-claude-code",
+    "allow-choose-claudeai-export",
+    "allow-claudeai-export-status",
+    "allow-list-claudeai-chats",
+    "allow-mark-claudeai-chats",
+    "allow-read-claudeai",
+    "allow-merge-histories"
   ]
 }

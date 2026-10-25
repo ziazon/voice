@@ -1,10 +1,17 @@
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 import type { Backend } from '../backend'
 import type { AppInfo } from '../types/generated/AppInfo'
 import type { Assistant } from '../types/generated/Assistant'
 import type { ConsentText } from '../types/generated/ConsentText'
 import type { Consent } from '../types/generated/Consent'
 import type { ClaudeStatus } from '../types/generated/ClaudeStatus'
+import type { ClaudeCodeFolders } from '../types/generated/ClaudeCodeFolders'
+import type { ReadProgress } from '../types/generated/ReadProgress'
+import type { ReadCounts } from '../types/generated/ReadCounts'
+import type { ExportStatus } from '../types/generated/ExportStatus'
+import type { ChatList } from '../types/generated/ChatList'
+import type { ClaudeaiCounts } from '../types/generated/ClaudeaiCounts'
+import type { MergeCounts } from '../types/generated/MergeCounts'
 
 export const tauriBackend: Backend = {
   appInfo: () => invoke<AppInfo>('app_info'),
@@ -14,4 +21,20 @@ export const tauriBackend: Backend = {
   consentText: () => invoke<ConsentText>('consent_text'),
   agreeConsent: request => invoke<Consent>('agree_consent', { request }),
   claudeCheck: () => invoke<ClaudeStatus>('claude_check'),
+  claudeCodeFolders: request => invoke<ClaudeCodeFolders>('claude_code_folders', { request }),
+  readClaudeCode: (request, onProgress) => {
+    const channel = new Channel<ReadProgress>()
+    channel.onmessage = onProgress
+    return invoke<ReadCounts>('read_claude_code', { request, onProgress: channel })
+  },
+  chooseClaudeaiExport: request => invoke<ExportStatus | null>('choose_claudeai_export', { request }),
+  claudeaiExportStatus: request => invoke<ExportStatus | null>('claudeai_export_status', { request }),
+  listClaudeaiChats: request => invoke<ChatList>('list_claudeai_chats', { request }),
+  markClaudeaiChats: request => invoke<ChatList>('mark_claudeai_chats', { request }),
+  readClaudeai: (request, onProgress) => {
+    const channel = new Channel<ReadProgress>()
+    channel.onmessage = onProgress
+    return invoke<ClaudeaiCounts>('read_claudeai', { request, onProgress: channel })
+  },
+  mergeHistories: request => invoke<MergeCounts>('merge_histories', { request }),
 }

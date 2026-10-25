@@ -85,3 +85,125 @@ pub struct ClaudeStatus {
     pub message: String,
     pub note: Option<String>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ClaudeCodeFolder {
+    pub project: String,
+    pub conversations: u32,
+    pub read: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ClaudeCodeFolders {
+    pub found: bool,
+    pub folders: Vec<ClaudeCodeFolder>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct ReadRequest {
+    pub slug: String,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReadProgress {
+    pub done: u32,
+    pub total: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReadCounts {
+    pub questions: u32,
+    pub held_out: u32,
+    pub messages: u32,
+    pub private_left_out: u32,
+    pub first: Option<String>,
+    pub last: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct ChooseExportRequest {
+    pub slug: String,
+    pub folder: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ExportStatus {
+    pub name: String,
+    pub ready: bool,
+    pub chats: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Chat {
+    pub uuid: String,
+    pub title: String,
+    pub created: String,
+    pub messages: u32,
+    pub mark: ChatMark,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ChatList {
+    pub chats: Vec<Chat>,
+    pub mine: u32,
+    pub not_mine: u32,
+    pub unmarked: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct MarkChatsRequest {
+    pub slug: String,
+    pub mine: bool,
+    pub uuids: Vec<String>,
+    pub unmarked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ClaudeaiCounts {
+    pub chats: u32,
+    pub messages: u32,
+    pub private_left_out: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MergeCounts {
+    pub questions: u32,
+    pub held_out: u32,
+    pub messages: u32,
+    pub duplicates: u32,
+    pub private_left_out: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ChatMark {
+    Mine,
+    NotMine,
+    Unmarked,
+}

@@ -7,6 +7,16 @@ import type { ConsentText } from './types/generated/ConsentText'
 import type { Consent } from './types/generated/Consent'
 import type { ClaudeStatus } from './types/generated/ClaudeStatus'
 
+import type { ClaudeCodeFolders } from './types/generated/ClaudeCodeFolders'
+import type { ReadRequest } from './types/generated/ReadRequest'
+import type { ReadProgress } from './types/generated/ReadProgress'
+import type { ReadCounts } from './types/generated/ReadCounts'
+import type { ChooseExportRequest } from './types/generated/ChooseExportRequest'
+import type { ExportStatus } from './types/generated/ExportStatus'
+import type { ChatList } from './types/generated/ChatList'
+import type { MarkChatsRequest } from './types/generated/MarkChatsRequest'
+import type { ClaudeaiCounts } from './types/generated/ClaudeaiCounts'
+import type { MergeCounts } from './types/generated/MergeCounts'
 /**
  * Everything the screens ask of the app. A host gives its own backend.
  * The webview never names a file or folder. A request carries an assistant's slug or an id
@@ -21,6 +31,14 @@ export interface Backend {
   consentText(): Promise<ConsentText>
   agreeConsent(request: SlugRequest): Promise<Consent>
   claudeCheck(): Promise<ClaudeStatus>
+  claudeCodeFolders(request: SlugRequest): Promise<ClaudeCodeFolders>
+  readClaudeCode(request: ReadRequest, onProgress: (progress: ReadProgress) => void): Promise<ReadCounts>
+  chooseClaudeaiExport(request: ChooseExportRequest): Promise<ExportStatus | null>
+  claudeaiExportStatus(request: SlugRequest): Promise<ExportStatus | null>
+  listClaudeaiChats(request: SlugRequest): Promise<ChatList>
+  markClaudeaiChats(request: MarkChatsRequest): Promise<ChatList>
+  readClaudeai(request: SlugRequest, onProgress: (progress: ReadProgress) => void): Promise<ClaudeaiCounts>
+  mergeHistories(request: SlugRequest): Promise<MergeCounts>
 }
 
 export const backendKey: InjectionKey<Backend> = Symbol('persona-builder-backend')

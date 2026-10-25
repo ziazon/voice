@@ -16,6 +16,14 @@ fn main() {
             commands::consent_text,
             commands::agree_consent,
             commands::claude_check,
+            commands::claude_code_folders,
+            commands::read_claude_code,
+            commands::choose_claudeai_export,
+            commands::claudeai_export_status,
+            commands::list_claudeai_chats,
+            commands::mark_claudeai_chats,
+            commands::read_claudeai,
+            commands::merge_histories,
         ])
         .run(tauri::generate_context!())
     {

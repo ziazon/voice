@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claudeai-export-status"
+description = "Enables the claudeai_export_status command without any pre-configured scope."
+commands.allow = ["claudeai_export_status"]
+
+[[permission]]
+identifier = "deny-claudeai-export-status"
+description = "Denies the claudeai_export_status command without any pre-configured scope."
+commands.deny = ["claudeai_export_status"]

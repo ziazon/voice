@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-choose-claudeai-export"
+description = "Enables the choose_claudeai_export command without any pre-configured scope."
+commands.allow = ["choose_claudeai_export"]
+
+[[permission]]
+identifier = "deny-choose-claudeai-export"
+description = "Denies the choose_claudeai_export command without any pre-configured scope."
+commands.deny = ["choose_claudeai_export"]

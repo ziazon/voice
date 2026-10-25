@@ -5,11 +5,12 @@ import Assistants from './screens/Assistants.vue'
 import NewAssistant from './screens/NewAssistant.vue'
 import Consent from './screens/Consent.vue'
 import ConnectClaude from './screens/ConnectClaude.vue'
+import Sources from './screens/Sources.vue'
 import type { Assistant } from './types/generated/Assistant'
 import type { Consent as ConsentAnswer } from './types/generated/Consent'
 import { steps } from './steps'
 
-const view = ref<'home' | 'new' | 'consent' | 'connect'>('home')
+const view = ref<'home' | 'new' | 'consent' | 'connect' | 'sources'>('home')
 const assistant = ref<Assistant | null>(null)
 function open(chosen: Assistant) {
   assistant.value = chosen
@@ -27,11 +28,11 @@ function agreed(consent: ConsentAnswer) {
 function goToStep(step: string) {
   if (!assistant.value) return
   if (step === 'consent') view.value = 'consent'
-  if (step === 'connect' && assistant.value.consent.agreed) view.value = 'connect'
+  if ((step === 'connect' || step === 'sources') && assistant.value.consent.agreed) view.value = step
 }
 function disabled(step: string) {
   if (step === 'consent') return !assistant.value
-  if (step === 'connect') return !assistant.value?.consent.agreed
+  if (step === 'connect' || step === 'sources') return !assistant.value?.consent.agreed
   return true
 }
 function home() {
@@ -49,7 +50,7 @@ function home() {
             <h2 v-if="assistant" class="h4 mb-4">Making {{ assistant.name }}</h2>
             <ol class="ps-3 mb-0">
               <li v-for="step in steps" :key="step.id" :aria-disabled="disabled(step.id) ? 'true' : undefined" class="mb-4 ps-1">
-                <button v-if="assistant && (step.id === 'consent' || step.id === 'connect')" type="button"
+                <button v-if="assistant && (step.id === 'consent' || step.id === 'connect' || step.id === 'sources')" type="button"
                   class="btn btn-link p-0 text-start text-reset" :disabled="disabled(step.id)"
                   :aria-disabled="disabled(step.id) ? 'true' : undefined" :aria-current="view === step.id ? 'step' : undefined"
                   @click="goToStep(step.id)">
@@ -57,7 +58,7 @@ function home() {
                 </button>
                 <span v-else data-step-title class="d-block">{{ step.title }}</span>
                 <span v-if="disabled(step.id)" class="d-block text-secondary small">{{
-                  step.id === 'consent' || step.id === 'connect'
+                  step.id === 'consent' || step.id === 'connect' || step.id === 'sources'
                     ? (assistant ? 'Needs your permission first' : 'Choose an assistant first')
                     : 'Not here yet'
                 }}</span>
@@ -72,7 +73,8 @@ function home() {
             </template>
             <NewAssistant v-else-if="view === 'new'" @made="made" @cancel="home" />
             <Consent v-else-if="view === 'consent' && assistant" :key="assistant.slug" :assistant="assistant" @agreed="agreed" @next="goToStep('connect')" />
-            <ConnectClaude v-else-if="view === 'connect'" />
+            <ConnectClaude v-else-if="view === 'connect'" @next="goToStep('sources')" />
+            <Sources v-else-if="view === 'sources' && assistant" :key="assistant.slug" :assistant="assistant" />
           </main>
         </div>
       </div>

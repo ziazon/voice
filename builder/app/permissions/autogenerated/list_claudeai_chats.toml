@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-claudeai-chats"
+description = "Enables the list_claudeai_chats command without any pre-configured scope."
+commands.allow = ["list_claudeai_chats"]
+
+[[permission]]
+identifier = "deny-list-claudeai-chats"
+description = "Denies the list_claudeai_chats command without any pre-configured scope."
+commands.deny = ["list_claudeai_chats"]

@@ -4,6 +4,7 @@ import { useBackend } from '../backend'
 import { failureMessage } from '../failure'
 import type { ClaudeStatus } from '../types/generated/ClaudeStatus'
 
+const emit = defineEmits<{ next: [] }>()
 const backend = useBackend()
 const status = ref<ClaudeStatus>()
 const loading = ref(true)
@@ -34,6 +35,7 @@ onMounted(check)
       <template v-else-if="status">
         <div class="alert" :class="status.ready ? 'alert-success' : 'alert-warning'" role="alert">{{ status.message }}</div>
         <p v-if="status.ready && status.note" class="text-secondary">{{ status.note }}</p>
+        <button v-if="status.ready" type="button" class="btn btn-primary" @click="emit('next')">Next: your history</button>
         <button v-if="!status.ready" type="button" class="btn btn-primary" @click="check">Check again</button>
       </template>
     </div>

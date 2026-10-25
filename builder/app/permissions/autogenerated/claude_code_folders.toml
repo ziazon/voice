@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-code-folders"
+description = "Enables the claude_code_folders command without any pre-configured scope."
+commands.allow = ["claude_code_folders"]
+
+[[permission]]
+identifier = "deny-claude-code-folders"
+description = "Denies the claude_code_folders command without any pre-configured scope."
+commands.deny = ["claude_code_folders"]

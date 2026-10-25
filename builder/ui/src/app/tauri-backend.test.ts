@@ -1,8 +1,13 @@
 import { expect, it, vi } from 'vitest'
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 import { tauriBackend } from './tauri-backend'
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+  Channel: class {
+    onmessage: (message: unknown) => void = () => {}
+  },
+}))
 
 it('asks for app_info and returns its answer', async () => {
   const answer = { version: '1.2.3', agents: [{ id: 'example', name: 'Example' }] }
@@ -28,4 +33,33 @@ it.each([
   vi.mocked(invoke).mockClear().mockResolvedValue('answer')
   expect(await (tauriBackend[method] as (value: typeof request) => Promise<unknown>)(request)).toBe('answer')
   expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
+})
+
+it.each([
+  ['claudeCodeFolders', 'claude_code_folders', { slug: 'example' }],
+  ['chooseClaudeaiExport', 'choose_claudeai_export', { slug: 'example', folder: false }],
+  ['claudeaiExportStatus', 'claudeai_export_status', { slug: 'example' }],
+  ['listClaudeaiChats', 'list_claudeai_chats', { slug: 'example' }],
+  ['markClaudeaiChats', 'mark_claudeai_chats', { slug: 'example', mine: true, uuids: ['one'], unmarked: false }],
+  ['mergeHistories', 'merge_histories', { slug: 'example' }],
+] as const)('maps history method %s with a request', async (method, command, request) => {
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  // The row varies the method's request, so call through the shared invocation shape.
+  expect(await (tauriBackend[method] as (value: typeof request) => Promise<unknown>)(request)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
+})
+it.each([
+  ['readClaudeCode', 'read_claude_code', { slug: 'example', dryRun: true }],
+  ['readClaudeai', 'read_claudeai', { slug: 'example' }],
+] as const)('maps %s with a progress channel whose messages reach the callback', async (method, command, request) => {
+  const onProgress = vi.fn()
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(await (tauriBackend[method] as (value: typeof request, callback: typeof onProgress) => Promise<unknown>)(request, onProgress)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request, onProgress: expect.any(Channel) })
+  const args = vi.mocked(invoke).mock.calls[0]![1]
+  if (!args || typeof args !== 'object' || !('onProgress' in args) || !(args.onProgress instanceof Channel)) {
+    throw new Error('The read did not send a progress channel')
+  }
+  args.onProgress.onmessage({ done: 2, total: 5 })
+  expect(onProgress).toHaveBeenCalledExactlyOnceWith({ done: 2, total: 5 })
 })

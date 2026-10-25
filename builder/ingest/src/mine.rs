@@ -17,6 +17,8 @@ use std::{
     sync::LazyLock,
 };
 
+pub const DEFAULT_HOLDOUT: f64 = 0.15;
+
 pub enum Split {
     Holdout(f64),
     Cutoff(String),
@@ -545,6 +547,17 @@ pub fn mine(
     home: &Path,
     split: &Split,
 ) -> Result<Mined> {
+    mine_with_progress(member, filters, projects, home, split, &mut |_, _| {})
+}
+
+pub fn mine_with_progress(
+    member: &Member,
+    filters: &Filters,
+    projects: &Path,
+    home: &Path,
+    split: &Split,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<Mined> {
     if matches!(split, Split::Holdout(h) if !h.is_finite() || !(0.0..=1.0).contains(h)) {
         return Err(Error::Invalid(
             "--holdout must be a number from 0 to 1".into(),
@@ -554,10 +567,14 @@ pub fn mine(
     let reminder = Regex::new(r"(?s)<system-reminder>.*?</system-reminder>").unwrap();
     let commas = Regex::new(r"[\s\x1c-\x1f]*,([\s\x1c-\x1f]*,)+[\s\x1c-\x1f]*").unwrap();
     let mut mined = Mined::default();
-    for folder in project_folders(projects)? {
+    let folders = project_folders(projects)?;
+    let total = folders.len();
+    progress(0, total);
+    for (index, folder) in folders.into_iter().enumerate() {
         let folder_name = name(&folder)?;
         if filters.excluded(&folder_name) {
             mined.excluded += 1;
+            progress(index + 1, total);
             continue;
         }
         let project = project_name(&folder_name, home);
@@ -603,6 +620,7 @@ pub fn mine(
                 }
             }
         }
+        progress(index + 1, total);
     }
     mined.records.sort_by(|a, b| {
         (a["timestamp"].as_str().unwrap(), a["id"].as_str().unwrap())
