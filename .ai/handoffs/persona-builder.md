@@ -30,14 +30,15 @@ One record per slice, newest first. Paraphrase only; no real person.
   a misfit is told back once, and what the person sees names counts and places only. A stored
   proposal with a hidden character (other than `<` and CR in a diff) is never printed, and never
   saved in the first place.
-- **Verified:** `ci-local.sh` green on the fix-up head (704 Rust tests, 0 failed, plus the Python
-  suites, fmt, clippy, shellcheck and the Windows and Linux keystore checks), run outside Codex's
-  sandbox at 2 test threads (Mimi's load gate was at throttle). Codex's 53 mutation probes on the
+- **Verified:** `ci-local.sh` green on the fix-up head, run outside Codex's sandbox at 2 test
+  threads (Mimi's load gate was at throttle), and again on the rebased head `b2cc5de` at 4 (704
+  Rust tests, 0 failed, plus the Python suites, fmt, clippy, shellcheck and the Windows and Linux
+  keystore checks). Codex's 53 mutation probes on the
   first pass and three on the fix-ups each went red and were restored. `/security-review`: no high
   or medium findings. Verifier (Fable): pass, five should-fixes and four nits, all fixed in
-  `4e9f37e` (a change that changes nothing, a proposal saved that `show` refuses, the refresh's
+  `6d8345e` (a change that changes nothing, a proposal saved that `show` refuses, the refresh's
   own words after two misfits, CRLF files, reverted drafts repeating from the cache); a delta
-  Verifier pass (Opus) on the fix-ups.
+  Verifier pass (Opus) on the fix-ups, and one (Opus) on the rebased head.
 - **Not verified:** a live run against a real Claude Code (tests use a stub `claude`); strict
   red-first order for every test (Codex reports some supplemental tests first ran after the code
   and were then proven by mutation).
