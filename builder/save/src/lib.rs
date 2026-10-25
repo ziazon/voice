@@ -1,5 +1,5 @@
-//! Saving an assistant to a private GitHub repo, an existing repo, or keeping it on this Mac.
-//! Network, git and Keychain code lives here so the core library keeps to the filesystem.
+//! Saving an assistant to a private GitHub repo, an existing repo, or keeping it on this computer.
+//! Network, git and password-store code lives here so the core library keeps to the filesystem.
 
 pub mod github;
 pub mod keychain;

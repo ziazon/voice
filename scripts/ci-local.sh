@@ -19,6 +19,15 @@ if command -v cargo >/dev/null 2>&1; then
   cargo clippy --all-targets --locked -- -D warnings
   echo 'PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked'
   PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked
+  # The Windows and Linux password stores are pure Rust, so any computer can check them.
+  for target in x86_64-pc-windows-msvc x86_64-unknown-linux-gnu; do
+    if rustup target list --installed 2>/dev/null | grep -qx "$target"; then
+      echo "cargo check --locked -p persona-builder-keystore --all-targets --target $target"
+      cargo check --locked -p persona-builder-keystore --all-targets --target "$target"
+    else
+      echo "ci-local: the $target target is missing, skipping its check (rustup target add $target)"
+    fi
+  done
 else
   echo 'ci-local: cargo not found, skipping the Rust checks (install Rust from https://rustup.rs)'
 fi

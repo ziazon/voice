@@ -366,7 +366,7 @@ enum SaveCommand {
     /// Sign in to GitHub, so your assistant can be saved there.
     #[command(verbatim_doc_comment)]
     SignIn,
-    /// Sign out of GitHub on this Mac.
+    /// Sign out of GitHub on this computer.
     #[command(verbatim_doc_comment)]
     SignOut,
     /// Choose where your assistant is kept.
@@ -383,7 +383,7 @@ enum SaveCommand {
 
 #[derive(Subcommand)]
 enum SaveChoice {
-    /// Keep it on this Mac only.
+    /// Keep it on this computer only.
     #[command(verbatim_doc_comment)]
     Local,
     /// Save it in a GitHub repo your AI setup already uses.

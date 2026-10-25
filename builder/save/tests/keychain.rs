@@ -98,7 +98,7 @@ fn default_memory_store_starts_empty() {
 }
 
 #[test]
-#[ignore = "writes to the live macOS Keychain; run by hand"]
+#[ignore = "writes to this computer's live password store; run by hand"]
 fn live_keychain_round_trip() {
     let store = Keychain::with_service("persona-builder.test").unwrap();
     store
@@ -110,19 +110,4 @@ fn live_keychain_round_trip() {
     );
     store.forget().unwrap();
     assert!(store.load().unwrap().is_none());
-}
-
-#[cfg(not(target_os = "macos"))]
-#[test]
-fn keychain_is_mac_only() {
-    let store = Keychain::github();
-    assert_eq!(store.load().unwrap_err().to_string(), text::MAC_ONLY);
-    assert_eq!(
-        store
-            .save(&Secret::new("invented".into()))
-            .unwrap_err()
-            .to_string(),
-        text::MAC_ONLY
-    );
-    assert_eq!(store.forget().unwrap_err().to_string(), text::MAC_ONLY);
 }

@@ -1,5 +1,6 @@
 use crate::{secret::Secret, text};
 use persona_builder::error::{Error, Result};
+use persona_builder_keystore::{System, keyring_core};
 use std::sync::Mutex;
 use zeroize::Zeroize;
 
@@ -120,14 +121,79 @@ impl TokenStore for Keychain {
 #[cfg(not(target_os = "macos"))]
 impl TokenStore for Keychain {
     fn load(&self) -> Result<Option<Secret>> {
-        Err(Error::Invalid(text::MAC_ONLY.into()))
+        SystemStore::open(&self.service)?.load()
     }
-    fn save(&self, _token: &Secret) -> Result<()> {
-        Err(Error::Invalid(text::MAC_ONLY.into()))
+    fn save(&self, token: &Secret) -> Result<()> {
+        SystemStore::open(&self.service)?.save(token)
     }
     fn forget(&self) -> Result<()> {
-        Err(Error::Invalid(text::MAC_ONLY.into()))
+        SystemStore::open(&self.service)?.forget()
     }
+}
+
+/// The token in this computer's own password store off a Mac: Windows' Credential Manager or the
+/// Secret Service on Linux. Built on every OS, so it is tested on a Mac over keyring-core's mock.
+pub struct SystemStore {
+    service: String,
+    system: System,
+}
+impl SystemStore {
+    /// No password store is a plain refusal that offers keeping the assistant on this computer,
+    /// never a fallback to a file.
+    pub fn open(service: &str) -> Result<Self> {
+        let system = System::open().map_err(|_| Error::Invalid(text::NO_SAFE_STORE.into()))?;
+        Self::over(service, system)
+    }
+    pub fn over(service: &str, system: System) -> Result<Self> {
+        if !valid_service(service) {
+            return Err(failed());
+        }
+        Ok(Self {
+            service: service.into(),
+            system,
+        })
+    }
+    fn entry(&self) -> Result<keyring_core::Entry> {
+        self.system
+            .entry(&self.service, ACCOUNT)
+            .map_err(store_failed)
+    }
+}
+impl TokenStore for SystemStore {
+    fn load(&self) -> Result<Option<Secret>> {
+        match self.entry()?.get_password() {
+            Ok(value) => Ok(Some(Secret::new(value))),
+            Err(keyring_core::Error::NoEntry) => Ok(None),
+            Err(error) => Err(store_failed(error)),
+        }
+    }
+    fn save(&self, token: &Secret) -> Result<()> {
+        if !storable(token) {
+            return Err(failed());
+        }
+        self.entry()?
+            .set_password(token.expose())
+            .map_err(store_failed)?;
+        match self.load()? {
+            Some(saved) if saved.expose() == token.expose() => Ok(()),
+            _ => Err(failed()),
+        }
+    }
+    fn forget(&self) -> Result<()> {
+        match self.entry()?.delete_credential() {
+            Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
+            Err(error) => Err(store_failed(error)),
+        }
+    }
+}
+/// Some errors carry the stored bytes, which may be the token: wipe them before they drop.
+fn store_failed(error: keyring_core::Error) -> Error {
+    match error {
+        keyring_core::Error::BadEncoding(mut bytes)
+        | keyring_core::Error::BadDataFormat(mut bytes, _) => bytes.zeroize(),
+        _ => {}
+    }
+    failed()
 }
 
 fn failed() -> Error {

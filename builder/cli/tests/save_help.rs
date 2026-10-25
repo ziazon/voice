@@ -36,7 +36,7 @@ fn save_help_describes_all_six_subcommands() {
                 "sign-in",
                 "Sign in to GitHub, so your assistant can be saved there.",
             ),
-            ("sign-out", "Sign out of GitHub on this Mac."),
+            ("sign-out", "Sign out of GitHub on this computer."),
             ("choose", "Choose where your assistant is kept."),
             ("push", "Save your assistant where you chose."),
             (
@@ -52,7 +52,7 @@ fn choose_help_describes_each_destination() {
     assert_commands(
         &help(&["save", "choose", "member.json", "--help"]),
         &[
-            ("local", "Keep it on this Mac only."),
+            ("local", "Keep it on this computer only."),
             (
                 "here",
                 "Save it in a GitHub repo your AI setup already uses.",
