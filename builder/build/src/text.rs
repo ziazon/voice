@@ -3,6 +3,8 @@
 pub const ALREADY_DRAFTED: &str = "Your interview questions are already drafted and waiting for your answers. Answer them, or add --replace to draft new ones.";
 pub const NO_ANSWERS: &str =
     "None of the interview questions has an answer yet, so nothing was saved.";
+pub const ALREADY_ANSWERED: &str =
+    "Your interview answers are already kept. Add --replace to keep these answers in their place.";
 pub const ALL_LEFT_OUT: &str =
     "Every answer looked personal or secret, so none was kept and nothing was saved.";
 pub const NOTHING_TO_ASK: &str = "Your assistant's settings name no kinds of decision to ask about (codebook.categories holds only other).";
@@ -33,7 +35,7 @@ pub fn drafted(count: usize, weighted: bool) -> String {
 
 pub fn swap(folder: &str) -> String {
     format!(
-        "Swap any question that doesn't fit your work, then answer them: persona-builder interview answer {folder} --answers <your answers file>"
+        "Swap any question that doesn't fit your work, then answer them. Save your answers in the same private folder, then: persona-builder interview answer {folder} --answers <the answers file's name>"
     )
 }
 

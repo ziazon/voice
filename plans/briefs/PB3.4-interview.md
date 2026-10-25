@@ -53,7 +53,8 @@ nothing), and the answers become training records that `merge` already picks up.
   (the driver's errors) or that the cap refuses is never retried.
 - **Saving:** `interview-questions.json` in the state folder, pretty JSON, through `write_private`.
   Waiting questions are not replaced (the person may have swapped some, and a draft costs money)
-  unless `--replace`; this is checked before any call.
+  unless `--replace`; this is checked before any call, and again once the session holds the lock
+  (from the security review: two drafts started together).
 - **Order of `interview draft`:** member, codebook, corpus count (≥ 150: `text::enough`, exit 0,
   no call), waiting questions, labels and weights, the cap flags (`Cap::new`), find and `check`
   Claude Code (signed out: the driver's plain line, nothing spent), the session, the draft, the save.
@@ -66,7 +67,9 @@ nothing), and the answers become training records that `merge` already picks up.
   says. The timestamp is `round`'s (the answers file's `answered` date at noon UTC, plus `n` seconds),
   not "now": the same answers give the same records. Nothing kept is refused (`text::NO_ANSWERS`, or
   `text::ALL_LEFT_OUT` when the filters dropped every answer), so an earlier file is never emptied.
-  Writes `decisions-interview.jsonl` (merge's `discover` already keeps it in training).
+  Writes `decisions-interview.jsonl` (merge's `discover` already keeps it in training). Kept
+  answers are not replaced unless `--replace` (from the Verifier: a stray partial answers file
+  would otherwise drop earlier answers); replacing, never appending, since ids would repeat.
 - **CLI argument:** `<member_dir>`, as every other command takes, not the spec's `<member.json>`.
 
 ## Tests
