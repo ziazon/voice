@@ -9,6 +9,7 @@ import email
 import email.errors
 import re
 import signal
+import time
 from datetime import timezone
 from email import policy
 from email.utils import getaddresses, parsedate_to_datetime
@@ -17,8 +18,14 @@ MAX_MESSAGE_BYTES = 50 * 1024**2
 MAX_HEADER_BYTES = 256 * 1024
 UNREADABLE = (ValueError, LookupError, TypeError, AttributeError, IndexError, RecursionError,
               email.errors.MessageError)
-# A From_ line as mbox writers put it: an address, then a date ending in the year.
-FROM_LINE = re.compile(rb"From \S+ +\S.*\d{4}[ \t]*\r?\n?\Z")
+# A From_ line as mbox writers put it: an address (or `-`), then a date with a time of day; and
+# the header line every message starts with.
+FROM_LINE = re.compile(rb"From \S+ +\S.*\b\d{1,2}:\d{2}")
+HEADER_LINE = re.compile(rb"[!-9;-~]+:")
+CLOSING = re.compile(r"^(?:best|best wishes|best regards|kind regards|warm regards|regards|warmly|thanks|"
+                     r"thank you|many thanks|cheers|sincerely|yours sincerely|sincerely yours|yours truly|"
+                     r"all the best|take care|talk soon|yours)[ \t]*[,.!]?[ \t]*$", re.M | re.I)
+SIGNATURE_CHARS = 300
 
 # Everything from the first of these lines on is someone else's words or a signature.
 CUT = [re.compile(p, re.M | re.I) for p in (
@@ -28,10 +35,8 @@ CUT = [re.compile(p, re.M | re.I) for p in (
     r"^_{10,}[ \t]*$",                                    # Outlook's rule above the quoted headers
     r"^From:[^\n]*\n(?:[^\n]*\n){0,3}?(?:Sent|Date):",    # quoted headers with no rule above them
     r"^-- ?$",                                            # the signature delimiter
-    r"^(?:best|best wishes|best regards|kind regards|warm regards|regards|warmly|thanks|thank you|"
-    r"many thanks|cheers|sincerely|all the best|take care|talk soon|yours)[ \t]*[,.!]?[ \t]*$",  # a closing
 )]
-SIGN_OFF = re.compile(r"^Sent from my [^\n]*$", re.M)
+SIGN_OFF = re.compile(r"^Sent from my [^\n:]{0,40}$", re.M)
 
 
 class Unreadable(Exception):
@@ -39,29 +44,30 @@ class Unreadable(Exception):
 
 
 def messages(box):
-    """Each message's bytes from an open binary file, in file order, or None for one past the size
-    cap; read line by line. A message starts at the file's first `From ` line, then only at a
-    From_-shaped line after a blank one, so an unescaped `From ` in a body cannot start a forged
-    message. A body line escaped as `>From ` is unescaped one level."""
-    current, size, too_big, blank = None, 0, False, True
-    for line in box:
-        if line.startswith(b"From ") and (current is None or (blank and FROM_LINE.match(line))):
+    """Each message from an open binary file, in file order, as (its bytes, or None past the size
+    cap; how many From_-shaped lines were left inside it). A message starts at the file's first
+    `From ` line, then only at a From_-shaped line whose next line is a header, so a writer that
+    leaves no blank line still splits, and a From_-shaped line in prose is counted, never silently
+    split on or merged. A body line escaped as `>From ` is unescaped one level."""
+    current, size, too_big, inside = None, 0, False, 0
+    line = box.readline()
+    while line:
+        following = box.readline()
+        if line.startswith(b"From ") and (current is None or
+                                          (FROM_LINE.match(line) and HEADER_LINE.match(following))):
             if current is not None:
-                yield None if too_big else b"".join(current)
-            current, size, too_big, blank = [], 0, False, False
-            continue
-        blank = not line.strip()
-        if current is None:
-            continue
-        size += len(line)
-        if size > MAX_MESSAGE_BYTES:
-            too_big = True
-            current = []
-            continue
-        if not too_big:
-            current.append(line[1:] if re.match(rb">+From ", line) else line)
+                yield (None if too_big else b"".join(current)), inside
+            current, size, too_big, inside = [], 0, False, 0
+        elif current is not None:
+            inside += bool(FROM_LINE.match(line))
+            size += len(line)
+            if size > MAX_MESSAGE_BYTES:
+                too_big, current = True, []
+            elif not too_big:
+                current.append(line[1:] if re.match(rb">+From ", line) else line)
+        line = following
     if current is not None:
-        yield None if too_big else b"".join(current)
+        yield (None if too_big else b"".join(current)), inside
 
 
 def addresses(message, *fields):
@@ -104,12 +110,16 @@ def budget(seconds):
         raise Unreadable("too slow")
 
     previous = signal.signal(signal.SIGALRM, expired)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
+    delay, interval = signal.setitimer(signal.ITIMER_REAL, seconds)
+    started = time.monotonic()
     try:
         yield
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
+        if delay:
+            # An earlier timer goes back on with what it had left (it fires at once if that ran out).
+            signal.setitimer(signal.ITIMER_REAL, max(delay - (time.monotonic() - started), 0.001), interval)
 
 
 def parse(raw):
@@ -156,6 +166,10 @@ def own_words(text):
     (`>`) line dropped."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     cut = min((m.start() for m in (p.search(text) for p in CUT) if m), default=len(text))
+    # A closing ends their words only after some of them, with no more than a signature after it.
+    closing = next((m for m in CLOSING.finditer(text, 0, cut) if text[:m.start()].strip()
+                    and len(text[m.end():cut].strip()) <= SIGNATURE_CHARS), None)
+    cut = closing.start() if closing else cut
     text = SIGN_OFF.sub("", text[:cut])
     lines = [line for line in without_attribution(text.split("\n")) if not quoted(line)]
     return [p.strip() for p in re.split(r"\n\s*\n", "\n".join(lines)) if p.strip()]

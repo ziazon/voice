@@ -1474,7 +1474,8 @@ def open_source_file(name, path, what):
     if not os.path.lexists(path):
         raise Failed(f"{name}: no {what} at the source's path")
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        # O_NONBLOCK: a FIFO planted at the path must not hang the open before fstat refuses it.
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError as exc:
         if exc.errno == errno.ELOOP:
             raise Failed(f"{name}: the {what} must be a regular file, not a link")
@@ -1489,10 +1490,11 @@ def mine_mbox(m, source):
     name = source["name"]
     own = {a.lower() for a in source["own_addresses"]}
     excluded = compile_pattern(f"{name}: exclude_to", source["exclude_to"]) if "exclude_to" in source else None
-    kept, skipped, dropped, records, read = [], Counter(), Counter(), Counter(), 0
+    kept, skipped, dropped, records, read, inside = [], Counter(), Counter(), Counter(), 0, 0
     with open_source_file(name, Path(source["path"]).expanduser(), "mbox") as box:
-        for raw in crew_mail.messages(box):
+        for raw, from_lines in crew_mail.messages(box):
             read += 1
+            inside += from_lines
             if raw is None:
                 skipped["too big"] += 1
                 continue
@@ -1513,7 +1515,7 @@ def mine_mbox(m, source):
     # Every record trains here; the merge splits the whole corpus once.
     mark_split(kept, 0, "9999")
     write_jsonl(m.state(f"decisions-src-{name}.jsonl"), kept)
-    print(f"{name}: read {read} messages; kept {len(kept)} you sent")
+    print(f"{name}: read {read} messages; kept {len(kept)} you sent; {inside} From lines left inside a message")
     print(f"{name}: skipped " + ", ".join(f"{skipped[k]} {k}" for k in MAIL_SKIPS))
     print(f"{name}: dropped {dropped['personal']} personal and {dropped['secret']} secret paragraphs, "
           f"{records['personal']} personal and {records['secret']} secret records")
@@ -1724,6 +1726,9 @@ def file_kind(path):
 def cmd_sources_review(m, args):
     source = named_source(m, args.name, "folder")
     root, review = folder_root(source), review_file(m, source)
+    if not os.access(root, os.R_OK | os.X_OK):
+        # The walk would skip what it cannot open, and the rewrite would lose every mark.
+        raise Failed(f"{source['name']}: cannot read the folder")
     marks = {r["path"]: r["mine"] for r in read_file_review(review) or []}
     touched = claude_touched(args.projects)
     skipped, flagged, rows = Counter(), Counter(), []

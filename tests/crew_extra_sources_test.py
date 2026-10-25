@@ -280,6 +280,41 @@ class Mail(Sources):
         self.assertEqual([r["text"] for r in records],
                          ["Keep the quiz on Friday.", "Yes, go ahead.", "Ja, mach das."])
 
+    def test_an_opening_thanks_is_kept_and_a_long_closing_cut(self):
+        _, records = self.mine([
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 15:00:00 +0000", "Thanks!\n\nI looked at the draft. Keep the lab short."),
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 16:00:00 +0000", "Keep the lab short.\n\nYours sincerely,\nRobin Lee"),
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 17:00:00 +0000", "Sent from my desk at 9: we keep the lab."),
+        ])
+        self.assertEqual([r["text"] for r in records], [
+            "Thanks!\n\nI looked at the draft. Keep the lab short.", "Keep the lab short.",
+            "Sent from my desk at 9: we keep the lab."])
+
+    def test_other_writers_from_lines_split_and_a_from_line_inside_a_body_is_counted(self):
+        def sent(hour):
+            return (b"From: Robin <robin@example.com>\nDate: Mon, 02 Mar 2026 %d:00:00 +0000\n"
+                    b"X-Gmail-Labels: Sent\n\n" % hour)
+        stdout, records = self.mine([
+            b"From robin@example.com Mon Mar 02 10:00:00 2026 -0500 (EST)\n" + sent(10) + b"Zone at the end.\n",
+            b"From robin@example.com Mon Mar 02 11:00:00 2026\n" + sent(11) + b"No blank line after me.\n",
+            b"From robin@example.com Mon Mar 02 12:00:00 2026\n" + sent(12) + b"A third one.\n\n"
+            b"From here on we read chapter two.\n\n"
+            b"From someone@example.net Mon Mar 02 13:00:00 2026\nnot a header line\n\n",
+        ])
+        self.assertEqual([r["text"].split("\n\n")[0] for r in records],
+                         ["Zone at the end.", "No blank line after me.", "A third one."])
+        self.assertIn("read 3 messages", stdout)
+        self.assertIn("1 From lines left inside a message", stdout)
+
+    def test_a_fifo_at_the_mbox_path_is_refused_without_hanging(self):
+        fifo = self.h.root / "mail.fifo"
+        os.mkfifo(fifo)
+        self.private({"name": "mail", "kind": "mbox", "path": str(fifo),
+                      "own_addresses": ["robin@example.com"], "consent": CONSENT})
+        proc = self.crew("sources", "mine")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("mail: the mbox must be a regular file, not a link", proc.stderr)
+
     def test_a_paragraph_that_trips_a_filter_is_dropped_and_the_rest_kept(self):
         stdout, records = self.mine([mail(ROBIN, SAM, "Thu, 05 Mar 2026 10:00:00 +0000", MIXED)])
         self.assertEqual([r["text"] for r in records],
@@ -334,11 +369,18 @@ class Mail(Sources):
         self.assertIn("mail: cannot read the source (Permission denied)", proc.stderr)
         self.assertNotIn("secret-folder-name", proc.stderr)
 
-    def test_a_message_that_parses_too_long_is_cut_off(self):
+    def test_a_message_that_parses_too_long_is_cut_off_and_an_earlier_timer_survives(self):
+        import signal
+        fired = []
+        previous = signal.signal(signal.SIGALRM, lambda *_: fired.append(1))
+        self.addCleanup(signal.signal, signal.SIGALRM, previous)
+        signal.setitimer(signal.ITIMER_REAL, 30)
+        self.addCleanup(signal.setitimer, signal.ITIMER_REAL, 0)
         with self.assertRaises(crew_mail.Unreadable):
             with crew_mail.budget(0.05):
                 while True:
                     pass
+        self.assertGreater(signal.getitimer(signal.ITIMER_REAL)[0], 25)
 
     def test_recipients_and_dates_narrow_what_is_read(self):
         stdout, records = self.mine([
@@ -547,6 +589,17 @@ class Folder(Sources):
         marks = {p: r["mine"] for p, r in self.table().items()}
         self.assertEqual(marks["syllabus.md"], "y")
         self.assertEqual(marks["/".join(["a" * 20] * 3) + "/note.md"], "y")
+
+    def test_review_of_an_unreadable_folder_keeps_the_marks(self):
+        self.review_files()
+        self.ok("sources", "mark", "--name", "teaching", "--as", "y", "--path", "syllabus.md")
+        os.chmod(self.folder, 0)
+        self.addCleanup(os.chmod, self.folder, 0o700)
+        proc = self.crew("sources", "review", "--name", "teaching", "--projects", str(self.h.projects))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("teaching: cannot read the folder", proc.stderr)
+        os.chmod(self.folder, 0o700)
+        self.assertEqual(self.table()["syllabus.md"]["mine"], "y")
 
     def test_documents_needs_a_dir_or_sources_and_skips_a_source_with_no_review(self):
         proc = self.crew("documents", "--out-dir", str(self.h.root / "x"))
