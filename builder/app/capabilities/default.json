@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "allow-app-info"
+  ]
+}

@@ -1,0 +1,12 @@
+[package]
+name = "persona-builder-api"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+persona-builder-agent = { path = "../agent" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+ts-rs = { version = "=12.0.1", features = ["no-serde-warnings"] }

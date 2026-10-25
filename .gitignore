@@ -45,3 +45,8 @@ venv/
 .envrc
 decisions*.jsonl
 **/private.json
+
+# Persona Builder app output
+builder/ui/node_modules/
+builder/ui/dist/
+builder/app/gen/

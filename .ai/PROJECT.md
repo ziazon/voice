@@ -25,9 +25,13 @@ member and no real person's data.
 | `builder/steps/` | The build's steps that need no model (persona_builder_steps): chunking the corpus, checking labels, the tally, the distiller's input, scoring the backtest, finding similar past decisions, the shingle check, importing a question round | `builder/steps/tests/`, `builder/cli/tests/steps_parity.rs` |
 | `builder/build/` | The build's steps that call a model (persona_builder_build): the interview when the history is thin, drafted through the person's own Claude Code and answered into training records; the build itself (`persona-builder build`: label, distil, the blind backtest, then the member's `decisions.md` and `measurements.md`) | `builder/build/tests/`, `builder/cli/tests/interview.rs`, `builder/cli/tests/build.rs` |
 | `builder/grow/` | Kept answers (persona_builder_grow): the growth loop's records, its rule checks and the private store of signals and cases; drafts refreshes, takes the person's answer, then tests an approved change and keeps or undoes it | `builder/grow/tests/`, `builder/cli/tests/keep.rs`, `builder/cli/tests/refresh.rs` |
+| `builder/api/` | The app's commands, without Tauri, and the CLI-parity table | `builder/api/tests/`, `builder/cli/tests/app_parity.rs` |
+| `builder/app/` | The Persona Builder app's window and its locked-down bridge | `builder/app/tests/lockdown.rs` |
+| `builder/ui/` | The app's screens as a package another app can mount | `pnpm -C builder/ui test` |
 
 All of it runs with `bash scripts/ci-local.sh` (Python 3.9+ standard library and shellcheck). The
 Rust checks (fmt, clippy, tests) need stable Rust and are skipped when `cargo` is missing. The
+screens need Node and pnpm; their checks are skipped with a printed line when pnpm is missing. The
 Windows and Linux checks of `builder/keystore` need those targets (`rustup target add
 x86_64-pc-windows-msvc x86_64-unknown-linux-gnu`) and are skipped, each with a printed line, without.
 

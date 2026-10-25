@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "moduleResolution": "bundler",
+    "target": "ESNext",
+    "module": "ESNext",
+    "jsx": "preserve",
+    "types": ["vite/client"],
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*", "env.d.ts", "vite.config.ts"]
+}

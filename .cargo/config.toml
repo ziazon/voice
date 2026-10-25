@@ -1,0 +1,4 @@
+[env]
+# Cargo reads configuration from above its working directory, so the generated UI types use
+# this workspace-root location even when tests run from a crate's folder.
+TS_RS_EXPORT_DIR = { value = "builder/ui/src/types/generated", relative = true }

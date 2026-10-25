@@ -19,3 +19,6 @@ persona-builder-steps = { path = "../steps" }
 persona-builder-build = { path = "../build" }
 persona-builder-grow = { path = "../grow" }
 serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+persona-builder-api = { path = "../api" }

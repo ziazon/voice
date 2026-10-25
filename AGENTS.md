@@ -6,7 +6,8 @@ Read in this order: `README.md`, `.ai/PROJECT.md`, `.ai/DECISIONS.md`, `.ai/SECU
 This is a public kit for building AI assistants. It ships `crew/_template/`, the guided build in
 `bootstrap/PROMPT.md`, and the shared `scripts/` and `tests/`. It ships no members: a member someone
 builds lives in their own private copy. Run `bash scripts/ci-local.sh` before anything lands on
-`main` (Python 3.9+ and shellcheck).
+`main` (Python 3.9+ and shellcheck; stable Rust,
+Node and pnpm for the rest, each skipped when missing).
 
 Gotchas, before anything else:
 
