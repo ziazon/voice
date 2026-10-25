@@ -25,6 +25,7 @@ fn the_store_failure_names_no_os_store() {
         assert!(!text::KEYCHAIN_FAILED.contains(word), "{word}");
     }
     assert!(text::KEYCHAIN_FAILED.contains("this computer's password store"));
+    assert!(text::KEYCHAIN_FAILED.contains("keep your assistant on this computer only"));
 }
 
 #[test]

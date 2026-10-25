@@ -162,7 +162,15 @@ impl SystemStore {
 impl TokenStore for SystemStore {
     fn load(&self) -> Result<Option<Secret>> {
         match self.entry()?.get_password() {
-            Ok(value) => Ok(Some(Secret::new(value))),
+            // Another program could have put anything there; only a value we would store is used.
+            Ok(value) => {
+                let token = Secret::new(value);
+                if storable(&token) {
+                    Ok(Some(token))
+                } else {
+                    Err(failed())
+                }
+            }
             Err(keyring_core::Error::NoEntry) => Ok(None),
             Err(error) => Err(store_failed(error)),
         }

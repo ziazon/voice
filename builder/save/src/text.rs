@@ -73,7 +73,7 @@ pub fn push_failed(detail: &str) -> String {
     format!("GitHub didn't take the save: {detail}")
 }
 pub const NO_SAFE_STORE: &str = "Persona Builder couldn't find a safe place on this computer to keep your GitHub sign-in, so it can't save to GitHub here. On Linux, that safe place is a keyring app such as GNOME Keyring or KDE Wallet: start one, then try again. Or keep your assistant on this computer only.";
-pub const KEYCHAIN_FAILED: &str = "Persona Builder couldn't use this computer's password store, so it didn't keep your GitHub sign-in. If the store is locked, unlock it, then try again.";
+pub const KEYCHAIN_FAILED: &str = "Persona Builder couldn't use this computer's password store, so it didn't keep your GitHub sign-in. If the store is locked, unlock it, then try again. Or keep your assistant on this computer only.";
 pub const GITHUB_UNREACHABLE: &str =
     "Persona Builder couldn't reach GitHub. Check the internet connection, then try again.";
 pub const CHOSE_LOCAL: &str = "Your assistant will be kept on this computer only.";
