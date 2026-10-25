@@ -26,6 +26,8 @@ checkpoints*/
 # Build output
 target/
 build/
+# ...except the crate that runs the build's model steps.
+!builder/build/
 DerivedData/
 .DS_Store
 
