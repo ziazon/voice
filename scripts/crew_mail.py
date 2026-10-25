@@ -4,24 +4,32 @@ An mbox (Google Takeout's mail export, or any other) is split into messages here
 streamed. Each message yields its sender, recipients, Gmail labels, date and the plain text the
 sender wrote, with quoted replies, forwarded headers and signatures cut away.
 """
+import contextlib
 import email
 import email.errors
 import re
+import signal
 from datetime import timezone
 from email import policy
 from email.utils import getaddresses, parsedate_to_datetime
 
 MAX_MESSAGE_BYTES = 50 * 1024**2
-UNREADABLE = (ValueError, LookupError, TypeError, AttributeError, IndexError, email.errors.MessageError)
+MAX_HEADER_BYTES = 256 * 1024
+UNREADABLE = (ValueError, LookupError, TypeError, AttributeError, IndexError, RecursionError,
+              email.errors.MessageError)
+# A From_ line as mbox writers put it: an address, then a date ending in the year.
+FROM_LINE = re.compile(rb"From \S+ +\S.*\d{4}[ \t]*\r?\n?\Z")
 
 # Everything from the first of these lines on is someone else's words or a signature.
-CUT = [re.compile(p, re.M) for p in (
-    r"^On\b[^\n]*(?:\n[^\n]*)?\bwrote:[ \t]*$",           # Gmail and Apple Mail, one or two lines
+CUT = [re.compile(p, re.M | re.I) for p in (
+    r"^On\b[^\n]*(?:\n[^\n]*){0,2}\bwrote:[ \t]*$",       # Gmail and Apple Mail, up to three lines
     r"^-{2,}[ \t]*Original Message[ \t]*-{2,}",           # Outlook
     r"^-{2,}[ \t]*Forwarded message[ \t]*-{2,}",          # a forward
     r"^_{10,}[ \t]*$",                                    # Outlook's rule above the quoted headers
     r"^From:[^\n]*\n(?:[^\n]*\n){0,3}?(?:Sent|Date):",    # quoted headers with no rule above them
     r"^-- ?$",                                            # the signature delimiter
+    r"^(?:best|best wishes|best regards|kind regards|warm regards|regards|warmly|thanks|thank you|"
+    r"many thanks|cheers|sincerely|all the best|take care|talk soon|yours)[ \t]*[,.!]?[ \t]*$",  # a closing
 )]
 SIGN_OFF = re.compile(r"^Sent from my [^\n]*$", re.M)
 
@@ -30,26 +38,28 @@ class Unreadable(Exception):
     pass
 
 
-def messages(path):
-    """Each message's bytes, in file order, or None for one past the size cap. The file is opened
-    read-only and read line by line; a body line escaped as `>From ` is unescaped one level."""
-    current, size, too_big = None, 0, False
-    with open(path, "rb") as box:
-        for line in box:
-            if line.startswith(b"From "):
-                if current is not None:
-                    yield None if too_big else b"".join(current)
-                current, size, too_big = [], 0, False
-                continue
-            if current is None:
-                continue
-            size += len(line)
-            if size > MAX_MESSAGE_BYTES:
-                too_big = True
-                current = []
-                continue
-            if not too_big:
-                current.append(line[1:] if re.match(rb">+From ", line) else line)
+def messages(box):
+    """Each message's bytes from an open binary file, in file order, or None for one past the size
+    cap; read line by line. A message starts at the file's first `From ` line, then only at a
+    From_-shaped line after a blank one, so an unescaped `From ` in a body cannot start a forged
+    message. A body line escaped as `>From ` is unescaped one level."""
+    current, size, too_big, blank = None, 0, False, True
+    for line in box:
+        if line.startswith(b"From ") and (current is None or (blank and FROM_LINE.match(line))):
+            if current is not None:
+                yield None if too_big else b"".join(current)
+            current, size, too_big, blank = [], 0, False, False
+            continue
+        blank = not line.strip()
+        if current is None:
+            continue
+        size += len(line)
+        if size > MAX_MESSAGE_BYTES:
+            too_big = True
+            current = []
+            continue
+        if not too_big:
+            current.append(line[1:] if re.match(rb">+From ", line) else line)
     if current is not None:
         yield None if too_big else b"".join(current)
 
@@ -69,11 +79,10 @@ def labels(message):
 
 def date(message):
     """The UTC timestamp in the corpus' shape, or None when the Date is missing or bad."""
-    value = message.get("Date")
-    if value is None:
-        return None
     try:
-        when = parsedate_to_datetime(str(value))
+        # Python 3.9 parses the header when it is read, and raises on a bad one.
+        value = message.get("Date")
+        when = None if value is None else parsedate_to_datetime(str(value))
     except (TypeError, ValueError, IndexError):
         return None
     if when is None:
@@ -83,7 +92,30 @@ def date(message):
     return when.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+@contextlib.contextmanager
+def budget(seconds):
+    """Raise Unreadable when the block runs past the given seconds: a crafted message can make the
+    standard parser slow. Where the system has no interval timer, the block runs unbounded."""
+    if not hasattr(signal, "setitimer"):
+        yield
+        return
+
+    def expired(signum, frame):
+        raise Unreadable("too slow")
+
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 def parse(raw):
+    end = min((i for i in (raw.find(b"\n\n"), raw.find(b"\r\n\r\n")) if i >= 0), default=len(raw))
+    if end > MAX_HEADER_BYTES:
+        raise Unreadable("unreadable")
     try:
         return email.message_from_bytes(raw, policy=policy.default)
     except UNREADABLE:
@@ -99,11 +131,31 @@ def plain_text(message):
         raise Unreadable("unreadable")
 
 
+def quoted(line):
+    return line.lstrip().startswith(">")
+
+
+def without_attribution(lines):
+    """The lines without the paragraph that introduces the first quote, when it ends with a colon:
+    in any language and any client, that is the "<someone> wrote:" line."""
+    first = next((i for i, line in enumerate(lines) if quoted(line)), None)
+    end = first
+    while end and not lines[end - 1].strip():
+        end -= 1
+    if not end or not lines[end - 1].rstrip().endswith(":"):
+        return lines
+    start = end
+    while start and lines[start - 1].strip():
+        start -= 1
+    return lines[:start] + lines[end:]
+
+
 def own_words(text):
-    """The sender's own paragraphs: quoted replies, forwarded headers, sign-offs and the
-    signature cut, and every quoted (`>`) line dropped."""
+    """The sender's own paragraphs: quoted replies and the line that introduces them, forwarded
+    headers, phone sign-offs, a closing and what follows it, and the signature cut; every quoted
+    (`>`) line dropped."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     cut = min((m.start() for m in (p.search(text) for p in CUT) if m), default=len(text))
     text = SIGN_OFF.sub("", text[:cut])
-    lines = [line for line in text.split("\n") if not line.lstrip().startswith(">")]
+    lines = [line for line in without_attribution(text.split("\n")) if not quoted(line)]
     return [p.strip() for p in re.split(r"\n\s*\n", "\n".join(lines)) if p.strip()]

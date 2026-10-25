@@ -169,8 +169,10 @@ until its entry has a `consent` date:** write the entry without one, and add
 
 **Sent mail.** Say in plain words: only mail they sent is read, matched by their own addresses
 (and, in a Gmail export, by Gmail's Sent label); received mail, drafts, spam and trash are skipped
-unread. Every header, the recipients, the subject, quoted replies, forwarded text and signatures are
-cut before anything is kept. A paragraph holding an email address, a phone number, a long number, a
+unread. Every header, the recipients and the subject are never kept. Quoted (`>`) lines and the
+line that introduces them, forwarded and Outlook-quoted text, a `-- ` signature, a phone's "Sent
+from my" line, and a common English closing ("Best,", "Thanks,") with everything after it are cut. A
+signature with no closing above it can stay, so the filters below are the backstop. A paragraph holding an email address, a phone number, a long number, a
 secret or one of their personal topics is dropped, and the rest of that mail kept. What is kept
 stays in `~/.claude/state/<slug>/`, as their own messages.
 
@@ -178,7 +180,7 @@ stays in `~/.claude/state/<slug>/`, as their own messages.
    label; the export arrives as a download link by email and holds an `.mbox` file. (Follow what
    Google's page shows; it changes.) Any other mail app's mbox works too; one with no Gmail labels
    counts every mail from their addresses. Then move it:
-   `mkdir -p ~/.claude/state/$S/sources && mv "<the .mbox file>" ~/.claude/state/$S/sources/mail.mbox && chmod 600 ~/.claude/state/$S/sources/mail.mbox`
+   `mkdir -p ~/.claude/state/$S/sources && chmod 700 ~/.claude/state/$S/sources && mv "<the .mbox file>" ~/.claude/state/$S/sources/mail.mbox && chmod 600 ~/.claude/state/$S/sources/mail.mbox`
 2. *Ask* for every address they send from, and whether to leave any mail out: mail to certain
    people (`exclude_to`, a regex matched against each recipient address, such as a family member's
    address or a personal domain) or outside a date window (`after`, `before`, `YYYY-MM-DD`). Write
@@ -220,6 +222,9 @@ becomes a training question, never a test one; a question already mined from the
 history is skipped, so nothing counts twice.
 
 Re-run the step 3 install command: it reads every consented mail and live source and merges them.
+The principal can withdraw a source at any time: remove its `consent` date or its entry, and the
+next install deletes what was mined from it before merging (a folder's files leave the lens the next
+time *The lens* runs).
 
 ## 6. Your domains
 
@@ -385,7 +390,8 @@ Run the steps above with these changes:
 - **Step 3.** Add `--no-history` to the install command. It fills `crew/<slug>/`, reads no Claude
   Code history, no export and no mail or live source, and reports that there is nothing to merge
   yet. Skip steps 4 and 5. At step 5b offer project folders only: this Mac's mail and its live log
-  are the adult's.
+  are the adult's. A folder's review reads only the paths of files Claude Code wrote or edited on
+  this Mac, never what was written, and only to mark those files as not the principal's.
 - **Step 7 becomes the lens and round 1.** Run *The lens* below. Then draft round 1 (about twenty
   questions) as `interview.md` describes, show the draft to the adult (and the principal), turn it
   into the form, and when the answers come back import them with `$C round --name 1 …` and re-run

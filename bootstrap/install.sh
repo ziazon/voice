@@ -111,7 +111,8 @@ try:
         config = json.loads(path.read_text())
         if not isinstance(config, dict):
             raise ValueError("kit config must be a JSON object")
-        for key in ("state_dir", "filters") if path.name == "member.json" else ("state_dir",):
+        # A source is the principal's to name and consent to (PROMPT.md step 5b), never a kit's.
+        for key in ("state_dir", "filters", "sources") if path.name == "member.json" else ("state_dir", "sources"):
             if key in config:
                 raise ValueError(f"kit must not supply {key} in {path.name}")
 except (ValueError, OSError) as exc:

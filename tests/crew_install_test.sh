@@ -229,7 +229,12 @@ done
 rm "$badkit/crew/member.json"
 printf '{"state_dir": "elsewhere"}\n' > "$badkit/private.json"
 install_refused "kit must not supply state_dir" --kit "$badkit"
-rm "$badkit/private.json"
+# A kit never brings sources: each is the principal's to name and consent to at step 5b.
+for config in private.json crew/private.json crew/member.json; do
+  printf '{"sources": [{"name": "live", "kind": "live", "consent": "2026-10-25"}]}\n' > "$badkit/$config"
+  install_refused "kit must not supply sources" --kit "$badkit"
+  rm "$badkit/$config"
+done
 for target in "$scratch/missing" "$kit/crew" "$kit/crew/interview.md"; do
   ln -s "$target" "$badkit/crew/link"
   install_refused "kit must not contain symlinks" --kit "$badkit"

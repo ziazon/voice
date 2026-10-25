@@ -55,11 +55,13 @@ principal's pronouns, and the privacy filters (excluded folders, personal topics
       A member's watcher runs pending with no model.
 """
 import argparse
+import errno
 import hashlib
 import json
 import math
 import os
 import re
+import stat
 import sys
 import subprocess
 import uuid
@@ -1073,12 +1075,15 @@ def document_roots(m, args):
         if not source.get("consent"):
             print(f"{name}: no consent yet, not read")
             continue
-        rows = read_file_review(review_file(m, source))
-        if rows is None:
-            print(f"{name}: no review yet (sources review --name {name})")
-            continue
-        root = folder_root(source)
-        covered = set(folder_files(m, source, root, Counter()))
+        try:
+            rows = read_file_review(review_file(m, source))
+            if rows is None:
+                print(f"{name}: no review yet (sources review --name {name})")
+                continue
+            root = folder_root(source)
+            covered = set(folder_files(m, source, root, Counter()))
+        except OSError as exc:
+            raise Failed(f"{name}: cannot read the source ({exc.strerror or 'unreadable'})")
         roots.append((root, name + "/", {r["path"] for r in rows if r["mine"] == "y"} & covered))
     return roots
 
@@ -1338,6 +1343,8 @@ FOLDER_SKIPS = ("excluded", "filtered names", "odd names", "links", "not include
 AGENT_FILES = {"AGENTS.md", "CLAUDE.md", "GEMINI.md"}
 AGENT_FOLDERS = {"node_modules"}
 WRITE_TOOLS = {"Write": "wrote", "Edit": "edited", "MultiEdit": "edited", "NotebookEdit": "edited"}
+MAIL_SECONDS = 10
+MAX_LIVE_BYTES = 64 * 1024**2
 
 
 def is_date(value):
@@ -1461,32 +1468,47 @@ def mail_record(m, source, message, own, excluded, dropped):
     return message_record(f"src-{source['name']}", when, source["name"], text, "")
 
 
-def mine_mbox(m, source):
-    name, path = source["name"], Path(source["path"]).expanduser()
+def open_source_file(name, path, what):
+    """A source's file opened read-only without following a link, so it cannot be swapped for one
+    between the check and the read."""
     if not os.path.lexists(path):
-        raise Failed(f"{name}: no mbox at the source's path")
-    if path.is_symlink() or not path.is_file():
-        raise Failed(f"{name}: the mbox must be a regular file, not a link")
+        raise Failed(f"{name}: no {what} at the source's path")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise Failed(f"{name}: the {what} must be a regular file, not a link")
+        raise
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise Failed(f"{name}: the {what} must be a regular file, not a link")
+    return os.fdopen(fd, "rb")
+
+
+def mine_mbox(m, source):
+    name = source["name"]
     own = {a.lower() for a in source["own_addresses"]}
     excluded = compile_pattern(f"{name}: exclude_to", source["exclude_to"]) if "exclude_to" in source else None
     kept, skipped, dropped, records, read = [], Counter(), Counter(), Counter(), 0
-    for raw in crew_mail.messages(path):
-        read += 1
-        if raw is None:
-            skipped["too big"] += 1
-            continue
-        try:
-            result = mail_record(m, source, crew_mail.parse(raw), own, excluded, dropped)
-        except (crew_mail.Unreadable, *crew_mail.UNREADABLE):
-            result = "unreadable"
-        if isinstance(result, str):
-            skipped[result] += 1
-            continue
-        reason = privacy(m, result)
-        if reason:
-            records[reason] += 1
-        else:
-            kept.append(result)
+    with open_source_file(name, Path(source["path"]).expanduser(), "mbox") as box:
+        for raw in crew_mail.messages(box):
+            read += 1
+            if raw is None:
+                skipped["too big"] += 1
+                continue
+            try:
+                with crew_mail.budget(MAIL_SECONDS):
+                    result = mail_record(m, source, crew_mail.parse(raw), own, excluded, dropped)
+            except (crew_mail.Unreadable, *crew_mail.UNREADABLE):
+                result = "unreadable"
+            if isinstance(result, str):
+                skipped[result] += 1
+                continue
+            reason = privacy(m, result)
+            if reason:
+                records[reason] += 1
+            else:
+                kept.append(result)
     kept.sort(key=lambda r: (r["timestamp"], r["id"]))
     # Every record trains here; the merge splits the whole corpus once.
     mark_split(kept, 0, "9999")
@@ -1545,11 +1567,13 @@ def mine_live(m, source):
     if not os.path.lexists(path):
         print(f"{name}: no log yet")
         return
-    if path.is_symlink() or not path.is_file():
-        raise Failed(f"{name}: the log must be a regular file, not a link")
+    with open_source_file(name, path, "log") as log:
+        data = log.read(MAX_LIVE_BYTES + 1)
+    if len(data) > MAX_LIVE_BYTES:
+        raise Failed(f"{name}: the log is over {MAX_LIVE_BYTES // 1024**2} MiB")
     known = history_questions(m)
     kept, skipped, dropped = [], Counter(), Counter()
-    for text in path.read_text().split("\n"):
+    for text in data.decode("utf-8", errors="replace").split("\n"):
         if not text.strip():
             continue
         try:
@@ -1578,17 +1602,35 @@ def mine_folder(m, source):
     print(f"{source['name']}: a folder feeds the lens (documents --sources)")
 
 
+def withdraw(m, listed):
+    """Delete each corpus file whose source no longer has consent, or is no longer listed: what the
+    principal withdrew never reaches another merge."""
+    consented = {s["name"] for s in listed if s.get("consent") and s["kind"] == "mbox"}
+    stale = [p for p in m.state_dir.glob("decisions-src-*.jsonl")
+             if p.name[len("decisions-src-"):-len(".jsonl")] not in consented]
+    if not any(s.get("consent") and s["kind"] == "live" for s in listed):
+        stale += [p for p in (m.state_dir / "decisions-live.jsonl",) if os.path.lexists(p)]
+    for path in sorted(stale):
+        path.unlink()
+        print(f"removed {path.name}: its source has no consent")
+
+
 def cmd_sources_mine(m, args):
-    chosen = [s for s in sources(m) if args.name in (None, s["name"])]
+    listed = sources(m)
+    chosen = [s for s in listed if args.name in (None, s["name"])]
     if args.name and not chosen:
         raise Failed(f"no source named {args.name}")
+    withdraw(m, listed)
     if not chosen:
         print("no sources in private.json")
     for source in chosen:
         if not source.get("consent"):
             print(f"{source['name']}: no consent yet, not read")
             continue
-        {"mbox": mine_mbox, "live": mine_live, "folder": mine_folder}[source["kind"]](m, source)
+        try:
+            {"mbox": mine_mbox, "live": mine_live, "folder": mine_folder}[source["kind"]](m, source)
+        except OSError as exc:
+            raise Failed(f"{source['name']}: cannot read the source ({exc.strerror or 'unreadable'})")
     return 0
 
 
@@ -1598,11 +1640,16 @@ def claude_touched(projects):
     touched = {}
     root = Path(projects).expanduser()
     if not root.is_dir():
+        print("no Claude Code transcripts there: no file starts as not mine for being Claude's")
         return touched
     for path in sorted(root.rglob("*.jsonl")):
-        if path.is_symlink():
+        try:
+            if path.is_symlink():
+                continue
+            records = read_session(path)
+        except OSError:
             continue
-        for record in read_session(path):
+        for record in records:
             message = record.get("message") if isinstance(record, dict) and record.get("type") == "assistant" else None
             content = message.get("content") if isinstance(message, dict) else None
             for block in content if isinstance(content, list) else []:
@@ -1626,13 +1673,13 @@ def folder_root(source):
 
 def folder_files(m, source, root, skipped):
     """The relative paths the source covers, as the review lists them."""
-    include = [crew_documents.glob_regex(p) for p in source.get("include", [])]
-    exclude = [crew_documents.glob_regex(p) for p in source.get("exclude", [])]
+    include = [crew_documents.glob_matcher(p) for p in source.get("include", [])]
+    exclude = [crew_documents.glob_matcher(p) for p in source.get("exclude", [])]
     for relative in crew_documents.walk(root):
         path = relative.as_posix()
         reason = ("links" if (root / relative).is_symlink() else
-                  "excluded" if any(p.fullmatch(path) for p in exclude) else
-                  "not included" if include and not any(p.fullmatch(path) for p in include) else
+                  "excluded" if any(matches(path) for matches in exclude) else
+                  "not included" if include and not any(matches(path) for matches in include) else
                   "odd names" if re.search(r"[\t\n\r]", path) else
                   "filtered names" if m.personal.search(path) or m.secret.search(path) else None)
         if reason:
@@ -1704,10 +1751,10 @@ def cmd_sources_mark(m, args):
     rows = read_file_review(review)
     if rows is None:
         raise Failed(f"{source['name']}: no review yet (sources review --name {source['name']})")
-    patterns = [crew_documents.glob_regex(p) for p in args.path]
+    patterns = [crew_documents.glob_matcher(p) for p in args.path]
     changed = 0
     for row in rows:
-        if args.all or (args.unmarked and not row["mine"]) or any(p.fullmatch(row["path"]) for p in patterns):
+        if args.all or (args.unmarked and not row["mine"]) or any(matches(row["path"]) for matches in patterns):
             row["mine"] = args.mark
             changed += 1
     write_file_review(review, rows)
@@ -1716,8 +1763,12 @@ def cmd_sources_mark(m, args):
 
 
 def cmd_sources(m, args):
-    return {"list": cmd_sources_list, "review": cmd_sources_review, "mark": cmd_sources_mark,
-            "mine": cmd_sources_mine}[args.step](m, args)
+    try:
+        return {"list": cmd_sources_list, "review": cmd_sources_review, "mark": cmd_sources_mark,
+                "mine": cmd_sources_mine}[args.step](m, args)
+    except OSError as exc:
+        # The OS's message names the file; a source's path is private.
+        raise Failed(f"{args.step}: cannot read a source file ({exc.strerror or 'unreadable'})")
 
 
 # Labelling. The member's codebook names the categories, domains, escalation classes and message
@@ -2003,8 +2054,9 @@ def parser_for(m, description):
     steps.add_parser("list")
     p = steps.add_parser("review", help="list a folder source's files for the principal to mark")
     p.add_argument("--name", required=True)
-    p.add_argument("--projects", default="~/.claude/projects",
-                   help="Claude Code transcripts: files a session wrote or edited start as not mine")
+    p.add_argument("--projects", default=os.environ.get("CLAUDE_PROJECTS", "~/.claude/projects"),
+                   help="Claude Code transcripts: files a session wrote or edited start as not mine "
+                        "(default: $CLAUDE_PROJECTS, else ~/.claude/projects)")
     p = steps.add_parser("mark")
     p.add_argument("--name", required=True)
     p.add_argument("--as", dest="mark", required=True, choices=("y", "n"))

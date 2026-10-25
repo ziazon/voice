@@ -10,6 +10,7 @@ import json
 import os
 import stat
 import sys
+import time
 import unittest
 from email.message import EmailMessage
 from pathlib import Path
@@ -17,6 +18,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from crew_decisions_test import ARI, Harness  # noqa: E402
 from crew_fixtures import assert_cli_error  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import crew_mail  # noqa: E402
 
 CONSENT = "2026-10-25"
 
@@ -83,6 +87,27 @@ ________________________________
 From: Sam <sam@example.org>
 Sent: Wednesday, March 4, 2026
 To: Robin
+"""
+
+NO_DELIMITER = """Keep the quiz on Friday.
+
+Best,
+Robin Lee
+Department of Something
+"""
+
+LONG_ATTRIBUTION = """Yes, go ahead.
+
+On Tue, Mar 3, 2026 at 9:00 AM Sam Somebody Longname
+of the Department of Things
+wrote:
+> can I?
+"""
+
+OTHER_LANGUAGE = """Ja, mach das.
+
+Am 03.03.2026 um 09:00 schrieb Sam Lee:
+> darf ich?
 """
 
 MIXED = """Send the slides to ada@example.org before class.
@@ -168,6 +193,26 @@ class Registry(Sources):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("sources belong in private.json", proc.stderr)
 
+    def test_withdrawn_or_removed_consent_deletes_what_was_mined(self):
+        box = self.h.root / "mail.mbox"
+        box.write_bytes(mail(ROBIN, SAM, "Mon, 02 Mar 2026 10:00:00 +0000", "Keep the quiz on Friday."))
+        self.state.mkdir(parents=True, exist_ok=True)
+        (self.state / "live.jsonl").write_text(json.dumps(
+            {"timestamp": "2026-10-20T10:00:00Z", "question": "Q?", "ari_pick": "A", "robin_answer": "B"}) + "\n")
+        entry = {"name": "mail", "kind": "mbox", "path": str(box), "own_addresses": ["robin@example.com"]}
+        self.private({**entry, "consent": CONSENT}, {"name": "live", "kind": "live", "consent": CONSENT})
+        self.ok("sources", "mine")
+        self.assertTrue((self.state / "decisions-src-mail.jsonl").exists())
+        self.assertTrue((self.state / "decisions-live.jsonl").exists())
+        (self.state / "decisions-src-old.jsonl").write_text("")
+        self.private(entry)
+        out = self.ok("sources", "mine").stdout
+        self.assertFalse((self.state / "decisions-src-mail.jsonl").exists())
+        self.assertFalse((self.state / "decisions-src-old.jsonl").exists())
+        self.assertFalse((self.state / "decisions-live.jsonl").exists())
+        self.assertIn("removed decisions-src-mail.jsonl: its source has no consent", out)
+        self.assertTrue((self.state / "live.jsonl").exists())
+
     def test_mine_reads_nothing_without_consent(self):
         box = self.h.root / "mail.mbox"
         box.write_bytes(mail(ROBIN, SAM, "Mon, 02 Mar 2026 10:00:00 +0000", "Keep the quiz on Friday."))
@@ -192,6 +237,8 @@ class Mail(Sources):
             mail(ROBIN, SAM, "Mon, 02 Mar 2026 10:00:00 -0500", SENT, labels="Sent,Opened"),
             mail(SAM, ROBIN, "Mon, 02 Mar 2026 09:00:00 -0500", "Can we move the quiz?", labels="Inbox"),
             mail(ROBIN, SAM, "Mon, 02 Mar 2026 11:00:00 -0500", "half a thought", labels="Drafts"),
+            mail(ROBIN, SAM, "Mon, 02 Mar 2026 11:10:00 -0500", "thrown away", labels="Sent,Trash"),
+            mail(ROBIN, SAM, "Mon, 02 Mar 2026 11:20:00 -0500", "flagged", labels="Spam,Sent"),
             mail(ROBIN, ROBIN, "Mon, 02 Mar 2026 12:00:00 -0500", "a note to myself", labels="Inbox"),
             mail(ROBIN, SAM, "Tue, 03 Mar 2026 10:00:00 +0000", INTERLEAVED, labels=None),
         ])
@@ -208,11 +255,11 @@ class Mail(Sources):
         self.assertTrue(first["id"].startswith("message:"))
         written = (self.state / "decisions-src-mail.jsonl").read_text()
         for value in ("Week 3 plan", "sam@example.org", "Sam", "Department", "Can we move", "half a thought",
-                      "note to myself", "Robin"):
+                      "note to myself", "Robin", "thrown away", "flagged"):
             self.assertNotIn(value, written)
-        self.assertIn("mail: read 5 messages; kept 2 you sent", stdout)
+        self.assertIn("mail: read 7 messages; kept 2 you sent", stdout)
         self.assertIn("1 not from you", stdout)
-        self.assertIn("2 not in Sent", stdout)
+        self.assertIn("4 not in Sent", stdout)
         for value in ("partner", "quiz", "Sam", "example"):
             self.assertNotIn(value, stdout)
 
@@ -224,6 +271,15 @@ class Mail(Sources):
         self.assertEqual([r["text"] for r in records],
                          ["Grade the drafts on structure first.", "Use the shorter reading list."])
 
+    def test_closings_without_a_delimiter_and_any_attribution_line_are_cut(self):
+        _, records = self.mine([
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 12:00:00 +0000", NO_DELIMITER),
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 13:00:00 +0000", LONG_ATTRIBUTION),
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 14:00:00 +0000", OTHER_LANGUAGE),
+        ])
+        self.assertEqual([r["text"] for r in records],
+                         ["Keep the quiz on Friday.", "Yes, go ahead.", "Ja, mach das."])
+
     def test_a_paragraph_that_trips_a_filter_is_dropped_and_the_rest_kept(self):
         stdout, records = self.mine([mail(ROBIN, SAM, "Thu, 05 Mar 2026 10:00:00 +0000", MIXED)])
         self.assertEqual([r["text"] for r in records],
@@ -234,7 +290,8 @@ class Mail(Sources):
         stdout, records = self.mine([
             mail(ROBIN, SAM, "Thu, 05 Mar 2026 10:00:00 +0000", "only markup", html=True),
             mail(ROBIN, SAM, None, "no date at all"),
-            mail(ROBIN, SAM, "not a date", "a bad date"),
+            raw_mail({"From": ROBIN, "To": SAM, "Date": "not a date", "X-Gmail-Labels": "Sent",
+                      "Content-Type": "text/plain"}, b"a bad date"),
             raw_mail({"From": ROBIN, "To": SAM, "Date": "Thu, 05 Mar 2026 10:00:00 +0000",
                       "X-Gmail-Labels": "Sent", "Content-Type": "text/plain; charset=x-no-such-charset"},
                      b"odd bytes \xff\xfe"),
@@ -245,6 +302,43 @@ class Mail(Sources):
         self.assertEqual([r["text"] for r in records], ["From the top: keep the warm-up."])
         for line in ("1 with no plain text", "2 undated", "1 unreadable", "1 too long", "1 empty once stripped"):
             self.assertIn(line, stdout)
+
+    def test_a_crafted_message_is_counted_and_the_rest_still_read(self):
+        stdout, records = self.mine([
+            raw_mail({"From": "eve@example.net " + "(" * 5000, "Date": "Mon, 02 Mar 2026 10:00:00 +0000"}, b"x"),
+            raw_mail({"From": ROBIN, "Date": "Mon, 02 Mar 2026 10:00:00 +0000",
+                      "X-Pad": "a" * 300 * 1024}, b"too much header"),
+            mail(ROBIN, SAM, "Mon, 02 Mar 2026 11:00:00 +0000", "Keep the quiz on Friday."),
+        ])
+        self.assertEqual([r["text"] for r in records], ["Keep the quiz on Friday."])
+        self.assertIn("2 unreadable", stdout)
+
+    def test_an_unescaped_from_line_in_a_body_does_not_start_a_forged_message(self):
+        forged = (b"From 1234@xxx Mon Mar 02 10:00:00 +0000 2026\nFrom: Sam <sam@example.org>\n"
+                  b"Date: Mon, 02 Mar 2026 09:00:00 +0000\n\nhello\nFrom x\nX-Gmail-Labels: Sent\n"
+                  b"From: robin@example.com\nDate: Mon, 02 Mar 2026 09:00:00 +0000\n\nFORGED words\n\n")
+        stdout, records = self.mine([forged])
+        self.assertEqual(records, [])
+        self.assertIn("read 1 messages", stdout)
+
+    def test_an_unreadable_mbox_error_names_no_path(self):
+        box = self.h.root / "secret-folder-name"
+        box.mkdir()
+        (box / "mail.mbox").write_bytes(b"")
+        os.chmod(box / "mail.mbox", 0)
+        self.addCleanup(os.chmod, box / "mail.mbox", 0o600)
+        self.private({"name": "mail", "kind": "mbox", "path": str(box / "mail.mbox"),
+                      "own_addresses": ["robin@example.com"], "consent": CONSENT})
+        proc = self.crew("sources", "mine")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("mail: cannot read the source (Permission denied)", proc.stderr)
+        self.assertNotIn("secret-folder-name", proc.stderr)
+
+    def test_a_message_that_parses_too_long_is_cut_off(self):
+        with self.assertRaises(crew_mail.Unreadable):
+            with crew_mail.budget(0.05):
+                while True:
+                    pass
 
     def test_recipients_and_dates_narrow_what_is_read(self):
         stdout, records = self.mine([
@@ -403,6 +497,56 @@ class Folder(Sources):
         only = self.h.root / "lens-only"
         self.ok("documents", "--sources", "--out-dir", str(only))
         self.assertEqual(len((only / "documents-01.jsonl").read_text().splitlines()), 2)
+
+    def test_documents_reads_nothing_once_consent_is_withdrawn(self):
+        self.review_files()
+        self.ok("sources", "mark", "--name", "teaching", "--as", "y", "--all")
+        self.private({k: v for k, v in self.source.items() if k != "consent"})
+        out = self.h.root / "lens-in"
+        stdout = self.ok("documents", "--sources", "--out-dir", str(out)).stdout
+        self.assertIn("teaching: no consent yet, not read", stdout)
+        self.assertIn("read 0 documents", stdout)
+        self.assertEqual(list(out.glob("documents-*.jsonl")), [])
+
+    def test_a_hand_edited_review_never_reaches_outside_the_folder(self):
+        outside = self.h.root / "outside"
+        outside.mkdir()
+        (outside / "secret.md").write_text("OUTSIDE_TEXT")
+        (self.folder / "link.md").symlink_to(outside / "secret.md")
+        (self.folder / "linkdir").symlink_to(outside)
+        self.review_files()
+        with self.review.open("a") as review:
+            for path in ("../outside/secret.md", str(outside / "secret.md"), "link.md", "linkdir/secret.md"):
+                review.write(f"y\t2026-10-25\ttext\t\t{path}\n")
+        out = self.h.root / "lens-in"
+        self.ok("documents", "--sources", "--out-dir", str(out))
+        written = "".join(p.read_text() for p in out.glob("*.jsonl"))
+        self.assertNotIn("OUTSIDE_TEXT", written)
+
+    def test_review_says_so_when_there_are_no_transcripts_and_honours_claude_projects(self):
+        stdout = self.ok("sources", "review", "--name", "teaching", "--projects", str(self.h.root / "none")).stdout
+        self.assertIn("no Claude Code transcripts there: no file starts as not mine for being Claude's", stdout)
+        proc = self.h.run(Path(__file__).resolve().parent.parent / "scripts" / "crew_decisions.py",
+                          "--member", self.member, "sources", "review", "--name", "teaching",
+                          env={"CLAUDE_PROJECTS": str(self.h.projects)})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.table()["drafts/plan.md"]["claude"], "wrote")
+
+    def test_patterns_match_folder_by_folder_without_runaway_backtracking(self):
+        deep = self.folder / ("a" * 20) / ("a" * 20) / ("a" * 20)
+        deep.mkdir(parents=True)
+        (deep / "note.md").write_text("deep")
+        self.review_files()
+        started = time.monotonic()
+        out = self.ok("sources", "mark", "--name", "teaching", "--as", "y", "--path", "**a" * 8 + "z",
+                      "--path", "**/" * 10 + "x*a*a*a*a*a*a*a*z").stdout
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertIn("marked 0 files", out)
+        self.ok("sources", "mark", "--name", "teaching", "--as", "y", "--path", "**/" * 10 + "syllabus.md",
+                "--path", "**/note.md")
+        marks = {p: r["mine"] for p, r in self.table().items()}
+        self.assertEqual(marks["syllabus.md"], "y")
+        self.assertEqual(marks["/".join(["a" * 20] * 3) + "/note.md"], "y")
 
     def test_documents_needs_a_dir_or_sources_and_skips_a_source_with_no_review(self):
         proc = self.crew("documents", "--out-dir", str(self.h.root / "x"))

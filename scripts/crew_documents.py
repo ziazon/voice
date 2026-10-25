@@ -1,4 +1,5 @@
 """Read document paragraphs without filters, member config or output writes."""
+import fnmatch
 import os
 import re
 import shutil
@@ -40,21 +41,32 @@ def walk(root):
     return sorted(paths, key=lambda p: p.as_posix())
 
 
-def glob_regex(pattern):
-    """A path pattern as a regex over a relative POSIX path: `*` and `?` stay inside one folder,
-    `**` crosses folders, and `**/` also matches no folder at all."""
-    out, i = [], 0
-    while i < len(pattern):
-        if pattern.startswith("**/", i):
-            out.append("(?:.*/)?")
-            i += 3
-        elif pattern.startswith("**", i):
-            out.append(".*")
-            i += 2
-        else:
-            out.append({"*": "[^/]*", "?": "[^/]"}.get(pattern[i], re.escape(pattern[i])))
-            i += 1
-    return re.compile("".join(out))
+def glob_matcher(pattern):
+    """A path pattern as a test of a relative POSIX path, folder by folder: a `**` folder matches
+    any number of folders (none included), and every other part is a shell pattern for one name
+    (`*`, `?`, `[ab]`), so no wildcard crosses a `/`. Matching is linear in the path's folders."""
+    parts = []
+    for part in pattern.split("/"):
+        if not (part == "**" and parts and parts[-1] == "**"):
+            parts.append(part)
+
+    def spread(states):
+        states = set(states)
+        for j in sorted(states):
+            while j < len(parts) and parts[j] == "**":
+                j += 1
+                states.add(j)
+        return states
+
+    def matches(path):
+        states = spread({0})
+        for name in path.split("/"):
+            states = spread({j if parts[j] == "**" else j + 1 for j in states
+                             if j < len(parts) and (parts[j] == "**" or fnmatch.fnmatchcase(name, parts[j]))})
+            if not states:
+                return False
+        return len(parts) in states
+    return matches
 
 
 def docx_paragraphs(path):
