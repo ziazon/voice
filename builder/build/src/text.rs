@@ -104,17 +104,6 @@ pub fn written(folder: &str) -> String {
     )
 }
 
-pub fn live(categories: &[String]) -> String {
-    if categories.is_empty() {
-        "No kind of decision passed the test yet (5 or more sure picks, at least 90% right), so your assistant decides nothing on its own yet.".to_owned()
-    } else {
-        format!(
-            "Your assistant passed the test on: {}. It can decide those on its own where you allow it.",
-            categories.join(", ")
-        )
-    }
-}
-
 pub fn no_group(category: &str) -> String {
     format!(
         "Your assistant's settings put the kind of decision {category} in no group (codebook.groups), so the build couldn't write about it. Add it to a group, then try again."
@@ -125,4 +114,67 @@ pub fn too_big(what: &str, rows: usize) -> String {
     format!(
         "{what}: its {rows} records are more than one step can read at once, so the build stopped before spending on it. Splitting a large group is not built yet."
     )
+}
+
+pub const REPORT_UNREADABLE: &str = "Your last report couldn't be read, so it isn't shown. Build your assistant again to make a new one.";
+
+pub fn no_report(folder: &str) -> String {
+    format!("There's no report yet. Build your assistant first: persona-builder build {folder}")
+}
+pub fn report_from(day: &str) -> String {
+    format!("From the build on {day}:")
+}
+
+pub const REPORT_ENOUGH_HISTORY: &str =
+    "There's enough history to learn from, but too little to test yet.";
+pub const REPORT_INTERVIEW: &str =
+    "The interview fills out a thin history: persona-builder interview draft";
+pub const REPORT_AREAS: &str = "By kind of decision:";
+pub const REPORT_NO_AREAS: &str = "By kind of decision: none yet.";
+pub const REPORT_STRENGTHEN_INTERVIEW: &str =
+    "answer the interview (persona-builder interview draft)";
+pub const REPORT_STRENGTHEN_CLAUDEAI: &str = "add your claude.ai chats (persona-builder claudeai)";
+pub const REPORT_STRENGTHEN_TIME: &str = "keep using Claude, since it learns from every answer";
+
+pub fn report_level(level: crate::report::Level) -> &'static str {
+    match level {
+        crate::report::Level::Strong => "Strong",
+        crate::report::Level::GettingThere => "Getting there",
+        crate::report::Level::Thin => "Thin",
+    }
+}
+
+pub fn report_heading(level: &str) -> String {
+    format!("How well your assistant knows you: {level}.")
+}
+
+pub fn report_thin_history(answered: usize) -> String {
+    format!(
+        "Your history holds {answered} answered questions. It takes about 150 to know you well."
+    )
+}
+
+pub fn report_tested(strong: usize, areas: usize, right: usize, of: usize) -> String {
+    format!(
+        "It passed the test on {strong} of {areas} kinds of decision, and got {right} of {of} test questions right."
+    )
+}
+
+pub fn report_untested(held: usize) -> String {
+    format!(
+        "Only {held} questions were kept back to test your assistant, fewer than 30, so there's too little to measure yet. Until it can be tested, it decides nothing on its own."
+    )
+}
+
+pub fn report_area(area: &str, level: &str) -> String {
+    format!("- {area}: {level}")
+}
+
+pub fn report_examples(examples: usize) -> String {
+    let noun = if examples == 1 { "example" } else { "examples" };
+    format!(", {examples} {noun} so far")
+}
+
+pub fn report_strengthen(ways: &[&str]) -> String {
+    format!(" To strengthen it: {}.", ways.join("; "))
 }

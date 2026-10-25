@@ -241,6 +241,8 @@ enum Command {
         #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
         call_cap_usd: f64,
     },
+    /// Show how well your assistant knows you, from its last build.
+    Report { member_dir: PathBuf },
     /// Show what building this assistant has spent today.
     Spend {
         member_dir: PathBuf,
@@ -1058,7 +1060,7 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     };
     use persona_builder_build::{
         build::{self, Inputs},
-        draft, interview, text,
+        draft, interview, report, text,
     };
     use persona_builder_ingest::{corpus::read_records, filters::Filters, private};
     use persona_builder_steps::book::book;
@@ -1096,12 +1098,8 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     )?;
     println!("{}", text::CHECKING);
     let decisions = draft::decisions(&member, &book, &built);
-    let entries = draft::entries(
-        &book,
-        &built,
-        &args.model,
-        &local_day(std::time::SystemTime::now()),
-    );
+    let day = local_day(std::time::SystemTime::now());
+    let entries = draft::entries(&book, &built, &args.model, &day);
     draft::check_private(&filters, &decisions, &entries)?;
     let existing = draft::read_text(
         &member_dir.join(draft::MEASUREMENTS),
@@ -1110,16 +1108,28 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     let measurements = draft::measurements(existing.as_deref(), &member, &entries);
     draft::write(&member_dir, &decisions, &measurements)?;
     println!("{}", text::written(&member_dir.display().to_string()));
-    if let Some(test) = &built.backtest {
-        println!(
-            "{}",
-            text::live(&draft::live_categories(&book, &test.score))
-        );
+    let report = report::report(&book, &built, answered, &day);
+    report::write(&home, &member.slug, &report)?;
+    for line in report::render(&report) {
+        println!("{line}");
     }
     println!(
         "{}",
         spend_text::spend(session.spent_today()?, cap.daily_usd())
     );
+    Ok(())
+}
+fn report(member_dir: PathBuf) -> Result<()> {
+    use persona_builder_build::{report, text};
+    let (member, home) = member_and_home(&member_dir)?;
+    if let Some(report) = report::read(&home, &member.slug)? {
+        println!("{}", text::report_from(&report.built));
+        for line in report::render(&report) {
+            println!("{line}");
+        }
+    } else {
+        println!("{}", text::no_report(&member_dir.display().to_string()));
+    }
     Ok(())
 }
 struct DraftArgs {
@@ -1707,6 +1717,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 call_cap_usd,
             },
         ),
+        Some(Command::Report { member_dir }) => report(member_dir),
         Some(Command::Spend {
             member_dir,
             daily_cap_usd,

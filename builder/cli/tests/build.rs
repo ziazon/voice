@@ -145,7 +145,8 @@ fn build_writes_how_they_decide_and_the_tests_result() {
         "Sorting your decisions by kind, part 2 of 2: done.",
         "Testing your assistant on 32 questions it hasn't seen, batch 1 of 1: done.",
         "Checking the draft for anything private before it's saved.",
-        "Your assistant passed the test on: scope, methods, tooling. It can decide those on its own where you allow it.",
+        "How well your assistant knows you: Thin.",
+        "- scope: Strong.",
     ] {
         assert!(stdout.contains(&format!("{line}\n")), "{stdout}");
     }
@@ -178,6 +179,14 @@ fn build_writes_how_they_decide_and_the_tests_result() {
         "{measurements}"
     );
     assert!(!measurements.contains("YYYY-MM-DD"), "{measurements}");
+    let report = fixture.state().join("report.json");
+    assert_eq!(
+        fs::metadata(&report).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let report: Value = serde_json::from_slice(&fs::read(report).unwrap()).unwrap();
+    assert_eq!(report["overall"], "thin");
+    assert_eq!(report["held"], 32);
     // The checked replies are kept, private, for a rerun.
     let kept = fixture.state().join("build");
     assert_eq!(
@@ -240,4 +249,63 @@ fn build_checks_the_member_folder_before_spending() {
         text(&out.stderr)
     );
     assert_eq!(fixture.calls(), 0);
+}
+
+#[test]
+fn report_shows_the_last_build() {
+    let Some(python) = python() else { return };
+    let fixture = Fixture::new();
+    fixture.signed_in(&python);
+    let out = fixture.run(&["report", &fixture.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        format!(
+            "There's no report yet. Build your assistant first: persona-builder build {}\n",
+            fixture.member()
+        )
+    );
+    fixture.write_state("decisions.jsonl", &corpus(32));
+    let built = fixture.run(&["build", &fixture.member()]);
+    assert!(built.status.success(), "{}", text(&built.stderr));
+    let out = fixture.run(&["report", &fixture.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let stdout = text(&out.stdout);
+    assert!(stdout.starts_with("From the build on "), "{stdout}");
+    let build_stdout = text(&built.stdout);
+    let report_lines = build_stdout
+        .split_once("How well your assistant knows you:")
+        .unwrap()
+        .1;
+    let report_lines = report_lines
+        .lines()
+        .take_while(|line| !line.starts_with("Today, about $"))
+        .collect::<Vec<_>>();
+    let shown = stdout.lines().skip(1).collect::<Vec<_>>().join("\n");
+    assert_eq!(
+        shown,
+        format!(
+            "How well your assistant knows you:{}",
+            report_lines.join("\n")
+        )
+    );
+    assert_eq!(fixture.calls(), 6);
+}
+
+#[test]
+fn build_with_too_few_held_out_questions_says_so_honestly() {
+    let Some(python) = python() else { return };
+    let fixture = Fixture::new();
+    fixture.signed_in(&python);
+    fixture.write_state("decisions.jsonl", &corpus(10));
+    let out = fixture.run(&["build", &fixture.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let stdout = text(&out.stdout);
+    assert!(stdout.contains("Only 10 questions were kept back to test your assistant, fewer than 30, so there's too little to measure yet. Until it can be tested, it decides nothing on its own.\n"), "{stdout}");
+    assert!(
+        stdout
+            .contains("The interview fills out a thin history: persona-builder interview draft\n"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains(": Strong."), "{stdout}");
 }

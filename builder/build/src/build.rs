@@ -357,7 +357,7 @@ const LISTS: [(&str, &str, usize); 5] = [
 /// A character a point never holds: control characters, line and paragraph separators, the
 /// invisible ones that could split a word past the shingle check or the filters, and `<`, which
 /// would start hidden markup in the Markdown the assistant reads.
-fn hidden(c: char) -> bool {
+pub(crate) fn hidden(c: char) -> bool {
     c.is_control()
         || c == '<'
         || matches!(c, '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{FEFF}')
@@ -697,7 +697,7 @@ pub struct Counts {
 }
 
 /// `YYYY-MM-DD` digits and dashes, so a crafted timestamp never adds a line to the front matter.
-fn is_date(date: &str) -> bool {
+pub(crate) fn is_date(date: &str) -> bool {
     date.len() == 10
         && date.bytes().enumerate().all(|(at, b)| {
             if at == 4 || at == 7 {

@@ -5,4 +5,5 @@
 pub mod build;
 pub mod draft;
 pub mod interview;
+pub mod report;
 pub mod text;
