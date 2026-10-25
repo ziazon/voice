@@ -242,3 +242,47 @@ where a value is answered.
 keystore cross-target checks). Commit in coherent commits with messages in a file (`git commit -F`):
 the ingest helper; the records and rules; the store and keep; the CLI; the docs rows. No real person
 anywhere: invented names only (Robin, as in the spec).
+
+## After the gates: the fix-ups (decided, do not reopen)
+
+`/security-review` (a sub-agent): no high or medium, four lows. The Verifier (Fable): pass with four
+should-fixes, no must-fix. Claude's own review added four notes. All twelve are fixed, each with a
+test proved red first:
+
+1. **`<` is allowed in a kept answer** (review). `keep` checks `hidden(c) && c != '<'` (the `<` rule
+   guards Markdown the build writes; a kept answer is data, never written into the member's files).
+   `text::invalid_text` reads *"<Field> must be 1 to 2,000 characters long, with no hidden
+   characters."* with the field's plain name capitalised (*What was being decided*, *The answer you
+   wanted*, *The assistant's answer*, *Where the answer came from*, *The area*) and the limit with a
+   thousands comma.
+2. **`next_id`'s unknown prefix** (review): `next_id` takes a `pub enum Prefix { Signal, Case,
+   Proposal, Approval, Measurement }` (with `fn as_str`), so an unknown prefix cannot be written; the
+   overflow error gets its own text (`text::TOO_MANY_IDS`).
+3. **`text::kept`** (review) becomes `pub const KEPT: &str`.
+4. **`json_files` reads only names that match the id pattern** (review, security L4): a name is read
+   only when `<id>.json` with `<id>` matching its prefix's id pattern; any other name is skipped, so
+   no planted name reaches a message. Drop the `self.bytes("signals.jsonl")` probe: check the folder
+   with a new ingest `private_folder_exists(home, slug, folder) -> Result<bool>` (descriptor-relative,
+   links refused, never creates) before `fs::read_dir`.
+5. **Nothing is written unless both lines will be accepted** (security L1): under the lock, `keep`
+   reads both files, checks the signal id is new and that `CaseBook::new(old cases + the new case)`
+   passes, and only then appends the signal, then the case. A test plants a `cases.jsonl` whose
+   status moves break rule 7 and asserts `keep` fails with `signals.jsonl` unchanged.
+6. **Size limits before reading** (security L2): ingest gains `read_private_at_max(home, slug, folder,
+   name, max: u64)` that checks the opened file's size (`metadata().len()`) and refuses over `max`
+   with a plain *"<name> is too big to read (over N KiB)"* before reading; `read_private_at` is
+   unchanged. The CLI's `keep` reads the signal with `max` 64 KiB; the store reads `signals.jsonl` and
+   `cases.jsonl` with `max` 64 MiB and each JSON record with `max` 16 MiB.
+7. **`unknown_key` shows a key only when it matches `^[a-z_]{1,40}$`** (security L3, Verifier 1);
+   otherwise *"The answer has a field Persona Builder doesn't know. Leave it out and try again."*
+8. **Rule 8 at write time** (Verifier 2): under the lock, `save_approval` refuses a second approval
+   for a proposal (`rules::one_approval` over the stored ones plus the new one) and an approval for a
+   proposal not on file; `save_measurement` refuses when the stored approval it names is missing or
+   rejected (`rules::no_measurement_when_rejected`) or does not let the stored proposal apply
+   (`rules::may_apply`). Nothing is written on a refusal.
+9. **`save_*_unlocked` twins** (Verifier 3): `pub(crate) fn save_proposal_unlocked`,
+   `save_approval_unlocked`, `save_measurement_unlocked`; the public ones take the lock and call them,
+   as the append pair does. `Store::lock` stays `pub(crate)`.
+10. **The lock's message** (Verifier 4): *"Persona Builder is already working on this assistant in
+    another window. Wait for it to finish, then try again"*; the three tests that look for
+    `already building` look for `already working on this assistant`.
