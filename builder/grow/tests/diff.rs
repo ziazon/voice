@@ -90,3 +90,12 @@ fn no_newline_marker_on_a_nonfinal_line_is_refused() {
         assert!(apply(old, change, "decisions.md").is_err(), "{change}");
     }
 }
+
+#[test]
+fn added_lines_preserves_plus_content_and_excludes_headers() {
+    let change = unified("decisions.md", "old\n", "++ content\nplain\n").unwrap();
+    assert_eq!(
+        persona_builder_grow::diff::added_lines(&change),
+        vec!["++ content", "plain"]
+    );
+}

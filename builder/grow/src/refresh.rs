@@ -101,11 +101,8 @@ pub fn refresh_prompt(
             out.push_str(&p.summary);
             out.push('\n');
             for change in &p.changes {
-                for line in change
-                    .diff
-                    .lines()
-                    .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
-                {
+                for line in diff::added_lines(&change.diff) {
+                    out.push('+');
                     out.push_str(line);
                     out.push('\n');
                 }

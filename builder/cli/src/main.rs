@@ -287,7 +287,7 @@ enum RefreshCommand {
         /// The change's id, as `refresh show` prints it.
         #[arg(value_name = "CHANGE")]
         proposal: String,
-        /// The Claude model to draft with.
+        /// The Claude model to test with.
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
         /// The daily limit, in US dollars as Claude Code estimates them.

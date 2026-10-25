@@ -313,3 +313,40 @@ it. Then:
    `.ai/handoffs/persona-builder.md`.
 4. Run `bash scripts/ci-local.sh` (the `ureq_wire.rs` socket tests may fail in your sandbox: say so
    and confirm everything else passed).
+
+## After the gates: the fix-ups (decided, do not reopen)
+
+`/security-review` (two medium, no high) and the Verifier (pass, two should-fixes) found these,
+and Claude's own review added C1. Fix every one, each with a test that goes red without it.
+
+1. **Every added line is checked, `+++` content included.** Add `pub fn added_lines(diff: &str) ->
+   Vec<&str>` to `diff.rs`: the `+` rows inside hunks (every line after the first two header lines
+   that starts with `+`), each without its leading `+`. Use it in `apply.rs`'s `check_candidate`
+   (instead of `starts_with('+') && !starts_with("+++")`) and in `refresh.rs`'s `refresh_prompt`
+   (the earlier drafts' `+` lines, printed with their `+` as today). Test: a stored diff adding
+   `++ <six words of a named case's expected>` is refused before any call (a new `refusal` mode,
+   `plusplus`), and `added_lines` returns a `++…` row and never a header.
+2. **A resumed run re-checks what it reads back.** When a measurement already exists, `measure`
+   still runs `check_candidate` (the word checks need no current text) before returning
+   `Already`, and checks the stored measurement statically: make `store.rs`'s
+   `check_static_measurement` `pub(crate)` and call it with the proposal and the case book; also
+   require `measurement.approval` to be this proposal's approval and `measurement.base` its base.
+   Any failure: `text::CHANGE_DOES_NOT_FIT`. Tests: a stored `keep` measurement whose new result is
+   `after: fail` is refused with no write; a resume whose stored proposal gains a `++` quote line
+   after it was measured is refused with no write.
+3. **The entry's reason is ours, never the stored text.** `finish` writes `reason(measurement)`
+   (recomputed from the results), not `measurement.reason`. Test: a stored measurement with a
+   different `reason` (one line, valid) writes the recomputed sentence.
+4. **No panic on a damaged case book.** In `finish`, before any write, every case the proposal names
+   must be in the case book; otherwise refuse with `Error::Invalid(text::rule(<case id>,
+   text::MISSING_REFERENCE))` and write nothing. Remove the `expect("saved test")`. Test: a measured
+   keep whose named case is gone from `cases.jsonl` refuses and leaves both member files and
+   `cases.jsonl` unchanged.
+5. **One approval, checked before any call.** In `measure`, run `rules::one_approval` over the
+   store's approvals before the calls (so a second, planted approval refuses at step 2, not at the
+   save). Test: two approvals for the proposal refuse with no call.
+6. **C1: help words.** `refresh apply --model`'s doc line is "The Claude model to test with".
+
+Run `bash scripts/ci-local.sh`; the seven `ureq_wire.rs` tests can't bind a socket in your sandbox,
+so say so and run everything else. Mutation-check items 1 to 5 (`cp` backup, edit, run, `cmp`
+restore) and list them. Don't commit.

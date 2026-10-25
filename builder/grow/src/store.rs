@@ -329,7 +329,7 @@ impl Store {
 }
 // Status append lines carry no timestamp. These checks use only facts that remain
 // knowable after a later refresh; historic active-case completeness needs its snapshot.
-fn check_static_measurement(
+pub(crate) fn check_static_measurement(
     measurement: &Measurement,
     proposal: &Proposal,
     cases: &CaseBook,

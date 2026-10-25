@@ -67,11 +67,9 @@ fn check_candidate(
     for change in &proposal.changes {
         words.push(change.why.clone());
         words.extend(
-            change
-                .diff
-                .lines()
-                .filter(|line| line.starts_with('+') && !line.starts_with("+++"))
-                .map(|line| line[1..].trim_end_matches('\r').trim())
+            diff::added_lines(&change.diff)
+                .into_iter()
+                .map(str::trim)
                 .filter(|line| !line.is_empty())
                 .map(str::to_owned),
         );
@@ -104,8 +102,9 @@ pub fn measure(
         .proposal(id)?
         .ok_or_else(|| Error::Invalid(text::no_proposal(id)))?;
     refresh::check_stored(&proposal)?;
-    let approval = store
-        .approvals()?
+    let approvals = store.approvals()?;
+    rules::one_approval(&approvals)?;
+    let approval = approvals
         .into_iter()
         .find(|a| a.proposal == id)
         .ok_or_else(|| Error::Invalid(text::not_answered(id)))?;
@@ -113,19 +112,25 @@ pub fn measure(
         return Err(Error::Invalid(text::was_rejected(id)));
     }
     rules::may_apply(&proposal, &approval)?;
-    if let Some(measurement) = store.measurements()?.into_iter().find(|m| m.proposal == id) {
-        return Ok(Measured::Already(measurement));
-    }
-    draft::preflight(member_dir)?;
-    let before = refresh::decisions(member_dir)?;
-    rules::base_is_current(&proposal, &version(before.as_bytes()))?;
-    let changed = candidate(&before, &proposal)?;
     let cases = store.cases()?;
     let named: Vec<_> = proposal
         .cases
         .iter()
         .filter_map(|id| cases.get(id).cloned())
         .collect();
+    if let Some(measurement) = store.measurements()?.into_iter().find(|m| m.proposal == id) {
+        check_candidate(&proposal, &named, &store.signals()?, filters)?;
+        crate::store::check_static_measurement(&measurement, &proposal, &cases)
+            .map_err(|_| does_not_fit())?;
+        if measurement.approval != approval.id || measurement.base != proposal.base {
+            return Err(does_not_fit());
+        }
+        return Ok(Measured::Already(measurement));
+    }
+    draft::preflight(member_dir)?;
+    let before = refresh::decisions(member_dir)?;
+    rules::base_is_current(&proposal, &version(before.as_bytes()))?;
+    let changed = candidate(&before, &proposal)?;
     check_candidate(&proposal, &named, &store.signals()?, filters)?;
     draft::check_private(filters, &changed, "")?;
     let run =
@@ -275,6 +280,17 @@ pub fn finish(
     measurement: &Measurement,
 ) -> Result<Finished> {
     // The caller's Session still holds the state lock, including during status appends.
+    let cases = store.cases()?;
+    let named = proposal
+        .cases
+        .iter()
+        .map(|id| {
+            cases
+                .get(id)
+                .cloned()
+                .ok_or_else(|| Error::Invalid(text::rule(id, text::MISSING_REFERENCE)))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let kept = measurement.outcome == KeepOrRevert::Keep;
     let heading = text::refresh_entry_heading(&measurement.at[..10], &proposal.id);
     let new: Vec<_> = measurement.results.iter().filter(|r| r.new).collect();
@@ -289,7 +305,7 @@ pub fn finish(
             .count(),
         old.len(),
         kept,
-        &measurement.reason,
+        &reason(measurement),
     );
     let existing = draft::read_text(
         &member_dir.join(draft::MEASUREMENTS),
@@ -329,9 +345,7 @@ pub fn finish(
         left.push(Left::Entry);
     }
     if kept {
-        let cases = store.cases()?;
-        for id in &proposal.cases {
-            let mut case = cases.get(id).expect("saved test").clone();
+        for mut case in named {
             if case.status != Status::Active {
                 case.status = Status::Active;
                 store.append_case_unlocked(&case)?;

@@ -195,3 +195,11 @@ pub fn apply(old: &str, diff: &str, file: &str) -> Result<String> {
     }
     Ok(out)
 }
+
+/// Added content rows, excluding the two file headers.
+pub fn added_lines(diff: &str) -> Vec<&str> {
+    diff.lines()
+        .skip(2)
+        .filter_map(|line| line.strip_prefix('+'))
+        .collect()
+}

@@ -460,7 +460,7 @@ fn refusal(mode: &str) {
             )
             .unwrap()
         }
-        "quote" => {
+        "quote" | "plusplus" => {
             let mut c = s.cases().remove(0);
             c.options = None;
             c.r#match = Match::Rubric;
@@ -469,7 +469,10 @@ fn refusal(mode: &str) {
             p.changes[0].diff = diff::unified(
                 "decisions.md",
                 BASE,
-                &format!("{BASE}amber birch cedar dogwood elm fir\n"),
+                &format!(
+                    "{BASE}{}amber birch cedar dogwood elm fir\n",
+                    if mode == "plusplus" { "++ " } else { "" }
+                ),
             )
             .unwrap();
         }
@@ -530,6 +533,7 @@ refusal_tests! {
     refusal_diff => "diff",
     refusal_filter => "filter",
     refusal_quote => "quote",
+    refusal_plusplus => "plusplus",
     refusal_hidden => "hidden",
     refusal_file => "file",
     refusal_unchanged => "unchanged",
@@ -749,4 +753,124 @@ fn growth_counts_both_outcomes_and_uses_newest_current_version_grades() {
     s.store().save_measurement(&second).unwrap();
     assert_eq!(apply::growth(&s.store(),None).unwrap(),Some("Since the build: 1 change kept and 1 undone. Your assistant passes 0 of 1 tests from your answers.".into()));
     assert_eq!(apply::growth(&s.store(), Some("2026-03-06")).unwrap(), None);
+}
+
+#[test]
+fn resume_rechecks_saved_measurement_and_proposal() {
+    for mode in ["failed", "approval", "base", "quote"] {
+        let s = Setup::new();
+        let mut cases = s.cases();
+        cases[0].options = None;
+        cases[0].r#match = Match::Rubric;
+        cases[0].expected = "amber birch cedar dogwood elm fir".into();
+        s.replace_cases(&cases);
+        let mut p = s.approved(CANDIDATE);
+        let mut m = s.measured(&p.id);
+        assert_eq!(m.outcome, KeepOrRevert::Keep);
+        match mode {
+            "failed" => m.results[0].after = Grade::Fail,
+            "approval" => m.approval = "appr-2026-03-04-999".into(),
+            "base" => m.base = version(b"another base"),
+            "quote" => {
+                p.changes[0].diff = diff::unified(
+                    "decisions.md",
+                    BASE,
+                    &format!("{CANDIDATE}++ amber birch cedar dogwood elm fir\n"),
+                )
+                .unwrap();
+                s.rewrite(&p);
+            }
+            _ => unreachable!(),
+        }
+        write_private_at(
+            &s.f.home,
+            &s.f.member.slug,
+            Some("growth"),
+            &format!("{}.json", m.id),
+            &serde_json::to_vec(&m).unwrap(),
+        )
+        .unwrap();
+        let before = s.snapshot();
+        let calls = s.calls();
+        assert_eq!(
+            s.measure(&p.id).expect_err(mode).to_string(),
+            persona_builder_grow::text::CHANGE_DOES_NOT_FIT,
+            "{mode}"
+        );
+        assert_eq!(s.calls(), calls, "{mode}");
+        assert_eq!(s.snapshot(), before, "{mode}");
+    }
+}
+
+#[test]
+fn finish_recomputes_reason_from_results() {
+    let s = Setup::new();
+    let p = s.approved(CANDIDATE);
+    let mut m = s.measured(&p.id);
+    m.reason = "Untrusted stored sentence.".into();
+    write_private_at(
+        &s.f.home,
+        &s.f.member.slug,
+        Some("growth"),
+        &format!("{}.json", m.id),
+        &serde_json::to_vec(&m).unwrap(),
+    )
+    .unwrap();
+    let Measured::Already(saved) = s.measure(&p.id).unwrap() else {
+        panic!("saved run")
+    };
+    s.finish(&p, &saved).unwrap();
+    let entry = fs::read_to_string(s.dir.join("measurements.md")).unwrap();
+    assert!(entry.contains(persona_builder_grow::text::KEEP_REASON));
+    assert!(!entry.contains(&m.reason));
+}
+
+#[test]
+fn finish_refuses_missing_named_case_before_any_write() {
+    let s = Setup::new();
+    let p = s.approved(CANDIDATE);
+    let m = s.measured(&p.id);
+    s.replace_cases(&[]);
+    let before = s.snapshot();
+    let error = s
+        .finish(&p, &m)
+        .expect_err("missing named test")
+        .to_string();
+    assert_eq!(
+        error,
+        persona_builder_grow::text::rule(
+            &p.cases[0],
+            persona_builder_grow::text::MISSING_REFERENCE
+        )
+    );
+    assert_eq!(s.snapshot(), before);
+}
+
+#[test]
+fn duplicate_approvals_refuse_before_any_call() {
+    let s = Setup::new();
+    let p = s.approved(CANDIDATE);
+    let mut a = s.store().approvals().unwrap().remove(0);
+    a.id = "appr-2026-03-04-002".into();
+    write_private_at(
+        &s.f.home,
+        &s.f.member.slug,
+        Some("growth"),
+        &format!("{}.json", a.id),
+        &serde_json::to_vec(&a).unwrap(),
+    )
+    .unwrap();
+    let before = s.snapshot();
+    assert!(s.measure(&p.id).is_err());
+    assert_eq!(s.calls(), 0);
+    assert_eq!(s.snapshot(), before);
+}
+
+#[test]
+fn earlier_drafts_include_plus_content_without_file_headers() {
+    let s = Setup::new();
+    let p = s.proposal(&format!("{CANDIDATE}++ reconsider this approach\n"));
+    let prompt = refresh::refresh_prompt(&[], BASE, &s.cases(), &[], &[p]);
+    assert!(prompt.contains("\n+++ reconsider this approach\n"));
+    assert!(!prompt.contains("+++ b/decisions.md"));
 }

@@ -389,3 +389,11 @@ fn applying_an_unanswered_change_says_it_is_waiting_without_calls() {
     assert_eq!(f.calls(), calls);
     assert_eq!(f.snapshot(), before);
 }
+
+#[test]
+fn apply_help_explains_the_model_is_for_testing() {
+    let f = Fixture::new();
+    let out = f.run(&["refresh", "apply", "--help"]);
+    assert!(out.status.success());
+    assert!(text(&out.stdout).contains("The Claude model to test with"));
+}
