@@ -208,7 +208,8 @@ pub fn added_lines(diff: &str) -> Vec<&str> {
             crlf =
                 row.ends_with('\r') && rows.peek().copied() != Some("\\ No newline at end of file");
         } else if let Some(content) = row.strip_prefix('+') {
-            added.push(if crlf {
+            let crlf_ending = crlf && rows.peek().copied() != Some("\\ No newline at end of file");
+            added.push(if crlf_ending {
                 content.strip_suffix('\r').unwrap_or(content)
             } else {
                 content
