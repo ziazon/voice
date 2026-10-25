@@ -289,11 +289,15 @@ class Mail(Sources):
                  "Yes.\n\nThanks!\n\nAlso, the room is 4B.\n\nBest,\nRobin"),
             mail(ROBIN, SAM, "Wed, 04 Mar 2026 19:00:00 +0000",
                  "Keep the lab short.\n\nBest,\nRobin\n\nPS: the quiz moves to Monday."),
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 20:00:00 +0000", "Keep it.\n\nBest,\nRobin Lee\nPS 118 Harbour"),
+            mail(ROBIN, SAM, "Wed, 04 Mar 2026 21:00:00 +0000",
+                 "Keep it short.\n\nBest,\nRobin\n\nP.S. " + "the long note goes on. " * 20),
         ])
         self.assertEqual([r["text"] for r in records], [
             "Thanks!\n\nI looked at the draft. Keep the lab short.", "Keep the lab short.",
             "Sent from my desk at 9: we keep the lab.", "Yes.\n\nThanks!\n\nAlso, the room is 4B.",
-            "Keep the lab short.\n\nPS: the quiz moves to Monday."])
+            "Keep the lab short.\n\nPS: the quiz moves to Monday.", "Keep it.",
+            "Keep it short.\n\nP.S. " + ("the long note goes on. " * 20).strip()])
 
     def test_other_writers_from_lines_split_and_a_from_line_inside_a_body_is_counted(self):
         def sent(hour):

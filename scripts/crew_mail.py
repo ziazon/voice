@@ -26,7 +26,7 @@ CLOSING = re.compile(r"^(?:best|best wishes|best regards|kind regards|warm regar
                      r"thank you|many thanks|cheers|sincerely|yours sincerely|sincerely yours|yours truly|"
                      r"all the best|take care|talk soon|yours)[ \t]*[,.!]?[ \t]*$", re.M | re.I)
 SIGNATURE_CHARS = 300
-PS = re.compile(r"^P\.?S\.?\b", re.M)
+PS = re.compile(r"^(?:P\.S\.|P\.?P?S:)", re.M)
 
 # Everything from the first of these lines on is someone else's words or a signature.
 CUT = [re.compile(p, re.M | re.I) for p in (
@@ -169,11 +169,15 @@ def own_words(text):
     cut = min((m.start() for m in (p.search(text) for p in CUT) if m), default=len(text))
     # The last closing ends their words, when some come before it and no more than a signature
     # after it; a PS after the signature is still theirs.
+    def signature_end(m):
+        after = PS.search(text, m.end(), cut)
+        return after.start() if after else cut
+
     closings = [m for m in CLOSING.finditer(text, 0, cut) if text[:m.start()].strip()
-                and len(text[m.end():cut].strip()) <= SIGNATURE_CHARS]
+                and len(text[m.end():signature_end(m)].strip()) <= SIGNATURE_CHARS]
     if closings:
-        after = PS.search(text, closings[-1].end(), cut)
-        text = text[:closings[-1].start()] + ("\n\n" + text[after.start():cut] if after else "")
+        end = signature_end(closings[-1])
+        text = text[:closings[-1].start()] + ("\n\n" + text[end:cut] if end < cut else "")
         cut = len(text)
     text = SIGN_OFF.sub("", text[:cut])
     lines = [line for line in without_attribution(text.split("\n")) if not quoted(line)]
