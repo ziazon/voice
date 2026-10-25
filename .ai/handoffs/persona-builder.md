@@ -44,8 +44,10 @@ One record per slice, newest first. Paraphrase only; no real person.
   `core:default`, a command in one list only, global Tauri on, file drops on, the other app's dev
   port allowed, the error's own text shown, a Tauri import in a screen, an empty parity row, the
   dev switch reverted, a renamed plugin dependency, Tauri in `builder/api`, a pnpm below 10.
-  `ci-local.sh` green on `475552c` (756 Rust tests, 12 screen tests, typecheck and build, the
-  Python suites, fmt, clippy, shellcheck, the keystore cross-checks) and again on the final head.
+  `ci-local.sh` green after the security fixes (756 Rust tests, 12 screen tests, typecheck and
+  build, the Python suites, fmt, clippy, shellcheck, the keystore cross-checks) and again on the
+  final code, `5db2692` (the fix-up commits were squashed into it before the first push, to drop
+  a checkout path an early commit carried).
   Live: the app built with the screens embedded (`--features tauri/custom-protocol`), opened, and
   stayed up 8 seconds with nothing on stderr. `/security-review` (sub-agent): no high; a fixed
   checkout path in the brief (removed) and two lows (the dev switch, old pnpm), fixed. Verifier
