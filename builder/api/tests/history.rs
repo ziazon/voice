@@ -452,6 +452,52 @@ fn chat_review_round_trip_marks_survive_and_mark_is_locked() {
     );
 }
 #[test]
+fn writers_answer_busy_while_the_state_lock_is_held() {
+    let h = Home::new(true);
+    let p = export(&h);
+    use_claudeai_export_in(h.path(), "ari", &p).unwrap();
+    list_claudeai_chats_in(h.path(), slug("ari")).unwrap();
+    mark_claudeai_chats_in(h.path(), marks(&["chat-1"], true, false)).unwrap();
+    read_claudeai_in(h.path(), slug("ari"), &mut |_| {}).unwrap();
+    code_history(&h, 1);
+    read_claude_code_in(h.path(), read(false), &mut |_| {}).unwrap();
+    merge_histories_in(h.path(), slug("ari")).unwrap();
+
+    let _lock = lock_state(h.path(), "ari").unwrap();
+    let before = h.files();
+    let outputs: Vec<_> = [
+        "claudeai-export.json",
+        "claudeai-review.tsv",
+        "decisions-claudeai.jsonl",
+        "decisions.jsonl",
+    ]
+    .into_iter()
+    .map(|name| (name, read_private(h.path(), "ari", name).unwrap()))
+    .collect();
+    let unchanged = || {
+        assert_eq!(h.files(), before);
+        for (name, bytes) in &outputs {
+            assert_eq!(
+                read_private(h.path(), "ari", name).unwrap(),
+                *bytes,
+                "{name} changed while locked"
+            );
+        }
+    };
+    safe(&h, use_claudeai_export_in(h.path(), "ari", &p), BUSY);
+    unchanged();
+    safe(&h, list_claudeai_chats_in(h.path(), slug("ari")), BUSY);
+    unchanged();
+    safe(
+        &h,
+        read_claudeai_in(h.path(), slug("ari"), &mut |_| {}),
+        BUSY,
+    );
+    unchanged();
+    safe(&h, merge_histories_in(h.path(), slug("ari")), BUSY);
+    unchanged();
+}
+#[test]
 fn reads_only_chosen_chats_and_merges_with_code_byte_for_byte() {
     let h = Home::new(true);
     safe(&h, merge_histories_in(h.path(), slug("ari")), NOTHING);
