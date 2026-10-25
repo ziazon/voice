@@ -208,3 +208,98 @@ pub fn refresh_misfit(what: &str, problem: &str) -> String {
 }
 
 pub const DECISIONS_CHANGED: &str = "Your assistant's decisions changed while the change was being drafted, so nothing was saved. Try again.";
+
+// Testing and applying an approved refresh.
+pub const TESTING: &str = "Testing the change on your answers";
+pub const GRADING: &str = "Checking the written answers";
+pub const CHANGE_DOES_NOT_FIT: &str = "That saved change no longer fits your assistant, so nothing was changed. Draft a new one with `persona-builder refresh propose`.";
+pub const DECISIONS_CHANGED_TESTING: &str = "Your assistant's decisions changed while the change was being tested, so nothing was saved. Draft a new one with `persona-builder refresh propose`.";
+pub const DECISIONS_MOVED_AFTER: &str = "Your assistant's decisions.md changed after this change was tested, so it wasn't applied. Draft a new one with `persona-builder refresh propose`.";
+pub const KEEP_REASON: &str = "Every new test now passes, and none of the others got worse.";
+pub const ANSWER_PROMPT: &str = "Answer each test the way the person would.\n\nHow the person decides (their decisions.md):\n\n";
+pub const GRADE_PROMPT: &str = "Grade each answer against what the right answer must do.\n\nThe items, one JSON object per line:\n";
+pub const APPLY_REPLY_SHAPE: &str = "must have exactly the requested fields";
+pub const APPLY_REPLY_IDS: &str = "must answer each requested id exactly once";
+pub const APPLY_ANSWER_CHOICE: &str = "must copy one option exactly";
+pub const APPLY_ANSWER_LINE: &str = "must be a short, plain line of at most 1,000 characters";
+pub const APPLY_GRADE: &str = "must be pass or fail";
+pub fn apply_answers_count(n: usize) -> String {
+    format!("{n} of its answers didn't fit")
+}
+pub fn apply_grades_count(n: usize) -> String {
+    format!("{n} of its grades didn't fit")
+}
+pub fn not_answered(id: &str) -> String {
+    format!(
+        "That change ({id}) is still waiting for your answer. Look at it with `persona-builder refresh show`, then approve or reject it."
+    )
+}
+pub fn was_rejected(id: &str) -> String {
+    format!("You rejected that change ({id}), so it can't be applied.")
+}
+pub fn cases_moved(_id: &str) -> String {
+    "Some of the tests this change was meant to pass have changed since you approved it. Draft a new one with `persona-builder refresh propose`.".into()
+}
+pub fn apply_misfit(what: &str, problem: &str) -> String {
+    format!(
+        "{what}: Claude's answers didn't fit twice, so nothing was saved ({problem}). Run `persona-builder refresh apply` again."
+    )
+}
+pub fn kept(_id: &str) -> String {
+    "Kept. Your assistant now works this way.".into()
+}
+pub fn undone(_id: &str) -> String {
+    "Undone. Your assistant is as it was, and your answers stay saved for the next refresh.".into()
+}
+pub fn finished_left(_id: &str) -> String {
+    "This change was already tested; finished what was left.".into()
+}
+pub fn nothing_left(id: &str, kept: bool) -> String {
+    format!(
+        "This change ({id}) was already tested and {}.",
+        if kept { "kept" } else { "undone" }
+    )
+}
+pub fn new_failed(n: usize, m: usize) -> String {
+    format!(
+        "{n} of the {m} new {} still didn't pass, so the change was undone.",
+        if m == 1 { "test" } else { "tests" }
+    )
+}
+pub fn regressed(n: usize) -> String {
+    format!(
+        "{n} earlier {} that passed before failed with the change, so it was undone.",
+        if n == 1 { "test" } else { "tests" }
+    )
+}
+pub fn refresh_entry_heading(day: &str, id: &str) -> String {
+    format!("## {day}: refresh ({id})")
+}
+#[allow(clippy::too_many_arguments)]
+pub fn refresh_entry(
+    heading: &str,
+    summary: &str,
+    a: usize,
+    b: usize,
+    c: usize,
+    d: usize,
+    kept: bool,
+    reason: &str,
+) -> String {
+    let tests = if d == 0 {
+        format!("{a} of {b} new tests pass; there were no earlier tests.")
+    } else {
+        format!("{a} of {b} new tests pass; {c} of {d} earlier tests held.")
+    };
+    format!(
+        "{heading}\n\n- **Change:** {summary}\n- **Tests:** {tests}\n- **Outcome:** {}. {reason}\n",
+        if kept { "kept" } else { "undone" }
+    )
+}
+pub fn growth(kept: usize, undone: usize, passing: usize, of: usize) -> String {
+    format!(
+        "Since the build: {kept} {} kept and {undone} undone. Your assistant passes {passing} of {of} tests from your answers.",
+        if kept == 1 { "change" } else { "changes" }
+    )
+}
+pub const ANSWER_TESTS: &str = "\n\nThe tests, one JSON object per line:\n";

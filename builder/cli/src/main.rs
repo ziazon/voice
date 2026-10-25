@@ -281,6 +281,22 @@ enum RefreshCommand {
         #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
         call_cap_usd: f64,
     },
+    /// Test an approved change on all your answers, then keep it or undo it.
+    Apply {
+        member_dir: PathBuf,
+        /// The change's id, as `refresh show` prints it.
+        #[arg(value_name = "CHANGE")]
+        proposal: String,
+        /// The Claude model to draft with.
+        #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
+        model: String,
+        /// The daily limit, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
+        daily_cap_usd: f64,
+        /// The most one call may spend, in US dollars as Claude Code estimates them.
+        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
+        call_cap_usd: f64,
+    },
     /// Show the change waiting for your answer.
     Show {
         member_dir: PathBuf,
@@ -1176,13 +1192,21 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
 fn report(member_dir: PathBuf) -> Result<()> {
     use persona_builder_build::{report, text};
     let (member, home) = member_and_home(&member_dir)?;
-    if let Some(report) = report::read(&home, &member.slug)? {
+    let built = report::read(&home, &member.slug)?;
+    if let Some(report) = &built {
         println!("{}", text::report_from(&report.built));
-        for line in report::render(&report) {
+        for line in report::render(report) {
             println!("{line}");
         }
     } else {
         println!("{}", text::no_report(&member_dir.display().to_string()));
+    }
+    let store = persona_builder_grow::store::Store::open(&home, &member)?;
+    if let Some(line) = persona_builder_grow::apply::growth(
+        &store,
+        built.as_ref().map(|report| report.built.as_str()),
+    )? {
+        println!("{line}");
     }
     Ok(())
 }
@@ -1339,6 +1363,97 @@ fn refresh_propose(
                 println!("{line}");
             }
         }
+    }
+    println!(
+        "{}",
+        spend_text::spend(session.spent_today()?, cap.daily_usd())
+    );
+    Ok(())
+}
+fn refresh_apply(
+    member_dir: PathBuf,
+    model: String,
+    daily_cap_usd: f64,
+    call_cap_usd: f64,
+    id: String,
+) -> Result<()> {
+    use persona_builder_agent::{
+        claude,
+        ledger::{Cap, Session},
+        text as spend_text,
+    };
+    use persona_builder_build::report;
+    use persona_builder_grow::{
+        apply::{self, Measured},
+        record::KeepOrRevert,
+        store::{Store, utc_now},
+        text,
+    };
+    use persona_builder_ingest::filters::Filters;
+    let (member, home) = member_and_home(&member_dir)?;
+    let filters = Filters::compile(&member.filters)?;
+    let cap = Cap::new(daily_cap_usd, call_cap_usd)?;
+    let path = std::env::var_os("PATH");
+    let claude = claude::find(path.as_deref(), &home)?;
+    claude.check(&home)?;
+    let store = Store::open(&home, &member)?;
+    let session = Session::open(&home, &member.slug, cap)?;
+    let measured = apply::measure(
+        &claude,
+        &session,
+        &home,
+        &store,
+        &member,
+        &member_dir,
+        &filters,
+        &model,
+        &id,
+        &utc_now,
+    )?;
+    let (measurement, already) = match measured {
+        Measured::Done(measurement) => (measurement, false),
+        Measured::Already(measurement) => (measurement, true),
+    };
+    let proposal = store
+        .proposal(&id)?
+        .ok_or_else(|| Error::Invalid(text::no_proposal(&id)))?;
+    let finished = apply::finish(
+        &store,
+        &member,
+        &member_dir,
+        &filters,
+        &proposal,
+        &measurement,
+    )?;
+    let kept = finished.outcome == KeepOrRevert::Keep;
+    if already {
+        println!(
+            "{}",
+            if finished.left.is_empty() {
+                text::nothing_left(&id, kept)
+            } else {
+                text::finished_left(&id)
+            }
+        );
+    } else {
+        println!(
+            "{}",
+            if kept {
+                text::kept(&id)
+            } else {
+                text::undone(&id)
+            }
+        );
+        println!("{}", measurement.reason);
+    }
+    let built = report::read(&home, &member.slug)?;
+    if let Some(report) = &built {
+        for line in report::render(report) {
+            println!("{line}");
+        }
+    }
+    if let Some(line) = apply::growth(&store, built.as_ref().map(|report| report.built.as_str()))? {
+        println!("{line}");
     }
     println!(
         "{}",
@@ -1880,6 +1995,13 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 daily_cap_usd,
                 call_cap_usd,
             } => refresh_propose(member_dir, model, daily_cap_usd, call_cap_usd),
+            RefreshCommand::Apply {
+                member_dir,
+                proposal,
+                model,
+                daily_cap_usd,
+                call_cap_usd,
+            } => refresh_apply(member_dir, model, daily_cap_usd, call_cap_usd, proposal),
             RefreshCommand::Show {
                 member_dir,
                 proposal,

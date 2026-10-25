@@ -379,6 +379,18 @@ pub fn write(member_dir: &Path, decisions: &str, measurements: &str) -> Result<(
     measurements.rename()
 }
 
+/// Replace only the measurements file, leaving decisions untouched.
+pub fn write_measurements(member_dir: &Path, measurements: &str) -> Result<()> {
+    sweep(member_dir)?;
+    Staged::new(member_dir, MEASUREMENTS, measurements)?.rename()
+}
+
+/// Finish an interrupted keep whose measurements entry is already present.
+pub fn write_decisions(member_dir: &Path, decisions: &str) -> Result<()> {
+    sweep(member_dir)?;
+    Staged::new(member_dir, DECISIONS, decisions)?.rename()
+}
+
 /// Remove the staged files an interrupted run left (regular files only, never a link).
 fn sweep(member_dir: &Path) -> Result<()> {
     for entry in fs::read_dir(member_dir).map_err(|e| io(member_dir, e))? {

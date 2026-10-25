@@ -1,4 +1,4 @@
-//! Refresh drafts and answers stay private, and never change the member files.
+//! Refresh drafts stay private; approved changes are tested before they change the member.
 use persona_builder::crew::{NewMember, new_member};
 use serde_json::{Value, json};
 use std::{
@@ -311,4 +311,81 @@ fn refresh_help_calls_the_id_a_change_and_explains_the_model() {
     let out = f.run(&["refresh", "propose", "--help"]);
     assert!(out.status.success());
     assert!(text(&out.stdout).contains("The Claude model to draft with"));
+}
+
+#[test]
+fn approved_change_is_applied_reported_and_resumes_without_calls() {
+    let Some(python) = python() else { return };
+    let f = Fixture::new();
+    f.built(&python);
+    f.keep_answers();
+    let out = f.run(&["refresh", "propose", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let proposals = f.records("prop-");
+    let id = proposals[0]["id"].as_str().unwrap();
+    let out = f.run(&["refresh", "approve", &f.member(), id]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let script = include_str!("../../grow/tests/fixtures/apply_stub.py");
+    f.write_stub(&format!("#!{} -I\n{script}", python.display()));
+    let out = f.run(&["refresh", "apply", &f.member(), id]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let shown = text(&out.stdout);
+    let kept = "Kept. Your assistant now works this way.";
+    let reason = "Every new test now passes, and none of the others got worse.";
+    let growth = "Since the build: 1 change kept and 0 undone. Your assistant passes 2 of 2 tests from your answers.";
+    assert!(shown.starts_with(&format!("{kept}\n{reason}\n")), "{shown}");
+    assert!(shown.contains(growth), "{shown}");
+    assert!(shown.find(growth).unwrap() < shown.find("Today, about $").unwrap());
+    let out = f.run(&["report", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains(growth), "{}", text(&out.stdout));
+    let calls = f.calls();
+    let before = f.snapshot();
+    let out = f.run(&["refresh", "apply", &f.member(), id]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stdout).starts_with(&format!(
+            "This change ({id}) was already tested and kept.\n"
+        )),
+        "{}",
+        text(&out.stdout)
+    );
+    assert_eq!(f.calls(), calls);
+    assert_eq!(f.snapshot(), before);
+    fs::remove_file(f.member.join("measurements.md")).unwrap();
+    let out = f.run(&["refresh", "apply", &f.member(), id]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stdout).starts_with("This change was already tested; finished what was left.\n")
+    );
+    assert!(f.member.join("measurements.md").is_file());
+    assert_eq!(f.calls(), calls);
+    fs::remove_file(f.state().join("report.json")).unwrap();
+    let out = f.run(&["report", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let shown = text(&out.stdout);
+    assert!(shown.contains(growth), "{shown}");
+    assert!(shown.contains("There's no report yet."), "{shown}");
+    let out = f.run(&["refresh", "apply", &f.member(), id]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains(growth), "{}", text(&out.stdout));
+}
+
+#[test]
+fn applying_an_unanswered_change_says_it_is_waiting_without_calls() {
+    let Some(python) = python() else { return };
+    let f = Fixture::new();
+    f.built(&python);
+    f.keep_answers();
+    let out = f.run(&["refresh", "propose", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let proposals = f.records("prop-");
+    let id = proposals[0]["id"].as_str().unwrap();
+    let calls = f.calls();
+    let before = f.snapshot();
+    let out = f.run(&["refresh", "apply", &f.member(), id]);
+    assert!(!out.status.success());
+    assert!(text(&out.stderr).contains(&format!("That change ({id}) is still waiting for your answer. Look at it with `persona-builder refresh show`, then approve or reject it.")), "{}", text(&out.stderr));
+    assert_eq!(f.calls(), calls);
+    assert_eq!(f.snapshot(), before);
 }

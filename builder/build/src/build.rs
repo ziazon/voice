@@ -509,7 +509,7 @@ pub fn check_distil_reply(
 }
 
 /// The held-out questions in batches of near-equal size, about [`BATCH`] each.
-pub fn batches(questions: &[Map<String, Value>]) -> Vec<&[Map<String, Value>]> {
+pub fn batches<T>(questions: &[T]) -> Vec<&[T]> {
     if questions.is_empty() {
         return Vec::new();
     }

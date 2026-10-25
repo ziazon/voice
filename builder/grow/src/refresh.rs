@@ -217,6 +217,16 @@ pub fn check_reply(
         words.extend([point, why]);
         edits.push(edit);
     }
+    check_words(&words, cases, signals, filters)?;
+    Ok(edits)
+}
+
+pub(crate) fn check_words(
+    words: &[String],
+    cases: &[Case],
+    signals: &[Signal],
+    filters: &Filters,
+) -> std::result::Result<(), Misfit> {
     for (at, value) in words.iter().enumerate() {
         if filters.kind(value).is_some() {
             return Err(Misfit::new(
@@ -245,10 +255,10 @@ pub fn check_reply(
             text::quoted(hits.len()),
         ));
     }
-    Ok(edits)
+    Ok(())
 }
 
-fn decisions(member_dir: &Path) -> Result<String> {
+pub(crate) fn decisions(member_dir: &Path) -> Result<String> {
     read_text(&member_dir.join("decisions.md"), DECISIONS_MOST)?
         .ok_or_else(|| Error::Invalid(text::NOT_BUILT.into()))
 }
@@ -389,7 +399,7 @@ pub fn propose(
     Ok(Proposed::Drafted(proposal))
 }
 
-fn check_stored(proposal: &Proposal) -> Result<()> {
+pub(crate) fn check_stored(proposal: &Proposal) -> Result<()> {
     if proposal.summary.chars().any(hidden)
         || proposal.changes.iter().any(|c| {
             c.why.chars().any(hidden)
