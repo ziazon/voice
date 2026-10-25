@@ -260,10 +260,15 @@ enum InterviewCommand {
     /// Keep your answers to the interview as training for your assistant.
     Answer {
         member_dir: PathBuf,
+        /// Your answers: a file in your assistant's private folder.
         #[arg(long)]
         answers: String,
+        /// The questions you answered: a file in your assistant's private folder.
         #[arg(long, default_value = persona_builder_build::interview::QUESTIONS_FILE)]
         questions: String,
+        /// Keep these answers in place of the ones kept before.
+        #[arg(long)]
+        replace: bool,
     },
 }
 
@@ -1073,6 +1078,12 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
     let session = Session::open(&home, &member.slug, cap)?;
+    // Again under the lock: another draft may have saved questions since the first look.
+    if !args.replace
+        && read_private_optional(&home, &member.slug, interview::QUESTIONS_FILE)?.is_some()
+    {
+        return Err(Error::Invalid(text::ALREADY_DRAFTED.into()));
+    }
     let drafted = interview::draft(&claude, &session, &args.model, &book, &weights)?;
     write_private(
         &home,
@@ -1093,11 +1104,23 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     );
     Ok(())
 }
-fn interview_answer(member_dir: PathBuf, answers: String, questions: String) -> Result<()> {
+fn interview_answer(
+    member_dir: PathBuf,
+    answers: String,
+    questions: String,
+    replace: bool,
+) -> Result<()> {
     use persona_builder_build::{interview, text};
-    use persona_builder_ingest::{filters::Filters, mine::to_jsonl, private::write_private};
+    use persona_builder_ingest::{
+        filters::Filters,
+        mine::to_jsonl,
+        private::{read_private_optional, write_private},
+    };
     use persona_builder_steps::input::read_object;
     let (member, home) = member_and_home(&member_dir)?;
+    if !replace && read_private_optional(&home, &member.slug, interview::OUT)?.is_some() {
+        return Err(Error::Invalid(text::ALREADY_ANSWERED.into()));
+    }
     let filters = Filters::compile(&member.filters)?;
     let asked = read_object(&questions, &json_at(&home, &member.slug, &questions)?)?;
     let answered = read_object(&answers, &json_at(&home, &member.slug, &answers)?)?;
@@ -1573,7 +1596,8 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 member_dir,
                 answers,
                 questions,
-            } => interview_answer(member_dir, answers, questions),
+                replace,
+            } => interview_answer(member_dir, answers, questions, replace),
         },
         Some(Command::Spend {
             member_dir,

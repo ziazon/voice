@@ -2,6 +2,39 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB3.4: the interview when the history is thin (2026-10-24, lane: V1)
+
+- **What:** a new crate `builder/build` (`persona_builder_build`) for the build's steps that call a
+  model; PB3.3's build joins it. `persona-builder interview draft <member_dir>` counts the answered
+  questions in the merged corpus and, below 150, has the person's own Claude Code draft twenty
+  questions in the round-questions shape, saved to `interview-questions.json` in the state folder.
+  `persona-builder interview answer <member_dir> --answers <file>` writes
+  `decisions-interview.jsonl` (`question:interview-NN`, project `interview`, always training, through
+  the filters), which `merge` already keeps in training. `round` gains `check_questions` (its own
+  rules, no answers). `.gitignore` un-ignores `builder/build/` (every `build/` is ignored). Brief:
+  `plans/briefs/PB3.4-interview.md`.
+- **Who wrote it:** Claude, directly. Codex was at a hard usage limit until 2026-10-30 (probed at
+  pickup).
+- **Decisions made at pickup:** no record goes in the prompt (only the codebook's areas and kinds of
+  decision); category counts come only from an optional `--labels` file, since labelling follows the
+  interview; each header must be a kind of decision and the questions numbered 1 to 20 in order; the
+  saved file keeps only `round`'s keys; `round`'s deterministic timestamp, not "now"; `<member_dir>`
+  like every other command, not the spec's `<member.json>`.
+- **Verified:** red first (13 library tests against stub bodies, 7 CLI tests against a missing
+  command), then green; 21 mutations, one per claim, all caught, each file restored and checked with
+  `cmp`. Live: the real binary against the real Claude Code 2.1.292 on Mimi in an empty home said
+  "isn't signed in", created no state folder and spent nothing.
+- **Gates:** `/security-review` (a sub-agent): no high or medium; one low (the waiting-questions
+  check ran before the lock), fixed by checking again under the lock. The Verifier (Fable): pass, no
+  must-fix; should-fixes applied: kept answers are not replaced without `--replace`, the CLI test now
+  pins the weighted prompt, and the help and the next-step line say the answers file goes in the
+  private folder.
+- **Known limits:** the template's second trigger ("fewer than 10 in a category the principal cares
+  about") is not built: the spec names only the 150 rule, and a history at 150 or more gets no
+  interview, even with `--labels`. The second waiting-questions check (a race) has no test.
+- **Not verified:** a successful live draft (no signed-in Claude Code on Mimi); the questions'
+  quality on a real person's areas (owed to PB8).
+
 ## PB6.1: GitHub sign-in's client ID (2026-10-25, lane: V2)
 
 - **What:** the registered OAuth App's client ID is compiled in (`CLIENT_ID` in

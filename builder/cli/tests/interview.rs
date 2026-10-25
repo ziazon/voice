@@ -48,7 +48,7 @@ impl Fixture {
     fn signed_in(&self, reply: &str) {
         fs::write(self.bin.join("reply"), reply).unwrap();
         self.stub(
-            "here=\"$(cd \"$(dirname \"$0\")\" && pwd -P)\"\ncase \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; *) cat > /dev/null; echo x >> \"$here/calls\"; cat \"$here/reply\";; esac",
+            "here=\"$(cd \"$(dirname \"$0\")\" && pwd -P)\"\ncase \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; *) cat > \"$here/stdin\"; echo x >> \"$here/calls\"; cat \"$here/reply\";; esac",
         );
     }
     fn stub(&self, body: &str) {
@@ -227,6 +227,12 @@ fn draft_weights_by_an_earlier_builds_labels() {
         "{}",
         text(&out.stdout)
     );
+    let asked = fs::read_to_string(f.bin.join("stdin")).unwrap();
+    assert!(
+        asked.contains("- sequencing: 0 past decisions\n"),
+        "{asked}"
+    );
+    assert!(asked.contains("- scope: 2 past decisions\n"), "{asked}");
 }
 
 #[test]
@@ -270,6 +276,25 @@ fn answer_keeps_the_answers_as_training_and_merge_picks_them_up() {
     assert_eq!(lines[0]["project"], "interview");
     assert_eq!(lines[0]["outcome"], "took_rec");
     assert_eq!(lines[1]["outcome"], "own_words");
+
+    let again = [
+        "interview",
+        "answer",
+        &member,
+        "--answers",
+        "interview-answers.json",
+    ];
+    let out = f.run(&again);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stderr),
+        format!(
+            "persona-builder: {}\n",
+            persona_builder_build::text::ALREADY_ANSWERED
+        )
+    );
+    let out = f.run(&[&again[..], &["--replace"]].concat());
+    assert!(out.status.success(), "{}", text(&out.stderr));
 
     let out = f.run(&["merge", &f.member()]);
     assert!(out.status.success(), "{}", text(&out.stderr));
