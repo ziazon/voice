@@ -11,7 +11,6 @@ use persona_builder_save::{
     github::{self, Endpoints, Github, UreqHttp},
     keychain::{Keychain, TokenStore},
     record::SaveRecord,
-    secret::Secret,
     text,
 };
 use persona_builder_steps::input::RecordList as Records;
@@ -1643,21 +1642,6 @@ fn save_choose_github(path: PathBuf, name: String) -> Result<()> {
     println!("{}", text::chose_github(&repo.full()));
     Ok(())
 }
-struct FolderPrivacy;
-impl flow::PrivacyCheck for FolderPrivacy {
-    fn hits(&self, folder: &std::path::Path) -> Result<Vec<String>> {
-        let files = persona_builder_save::git::folder_files(folder)?;
-        let member = read_member(&folder.join("member.json"))?;
-        let filters = persona_builder_ingest::filters::Filters::compile(&member.filters)?;
-        Ok(persona_builder_ingest::check::scan(folder, &files, &filters)?.hits)
-    }
-}
-struct UnavailableRemotes;
-impl RemoteCheck for UnavailableRemotes {
-    fn confirm(&self, _token: &Secret, _urls: &[String]) -> Result<()> {
-        Err(Error::Invalid(text::NOT_SET_UP.into()))
-    }
-}
 fn save_push(path: PathBuf) -> Result<()> {
     let home = home()?;
     let member = MemberPaths::load(&path, &home)?;
@@ -1668,14 +1652,14 @@ fn save_push(path: PathBuf) -> Result<()> {
     let remotes = github.as_ref().map(|github| GithubRemotes { github });
     let check: &dyn RemoteCheck = match &remotes {
         Some(remotes) => remotes,
-        None => &UnavailableRemotes,
+        None => &persona_builder_api::UnavailableRemotes,
     };
     let saved = Saver {
         git: &Git::system(),
         github: github.as_ref(),
         tokens: &Keychain::github(),
     }
-    .save_now(&member, &home, &FolderPrivacy, check)?;
+    .save_now(&member, &home, &persona_builder_api::FolderPrivacy, check)?;
     match saved {
         Saved::KeptLocal => println!("{}", text::KEPT_LOCAL),
         Saved::Pushed { message } => println!("{message}"),

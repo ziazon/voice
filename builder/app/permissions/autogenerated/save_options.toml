@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-options"
+description = "Enables the save_options command without any pre-configured scope."
+commands.allow = ["save_options"]
+
+[[permission]]
+identifier = "deny-save-options"
+description = "Denies the save_options command without any pre-configured scope."
+commands.deny = ["save_options"]

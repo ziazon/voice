@@ -10,6 +10,14 @@
     "allow-show-assistant-folder",
     "allow-consent-text",
     "allow-agree-consent",
-    "allow-claude-check"
+    "allow-claude-check",
+    "allow-save-options",
+    "allow-open-link",
+    "allow-github-sign-in-start",
+    "allow-github-sign-in-finish",
+    "allow-github-sign-in-cancel",
+    "allow-github-sign-out",
+    "allow-save-choose",
+    "allow-save-push"
   ]
 }

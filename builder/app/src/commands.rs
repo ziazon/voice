@@ -41,3 +41,54 @@ pub fn claude_check()
 -> Result<persona_builder_api::dto::ClaudeStatus, persona_builder_api::dto::Failure> {
     persona_builder_api::claude_check()
 }
+
+#[tauri::command(async)]
+pub fn save_options(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::SaveOptions, persona_builder_api::dto::Failure> {
+    persona_builder_api::save_options(request)
+}
+
+#[tauri::command(async)]
+pub fn open_link(
+    request: persona_builder_api::dto::LinkRequest,
+) -> Result<(), persona_builder_api::dto::Failure> {
+    persona_builder_api::open_link(request)
+}
+
+#[tauri::command(async)]
+pub fn github_sign_in_start()
+-> Result<persona_builder_api::dto::SignInCode, persona_builder_api::dto::Failure> {
+    persona_builder_api::github_sign_in_start()
+}
+
+#[tauri::command(async)]
+pub fn github_sign_in_finish()
+-> Result<persona_builder_api::dto::Said, persona_builder_api::dto::Failure> {
+    persona_builder_api::github_sign_in_finish()
+}
+
+#[tauri::command(async)]
+pub fn github_sign_in_cancel() -> Result<(), persona_builder_api::dto::Failure> {
+    persona_builder_api::github_sign_in_cancel()
+}
+
+#[tauri::command(async)]
+pub fn github_sign_out() -> Result<persona_builder_api::dto::Said, persona_builder_api::dto::Failure>
+{
+    persona_builder_api::github_sign_out()
+}
+
+#[tauri::command(async)]
+pub fn save_choose(
+    request: persona_builder_api::dto::SaveChoiceRequest,
+) -> Result<persona_builder_api::dto::Said, persona_builder_api::dto::Failure> {
+    persona_builder_api::save_choose(request)
+}
+
+#[tauri::command(async)]
+pub fn save_push(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::Said, persona_builder_api::dto::Failure> {
+    persona_builder_api::save_push(request)
+}

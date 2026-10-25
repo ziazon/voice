@@ -6,6 +6,11 @@ import type { SlugRequest } from './types/generated/SlugRequest'
 import type { ConsentText } from './types/generated/ConsentText'
 import type { Consent } from './types/generated/Consent'
 import type { ClaudeStatus } from './types/generated/ClaudeStatus'
+import type { SaveOptions } from './types/generated/SaveOptions'
+import type { LinkRequest } from './types/generated/LinkRequest'
+import type { SignInCode } from './types/generated/SignInCode'
+import type { Said } from './types/generated/Said'
+import type { SaveChoiceRequest } from './types/generated/SaveChoiceRequest'
 
 /**
  * Everything the screens ask of the app. A host gives its own backend.
@@ -21,6 +26,14 @@ export interface Backend {
   consentText(): Promise<ConsentText>
   agreeConsent(request: SlugRequest): Promise<Consent>
   claudeCheck(): Promise<ClaudeStatus>
+  saveOptions(request: SlugRequest): Promise<SaveOptions>
+  openLink(request: LinkRequest): Promise<void>
+  githubSignInStart(): Promise<SignInCode>
+  githubSignInFinish(): Promise<Said>
+  githubSignInCancel(): Promise<void>
+  githubSignOut(): Promise<Said>
+  saveChoose(request: SaveChoiceRequest): Promise<Said>
+  savePush(request: SlugRequest): Promise<Said>
 }
 
 export const backendKey: InjectionKey<Backend> = Symbol('persona-builder-backend')

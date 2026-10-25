@@ -16,28 +16,40 @@ pub const NOT_SET_UP: &str = "GitHub sign-in isn't set up in this copy of Person
 pub const SIGN_IN_CANCELLED: &str = "GitHub sign-in was cancelled. Nothing was changed.";
 pub const SIGN_IN_EXPIRED: &str =
     "The GitHub code ran out before it was used. Start signing in again for a new code.";
+const SIGN_IN_FAILED: (&str, &str) = (
+    "GitHub sign-in didn't work (GitHub said: ",
+    "). Try again later, or keep your assistant on this computer only.",
+);
 pub fn sign_in_failed(code: &str) -> String {
-    format!(
-        "GitHub sign-in didn't work (GitHub said: {code}). Try again later, or keep your assistant on this computer only."
-    )
+    let (prefix, suffix) = SIGN_IN_FAILED;
+    format!("{prefix}{code}{suffix}")
 }
 pub const SIGN_IN_FIRST: &str = "Sign in to GitHub first.";
 pub const NO_REPO_PERMISSION: &str = "GitHub didn't give Persona Builder permission to make private repos, so it can't save there. Sign in again and allow it, or keep your assistant on this computer only.";
+const REPO_PUBLIC: (&str, &str) = (
+    "",
+    " is public, so anyone could read your assistant. Persona Builder won't save it there. Make the repo private on GitHub, or keep your assistant on this computer only.",
+);
 pub fn repo_public(full: &str) -> String {
-    format!(
-        "{full} is public, so anyone could read your assistant. Persona Builder won't save it there. Make the repo private on GitHub, or keep your assistant on this computer only."
-    )
+    let (prefix, suffix) = REPO_PUBLIC;
+    format!("{prefix}{full}{suffix}")
 }
+const REPO_UNCONFIRMED: (&str, &str) = (
+    "Persona Builder couldn't confirm that ",
+    " is private, so it didn't save there. Check that you're signed in to the GitHub account that owns it.",
+);
 pub fn repo_unconfirmed(full: &str) -> String {
-    format!(
-        "Persona Builder couldn't confirm that {full} is private, so it didn't save there. Check that you're signed in to the GitHub account that owns it."
-    )
+    let (prefix, suffix) = REPO_UNCONFIRMED;
+    format!("{prefix}{full}{suffix}")
 }
 pub const NOT_ON_GITHUB: &str = "This repo isn't on GitHub. Persona Builder can only check that GitHub repos are private, so it won't save there. Keep your assistant on this computer only, or save it to a private GitHub repo.";
+const REPO_NAME_TAKEN: (&str, &str) = (
+    "GitHub wouldn't make a repo called ",
+    ". You may already have one with that name: pick another.",
+);
 pub fn repo_name_taken(name: &str) -> String {
-    format!(
-        "GitHub wouldn't make a repo called {name}. You may already have one with that name: pick another."
-    )
+    let (prefix, suffix) = REPO_NAME_TAKEN;
+    format!("{prefix}{name}{suffix}")
 }
 pub const BAD_REPO_NAME: &str =
     "A repo name can use letters, numbers, dots, dashes and underscores, up to 100 characters.";
@@ -46,11 +58,21 @@ pub const NOT_OFFERED: &str =
 pub const CHOOSE_FIRST: &str = "Choose where to save your assistant first.";
 pub const KEPT_LOCAL: &str =
     "Your assistant is kept on this computer only, so there's nothing to send.";
+const PRIVACY_HITS: (&str, &str) = (
+    "The privacy check found something private, so nothing was sent. Look at: ",
+    "",
+);
 pub fn privacy_hits(places: &str) -> String {
-    format!("The privacy check found something private, so nothing was sent. Look at: {places}")
+    let (prefix, suffix) = PRIVACY_HITS;
+    format!("{prefix}{places}{suffix}")
 }
+const LINKS_IN_FOLDER: (&str, &str) = (
+    "Persona Builder won't save a folder that holds links to other places: ",
+    "",
+);
 pub fn links_in_folder(rel: &str) -> String {
-    format!("Persona Builder won't save a folder that holds links to other places: {rel}")
+    let (prefix, suffix) = LINKS_IN_FOLDER;
+    format!("{prefix}{rel}{suffix}")
 }
 pub fn saved_github(full: &str) -> String {
     format!("Saved to {full} on GitHub.")
@@ -69,8 +91,10 @@ pub const fn needs_git(macos: bool) -> &'static str {
 }
 pub const GIT_TOO_OLD: &str =
     "Persona Builder needs Git 2.32 or later. Update Git, then try again.";
+const PUSH_FAILED: (&str, &str) = ("GitHub didn't take the save: ", "");
 pub fn push_failed(detail: &str) -> String {
-    format!("GitHub didn't take the save: {detail}")
+    let (prefix, suffix) = PUSH_FAILED;
+    format!("{prefix}{detail}{suffix}")
 }
 pub const NO_SAFE_STORE: &str = "Persona Builder couldn't find a safe place on this computer to keep your GitHub sign-in, so it can't save to GitHub here. On Linux, that safe place is a keyring app such as GNOME Keyring or KDE Wallet: start one, then try again. Or keep your assistant on this computer only.";
 pub const KEYCHAIN_FAILED: &str = "Persona Builder couldn't use this computer's password store, so it didn't keep your GitHub sign-in. If the store is locked, unlock it, then try again. Or keep your assistant on this computer only.";
@@ -84,8 +108,51 @@ pub fn chose_github(full: &str) -> String {
     format!("Your assistant will be saved to {full} on GitHub, a private repo.")
 }
 
+const BRANCH_IN_USE: (&str, &str) = (
+    "The branch ",
+    " is open in your repo right now, so Persona Builder didn't save. Switch to another branch, then try again.",
+);
 pub fn branch_in_use(branch: &str) -> String {
-    format!(
-        "The branch {branch} is open in your repo right now, so Persona Builder didn't save. Switch to another branch, then try again."
-    )
+    let (prefix, suffix) = BRANCH_IN_USE;
+    format!("{prefix}{branch}{suffix}")
+}
+
+/// Whether a failure is one of the save crate's sentences.
+pub fn is_said(message: &str) -> bool {
+    if message.contains(['\n', '\r']) {
+        return false;
+    }
+    [
+        NOT_SET_UP,
+        SIGN_IN_CANCELLED,
+        SIGN_IN_EXPIRED,
+        SIGN_IN_FIRST,
+        NO_REPO_PERMISSION,
+        NOT_ON_GITHUB,
+        BAD_REPO_NAME,
+        NOT_OFFERED,
+        CHOOSE_FIRST,
+        NEEDS_GIT,
+        GIT_TOO_OLD,
+        NO_SAFE_STORE,
+        KEYCHAIN_FAILED,
+        GITHUB_UNREACHABLE,
+    ]
+    .contains(&message)
+        || [
+            SIGN_IN_FAILED,
+            REPO_PUBLIC,
+            REPO_UNCONFIRMED,
+            REPO_NAME_TAKEN,
+            PRIVACY_HITS,
+            LINKS_IN_FOLDER,
+            PUSH_FAILED,
+            BRANCH_IN_USE,
+        ]
+        .iter()
+        .any(|(prefix, suffix)| {
+            message.len() > prefix.len() + suffix.len()
+                && message.starts_with(prefix)
+                && message.ends_with(suffix)
+        })
 }

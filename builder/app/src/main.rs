@@ -16,6 +16,14 @@ fn main() {
             commands::consent_text,
             commands::agree_consent,
             commands::claude_check,
+            commands::save_options,
+            commands::open_link,
+            commands::github_sign_in_start,
+            commands::github_sign_in_finish,
+            commands::github_sign_in_cancel,
+            commands::github_sign_out,
+            commands::save_choose,
+            commands::save_push,
         ])
         .run(tauri::generate_context!())
     {

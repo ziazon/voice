@@ -722,3 +722,49 @@ fn client_id_validates_alphabet_and_boundaries() {
     }
     assert!(http.requests.borrow().is_empty());
 }
+
+#[test]
+fn finish_sign_in_until_stops_on_wait_error_before_another_request() {
+    let http = FakeHttp::new(vec![
+        reply(200, device()),
+        reply(200, json!({"error":"authorization_pending"})),
+    ]);
+    let github = client(&http);
+    let code = github.start_sign_in().unwrap();
+    let mut waits = 0;
+    let result = github.finish_sign_in_until(&code, &mut |duration| {
+        assert_eq!(duration, Duration::from_secs(5));
+        waits += 1;
+        if waits == 1 {
+            Ok(())
+        } else {
+            Err(persona_builder::error::Error::Invalid(
+                "stopped waiting".into(),
+            ))
+        }
+    });
+    assert_eq!(result.unwrap_err().to_string(), "stopped waiting");
+    assert_eq!(waits, 2);
+    assert_eq!(http.requests.borrow().len(), 2);
+    http.assert_drained();
+}
+
+#[test]
+fn finish_sign_in_until_returns_the_token_after_pending() {
+    let http = FakeHttp::new(vec![
+        reply(200, device()),
+        reply(200, json!({"error":"authorization_pending"})),
+        reply(200, json!({"access_token":"invented-token"})),
+    ]);
+    let github = client(&http);
+    let code = github.start_sign_in().unwrap();
+    let mut waits = Vec::new();
+    let result = github.finish_sign_in_until(&code, &mut |duration| {
+        waits.push(duration);
+        Ok(())
+    });
+    assert_eq!(result.unwrap().expose(), "invented-token");
+    assert_eq!(waits, vec![Duration::from_secs(5); 2]);
+    assert_eq!(http.requests.borrow().len(), 3);
+    http.assert_drained();
+}

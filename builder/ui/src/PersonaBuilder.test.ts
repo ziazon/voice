@@ -12,7 +12,7 @@ it('shows Welcome and disables all steps before choosing an assistant', async ()
   ])
   for (const [index, item] of items.entries()) {
     expect(item.attributes('aria-disabled')).toBe('true')
-    expect(item.text()).toContain(index < 2 ? 'Choose an assistant first' : 'Not here yet')
+    expect(item.text()).toContain(index < 2 || index === 6 ? 'Choose an assistant first' : 'Not here yet')
   }
   expect(wrapper.get('main h1').text()).toBe('Persona Builder')
   expect(wrapper.text()).toContain('Version 1.2.3')
@@ -65,4 +65,26 @@ it('can go back from making a new assistant', async () => {
   await button(wrapper, 'Back').trigger('click')
   await flushPromises()
   expect(wrapper.get('main h1').text()).toBe('Persona Builder')
+})
+
+it('opens save without requiring permission and keeps steps three to six unavailable', async () => {
+  const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) })
+  const wrapper = screen(PersonaBuilder, backend)
+  await flushPromises()
+  await button(wrapper, 'Open').trigger('click')
+  await flushPromises()
+  const items = wrapper.findAll('ol li')
+  for (const item of items.slice(2, 6)) {
+    expect(item.attributes('aria-disabled')).toBe('true')
+    expect(item.text()).toContain('Not here yet')
+  }
+  const save = items[6]!
+  expect(save.attributes('aria-disabled')).toBeUndefined()
+  expect(save.get('button').attributes('disabled')).toBeUndefined()
+  await save.get('button').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('main h2').text()).toBe('Keep a copy')
+  expect(wrapper.get('[aria-current="step"]').text()).toBe('Save')
+  expect(backend.saveOptions).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug })
+  expect(backend.agreeConsent).not.toHaveBeenCalled()
 })

@@ -13,19 +13,29 @@ use std::{
 
 type Result<T> = std::result::Result<T, dto::Failure>;
 const LOOK: &str = "Persona Builder couldn't look for your assistants. Close it and open it again.";
-const FIND: &str = "Persona Builder couldn't find that assistant. Close it and open it again.";
+pub(crate) const FIND: &str =
+    "Persona Builder couldn't find that assistant. Close it and open it again.";
 const MAKE: &str = "Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again.";
 const KEEP: &str = "Persona Builder couldn't keep your answer. Check there's space on this computer, then try again.";
-fn failure(message: &str) -> dto::Failure {
+pub(crate) fn failure(message: &str) -> dto::Failure {
     dto::Failure {
         message: message.into(),
     }
 }
-fn home(message: &str) -> Result<PathBuf> {
+pub(crate) fn home(message: &str) -> Result<PathBuf> {
     std::env::var_os("HOME")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .ok_or_else(|| failure(message))
+}
+
+pub(crate) fn listed(home: &Path, slug: &str) -> Result<assistants::Listed> {
+    assistants::assistant_dir(home, slug).map_err(|_| failure(FIND))?;
+    assistants::list(home)
+        .map_err(|_| failure(FIND))?
+        .into_iter()
+        .find(|listed| listed.member.slug == slug)
+        .ok_or_else(|| failure(FIND))
 }
 
 fn valid_date(date: &str) -> bool {
@@ -151,14 +161,7 @@ pub fn consent_text() -> Result<dto::ConsentText> {
     })
 }
 pub fn agree_consent_in(home: &Path, request: dto::SlugRequest) -> Result<dto::Consent> {
-    assistants::assistant_dir(home, &request.slug).map_err(|_| failure(FIND))?;
-    if !assistants::list(home)
-        .map_err(|_| failure(FIND))?
-        .iter()
-        .any(|listed| listed.member.slug == request.slug)
-    {
-        return Err(failure(FIND));
-    }
+    listed(home, &request.slug)?;
     write_consent(home, &request.slug).map_err(|_| failure(KEEP))
 }
 pub fn agree_consent(request: dto::SlugRequest) -> Result<dto::Consent> {
@@ -169,12 +172,7 @@ pub fn show_assistant_folder_in(
     request: dto::SlugRequest,
     open: impl FnOnce(&Path) -> std::io::Result<()>,
 ) -> Result<()> {
-    let listed = assistants::list(home)
-        .map_err(|_| failure(FIND))?
-        .into_iter()
-        .find(|listed| listed.member.slug == request.slug)
-        .ok_or_else(|| failure(FIND))?;
-    let dir = listed.dir;
+    let dir = listed(home, &request.slug)?.dir;
     let dir = dir.canonicalize().map_err(|_| failure(FIND))?;
     open(&dir).map_err(|_| failure("Persona Builder couldn't open the folder."))
 }

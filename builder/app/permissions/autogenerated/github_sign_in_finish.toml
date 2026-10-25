@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-github-sign-in-finish"
+description = "Enables the github_sign_in_finish command without any pre-configured scope."
+commands.allow = ["github_sign_in_finish"]
+
+[[permission]]
+identifier = "deny-github-sign-in-finish"
+description = "Denies the github_sign_in_finish command without any pre-configured scope."
+commands.deny = ["github_sign_in_finish"]

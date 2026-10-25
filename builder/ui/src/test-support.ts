@@ -2,8 +2,20 @@ import { mount } from '@vue/test-utils'
 import { afterEach, vi } from 'vitest'
 import { backendKey, type Backend } from './backend'
 import type { Assistant } from './types/generated/Assistant'
+import type { SaveOptions } from './types/generated/SaveOptions'
 
 export const assistant: Assistant = { slug: 'example', name: 'Example', principal: 'Sample', consent: { agreed: false, agreedOn: null } }
+export const saveOptions: SaveOptions = {
+  choices: [
+    { kind: 'github', label: 'A new private GitHub repo' },
+    { kind: 'local', label: 'This computer only' },
+  ],
+  selected: 0,
+  note: 'A free GitHub account lets you keep a private copy.',
+  chosen: null,
+  signedIn: false,
+  suggestedName: 'example-assistant',
+}
 export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
   return {
     appInfo: vi.fn().mockResolvedValue({ version: '1.2.3', agents: [] }),
@@ -13,6 +25,14 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     consentText: vi.fn().mockResolvedValue(consentText),
     agreeConsent: vi.fn().mockResolvedValue({ agreed: true, agreedOn: '2026-10-25' }),
     claudeCheck: vi.fn().mockResolvedValue({ ready: true, message: 'Claude Code is ready.', note: null }),
+    saveOptions: vi.fn().mockResolvedValue(saveOptions),
+    openLink: vi.fn().mockResolvedValue(undefined),
+    githubSignInStart: vi.fn().mockResolvedValue({ userCode: 'ABCD-EFGH' }),
+    githubSignInFinish: vi.fn().mockResolvedValue({ message: 'You are signed in to GitHub.' }),
+    githubSignInCancel: vi.fn().mockResolvedValue(undefined),
+    githubSignOut: vi.fn().mockResolvedValue({ message: 'You are signed out of GitHub.' }),
+    saveChoose: vi.fn().mockResolvedValue({ message: 'Your choice is kept.' }),
+    savePush: vi.fn().mockResolvedValue({ message: 'Your copy is saved.' }),
     ...overrides,
   }
 }

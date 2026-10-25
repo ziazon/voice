@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-github-sign-in-cancel"
+description = "Enables the github_sign_in_cancel command without any pre-configured scope."
+commands.allow = ["github_sign_in_cancel"]
+
+[[permission]]
+identifier = "deny-github-sign-in-cancel"
+description = "Denies the github_sign_in_cancel command without any pre-configured scope."
+commands.deny = ["github_sign_in_cancel"]

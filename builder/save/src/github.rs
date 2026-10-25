@@ -205,6 +205,16 @@ impl<'a> Github<'a> {
         code: &DeviceCode,
         sleep: &mut dyn FnMut(Duration),
     ) -> Result<Secret> {
+        self.finish_sign_in_until(code, &mut |duration| {
+            sleep(duration);
+            Ok(())
+        })
+    }
+    pub fn finish_sign_in_until(
+        &self,
+        code: &DeviceCode,
+        wait: &mut dyn FnMut(Duration) -> Result<()>,
+    ) -> Result<Secret> {
         let mut interval = code.interval;
         let mut elapsed = 0u64;
         loop {
@@ -212,7 +222,7 @@ impl<'a> Github<'a> {
                 .checked_add(interval)
                 .filter(|total| *total <= code.expires_in)
                 .ok_or_else(|| Error::Invalid(text::SIGN_IN_EXPIRED.into()))?;
-            sleep(Duration::from_secs(interval));
+            wait(Duration::from_secs(interval))?;
             let response = self.login(
                 "/login/oauth/access_token",
                 vec![

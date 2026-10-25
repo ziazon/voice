@@ -15,3 +15,6 @@ pub fn app_info() -> dto::AppInfo {
             .collect(),
     }
 }
+
+pub mod save;
+pub use save::*;

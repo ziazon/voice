@@ -32,4 +32,36 @@ pub const PARITY: &[Parity] = &[
         app: "claude_check",
         cli: &[&["claude", "check"]],
     },
+    Parity {
+        app: "save_options",
+        cli: &[&["save", "options"]],
+    },
+    Parity {
+        app: "open_link",
+        cli: &[&["save", "options"], &["save", "sign-in"]],
+    },
+    Parity {
+        app: "github_sign_in_start",
+        cli: &[&["save", "sign-in"]],
+    },
+    Parity {
+        app: "github_sign_in_finish",
+        cli: &[&["save", "sign-in"]],
+    },
+    Parity {
+        app: "github_sign_in_cancel",
+        cli: &[&["save", "sign-in"]],
+    },
+    Parity {
+        app: "github_sign_out",
+        cli: &[&["save", "sign-out"]],
+    },
+    Parity {
+        app: "save_choose",
+        cli: &[&["save", "choose"]],
+    },
+    Parity {
+        app: "save_push",
+        cli: &[&["save", "push"]],
+    },
 ];

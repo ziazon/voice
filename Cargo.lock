@@ -2772,6 +2772,7 @@ dependencies = [
  "persona-builder",
  "persona-builder-agent",
  "persona-builder-ingest",
+ "persona-builder-save",
  "serde",
  "serde_json",
  "ts-rs",
