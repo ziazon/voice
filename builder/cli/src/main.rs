@@ -226,6 +226,15 @@ enum Command {
         #[command(subcommand)]
         command: InterviewCommand,
     },
+    /// Keep an answer you gave your assistant, so it learns from it.
+    Keep {
+        member_dir: PathBuf,
+        /// Your answer: a JSON file in your assistant's private folder.
+        #[arg(long)]
+        signal: String,
+    },
+    /// Show how many tests your answers have made.
+    Cases { member_dir: PathBuf },
     /// Build your assistant from your history: sort your decisions, learn how you decide, and test it on questions it hasn't seen.
     Build {
         member_dir: PathBuf,
@@ -1245,6 +1254,30 @@ fn interview_answer(
     println!("{}", text::merge_next(&member_dir.display().to_string()));
     Ok(())
 }
+fn keep_answer(member_dir: PathBuf, signal: String) -> Result<()> {
+    use persona_builder_grow::{
+        keep,
+        store::{Store, utc_now},
+        text,
+    };
+    use persona_builder_ingest::filters::Filters;
+    let (member, home) = member_and_home(&member_dir)?;
+    let filters = Filters::compile(&member.filters)?;
+    let input = json_at(&home, &member.slug, &signal)?;
+    let store = Store::open(&home, &member)?;
+    let kept = keep::keep(&store, &member, &filters, &input, &utc_now())?;
+    println!("{}", text::kept(&kept));
+    println!("saved to ~/.claude/state/{}/growth/", member.slug);
+    Ok(())
+}
+fn cases(member_dir: PathBuf) -> Result<()> {
+    use persona_builder_grow::{store::Store, text};
+    let (member, home) = member_and_home(&member_dir)?;
+    let categories = persona_builder_steps::book::book(&member)?.categories;
+    let store = Store::open(&home, &member)?;
+    println!("{}", text::cases_summary(&store.cases()?, &categories));
+    Ok(())
+}
 fn github_client(http: &UreqHttp) -> Result<Github<'_>> {
     Github::new(
         http,
@@ -1704,6 +1737,8 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 replace,
             } => interview_answer(member_dir, answers, questions, replace),
         },
+        Some(Command::Keep { member_dir, signal }) => keep_answer(member_dir, signal),
+        Some(Command::Cases { member_dir }) => cases(member_dir),
         Some(Command::Build {
             member_dir,
             corpus,
