@@ -2,6 +2,38 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB4.3c: refresh apply, the last hardening from its review (2026-10-25, lane: V2)
+
+- **What:** the PB4.3b record's follow-ups, all about hand-edited private records.
+  `diff::added_lines` splits rows on `\n` as `diff::apply` does and drops one `\r` only as a
+  `\r\n` line ending after a `\r\n` unchanged or removed line in the same part of the change (not
+  before a `\ No newline at end of file` row). `check_candidate` checks each added line for length
+  and hidden characters before trimming it, so a stray `\r` refuses the change. `measure` returns
+  the proposal it checked (`Measured` is now a struct with `proposal`, `measurement`, `already`)
+  and the CLI hands that one to `finish`, with no second read. A rerun checks a saved undone result
+  by the keep-or-undo rule again (a kept one can't be: its tests are active by then). The
+  duplicate-approval test checks the message. `.ai/SECURITY.md`'s refresh row says all of this,
+  and drops the old `\r` limit. Brief: `plans/briefs/PB4.3c-apply-hardening.md`.
+- **Who wrote it:** Codex, in three passes (the slice; a fix-up; the gate fix). Claude briefed,
+  reviewed, wrote the SECURITY row and this record, ran the gates and committed. The brief was
+  wrong on one point: a leading tab was already refused, earlier, as a damaged change (only `\n`,
+  `\r` and `<` get past `check_stored`). Codex's first pass changed that refusal's message to fit
+  the brief; the fix-up put it back, so `\r` is the only character the new check catches.
+- **Verified:** `ci-local.sh` green on `ff2fe9e` (754 Rust tests, 0 failed, plus the Python
+  suites). Codex's mutation checks, each red and restored by `cmp`: the old `str::lines` split,
+  trimming before the check, the CRLF allowance removed, the old `Measured` enum (no compile), the
+  duplicate-approval guard, the undone-result recheck, the recheck applied to kept results too (the
+  idempotency test goes red), and the end-of-file `\r`. `/security-review` (sub-agent): one low,
+  fixed in `ff2fe9e`. Verifier (Fable) on `7537011`: pass with two should-fixes, the same
+  end-of-file `\r` and the SECURITY wording, both fixed in `ff2fe9e`; she ran eight mutations of
+  her own, all red.
+- **Not verified:** that the proposal is handed on is held by the type, not a test (no seam to
+  change the record between the two calls).
+- **Known, accepted:** in a `\r\n` file, a change that adds a line above the first one, or after a
+  last line with no line ending, is refused (the card's rule taken literally; `decisions.md`
+  starts with its title and the build ends it with a newline). Earlier drafts shown to the model
+  when proposing now keep a stray `\r` from a hand-edited record (the reply is checked in full).
+
 ## PB4.3b: refresh, test the change, then keep or undo it (2026-10-25, lane: V1)
 
 - **What:** `persona-builder refresh apply <member_dir> <CHANGE>` takes an approved change on a
