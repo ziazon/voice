@@ -2,6 +2,48 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB4.3a: refresh, draft the change, then approve or reject it (2026-10-25, lane: V1)
+
+- **What:** the first half of a refresh. `persona-builder refresh propose <member_dir>` sends up to
+  40 of the oldest tests made from the person's answers (`new` cases) and the current
+  `decisions.md` to their own Claude Code, which answers edits (an area, a new standing rule or a
+  replacement for one existing point, a plain reason, the tests it serves). The code, never the
+  model, builds the new `decisions.md` and one unified diff per edit (`file` is always
+  `decisions.md`), proves each diff applies in order, and saves the proposal privately under
+  `growth/`. `refresh show` prints it; `refresh approve|reject` writes the person's answer
+  (`role: subject`). Nothing touches the member's folder: applying, re-measuring and
+  keep-or-revert are PB4.3b. New modules in `builder/grow`: `version.rs` (a proposal's `base` is
+  the git blob id of `decisions.md`), `diff.rs` (unified diffs and a strict apply, no fuzz),
+  `edit.rs` (edits into `decisions.md`'s shape), `refresh.rs`. The build's cached, checked,
+  retry-once `Asker` is public, with `with_misfit` for the caller's own closing sentence. Brief:
+  `plans/briefs/PB4.3a-refresh-propose.md`.
+- **Who wrote it:** Codex, in one pass and a fix-up pass (her sandbox can't bind sockets, so
+  Claude ran the full gate); Claude split PB4.3, briefed, reviewed and committed.
+- **Decisions made at pickup:** PB4.3 split into PB4.3a and PB4.3b (one run each, smaller
+  Verifier passes); the model answers structured edits, not a diff, so no model text decides a
+  path or a hunk; one proposal change per edit, the diffs applied in order; one open proposal at a
+  time, a stale one (its base no longer current) never blocks; approve needs a current base and
+  every named test still `new`; drafts the person rejected, or that were tested and undone, go
+  back into the prompt so the next draft differs (the cached reply cannot repeat).
+- **Checks on every new line:** one line, at most 400 characters, no hidden character, the
+  member's filters, and no run of 6 or more of the person's words from the tests or their answers;
+  a misfit is told back once, and what the person sees names counts and places only. A stored
+  proposal with a hidden character (other than `<` and CR in a diff) is never printed, and never
+  saved in the first place.
+- **Verified:** `ci-local.sh` green on the fix-up head (704 Rust tests, 0 failed, plus the Python
+  suites, fmt, clippy, shellcheck and the Windows and Linux keystore checks), run outside Codex's
+  sandbox at 2 test threads (Mimi's load gate was at throttle). Codex's 53 mutation probes on the
+  first pass and three on the fix-ups each went red and were restored. `/security-review`: no high
+  or medium findings. Verifier (Fable): pass, five should-fixes and four nits, all fixed in
+  `4e9f37e` (a change that changes nothing, a proposal saved that `show` refuses, the refresh's
+  own words after two misfits, CRLF files, reverted drafts repeating from the cache); a delta
+  Verifier pass (Opus) on the fix-ups.
+- **Not verified:** a live run against a real Claude Code (tests use a stub `claude`); strict
+  red-first order for every test (Codex reports some supplemental tests first ran after the code
+  and were then proven by mutation).
+- **Follow-up, not built:** a later `build` rewrites `decisions.md` from history and drops kept
+  refresh edits (noted in PB4.3b's spec; not sliced yet).
+
 ## PB4.2: kept answers, the growth loop's records and store (2026-10-25, lane: V1)
 
 - **What:** every answer the person gives their assistant (a pick, a correction, a mark, a rule) can
