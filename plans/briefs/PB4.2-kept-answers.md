@@ -286,3 +286,14 @@ test proved red first:
 10. **The lock's message** (Verifier 4): *"Persona Builder is already working on this assistant in
     another window. Wait for it to finish, then try again"*; the three tests that look for
     `already building` look for `already working on this assistant`.
+
+The delta Verifier (Opus): pass with three should-fixes, all applied, each test red first:
+
+11. **An approval from the wrong role is refused at write time:** `save_approval_unlocked` refuses with
+    `text::rule(&a.id, text::WRONG_ROLE)` when `a.role != rules::approver(proposal.persona_kind)`,
+    and writes nothing (rule 2; otherwise it would use up the proposal's one approval).
+12. **The size limit holds while reading:** `read_private_at_limit` reads through
+    `(&mut file).take(max + 1)` and refuses when more than `max` bytes came back, as well as the size
+    check before reading.
+13. **The area's own message:** a blank or hidden-character `area` gets `text::invalid_text` with a
+    limit of 100, not `usize::MAX`.
