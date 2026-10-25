@@ -106,6 +106,16 @@ fn errors_on_forget_are_the_plain_failure() {
 }
 
 #[test]
+fn a_stored_value_the_keychain_would_refuse_is_not_used() {
+    let backing = mock_store();
+    entry(&backing).set_password("invented token").unwrap();
+    assert_eq!(
+        store_over(&backing).load().unwrap_err().to_string(),
+        text::KEYCHAIN_FAILED
+    );
+}
+
+#[test]
 fn a_token_the_keychain_refuses_never_reaches_the_store() {
     for value in ["", "a b", "a\"b", "a\nb", "é"] {
         let backing = mock_store();
