@@ -144,3 +144,53 @@ fn a_state_folder_others_can_change_is_refused() {
         b"x"
     );
 }
+
+#[test]
+fn bounded_private_reads_refuse_oversized_files_before_reading() {
+    use persona_builder_ingest::private::read_private_at_max;
+    let s = Scratch::new("private-at-max");
+    let path = write_private_at(&s.0, "wren", Some("growth"), "signals.jsonl", b"one").unwrap();
+    assert_eq!(
+        read_private_at_max(&s.0, "wren", Some("growth"), "signals.jsonl", 3).unwrap(),
+        b"one"
+    );
+    let file = fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.set_len(64 * 1024 * 1024 + 1).unwrap();
+    let result = read_private_at_max(
+        &s.0,
+        "wren",
+        Some("growth"),
+        "signals.jsonl",
+        64 * 1024 * 1024,
+    );
+    assert!(result.is_err(), "oversized opened files must be refused");
+    let error = result.unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "signals.jsonl is too big to read (over 65536 KiB)"
+    );
+    assert!(
+        persona_builder_ingest::private::read_private_optional_at_max(
+            &s.0,
+            "wren",
+            Some("growth"),
+            "signals.jsonl",
+            64 * 1024 * 1024
+        )
+        .is_err()
+    );
+    assert!(
+        persona_builder_ingest::private::read_private_optional_at_max(
+            &s.0,
+            "wren",
+            Some("growth"),
+            "missing.json",
+            1
+        )
+        .unwrap()
+        .is_none()
+    );
+    assert!(read_private_at_max(&s.0, "wren", Some("growth"), "missing.json", 1).is_err());
+    symlink(&path, path.parent().unwrap().join("linked.json")).unwrap();
+    assert!(read_private_at_max(&s.0, "wren", Some("growth"), "linked.json", u64::MAX).is_err());
+}

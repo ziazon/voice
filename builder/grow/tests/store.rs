@@ -1,5 +1,8 @@
 use persona_builder::{error::Result, member::Member};
-use persona_builder_grow::{record::*, store::Store};
+use persona_builder_grow::{
+    record::*,
+    store::{Prefix, Store},
+};
 use persona_builder_ingest::private::{lock_state, write_private_at};
 use serde_json::json;
 use std::{
@@ -128,33 +131,33 @@ fn ids_count_existing_records_by_prefix_and_day() {
     let s = Scratch::new();
     let store = s.store();
     assert_eq!(
-        store.next_id("sig", "2026-03-04").unwrap(),
+        store.next_id(Prefix::Signal, "2026-03-04").unwrap(),
         "sig-2026-03-04-001"
     );
     let mut signal: Signal = example("signal");
     store.append_signal(&signal).unwrap();
     assert_eq!(
-        store.next_id("sig", "2026-03-04").unwrap(),
+        store.next_id(Prefix::Signal, "2026-03-04").unwrap(),
         "sig-2026-03-04-002"
     );
     assert_eq!(
-        store.next_id("sig", "2026-03-05").unwrap(),
+        store.next_id(Prefix::Signal, "2026-03-05").unwrap(),
         "sig-2026-03-05-001"
     );
     signal.id = "sig-2026-03-04-999".into();
     store.append_signal(&signal).unwrap();
     assert_eq!(
-        store.next_id("sig", "2026-03-04").unwrap(),
+        store.next_id(Prefix::Signal, "2026-03-04").unwrap(),
         "sig-2026-03-04-1000"
     );
     store.append_case(&example("case")).unwrap();
     assert_eq!(
-        store.next_id("case", "2026-03-04").unwrap(),
+        store.next_id(Prefix::Case, "2026-03-04").unwrap(),
         "case-2026-03-04-002"
     );
     store.save_proposal(&example("proposal")).unwrap();
     assert_eq!(
-        store.next_id("prop", "2026-03-05").unwrap(),
+        store.next_id(Prefix::Proposal, "2026-03-05").unwrap(),
         "prop-2026-03-05-002"
     );
 }
@@ -436,4 +439,141 @@ fn check_all_measurement_results_must_name_existing_cases() {
             "every measured case must exist, including for {outcome:?}"
         );
     }
+}
+
+#[test]
+fn id_overflow_has_its_own_error() {
+    let s = Scratch::new();
+    let mut signal: Signal = example("signal");
+    signal.id = format!("sig-2026-03-04-{}", u64::MAX);
+    s.store().append_signal(&signal).unwrap();
+    assert_eq!(
+        s.store()
+            .next_id(Prefix::Signal, "2026-03-04")
+            .unwrap_err()
+            .to_string(),
+        "There are too many kept records for this day. Try again on another day."
+    );
+}
+
+#[test]
+fn json_listing_ignores_planted_names_and_unrelated_signal_file() {
+    let s = Scratch::new();
+    let store = s.store();
+    assert!(store.proposals().unwrap().is_empty());
+    assert!(!s.0.join(".claude").exists());
+    store.save_proposal(&example("proposal")).unwrap();
+    for name in [
+        "prop-UPPER.json",
+        "prop-<planted>.json",
+        "prop-.json",
+        "appr-UPPER.json",
+        "meas-UPPER.json",
+    ] {
+        fs::write(s.growth().join(name), b"sentinel").unwrap();
+    }
+    assert!(store.proposals().is_ok(), "planted names must be skipped");
+    assert_eq!(store.proposals().unwrap().len(), 1);
+    assert!(store.approvals().unwrap().is_empty());
+    assert!(store.measurements().unwrap().is_empty());
+    symlink("missing", s.growth().join("signals.jsonl")).unwrap();
+    assert_eq!(store.proposals().unwrap().len(), 1);
+    fs::remove_file(s.growth().join("signals.jsonl")).unwrap();
+    let growth = s.growth();
+    let moved = growth.with_file_name("moved");
+    fs::rename(&growth, &moved).unwrap();
+    symlink(&moved, &growth).unwrap();
+    assert!(store.proposals().is_err());
+}
+
+#[test]
+fn store_read_limits_apply_to_lines_and_json_records() {
+    let s = Scratch::new();
+    for (name, max) in [
+        ("signals.jsonl", 64 * 1024 * 1024),
+        ("cases.jsonl", 64 * 1024 * 1024),
+        ("prop-large.json", 16 * 1024 * 1024),
+    ] {
+        write_private_at(&s.0, "robin", Some("growth"), name, b"").unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .open(s.growth().join(name))
+            .unwrap()
+            .set_len(max + 1)
+            .unwrap();
+        let result = match name {
+            "signals.jsonl" => s.store().signals().map(|_| ()),
+            "cases.jsonl" => s.store().case_lines().map(|_| ()),
+            _ => s.store().proposals().map(|_| ()),
+        };
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            format!("{name} is too big to read (over {} KiB)", max / 1024)
+        );
+        if name == "prop-large.json" {
+            assert_eq!(
+                s.store().proposal("prop-large").unwrap_err().to_string(),
+                format!("{name} is too big to read (over {} KiB)", max / 1024)
+            );
+        }
+        fs::remove_file(s.growth().join(name)).unwrap();
+    }
+}
+
+#[test]
+fn approval_and_measurement_writes_enforce_rule_eight() {
+    let s = Scratch::new();
+    let store = s.store();
+    let proposal: Proposal = example("proposal");
+    let approval: Approval = example("approval");
+    let measurement: Measurement = example("measurement");
+    assert!(
+        store.save_approval(&approval).is_err(),
+        "missing proposal must refuse approval"
+    );
+    assert!(!s.growth().join(format!("{}.json", approval.id)).exists());
+    store.save_proposal(&proposal).unwrap();
+    assert!(
+        store.save_measurement(&measurement).is_err(),
+        "missing approval must refuse measurement"
+    );
+    assert!(!s.growth().join(format!("{}.json", measurement.id)).exists());
+    let mut rejected = approval.clone();
+    rejected.decision = Decision::Rejected;
+    store.save_approval(&rejected).unwrap();
+    let mut second = approval.clone();
+    second.id = "appr-second".into();
+    assert!(
+        store.save_approval(&second).is_err(),
+        "proposal has one approval"
+    );
+    assert!(!s.growth().join("appr-second.json").exists());
+    assert!(
+        store.save_measurement(&measurement).is_err(),
+        "rejected approval must refuse measurement"
+    );
+    assert!(!s.growth().join(format!("{}.json", measurement.id)).exists());
+    fs::remove_file(s.growth().join(format!("{}.json", approval.id))).unwrap();
+    let mut wrong_role = approval.clone();
+    wrong_role.role = GivenBy::Staff;
+    store.save_approval(&wrong_role).unwrap();
+    assert!(
+        store.save_measurement(&measurement).is_err(),
+        "wrong role must refuse measurement"
+    );
+    assert!(!s.growth().join(format!("{}.json", measurement.id)).exists());
+    fs::remove_file(s.growth().join(format!("{}.json", approval.id))).unwrap();
+    store.save_approval(&approval).unwrap();
+    let mut other = proposal.clone();
+    other.id = "prop-other".into();
+    store.save_proposal(&other).unwrap();
+    let mut mismatch = measurement.clone();
+    mismatch.proposal = other.id;
+    assert!(
+        store.save_measurement(&mismatch).is_err(),
+        "approval must allow this proposal"
+    );
+    assert!(!s.growth().join(format!("{}.json", measurement.id)).exists());
+    store.save_measurement(&measurement).unwrap();
+    assert_eq!(store.measurements().unwrap(), vec![measurement]);
 }

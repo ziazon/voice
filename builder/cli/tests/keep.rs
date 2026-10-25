@@ -220,3 +220,24 @@ fn help_lists_the_new_commands_in_plain_words() {
         "{shown}"
     );
 }
+
+#[test]
+fn keep_refuses_oversized_input_before_parsing_it() {
+    let f = Fixture::new();
+    f.write("answer.json", &answer("scope"));
+    let path = f.state().join("answer.json");
+    fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_len(64 * 1024 + 1)
+        .unwrap();
+    let out = f.run("keep", &["--signal", "answer.json"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text(&out.stderr).contains("answer.json is too big to read (over 64 KiB)"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!f.state().join("growth").exists());
+}

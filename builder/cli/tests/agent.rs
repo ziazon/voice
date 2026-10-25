@@ -170,7 +170,7 @@ fn spend_reports_today_against_the_cap() {
     let out = f.run(&["spend", &member]);
     assert_eq!(out.status.code(), Some(1));
     assert!(
-        text(&out.stderr).contains("already building"),
+        text(&out.stderr).contains("already working on this assistant"),
         "{}",
         text(&out.stderr)
     );

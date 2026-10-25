@@ -12,7 +12,12 @@ fn one_session_per_assistant_at_a_time() {
     let error = Session::open(&home.0, "wren", Cap::default())
         .err()
         .unwrap();
-    assert!(error.to_string().contains("already building"), "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("already working on this assistant"),
+        "{error}"
+    );
     let other = Session::open(&home.0, "robin", Cap::default()).unwrap();
     drop(first);
     Session::open(&home.0, "wren", Cap::default()).unwrap();

@@ -9,7 +9,7 @@ use persona_builder::{
     member::Member,
 };
 use persona_builder_ingest::private::{
-    StateLock, lock_state, read_private_optional_at, write_private_at,
+    StateLock, lock_state, private_folder_exists, read_private_optional_at_max, write_private_at,
 };
 use regex::Regex;
 use serde::Serialize;
@@ -21,6 +21,26 @@ use std::{
 };
 static PERSONA_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(PERSONA).expect("persona pattern"));
+
+#[derive(Clone, Copy, Debug)]
+pub enum Prefix {
+    Signal,
+    Case,
+    Proposal,
+    Approval,
+    Measurement,
+}
+impl Prefix {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Signal => "sig",
+            Self::Case => "case",
+            Self::Proposal => "prop",
+            Self::Approval => "appr",
+            Self::Measurement => "meas",
+        }
+    }
+}
 
 pub struct Store {
     home: PathBuf,
@@ -43,7 +63,12 @@ impl Store {
         lock_state(&self.home, &self.slug)
     }
     fn bytes(&self, name: &str) -> Result<Option<Vec<u8>>> {
-        read_private_optional_at(&self.home, &self.slug, Some("growth"), name)
+        let max = if name.ends_with(".jsonl") {
+            64 * 1024 * 1024
+        } else {
+            16 * 1024 * 1024
+        };
+        read_private_optional_at_max(&self.home, &self.slug, Some("growth"), name, max)
     }
     fn lines<T: Record>(&self, file: &str) -> Result<Vec<T>> {
         let bytes = self.bytes(file)?.unwrap_or_default();
@@ -98,16 +123,15 @@ impl Store {
         old.extend_from_slice(to_line(record).as_bytes());
         write_private_at(&self.home, &self.slug, Some("growth"), file, &old).map(|_| ())
     }
-    pub fn next_id(&self, prefix: &str, day: &str) -> Result<String> {
+    pub fn next_id(&self, prefix: Prefix, day: &str) -> Result<String> {
         let ids: Vec<String> = match prefix {
-            "sig" => self.signals()?.into_iter().map(|r| r.id).collect(),
-            "case" => self.case_lines()?.into_iter().map(|r| r.id).collect(),
-            "prop" => self.proposals()?.into_iter().map(|r| r.id).collect(),
-            "appr" => self.approvals()?.into_iter().map(|r| r.id).collect(),
-            "meas" => self.measurements()?.into_iter().map(|r| r.id).collect(),
-            _ => return Err(Error::Invalid(text::SLUG_SHAPE.into())),
+            Prefix::Signal => self.signals()?.into_iter().map(|r| r.id).collect(),
+            Prefix::Case => self.case_lines()?.into_iter().map(|r| r.id).collect(),
+            Prefix::Proposal => self.proposals()?.into_iter().map(|r| r.id).collect(),
+            Prefix::Approval => self.approvals()?.into_iter().map(|r| r.id).collect(),
+            Prefix::Measurement => self.measurements()?.into_iter().map(|r| r.id).collect(),
         };
-        let start = format!("{prefix}-{day}-");
+        let start = format!("{}-{day}-", prefix.as_str());
         let highest = ids
             .iter()
             .filter_map(|id| id.strip_prefix(&start))
@@ -116,7 +140,7 @@ impl Store {
             .unwrap_or(0);
         let next = highest
             .checked_add(1)
-            .ok_or_else(|| Error::Invalid(text::SLUG_SHAPE.into()))?;
+            .ok_or_else(|| Error::Invalid(text::TOO_MANY_IDS.into()))?;
         Ok(format!("{start}{next:03}"))
     }
     fn json<T: JsonRecord>(&self, id: &str, prefix: &str) -> Result<Option<T>> {
@@ -142,7 +166,14 @@ impl Store {
     fn json_files<T: JsonRecord>(&self, prefix: &str) -> Result<Vec<T>> {
         // Validate the descriptor-relative folder before enumerating names; each selected file is
         // independently opened through the private reader, which refuses links even if it moves.
-        self.bytes("signals.jsonl")?;
+        if !private_folder_exists(&self.home, &self.slug, "growth")? {
+            return Ok(vec![]);
+        }
+        let pattern = Regex::new(&format!(
+            "{}\\.json$",
+            id_pattern(prefix).trim_end_matches('$')
+        ))
+        .expect("record file pattern");
         let folder = self
             .home
             .join(".claude/state")
@@ -165,8 +196,7 @@ impl Store {
                 source,
             })?;
             if let Some(name) = entry.file_name().to_str()
-                && name.starts_with(&format!("{prefix}-"))
-                && name.ends_with(".json")
+                && pattern.is_match(name)
             {
                 names.push(name.to_owned());
             }
@@ -190,8 +220,7 @@ impl Store {
     pub fn measurements(&self) -> Result<Vec<Measurement>> {
         self.json_files("meas")
     }
-    fn save<T: Record + Serialize>(&self, record: &T, id: &str) -> Result<()> {
-        let _lock = self.lock()?;
+    fn save_unlocked<T: Record + Serialize>(&self, record: &T, id: &str) -> Result<()> {
         record.check()?;
         let name = format!("{id}.json");
         if self.bytes(&name)?.is_some() {
@@ -207,13 +236,38 @@ impl Store {
         .map(|_| ())
     }
     pub fn save_proposal(&self, p: &Proposal) -> Result<()> {
-        self.save(p, &p.id)
+        let _lock = self.lock()?;
+        self.save_proposal_unlocked(p)
     }
     pub fn save_approval(&self, a: &Approval) -> Result<()> {
-        self.save(a, &a.id)
+        let _lock = self.lock()?;
+        self.save_approval_unlocked(a)
     }
     pub fn save_measurement(&self, m: &Measurement) -> Result<()> {
-        self.save(m, &m.id)
+        let _lock = self.lock()?;
+        self.save_measurement_unlocked(m)
+    }
+    pub(crate) fn save_proposal_unlocked(&self, p: &Proposal) -> Result<()> {
+        self.save_unlocked(p, &p.id)
+    }
+    pub(crate) fn save_approval_unlocked(&self, a: &Approval) -> Result<()> {
+        a.check()?;
+        if self.proposal(&a.proposal)?.is_none() {
+            return Err(Error::Invalid(text::rule(&a.id, text::MISSING_REFERENCE)));
+        }
+        let mut approvals = self.approvals()?;
+        approvals.push(a.clone());
+        rules::one_approval(&approvals)?;
+        self.save_unlocked(a, &a.id)
+    }
+    pub(crate) fn save_measurement_unlocked(&self, m: &Measurement) -> Result<()> {
+        m.check()?;
+        let missing = || Error::Invalid(text::rule(&m.id, text::MISSING_REFERENCE));
+        let proposal = self.proposal(&m.proposal)?.ok_or_else(missing)?;
+        let approval = self.approval(&m.approval)?.ok_or_else(missing)?;
+        rules::no_measurement_when_rejected(&self.approvals()?, std::slice::from_ref(m))?;
+        rules::may_apply(&proposal, &approval)?;
+        self.save_unlocked(m, &m.id)
     }
     /// Validate facts available in the persisted records. Historical active-case
     /// completeness, the exact reason for Revert, and the current member base need
@@ -386,6 +440,56 @@ fn utc_from_seconds(seconds: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unlocked_saves_share_one_lock_and_keep_write_checks() {
+        struct Scratch(PathBuf);
+        impl Drop for Scratch {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let home =
+            Scratch(std::env::temp_dir().join(format!("pb-unlocked-{}", std::process::id())));
+        fs::create_dir(&home.0).unwrap();
+        let mut value: serde_json::Value =
+            serde_json::from_str(include_str!("../../../crew/_template/member.json")).unwrap();
+        value["slug"] = "robin".into();
+        let member: Member = serde_json::from_value(value).unwrap();
+        let store = Store::open(&home.0, &member).unwrap();
+        let proposal: Proposal = parse(include_bytes!(
+            "../../../docs/spec/growth-loop/examples/proposal.json"
+        ))
+        .unwrap();
+        let approval: Approval = parse(include_bytes!(
+            "../../../docs/spec/growth-loop/examples/approval.json"
+        ))
+        .unwrap();
+        let measurement: Measurement = parse(include_bytes!(
+            "../../../docs/spec/growth-loop/examples/measurement.json"
+        ))
+        .unwrap();
+        let _lock = store.lock().unwrap();
+        assert!(
+            store.save_proposal_unlocked(&proposal).is_ok(),
+            "proposal must reuse held lock"
+        );
+        assert!(store.save_measurement_unlocked(&measurement).is_err());
+        assert!(
+            store.save_approval_unlocked(&approval).is_ok(),
+            "approval must reuse held lock"
+        );
+        let mut second = approval.clone();
+        second.id = "appr-second".into();
+        assert!(store.save_approval_unlocked(&second).is_err());
+        assert!(
+            store.save_measurement_unlocked(&measurement).is_ok(),
+            "measurement must reuse held lock"
+        );
+        assert_eq!(store.proposals().unwrap(), vec![proposal]);
+        assert_eq!(store.approvals().unwrap(), vec![approval]);
+        assert_eq!(store.measurements().unwrap(), vec![measurement]);
+    }
+
     #[test]
     fn utc_fixed_instants() {
         for (seconds, expected) in [

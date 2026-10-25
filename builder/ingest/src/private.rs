@@ -292,6 +292,27 @@ pub fn read_private_at(
     folder: Option<&str>,
     name: &str,
 ) -> Result<Vec<u8>> {
+    read_private_at_limit(home, slug, folder, name, None)
+}
+
+/// Read a private file, refusing an opened file larger than `max` before reading its bytes.
+pub fn read_private_at_max(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    name: &str,
+    max: u64,
+) -> Result<Vec<u8>> {
+    read_private_at_limit(home, slug, folder, name, Some(max))
+}
+
+fn read_private_at_limit(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    name: &str,
+    max: Option<u64>,
+) -> Result<Vec<u8>> {
     validate_private_name(name)?;
     let missing = |error| match error {
         Error::Io { path, source } if source.kind() == std::io::ErrorKind::NotFound => {
@@ -301,6 +322,7 @@ pub fn read_private_at(
     };
     let (directory, path) = place_directory(home, slug, folder, false).map_err(missing)?;
     let path = path.join(name);
+    let file_name = name;
     let name = CString::new(name).expect("validated file name");
     // SAFETY: directory is live and name is terminated; flags refuse links and avoid blocking on pipes.
     let fd = unsafe {
@@ -323,8 +345,17 @@ pub fn read_private_at(
     // SAFETY: openat returned a fresh valid descriptor, owned exactly once from here.
     let owned = unsafe { OwnedFd::from_raw_fd(fd) };
     let mut file = File::from(owned);
-    if !file.metadata().map_err(|e| io(&path, e))?.is_file() {
+    let metadata = file.metadata().map_err(|e| io(&path, e))?;
+    if !metadata.is_file() {
         return Err(Error::Invalid(format!("{} is not a file", path.display())));
+    }
+    if let Some(max) = max
+        && metadata.len() > max
+    {
+        return Err(Error::Invalid(format!(
+            "{file_name} is too big to read (over {} KiB)",
+            max / 1024
+        )));
     }
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes).map_err(|e| io(&path, e))?;
@@ -344,7 +375,7 @@ pub fn lock_state(home: &Path, slug: &str) -> Result<StateLock> {
         let source = std::io::Error::last_os_error();
         if source.raw_os_error() == Some(libc::EWOULDBLOCK) {
             return Err(Error::Invalid(
-                "Persona Builder is already building this assistant. Wait for that to finish, then try again"
+                "Persona Builder is already working on this assistant in another window. Wait for it to finish, then try again"
                     .into(),
             ));
         }
@@ -358,6 +389,16 @@ pub fn lock_state(home: &Path, slug: &str) -> Result<StateLock> {
 pub fn private_folder(home: &Path, slug: &str, name: &str) -> Result<PathBuf> {
     validate_folder_name(name)?;
     place_directory(home, slug, Some(name), true).map(|(_, path)| path)
+}
+
+/// Whether a private subfolder exists; creates nothing and refuses links.
+pub fn private_folder_exists(home: &Path, slug: &str, folder: &str) -> Result<bool> {
+    validate_folder_name(folder)?;
+    match place_directory(home, slug, Some(folder), false) {
+        Ok(_) => Ok(true),
+        Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(other) => Err(other),
+    }
 }
 
 /// Refuse a folder another user owns, or whose mode has any bit of `others` set; `how` says what
@@ -390,6 +431,27 @@ pub fn read_private_optional_at(
     folder: Option<&str>,
     name: &str,
 ) -> Result<Option<Vec<u8>>> {
+    read_private_optional_at_limit(home, slug, folder, name, None)
+}
+
+/// An optional private read with the same opened-file limit as [`read_private_at_max`].
+pub fn read_private_optional_at_max(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    name: &str,
+    max: u64,
+) -> Result<Option<Vec<u8>>> {
+    read_private_optional_at_limit(home, slug, folder, name, Some(max))
+}
+
+fn read_private_optional_at_limit(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    name: &str,
+    max: Option<u64>,
+) -> Result<Option<Vec<u8>>> {
     validate_private_name(name)?;
     let (directory, path) = match place_directory(home, slug, folder, false) {
         Ok(found) => found,
@@ -417,7 +479,7 @@ pub fn read_private_optional_at(
         }
         return Err(io(&path.join(name), source));
     }
-    read_private_at(home, slug, folder, name).map(Some)
+    read_private_at_limit(home, slug, folder, name, max).map(Some)
 }
 
 #[cfg(test)]

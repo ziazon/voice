@@ -1263,10 +1263,18 @@ fn keep_answer(member_dir: PathBuf, signal: String) -> Result<()> {
     use persona_builder_ingest::filters::Filters;
     let (member, home) = member_and_home(&member_dir)?;
     let filters = Filters::compile(&member.filters)?;
-    let input = json_at(&home, &member.slug, &signal)?;
+    let (folder, name) = persona_builder_ingest::private::place(&signal)?;
+    persona_builder_ingest::private::validate_json_name(name)?;
+    let input = persona_builder_ingest::private::read_private_at_max(
+        &home,
+        &member.slug,
+        folder,
+        name,
+        64 * 1024,
+    )?;
     let store = Store::open(&home, &member)?;
-    let kept = keep::keep(&store, &member, &filters, &input, &utc_now())?;
-    println!("{}", text::kept(&kept));
+    keep::keep(&store, &member, &filters, &input, &utc_now())?;
+    println!("{}", text::KEPT);
     println!("saved to ~/.claude/state/{}/growth/", member.slug);
     Ok(())
 }

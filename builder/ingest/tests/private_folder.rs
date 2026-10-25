@@ -93,7 +93,12 @@ fn the_state_lock_is_exclusive_until_dropped() {
     let first = lock_state(&home.0, "wren").unwrap();
     assert_eq!(mode(&home.0.join(".claude/state/wren")), 0o700);
     let error = lock_state(&home.0, "wren").unwrap_err();
-    assert!(error.to_string().contains("already building"), "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("already working on this assistant"),
+        "{error}"
+    );
     let other = lock_state(&home.0, "robin").unwrap();
     drop(first);
     let again = lock_state(&home.0, "wren").unwrap();

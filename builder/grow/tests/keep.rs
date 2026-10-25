@@ -222,16 +222,20 @@ fn summary_counts_statuses_in_category_order_without_words() {
 }
 
 #[test]
-fn unknown_keys_are_capped_at_forty_characters() {
-    let f = Fixture::new();
-    let mut value = input();
-    let key = format!("{}zebracorn", "q".repeat(40));
-    value[&key] = json!("private words");
-    let message = run(&f, &value).unwrap_err().to_string();
-    assert!(message.contains(&"q".repeat(40)));
-    assert!(!message.contains("zebracorn"));
-    assert!(!message.contains("private words"));
-    assert!(!f.home.join(".claude").exists());
+fn unknown_keys_only_echo_short_lowercase_names() {
+    use persona_builder_grow::text::unknown_key;
+    for key in ["", "UPPER", "a1", "<planted>", "a\n", "é", &"q".repeat(41)] {
+        assert_eq!(
+            unknown_key(key),
+            "The answer has a field Persona Builder doesn't know. Leave it out and try again."
+        );
+    }
+    for key in ["a", "some_field", &"q".repeat(40)] {
+        assert_eq!(
+            unknown_key(key),
+            format!("The answer has an unknown field: {key}. Leave it out and try again.")
+        );
+    }
 }
 
 #[test]
@@ -252,4 +256,70 @@ fn next_answer_recovers_when_an_earlier_signal_has_no_case() {
     assert_eq!(store.signals().unwrap().len(), 2);
     assert_eq!(store.case_lines().unwrap().len(), 1);
     store.check_all().unwrap();
+}
+
+#[test]
+fn kept_text_allows_less_than_and_uses_plain_errors() {
+    let f = Fixture::new();
+    let mut v = input();
+    v["wanted"] = json!("Choose the option costing < 20 credits.");
+    assert!(run(&f, &v).is_ok(), "a kept answer is data");
+    for (field, label, limit) in [
+        ("situation", "What was being decided", 2000),
+        ("wanted", "The answer you wanted", 2000),
+        ("persona_said", "The assistant's answer", 2000),
+        ("source", "Where the answer came from", 100),
+        ("area", "The area", 2000),
+    ] {
+        assert_eq!(
+            persona_builder_grow::text::invalid_text(field, limit),
+            format!(
+                "{label} must be 1 to {} characters long, with no hidden characters.",
+                if limit == 2000 { "2,000" } else { "100" }
+            )
+        );
+    }
+}
+
+#[test]
+fn kept_confirmation_is_a_constant() {
+    assert_eq!(
+        persona_builder_grow::text::KEPT,
+        "Kept your answer. It's now one of the tests your assistant is checked on at its next refresh."
+    );
+}
+
+#[test]
+fn invalid_case_history_leaves_signals_unchanged() {
+    let f = Fixture::new();
+    let store = Store::open(&f.home, &f.member).unwrap();
+    let kept = run(&f, &input()).unwrap();
+    let mut invalid = kept.case.clone();
+    invalid.status = Status::Retired;
+    let history = format!(
+        "{}{}{}",
+        to_line(&kept.case),
+        to_line(&invalid),
+        to_line(&kept.case)
+    );
+    persona_builder_ingest::private::write_private_at(
+        &f.home,
+        &f.member.slug,
+        Some("growth"),
+        "cases.jsonl",
+        history.as_bytes(),
+    )
+    .unwrap();
+    let old = fs::read(f.growth().join("signals.jsonl")).unwrap();
+    assert!(run(&f, &input()).is_err());
+    assert_eq!(
+        fs::read(f.growth().join("signals.jsonl")).unwrap(),
+        old,
+        "refused case must not leave a signal"
+    );
+    assert_eq!(
+        fs::read(f.growth().join("cases.jsonl")).unwrap(),
+        history.as_bytes()
+    );
+    assert_eq!(store.signals().unwrap().len(), 1);
 }

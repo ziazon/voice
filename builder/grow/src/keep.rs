@@ -1,5 +1,10 @@
 //! Check an answer before keeping a signal and its new test in private state.
-use crate::{record::*, store::Store, text};
+use crate::{
+    record::*,
+    rules::CaseBook,
+    store::{Prefix, Store},
+    text,
+};
 use persona_builder::{
     error::{Error, Result},
     member::Member,
@@ -68,7 +73,9 @@ pub fn keep(
         if let Some(words) = words {
             if words.trim().is_empty()
                 || words.chars().count() > limit
-                || words.chars().any(|c| (c != '\n' && c != '\t') && hidden(c))
+                || words
+                    .chars()
+                    .any(|c| (c != '\n' && c != '\t') && hidden(c) && c != '<')
             {
                 return Err(Error::Invalid(text::invalid_text(field, limit)));
             }
@@ -97,11 +104,18 @@ pub fn keep(
     case.check()?;
     let _lock = store.lock()?;
     let day = &now[..10]; // Signal::check has checked the timestamp's ASCII date prefix.
-    signal.id = store.next_id("sig", day)?;
-    case.id = store.next_id("case", day)?;
+    signal.id = store.next_id(Prefix::Signal, day)?;
+    case.id = store.next_id(Prefix::Case, day)?;
     case.from_signals = vec![signal.id.clone()];
     signal.check()?;
     case.check()?;
+    let signals = store.signals()?;
+    let mut cases = store.case_lines()?;
+    if signals.iter().any(|old| old.id == signal.id) {
+        return Err(Error::Invalid(text::already_kept(&signal.id)));
+    }
+    cases.push(case.clone());
+    CaseBook::new(&cases)?;
     store.append_signal_unlocked(&signal)?;
     store.append_case_unlocked(&case)?;
     Ok(Kept { signal, case })

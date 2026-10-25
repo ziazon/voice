@@ -54,11 +54,11 @@ pub const TOO_BIG: &str = "That answer is too big to keep. Keep it under 64 KiB 
 pub const INPUT_SHAPE: &str =
     "That answer isn't in the expected shape. Check its fields and try again.";
 pub fn unknown_key(key: &str) -> String {
-    let key: String = key
-        .chars()
-        .take(40)
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect();
+    if key.is_empty() || key.len() > 40 || !key.bytes().all(|c| c.is_ascii_lowercase() || c == b'_')
+    {
+        return "The answer has a field Persona Builder doesn't know. Leave it out and try again."
+            .into();
+    }
     format!("The answer has an unknown field: {key}. Leave it out and try again.")
 }
 pub fn unknown_area(categories: &[String]) -> String {
@@ -68,10 +68,22 @@ pub fn unknown_area(categories: &[String]) -> String {
     )
 }
 pub fn invalid_text(field: &str, limit: usize) -> String {
-    format!(
-        "The answer's {} must have 1 to {limit} characters, with no hidden or control characters except new lines and tabs.",
-        field_name(field)
-    )
+    let limit = limit.to_string();
+    let mut grouped = String::new();
+    for (index, digit) in limit.chars().enumerate() {
+        if index > 0 && (limit.len() - index).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    let label = match field {
+        "area" => "The area",
+        "situation" => "What was being decided",
+        "wanted" => "The answer you wanted",
+        "persona_said" => "The assistant's answer",
+        _ => "Where the answer came from",
+    };
+    format!("{label} must be 1 to {grouped} characters long, with no hidden characters.")
 }
 fn field_name(field: &str) -> &str {
     match field {
@@ -87,10 +99,6 @@ pub fn left_out(field: &str, kind: &str) -> String {
         "That answer looks {kind} (in {}), so it wasn't kept. Leave out anything private and try again.",
         field_name(field)
     )
-}
-pub fn kept(_: &crate::keep::Kept) -> String {
-    "Kept your answer. It's now one of the tests your assistant is checked on at its next refresh."
-        .into()
 }
 pub const NO_CASES: &str = "You haven't given your assistant any answers to learn from yet.";
 pub fn cases_summary(book: &crate::rules::CaseBook, categories: &[String]) -> String {
@@ -127,3 +135,9 @@ pub fn cases_summary(book: &crate::rules::CaseBook, categories: &[String]) -> St
 }
 
 pub const WRONG_ROLE: &str = "must come from the approver role named by its proposal";
+
+pub const TOO_MANY_IDS: &str =
+    "There are too many kept records for this day. Try again on another day.";
+
+pub const KEPT: &str =
+    "Kept your answer. It's now one of the tests your assistant is checked on at its next refresh.";
