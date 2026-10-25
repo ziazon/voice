@@ -128,6 +128,14 @@ class Spec(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in EXAMPLES.iterdir()),
                          sorted(f"{k}.json" for k in KINDS))
 
+    def test_rust_golden_records_validate(self):
+        golden = SPEC.parent.parent / "builder/grow/tests/golden"
+        for kind in ["signal", "case"]:
+            with self.subTest(kind=kind):
+                path = golden / f"{kind}.json"
+                self.assertTrue(path.is_file(), f"missing Rust golden: {kind}")
+                self.assertEqual(validate(load(path), schema(kind)), [])
+
     def test_each_example_validates(self):
         for kind in KINDS:
             with self.subTest(kind=kind):

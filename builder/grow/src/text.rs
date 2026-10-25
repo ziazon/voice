@@ -40,3 +40,90 @@ pub const NONEMPTY_CHOICE: &str = "must not hold an empty choice";
 pub const CHOICE_OPTIONS: &str = "must be present for a choice";
 pub const EXPECTED_CHOICE: &str = "must be one of the options";
 pub const CASE_ONCE: &str = "must name each case once";
+
+pub const SLUG_SHAPE: &str =
+    "The assistant's slug must use lowercase letters, digits and single dashes between words.";
+pub fn damaged(file: &str, line: usize) -> String {
+    format!("The kept file {file} is damaged at line {line}. Nothing was added.")
+}
+pub fn already_kept(id: &str) -> String {
+    format!("{id} is already kept and cannot be replaced.")
+}
+pub const FILLED_IN: &str = "Persona Builder fills in the answer's schema, id, persona and time. Leave those out and try again.";
+pub const TOO_BIG: &str = "That answer is too big to keep. Keep it under 64 KiB and try again.";
+pub const INPUT_SHAPE: &str =
+    "That answer isn't in the expected shape. Check its fields and try again.";
+pub fn unknown_key(key: &str) -> String {
+    let key: String = key
+        .chars()
+        .take(40)
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    format!("The answer has an unknown field: {key}. Leave it out and try again.")
+}
+pub fn unknown_area(categories: &[String]) -> String {
+    format!(
+        "Choose one of your assistant's areas: {}.",
+        categories.join(", ")
+    )
+}
+pub fn invalid_text(field: &str, limit: usize) -> String {
+    format!(
+        "The answer's {} must have 1 to {limit} characters, with no hidden or control characters except new lines and tabs.",
+        field_name(field)
+    )
+}
+fn field_name(field: &str) -> &str {
+    match field {
+        "area" => "area",
+        "situation" => "what was being decided",
+        "wanted" => "answer you wanted",
+        "persona_said" => "assistant's answer",
+        _ => "source",
+    }
+}
+pub fn left_out(field: &str, kind: &str) -> String {
+    format!(
+        "That answer looks {kind} (in {}), so it wasn't kept. Leave out anything private and try again.",
+        field_name(field)
+    )
+}
+pub fn kept(_: &crate::keep::Kept) -> String {
+    "Kept your answer. It's now one of the tests your assistant is checked on at its next refresh."
+        .into()
+}
+pub const NO_CASES: &str = "You haven't given your assistant any answers to learn from yet.";
+pub fn cases_summary(book: &crate::rules::CaseBook, categories: &[String]) -> String {
+    use crate::record::Status;
+    let counts = |area: Option<&str>| {
+        let mut n = [0usize; 3];
+        for c in book.iter().filter(|c| area.is_none_or(|a| c.area == a)) {
+            n[match c.status {
+                Status::New => 0,
+                Status::Active => 1,
+                Status::Retired => 2,
+            }] += 1;
+        }
+        n
+    };
+    let line = |n: [usize; 3]| {
+        format!(
+            "{} waiting for a refresh, {} in use, {} retired.",
+            n[0], n[1], n[2]
+        )
+    };
+    let total = counts(None);
+    if total == [0; 3] {
+        return NO_CASES.into();
+    }
+    let mut text = format!("Tests made from your answers: {}", line(total));
+    for area in categories {
+        let n = counts(Some(area));
+        if n != [0; 3] {
+            text.push_str(&format!("\n{area}: {}", line(n)));
+        }
+    }
+    text
+}
+
+pub const WRONG_ROLE: &str = "must come from the approver role named by its proposal";

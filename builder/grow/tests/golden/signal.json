@@ -1,0 +1,13 @@
+{
+  "schema": "growth-loop/signal/v1",
+  "id": "sig-2026-03-04-001",
+  "persona": "robin",
+  "at": "2026-03-04T15:20:00Z",
+  "given_by": "subject",
+  "kind": "correction",
+  "area": "communication",
+  "situation": "A parent asks to move a student's quiz because of a family trip.",
+  "wanted": "Offer one make-up slot in the same week, then point to the policy for anything later.",
+  "persona_said": "Decline politely and point to the late-work policy.",
+  "source": "review-report"
+}

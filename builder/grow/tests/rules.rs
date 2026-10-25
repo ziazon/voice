@@ -361,3 +361,15 @@ fn references_stay_within_the_persona_and_name_existing_records() {
     rejected.decision = Decision::Rejected;
     assert!(check(&[s], &[c], &[p], &[rejected], &[]).is_ok());
 }
+
+#[test]
+fn rejected_approval_cannot_be_measured_under_another_proposal() {
+    let mut rejected = approval();
+    rejected.decision = Decision::Rejected;
+    let mut measured = measurement();
+    measured.proposal = "prop-other".into();
+    refused(
+        no_measurement_when_rejected(std::slice::from_ref(&rejected), &[measured]),
+        &rejected.proposal,
+    );
+}
