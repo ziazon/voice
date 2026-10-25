@@ -110,6 +110,7 @@ fn added_lines_allow_one_carriage_return_only_in_a_crlf_file() {
     for (rows, expected) in [
         (" a\n+b\r\n", "b\r"),
         (" a\r\n+b\r\r\n", "b\r"),
+        (" a\r\n+b\r\n\\ No newline at end of file\n", "b\r"),
         ("+b\r\n a\r\n", "b\r"),
         ("-a\r\n\\ No newline at end of file\n+b\r\n", "b\r"),
         (" a\r\n+b\r\n@@ -5,1 +6,2 @@\n+b\r\n c\r\n", "b\r"),
