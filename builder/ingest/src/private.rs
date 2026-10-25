@@ -357,8 +357,29 @@ fn read_private_at_limit(
             max / 1024
         )));
     }
+    read_private_bytes(&mut file, &path, file_name, max)
+}
+
+fn read_private_bytes(
+    file: &mut impl Read,
+    path: &Path,
+    name: &str,
+    max: Option<u64>,
+) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).map_err(|e| io(&path, e))?;
+    if let Some(max) = max {
+        file.take(max.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .map_err(|e| io(path, e))?;
+        if bytes.len() as u64 > max {
+            return Err(Error::Invalid(format!(
+                "{name} is too big to read (over {} KiB)",
+                max / 1024
+            )));
+        }
+    } else {
+        file.read_to_end(&mut bytes).map_err(|e| io(path, e))?;
+    }
     Ok(bytes)
 }
 
@@ -485,6 +506,33 @@ fn read_private_optional_at_limit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_read_caps_bytes_after_the_metadata_check() {
+        let path = Path::new("growing.jsonl");
+        // The byte stream can outgrow the size checked before the first read.
+        let mut file = std::io::Cursor::new(vec![b'x'; 4096]);
+        let result = read_private_bytes(&mut file, path, "growing.jsonl", Some(1024));
+        assert!(result.is_err(), "bytes beyond the limit must be refused");
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "growing.jsonl is too big to read (over 1 KiB)",
+        );
+        assert_eq!(file.position(), 1025, "read at most max + 1 bytes");
+        for (length, max) in [(0, Some(1024)), (1024, Some(1024)), (4096, None)] {
+            let bytes = vec![b'x'; length];
+            assert_eq!(
+                read_private_bytes(
+                    &mut std::io::Cursor::new(&bytes),
+                    path,
+                    "growing.jsonl",
+                    max,
+                )
+                .unwrap(),
+                bytes,
+            );
+        }
+    }
 
     #[test]
     fn renamed_temporary_does_not_unlink_a_reused_name() {

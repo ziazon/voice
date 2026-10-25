@@ -323,3 +323,27 @@ fn invalid_case_history_leaves_signals_unchanged() {
     );
     assert_eq!(store.signals().unwrap().len(), 1);
 }
+
+#[test]
+fn invalid_area_uses_its_own_100_character_message() {
+    for area in [
+        "".to_owned(),
+        " \t".to_owned(),
+        "comm\u{200b}unication".to_owned(),
+        "a".repeat(101),
+    ] {
+        let f = Fixture::new();
+        let mut value = input();
+        value["area"] = json!(area);
+        let result = run(&f, &value);
+        assert!(result.is_err(), "invalid area must be refused");
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "The area must be 1 to 100 characters long, with no hidden characters.",
+        );
+        assert!(
+            !f.home.join(".claude").exists(),
+            "refusal must write nothing"
+        );
+    }
+}

@@ -60,11 +60,8 @@ pub fn keep(
         .or_insert(Value::String("subject".into()));
     let mut signal: Signal = serde_json::from_value(value).map_err(|_| invalid())?;
     let categories = book(member)?.categories;
-    if !categories.contains(&signal.area) {
-        return Err(Error::Invalid(text::unknown_area(&categories)));
-    }
     for (field, words, limit) in [
-        ("area", Some(signal.area.as_str()), usize::MAX),
+        ("area", Some(signal.area.as_str()), 100),
         ("situation", Some(signal.situation.as_str()), 2000),
         ("wanted", Some(signal.wanted.as_str()), 2000),
         ("persona_said", signal.persona_said.as_deref(), 2000),
@@ -83,6 +80,9 @@ pub fn keep(
                 return Err(Error::Invalid(text::left_out(field, kind.as_str())));
             }
         }
+    }
+    if !categories.contains(&signal.area) {
+        return Err(Error::Invalid(text::unknown_area(&categories)));
     }
     signal.check()?;
     if store.slug() != member.slug {

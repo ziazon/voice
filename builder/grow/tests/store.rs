@@ -315,7 +315,14 @@ fn check_all_checks_approval_role_without_requiring_approval() {
     let mut approval: Approval = example("approval");
     approval.decision = Decision::Rejected;
     approval.role = GivenBy::Staff;
-    store.save_approval(&approval).unwrap();
+    write_private_at(
+        &s.0,
+        "robin",
+        Some("growth"),
+        &format!("{}.json", approval.id),
+        to_pretty(&approval).as_bytes(),
+    )
+    .unwrap();
     let result = store.check_all();
     assert!(
         result.is_err(),
@@ -556,7 +563,14 @@ fn approval_and_measurement_writes_enforce_rule_eight() {
     fs::remove_file(s.growth().join(format!("{}.json", approval.id))).unwrap();
     let mut wrong_role = approval.clone();
     wrong_role.role = GivenBy::Staff;
-    store.save_approval(&wrong_role).unwrap();
+    write_private_at(
+        &s.0,
+        "robin",
+        Some("growth"),
+        &format!("{}.json", wrong_role.id),
+        to_pretty(&wrong_role).as_bytes(),
+    )
+    .unwrap();
     assert!(
         store.save_measurement(&measurement).is_err(),
         "wrong role must refuse measurement"
@@ -576,4 +590,40 @@ fn approval_and_measurement_writes_enforce_rule_eight() {
     assert!(!s.growth().join(format!("{}.json", measurement.id)).exists());
     store.save_measurement(&measurement).unwrap();
     assert_eq!(store.measurements().unwrap(), vec![measurement]);
+}
+
+#[test]
+fn approval_write_refuses_wrong_role_without_using_up_approval() {
+    for persona_kind in [PersonaKind::Person, PersonaKind::Product] {
+        for decision in [Decision::Approved, Decision::Rejected] {
+            let s = Scratch::new();
+            let store = s.store();
+            let mut proposal: Proposal = example("proposal");
+            proposal.persona_kind = persona_kind;
+            store.save_proposal(&proposal).unwrap();
+            let mut approval: Approval = example("approval");
+            approval.decision = decision;
+            let right_role = persona_builder_grow::rules::approver(persona_kind);
+            approval.role = if right_role == GivenBy::Subject {
+                GivenBy::Staff
+            } else {
+                GivenBy::Subject
+            };
+            let before = fs::read_dir(s.growth()).unwrap().count();
+            let result = store.save_approval(&approval);
+            assert!(result.is_err(), "wrong-role approval must be refused");
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                persona_builder_grow::text::rule(
+                    &approval.id,
+                    persona_builder_grow::text::WRONG_ROLE,
+                ),
+            );
+            assert_eq!(fs::read_dir(s.growth()).unwrap().count(), before);
+            assert!(store.approvals().unwrap().is_empty());
+            approval.role = right_role;
+            store.save_approval(&approval).unwrap();
+            assert_eq!(store.approvals().unwrap(), vec![approval]);
+        }
+    }
 }

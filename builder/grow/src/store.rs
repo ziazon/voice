@@ -252,8 +252,11 @@ impl Store {
     }
     pub(crate) fn save_approval_unlocked(&self, a: &Approval) -> Result<()> {
         a.check()?;
-        if self.proposal(&a.proposal)?.is_none() {
-            return Err(Error::Invalid(text::rule(&a.id, text::MISSING_REFERENCE)));
+        let proposal = self
+            .proposal(&a.proposal)?
+            .ok_or_else(|| Error::Invalid(text::rule(&a.id, text::MISSING_REFERENCE)))?;
+        if a.role != rules::approver(proposal.persona_kind) {
+            return Err(Error::Invalid(text::rule(&a.id, text::WRONG_ROLE)));
         }
         let mut approvals = self.approvals()?;
         approvals.push(a.clone());
