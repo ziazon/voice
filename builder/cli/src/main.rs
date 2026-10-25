@@ -271,6 +271,7 @@ enum RefreshCommand {
     /// Draft a change to how your assistant decides, from the answers you've given it.
     Propose {
         member_dir: PathBuf,
+        /// The Claude model to draft with.
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
         /// The daily limit, in US dollars as Claude Code estimates them.
@@ -283,16 +284,22 @@ enum RefreshCommand {
     /// Show the change waiting for your answer.
     Show {
         member_dir: PathBuf,
+        /// The change's id, as `refresh show` prints it.
+        #[arg(value_name = "CHANGE")]
         proposal: Option<String>,
     },
     /// Approve a change to be tested before your assistant learns it.
     Approve {
         member_dir: PathBuf,
+        /// The change's id, as `refresh show` prints it.
+        #[arg(value_name = "CHANGE")]
         proposal: String,
     },
     /// Reject a change and keep your answers for the next refresh.
     Reject {
         member_dir: PathBuf,
+        /// The change's id, as `refresh show` prints it.
+        #[arg(value_name = "CHANGE")]
         proposal: String,
     },
 }

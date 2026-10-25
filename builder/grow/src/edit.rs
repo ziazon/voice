@@ -16,7 +16,12 @@ pub struct Edit {
     pub cases: Vec<String>,
 }
 fn plain(line: &str) -> &str {
-    line.strip_suffix('\n').unwrap_or(line)
+    line.strip_suffix("\r\n")
+        .or_else(|| line.strip_suffix('\n'))
+        .unwrap_or(line)
+}
+fn ending(line: &str) -> &'static str {
+    if line.ends_with("\r\n") { "\r\n" } else { "\n" }
 }
 fn invalid() -> Error {
     Error::Invalid(text::EDIT_DOES_NOT_FIT.into())
@@ -38,17 +43,19 @@ pub fn apply_edit(decisions: &str, edit: &Edit) -> Result<String> {
         if edit.kind != EditKind::Add {
             return Err(invalid());
         }
+        let newline = ending(&lines[by_end - 1]);
         let prefix = if by_end > 0 && !lines[by_end - 1].ends_with('\n') {
-            "\n\n"
+            format!("{newline}{newline}")
         } else if by_end > 0 && !plain(&lines[by_end - 1]).is_empty() {
-            "\n"
+            newline.to_owned()
         } else {
-            ""
+            String::new()
         };
+        let trailing = if by_end == lines.len() { "" } else { newline };
         lines.insert(
             by_end,
             format!(
-                "{prefix}### {}\n\n**Standing rules:**\n- {}\n\n",
+                "{prefix}### {}{newline}{newline}**Standing rules:**{newline}- {}{newline}{trailing}",
                 edit.area, edit.text
             ),
         );
@@ -72,27 +79,32 @@ pub fn apply_edit(decisions: &str, edit: &Edit) -> Result<String> {
                 while after < end && plain(&lines[after]).starts_with("- ") {
                     after += 1;
                 }
+                let newline = ending(&lines[after - 1]);
                 if after == rules + 2 && plain(&lines[rules + 1]) == "- None yet." {
-                    lines[rules + 1] = format!("- {}\n", edit.text);
+                    lines[rules + 1] = format!("- {}{newline}", edit.text);
                 } else {
                     if after > rules + 1 && !lines[after - 1].ends_with('\n') {
-                        lines[after - 1].push('\n');
+                        lines[after - 1].push_str(newline);
                     }
-                    lines.insert(after, format!("- {}\n", edit.text));
+                    lines.insert(after, format!("- {}{newline}", edit.text));
                 }
             } else {
                 let mut at = end;
                 while at > start + 1 && plain(&lines[at - 1]).is_empty() {
                     at -= 1;
                 }
+                let newline = ending(&lines[at - 1]);
                 let prefix = if at > 0 && !lines[at - 1].ends_with('\n') {
-                    "\n\n"
+                    format!("{newline}{newline}")
                 } else {
-                    "\n"
+                    newline.to_owned()
                 };
                 lines.insert(
                     at,
-                    format!("{prefix}**Standing rules:**\n- {}\n", edit.text),
+                    format!(
+                        "{prefix}**Standing rules:**{newline}- {}{newline}",
+                        edit.text
+                    ),
                 );
             }
         }
@@ -120,7 +132,11 @@ pub fn apply_edit(decisions: &str, edit: &Edit) -> Result<String> {
                 return Err(invalid());
             }
             let at = found[0];
-            let newline = if lines[at].ends_with('\n') { "\n" } else { "" };
+            let newline = if lines[at].ends_with('\n') {
+                ending(&lines[at])
+            } else {
+                ""
+            };
             lines[at] = format!("- {}{newline}", edit.text);
         }
     }

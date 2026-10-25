@@ -242,3 +242,51 @@ with `persona-builder refresh propose`."
 `bash scripts/ci-local.sh` is green (fmt, clippy `-D warnings`, every test), each new test was seen
 red first, the mutation list is in your final message, and nothing writes to the member's folder.
 Don't commit: leave the changes in the worktree and say which files changed.
+
+## After the gates: the fix-ups (decided, do not reopen)
+
+`/security-review` found no high or medium issue. The Verifier passed the slice with these
+should-fixes and nits, and Claude's own review added three (C1 to C3). Fix every one, each with a
+test that goes red without it.
+
+1. **No change that changes nothing.** In `check_reply`, an edit whose `apply_edit` result equals
+   its input (a `replace` whose `text` equals `old`) is a misfit (`text::REPLY_APPLY`).
+2. **Never save what `show` would refuse.** `propose` runs `check_stored(&proposal)` before
+   `save_proposal_unlocked`; on failure it saves nothing and refuses with a new
+   `text::DECISIONS_HIDDEN` ("Your assistant's decisions.md has a hidden character near the change,
+   so nothing was saved. Remove it, then try again.").
+3. **C3: stored diffs refuse every hidden character.** `check_stored` refuses a diff holding any
+   `hidden` character other than `\n` and `<` (bidi and zero-width marks included, not only
+   control characters); `\r` stays allowed (see 5). Update
+   `showing_existing_less_than_and_noncontrol_unicode_is_allowed` to keep `<` and ordinary
+   non-ASCII letters allowed and add a bidi mark (`\u{202e}`) and a zero-width space that are
+   refused.
+4. **The refresh's own words when it gives up.** `Asker` gains a field `misfit: fn(&str, &str) ->
+   String`, set to `crate::text::misfit` by `Asker::new`, and `pub fn with_misfit(self, misfit:
+   fn(&str, &str) -> String) -> Self`; `ask` uses it for the final error. The build is unchanged.
+   `propose` passes `text::refresh_misfit`: "{what}: Claude's draft didn't fit twice, so nothing
+   was saved ({problem}). Run `persona-builder refresh propose` again."
+5. **Windows line endings.** `edit.rs` matches headings and items with a trailing `\r` removed
+   (`plain` strips `\r\n` or `\n`), and every line it inserts uses the line ending of the line it
+   follows (`\r\n` when that one has it). A test on a CRLF `decisions.md`: add, replace and a new
+   area keep CRLF everywhere, and the proposal's diffs apply.
+6. **Undone drafts count as "said no".** The prompt's earlier-drafts list takes the proposals that
+   were rejected **or** measured with `outcome: revert`, newest first, at most `MOST_REJECTED`, under
+   "The person said no to these earlier drafts, or they were tested and undone; propose something
+   else". Test: a reverted proposal (a measurement written in the test through the store) changes
+   the prompt.
+7. **C1: the base re-read's own words.** When `decisions.md` changes during the call, refuse with a
+   new `text::DECISIONS_CHANGED` ("Your assistant's decisions changed while the change was being
+   drafted, so nothing was saved. Try again."), not `base_moved`.
+8. **C2 and nit: the heading shows the date.** `refresh_heading` prints `&created[..10]` (fall back to
+   the whole string when it is shorter).
+9. **Nit: no blank line at the end.** A new area added as the last section ends the file with one
+   line ending, as the build's file does.
+10. **Nit: help words.** The `proposal` arguments get `#[arg(value_name = "CHANGE")]` and a doc line
+    ("The change's id, as `refresh show` prints it"); `refresh propose --model` gets a doc line ("The
+    Claude model to draft with").
+11. **Nit: test gap.** A hand-written diff whose `\ No newline at end of file` follows a non-final
+    line is refused by `apply`.
+
+Run `bash scripts/ci-local.sh`; the seven `ureq_wire.rs` tests can't bind a socket in your sandbox,
+so say so and run everything else. Don't commit.

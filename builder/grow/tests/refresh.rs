@@ -229,6 +229,14 @@ fn two_misfits_save_nothing_and_do_not_echo_reply_words() {
         let error = s.propose().err().unwrap().to_string();
         assert!(!error.contains("zebracorn"));
         assert!(!error.contains("make-up"));
+        assert!(
+            error.contains("Claude's draft didn't fit twice, so nothing was saved ("),
+            "{error}"
+        );
+        assert!(
+            error.contains("Run `persona-builder refresh propose` again."),
+            "{error}"
+        );
         assert_eq!(s.calls(), 2);
         assert!(s.store().proposals().unwrap().is_empty());
         s.unchanged();
@@ -246,7 +254,8 @@ fn failed_call_saves_no_change() {
 fn changed_base_during_call_refuses_to_save() {
     let s = Setup::new(1);
     s.plan(json!({"0":"move","decisions_path":s.dir.join("decisions.md")}));
-    assert!(s.propose().is_err());
+    let error = s.propose().err().unwrap().to_string();
+    assert!(error.contains("Your assistant's decisions changed while the change was being drafted, so nothing was saved. Try again."), "{error}");
     assert!(s.store().proposals().unwrap().is_empty());
 }
 #[test]
@@ -295,12 +304,14 @@ fn approve_requires_current_base_and_new_answers_reject_does_not() {
 }
 #[test]
 fn damaged_stored_text_is_never_shown() {
-    for place in ["summary", "why", "diff"] {
+    for place in ["summary", "why", "diff", "bidi", "zero-width"] {
         let s = Setup::new(1);
         let mut p = s.drafted();
         match place {
             "summary" => p.summary.push('\u{200b}'),
             "why" => p.changes[0].why.push('\u{202e}'),
+            "bidi" => p.changes[0].diff.push('\u{202e}'),
+            "zero-width" => p.changes[0].diff.push('\u{200b}'),
             _ => p.changes[0].diff.push('\x1b'),
         }
         write_private_at(
@@ -458,7 +469,7 @@ fn prompt_has_complete_records_and_rejected_drafts_but_no_approval() {
         &cases[0].expected,
         signals[0].persona_said.as_ref().unwrap(),
         &p.summary,
-        "The person said no to these earlier drafts; propose something else",
+        "The person said no to these earlier drafts, or they were tested and undone; propose something else",
     ] {
         assert!(prompt.contains(expected), "missing {expected}");
     }
@@ -616,7 +627,8 @@ fn replacing_the_same_item_twice_is_refused_even_when_first_keeps_its_words() {
 fn showing_existing_less_than_and_noncontrol_unicode_is_allowed() {
     let s = Setup::new(1);
     let mut p = s.drafted();
-    p.changes[0].diff="--- a/decisions.md\n+++ b/decisions.md\n@@ -1,1 +1,1 @@\n-old < 3\u{200b}\n+new < 4\u{200b}\n".into();
+    p.changes[0].diff =
+        "--- a/decisions.md\n+++ b/decisions.md\n@@ -1,1 +1,1 @@\n-old < 3 é\n+new < 4 中\n".into();
     write_private_at(
         &s.f.home,
         &s.f.member.slug,
@@ -682,7 +694,7 @@ fn prompt_uses_only_the_five_newest_related_rejections_and_added_lines() {
     assert!(prompt.find("Earlier draft number 7.") < prompt.find("Earlier draft number 6."));
 }
 #[test]
-fn an_approved_change_with_a_measurement_no_longer_blocks_refresh() {
+fn an_undone_change_is_in_the_prompt_and_no_longer_blocks_refresh() {
     let s = Setup::new(1);
     let p = s.drafted();
     let a = refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap();
@@ -700,11 +712,95 @@ fn an_approved_change_with_a_measurement_no_longer_blocks_refresh() {
             before: Grade::Fail,
             after: Grade::Pass,
         }],
-        outcome: KeepOrRevert::Keep,
-        reason: "The checks passed.".into(),
+        outcome: KeepOrRevert::Revert,
+        reason: "Undo measurement marker.".into(),
     };
     s.store().save_measurement(&measurement).unwrap();
     assert!(refresh::open(&s.store(), &s.dir).unwrap().is_none());
     assert!(matches!(s.propose().unwrap(), Proposed::Drafted(_)));
+    assert_eq!(
+        s.calls(),
+        2,
+        "undone draft must change the prompt and bypass the earlier cached call"
+    );
+    let prompt = fs::read_to_string(s.stub.join("stdin1")).unwrap();
+    assert!(prompt.contains(&p.summary), "{prompt}");
+    assert!(prompt.contains("The person said no to these earlier drafts, or they were tested and undone; propose something else"));
+    assert!(!prompt.contains("Undo measurement marker."));
+    assert!(!prompt.contains(MEASUREMENT_V1));
+    assert!(!prompt.contains(APPROVAL_V1));
     s.unchanged();
+}
+
+#[test]
+fn unchanged_replacement_is_a_misfit() {
+    let s = Setup::new(1);
+    let mut v = reply();
+    v["edits"][0]["kind"] = json!("replace");
+    v["edits"][0]["old"] = json!("Keep the first step small.");
+    v["edits"][0]["text"] = json!("Keep the first step small.");
+    assert_eq!(
+        s.check(&v).unwrap_err().shown,
+        persona_builder_grow::text::REPLY_APPLY
+    );
+}
+
+#[test]
+fn hidden_context_refuses_before_saving() {
+    for mark in ["\x1b", "\u{202e}", "\u{200b}"] {
+        let s = Setup::new(1);
+        let before = BASE.replace(
+            "Keep the first step small.",
+            &format!("Keep the first step small.{mark}"),
+        );
+        fs::write(s.dir.join("decisions.md"), &before).unwrap();
+        let error = s
+            .propose()
+            .expect_err("hidden context must be refused")
+            .to_string();
+        assert!(error.contains("Your assistant's decisions.md has a hidden character near the change, so nothing was saved. Remove it, then try again."), "{error}");
+        assert!(s.store().proposals().unwrap().is_empty());
+        assert_eq!(
+            fs::read_to_string(s.dir.join("decisions.md")).unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
+fn heading_shows_date_without_time_and_accepts_short_created() {
+    assert_eq!(
+        persona_builder_grow::text::refresh_heading(NOW, "change-id"),
+        "Change drafted 2026-03-04 (change-id)"
+    );
+    assert_eq!(
+        persona_builder_grow::text::refresh_heading("short", "change-id"),
+        "Change drafted short (change-id)"
+    );
+}
+
+#[test]
+fn windows_proposal_is_saved_shown_and_its_diffs_apply() {
+    let s = Setup::new(1);
+    let before = BASE.replace("\n", "\r\n");
+    fs::write(s.dir.join("decisions.md"), &before).unwrap();
+    let p = s.drafted();
+    let mut candidate = before.clone();
+    for change in &p.changes {
+        candidate = diff::apply(&candidate, &change.diff, &change.file).unwrap();
+    }
+    assert!(candidate.contains("lesson 1"));
+    assert!(
+        candidate
+            .split_inclusive('\n')
+            .all(|line| line.ends_with("\r\n"))
+    );
+    assert_eq!(
+        refresh::show(&s.store(), &s.dir, Some(&p.id)).unwrap(),
+        Some(p)
+    );
+    assert_eq!(
+        fs::read_to_string(s.dir.join("decisions.md")).unwrap(),
+        before
+    );
 }

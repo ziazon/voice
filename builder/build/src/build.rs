@@ -751,6 +751,7 @@ pub fn cache_name(step: &str, model: &str, system: &str, schema: &Value, prompt:
 }
 
 pub struct Asker<'a> {
+    misfit: fn(&str, &str) -> String,
     claude: &'a Claude,
     session: &'a Session,
     home: &'a Path,
@@ -776,7 +777,12 @@ impl<'a> Asker<'a> {
             model,
             calls: 0,
             reused: 0,
+            misfit: crate::text::misfit,
         }
+    }
+    pub fn with_misfit(mut self, misfit: fn(&str, &str) -> String) -> Self {
+        self.misfit = misfit;
+        self
     }
     pub fn calls(&self) -> usize {
         self.calls
@@ -853,7 +859,7 @@ impl<'a> Asker<'a> {
                 }
             }
         }
-        Err(Error::Invalid(text::misfit(what, &last.shown)))
+        Err(Error::Invalid((self.misfit)(what, &last.shown)))
     }
 }
 

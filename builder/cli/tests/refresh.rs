@@ -293,3 +293,22 @@ fn nothing_kept_makes_no_model_call() {
     assert_eq!(f.calls(), calls);
     assert_eq!(f.snapshot(), before);
 }
+
+#[test]
+fn refresh_help_calls_the_id_a_change_and_explains_the_model() {
+    let f = Fixture::new();
+    for command in ["show", "approve", "reject"] {
+        let out = f.run(&["refresh", command, "--help"]);
+        assert!(out.status.success());
+        let shown = text(&out.stdout);
+        assert!(shown.contains("CHANGE"), "{shown}");
+        assert!(
+            shown.contains("The change's id, as `refresh show` prints it"),
+            "{shown}"
+        );
+        assert!(!shown.contains("PROPOSAL"), "{shown}");
+    }
+    let out = f.run(&["refresh", "propose", "--help"]);
+    assert!(out.status.success());
+    assert!(text(&out.stdout).contains("The Claude model to draft with"));
+}

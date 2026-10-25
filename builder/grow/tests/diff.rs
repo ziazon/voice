@@ -78,3 +78,15 @@ fn bounded_changed_region_not_whole_file() {
     roundtrip(&old, &(old.clone() + "new\n"));
     assert!(unified("decisions.md", &"old\n".repeat(2001), &"new\n".repeat(2001)).is_err());
 }
+
+#[test]
+fn no_newline_marker_on_a_nonfinal_line_is_refused() {
+    let old = "a\nb\n";
+    for change in [
+        "--- a/decisions.md\n+++ b/decisions.md\n@@ -1,2 +1,3 @@\n a\n+inserted\n\\ No newline at end of file\n b\n",
+        "--- a/decisions.md\n+++ b/decisions.md\n@@ -1,2 +1,2 @@\n a\n\\ No newline at end of file\n-b\n+B\n",
+        "--- a/decisions.md\n+++ b/decisions.md\n@@ -1,2 +1,2 @@\n-a\n\\ No newline at end of file\n+A\n b\n",
+    ] {
+        assert!(apply(old, change, "decisions.md").is_err(), "{change}");
+    }
+}

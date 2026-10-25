@@ -84,3 +84,46 @@ fn replaces_any_point_except_precedents_or_placeholder() {
         .is_err()
     );
 }
+
+#[test]
+fn edits_preserve_windows_line_endings_and_their_diffs_apply() {
+    use persona_builder_grow::diff::{apply, unified};
+    let mut current = decisions().replace("\n", "\r\n");
+    for edit in [
+        add("scope", "Start with a small trial."),
+        add("scope", "Check the aim first."),
+        replace("Keep the goal small."),
+        add("methods", "Try a short exercise."),
+    ] {
+        let next = apply_edit(&current, &edit).unwrap();
+        assert!(
+            next.split_inclusive('\n')
+                .all(|line| line.ends_with("\r\n")),
+            "{next:?}"
+        );
+        let change = unified("decisions.md", &current, &next).unwrap();
+        assert_eq!(apply(&current, &change, "decisions.md").unwrap(), next);
+        current = next;
+    }
+    let missing = decisions()
+        .replace("**Standing rules:**\n- None yet.\n\n", "")
+        .replace("\n", "\r\n");
+    let next = apply_edit(&missing, &add("scope", "Check first.")).unwrap();
+    assert!(
+        next.split_inclusive('\n')
+            .all(|line| line.ends_with("\r\n"))
+    );
+}
+
+#[test]
+fn new_last_area_ends_with_one_line_ending() {
+    for newline in ["\n", "\r\n"] {
+        let old = decisions().replace("\n", newline);
+        let next = apply_edit(&old, &add("methods", "Start with a small trial.")).unwrap();
+        assert!(
+            next.ends_with(&format!("- Start with a small trial.{newline}")),
+            "{next:?}"
+        );
+        assert!(!next.ends_with(&format!("{newline}{newline}")));
+    }
+}

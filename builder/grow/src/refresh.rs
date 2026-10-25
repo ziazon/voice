@@ -96,7 +96,7 @@ pub fn refresh_prompt(
         .collect();
     earlier.sort_by(|a, b| b.created.cmp(&a.created).then_with(|| b.id.cmp(&a.id)));
     if !earlier.is_empty() {
-        out.push_str("\nThe person said no to these earlier drafts; propose something else\n");
+        out.push_str("\nThe person said no to these earlier drafts, or they were tested and undone; propose something else\n");
         for p in earlier.into_iter().take(MOST_REJECTED) {
             out.push_str(&p.summary);
             out.push('\n');
@@ -209,7 +209,11 @@ pub fn check_reply(
             why: why.clone(),
             cases: named,
         };
-        current = apply_edit(&current, &edit).map_err(|_| Misfit::plain(text::REPLY_APPLY))?;
+        let next = apply_edit(&current, &edit).map_err(|_| Misfit::plain(text::REPLY_APPLY))?;
+        if next == current {
+            return Err(Misfit::plain(text::REPLY_APPLY));
+        }
+        current = next;
         words.extend([point, why]);
         edits.push(edit);
     }
@@ -306,6 +310,7 @@ pub fn propose(
     }
     let signals = store.signals()?;
     let approvals = store.approvals()?;
+    let measurements = store.measurements()?;
     let rejected: Vec<_> = store
         .proposals()?
         .into_iter()
@@ -313,11 +318,15 @@ pub fn propose(
             approvals
                 .iter()
                 .any(|a| a.proposal == p.id && a.decision == Decision::Rejected)
+                || measurements
+                    .iter()
+                    .any(|m| m.proposal == p.id && m.outcome == KeepOrRevert::Revert)
         })
         .collect();
     let categories = book(member)?.categories;
     let prompt = refresh_prompt(&categories, &before, &cases, &signals, &rejected);
-    let mut asker = Asker::new(claude, session, home, &member.slug, model);
+    let mut asker =
+        Asker::new(claude, session, home, &member.slug, model).with_misfit(text::refresh_misfit);
     let ((summary, edits), _) = asker.ask(
         "refresh",
         REFRESH_SYSTEM,
@@ -359,7 +368,7 @@ pub fn propose(
         current = next;
     }
     if version(decisions(member_dir)?.as_bytes()) != base {
-        return Err(Error::Invalid(text::base_moved("decisions.md")));
+        return Err(Error::Invalid(text::DECISIONS_CHANGED.into()));
     }
     let day = now
         .get(..10)
@@ -375,6 +384,7 @@ pub fn propose(
         changes,
         cases: named,
     };
+    check_stored(&proposal).map_err(|_| Error::Invalid(text::DECISIONS_HIDDEN.into()))?;
     store.save_proposal_unlocked(&proposal)?;
     Ok(Proposed::Drafted(proposal))
 }
@@ -382,7 +392,10 @@ pub fn propose(
 fn check_stored(proposal: &Proposal) -> Result<()> {
     if proposal.summary.chars().any(hidden)
         || proposal.changes.iter().any(|c| {
-            c.why.chars().any(hidden) || c.diff.chars().any(|c| c != '\n' && c.is_control())
+            c.why.chars().any(hidden)
+                || c.diff
+                    .chars()
+                    .any(|c| !matches!(c, '\n' | '\r' | '<') && hidden(c))
         })
     {
         return Err(Error::Invalid(text::DAMAGED_PROPOSAL.into()));

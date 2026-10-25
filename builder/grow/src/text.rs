@@ -186,6 +186,7 @@ pub fn no_proposal(id: &str) -> String {
     format!("No saved change has that id ({id}).")
 }
 pub fn refresh_heading(date: &str, id: &str) -> String {
+    let date = date.get(..10).unwrap_or(date);
     format!("Change drafted {date} ({id})")
 }
 pub fn learned(count: usize) -> String {
@@ -197,3 +198,13 @@ pub fn refresh_commands(member: &std::path::Path, id: &str) -> [String; 2] {
         format!("persona-builder refresh reject {} {id}", member.display()),
     ]
 }
+
+pub const DECISIONS_HIDDEN: &str = "Your assistant's decisions.md has a hidden character near the change, so nothing was saved. Remove it, then try again.";
+
+pub fn refresh_misfit(what: &str, problem: &str) -> String {
+    format!(
+        "{what}: Claude's draft didn't fit twice, so nothing was saved ({problem}). Run `persona-builder refresh propose` again."
+    )
+}
+
+pub const DECISIONS_CHANGED: &str = "Your assistant's decisions changed while the change was being drafted, so nothing was saved. Try again.";
