@@ -327,6 +327,7 @@ fn build_refuses_bad_report_names_before_changing_member_files() {
         .map(|name| (name, fs::read(fixture.member.join(name)).unwrap()))
         .into();
     let out = fixture.run(&["build", &fixture.member()]);
+    assert_eq!(fixture.calls(), 0);
     assert!(!out.status.success(), "{}", text(&out.stdout));
     assert_eq!(
         text(&out.stderr).trim(),

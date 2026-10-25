@@ -203,18 +203,21 @@ pub fn render(report: &Report) -> Vec<String> {
 
 /// Check area names before saving any member files.
 pub fn check(report: &Report) -> Result<()> {
-    if bad_names(report) {
+    check_names(report.areas.iter().map(|area| area.area.as_str()))
+}
+
+/// Check category names before making any model calls.
+pub fn check_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Result<()> {
+    if names.into_iter().any(|name| {
+        name.is_empty() || name.chars().count() > 100 || name.chars().any(build::hidden)
+    }) {
         return Err(Error::Invalid(text::REPORT_BAD_NAME.into()));
     }
     Ok(())
 }
 
 fn bad_names(report: &Report) -> bool {
-    report.areas.iter().any(|area| {
-        area.area.is_empty()
-            || area.area.chars().count() > 100
-            || area.area.chars().any(build::hidden)
-    })
+    check(report).is_err()
 }
 
 /// Save the report privately in the member's state folder.

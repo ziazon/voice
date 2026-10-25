@@ -133,6 +133,13 @@ fn untested_empty_tally_with_enough_history_is_getting_there() {
 }
 
 #[test]
+fn tested_empty_tally_without_live_categories_is_getting_there() {
+    let mut b = built();
+    tested(&mut b, &[]);
+    assert_eq!(make(&b, 200).overall, Level::GettingThere);
+}
+
+#[test]
 fn area_levels_use_example_and_high_pick_boundaries() {
     let mut b = built();
     b.tally = vec![

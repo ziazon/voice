@@ -1066,6 +1066,7 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     use persona_builder_steps::book::book;
     let (member, home) = member_and_home(&member_dir)?;
     let book = book(&member)?;
+    report::check_names(book.categories.iter().map(String::as_str))?;
     let codebook = draft::read_codebook(&member_dir)?;
     draft::preflight(&member_dir)?;
     let (folder, name) = private::place(&args.corpus)?;
