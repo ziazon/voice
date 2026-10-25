@@ -7,9 +7,9 @@ Write one section for each category named, and no other, with:
 - `flips`: up to 5 points. The patterns behind the cases where they did not take the recommended option (other_option and own_words): what they valued over the recommendation.
 - `own_answer`: up to 3 points. What kind of question gets their own words, and what those answers tend to say.
 - `rules`: up to 6 points. Rules they stated (always, never, from now on), each with its date.
-- `precedents`: up to 8 lines, each `YYYY-MM-DD · <project> · <one-line paraphrase of the question and what they chose>`. Pick the most telling, especially the non-obvious ones.
+- `precedents`: up to 8 lines, each the date (YYYY-MM-DD), ` · `, the project, ` · `, then a one-line paraphrase of the question and what they chose. Pick the most telling, especially the non-obvious ones.
 
-Every point is one line of plain text, at most 400 characters, with no Markdown of its own. A list with nothing to say is empty.
+Every point is one line of plain text, at most 400 characters, with no Markdown of its own. Never use the less-than sign: write "under" or "less than". A list with nothing to say is empty.
 
 Hard rules:
 - Paraphrase only. Never six or more of their words in a row. Never quote.

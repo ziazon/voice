@@ -1081,6 +1081,10 @@ fn a_point_with_a_hidden_character_or_markup_is_refused() {
         "They keep it\u{1b}[2J short.",
         "They keep it\u{2028}short.",
         "They keep it\u{202E}short.",
+        "They approve quickly\u{E0061}\u{E0062}",
+        "They keep it short\u{FE0F}",
+        "They keep it\u{00AD}short.",
+        "They keep it\u{2060}short.",
     ] {
         let misfit = build::check_distil_reply(
             &categories,
@@ -1187,6 +1191,11 @@ fn preflight_and_the_codebook_refuse_links_before_anything_is_spent() {
             .to_string()
             .contains("is a link")
     );
+    fs::remove_file(dir.0.join("measurements.md")).unwrap();
+    std::os::unix::fs::symlink("/etc/hosts", dir.0.join("decisions.md")).unwrap();
+    let linked = draft::preflight(&dir.0).unwrap_err().to_string();
+    assert!(linked.contains("decisions.md is a link"), "{linked}");
+    fs::remove_file(dir.0.join("decisions.md")).unwrap();
     assert!(
         draft::read_codebook(&dir.0)
             .unwrap_err()

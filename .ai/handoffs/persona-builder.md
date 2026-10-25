@@ -2,6 +2,62 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB3.3: the build, label, distil, the blind backtest, write the member (2026-10-25, lane: V1)
+
+- **What:** `persona-builder build <member_dir>` runs `bootstrap/PROMPT.md` steps 8 to 11 through
+  the person's own Claude Code, one tool-less call at a time inside one session (the state lock),
+  in `builder/build` (`build.rs`, `draft.rs`, the fixed prompts in `src/prompts/`). Label: the
+  training records and the held-out questions (never their answers) in parts of at most 300 records
+  and 400,000 bytes, each reply rebuilt per kind and mode and checked by `check-labels`' rules, then
+  `tally`. Distil: one call per codebook group with rows, structured one-line points checked against
+  the brief's limits, rendered by the code, none sharing a 6-word run with the corpus or tripping a
+  filter. Backtest: skipped below 30 held-out questions; else batches of about 40, each question with
+  the draft and its 6 closest training precedents; `score`; live at 5 or more High picks with at
+  least 90% right. Then `decisions.md` from the template's own lines and the dated
+  `measurements.md` entry (the template's examples removed, new entries before `## Reports`), both
+  checked by the filters, staged beside the member's files and renamed last. Every checked reply is
+  kept in the state folder's `build/` under a hash of the step, model, instructions, shape and first
+  prompt, and re-checked before reuse. Brief: `plans/briefs/PB3.3-build.md`.
+- **Who wrote it:** Claude, directly. Codex was at a hard usage limit until 2026-10-30 (probed at
+  pickup). Stacked on `lane-v1/PB3.4` (the crate it joins), so it lands after PB3.4.
+- **Decisions made at pickup:** `<member_dir>` like every other command; distil replies come back as
+  structured points, not Markdown, so the shape is checked and the code writes the Markdown; parts
+  also capped by bytes so a part of long records never overruns a model's context; no
+  `decisions-draft.md` file (the draft lives in memory, the replies in `build/`); the shingle check
+  runs on the model's points, never the template's fixed lines (which a person's own history about
+  this kit could match); calls run one at a time.
+- **Verified:** 26 library tests (`builder/build/tests/build.rs`) and 4 CLI tests against a stub `claude` (a small Python script
+  that answers each step from the records in its prompt, with a per-call plan for bad, quoting or
+  failed replies): the fixed system prompts and schemas in every call's argv and nothing of the
+  person's there, no held-out answer in any prompt (a sentinel in the held-out notes), the steps in
+  order, the progress lines, one retry and the problem named, two misfits stop, a failed call stops
+  and the rerun reuses all four paid replies (a damaged kept reply is asked for again), the cap
+  stops at the second call, under 30 held-out questions no held-out labels and no backtest, nothing
+  to train on and a category in no group refused before any call, the draft keeping every template
+  line in order, the measurements entry, the filter refusal, the staged write, links refused. The
+  tests were written alongside the code, so they were proved by mutation: 39 mutations, one per claim,
+  each restored and checked with `cmp`; 37 failed a test at once, one survived (a multiSelect pick
+  given as one string, a missing case, then added and caught), and one survived for good (the order
+  of the two renames: there is no seam to stop a run between them). `bash scripts/ci-local.sh` green
+  (481 Rust, 151 Python tests). Live: the real binary against the real Claude Code 2.1.292 on Mimi,
+  an invented member in an empty home: "isn't signed in", no ledger, no `build/`, nothing spent.
+- **Gates:** `/security-review` (a sub-agent): no high or medium; four lows (hidden characters in
+  points, staged files a killed run leaves, an unbounded distil prompt, a linked `briefs/`). The
+  Verifier (Fable): pass, no must-fix; three should-fixes (pre-flight the member folder before
+  spending, no held-out labels without a test, every category in a group). All seven fixed, each with
+  a test proved by a mutation (10 more mutations, all caught); see the brief's *After the gates*.
+  The delta Verifier (Opus): pass, no must-fix; her three should-fixes (tag and other invisible
+  characters, the distil prompt's own `<`, a test for a linked `decisions.md`) are in, each proved by a
+  mutation (3 more, all caught).
+- **Known limits:** a distil group whose prompt is over 700,000 bytes (after long words are cut to
+  600 characters) stops the build rather than being split, after the labels are paid for (they are
+  kept); 700,000 bytes may still be past a model's context for some text. The member folder being
+  writable is not checked before spending. The two renames are not one atomic step. The same-day
+  rerun adds a second dated entry. `build/` is never swept of replies an older codebook or corpus
+  left. The lens step's shingle check (documents) is not built.
+- **Not verified:** a successful live build (no signed-in Claude Code on Mimi); the quality of the
+  labels, the distilled model and the backtest on a real person's history (owed to PB8).
+
 ## PB3.4: the interview when the history is thin (2026-10-24, lane: V1)
 
 - **What:** a new crate `builder/build` (`persona_builder_build`) for the build's steps that call a
