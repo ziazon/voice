@@ -44,6 +44,8 @@ principal's pronouns, and the privacy filters (excluded folders, personal topics
       unanswered AskUserQuestion, a closing wrap_up ask nothing has replied to, an open CONTROL-Q
       (only when the member config names `queues`), or an answer to an escalation, written by the
       config's `queue_answerer`, for relay to its asking session. Same privacy filters as mine.
+      Asks come only from headless sessions (a job run): one the principal opened, in the
+      desktop app or a terminal, is attended and never reported.
       A member's watcher runs pending with no model.
 """
 import argparse
@@ -70,6 +72,7 @@ CONTEXT_CHARS = 300
 MAX_MESSAGE_CHARS = 4000
 PART_WORDS = 500
 QUEUE_TAIL_BYTES = 512 * 1024
+HEADLESS_ENTRYPOINT = "sdk-cli"  # Claude Code's `entrypoint` for a `claude -p` run, which is how a job runs
 TIERS = ("high", "medium", "low")
 REQUIRED = ("name", "slug", "principal", "principal_slug", "state_dir", "mark_word", "filters")
 REQUIRED_FILTERS = ("excluded_folders", "personal", "secret", "pasted_prefixes")
@@ -652,6 +655,11 @@ def opens_a_turn(record):
     return any(REMINDER.sub("", b).strip() for b in blocks)
 
 
+def headless(records):
+    """Whether a session ran with no one at it: its first recorded entrypoint is the headless one."""
+    return next((r["entrypoint"] for r in records if r.get("entrypoint")), None) == HEADLESS_ENTRYPOINT
+
+
 def open_asks(records):
     """AskUserQuestion calls with no tool result yet, and a closing wrap_up ask nothing has replied to."""
     asks, results = [], set()
@@ -760,7 +768,8 @@ def cmd_pending(m, args):
         for path in sorted(folder.glob("*.jsonl")):
             if path.stem in args.exclude or path.stat().st_mtime < cutoff:
                 continue
-            for a in open_asks(read_session(path)):
+            records = read_session(path)
+            for a in open_asks(records) if headless(records) else []:
                 text = a["question"] + " " + " ".join(a["options"])
                 if m.personal.search(text) or m.secret.search(text):
                     continue

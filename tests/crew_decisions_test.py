@@ -270,6 +270,26 @@ FILLED = {"NAME": "Ari", "SLUG": "ari", "PRONOUNS": "they/them", "PRINCIPAL": "R
           "PRINCIPAL_PRONOUNS": "they/them", "REPO": "~/projects/voice", "DATE": "2026-10-22"}
 
 
+def asking(when, tool_id, question, entrypoint):
+    """An AskUserQuestion call still waiting for its answer, in a session opened from `entrypoint`."""
+    return {"type": "assistant", "timestamp": when, "cwd": "/repo", "entrypoint": entrypoint,
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": tool_id, "name": "AskUserQuestion",
+                 "input": {"questions": [{"question": question, "options": [{"label": "a"}, {"label": "b"}]}]}}]}}
+
+
+class Pending(unittest.TestCase):
+    def test_only_headless_sessions_are_reported(self):
+        h = Harness()
+        member = h.member(ADA)
+        for name, entrypoint in [("desktop", "claude-desktop"), ("terminal", "cli"), ("job-run", "sdk-cli"),
+                                 ("unknown", None)]:
+            h.session("-Users-p-projects-app", name, asking("2026-10-25T10:00:00Z", "t1", "Which?", entrypoint))
+        proc = h.crew(member, "pending", "--projects", str(h.projects), "--seen", str(h.root / "seen.json"))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual([json.loads(line)["session"] for line in proc.stdout.splitlines()], ["job-run"])
+
+
 class PrivacyCheck(unittest.TestCase):
     """The step 11 gate over a crew folder made from the template the way install.sh makes it."""
 
