@@ -1101,6 +1101,8 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     let day = local_day(std::time::SystemTime::now());
     let entries = draft::entries(&book, &built, &args.model, &day);
     draft::check_private(&filters, &decisions, &entries)?;
+    let report = report::report(&book, &built, answered, &day);
+    report::check(&report)?;
     let existing = draft::read_text(
         &member_dir.join(draft::MEASUREMENTS),
         draft::MEASUREMENTS_MOST,
@@ -1108,7 +1110,6 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     let measurements = draft::measurements(existing.as_deref(), &member, &entries);
     draft::write(&member_dir, &decisions, &measurements)?;
     println!("{}", text::written(&member_dir.display().to_string()));
-    let report = report::report(&book, &built, answered, &day);
     report::write(&home, &member.slug, &report)?;
     for line in report::render(&report) {
         println!("{line}");

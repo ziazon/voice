@@ -1,7 +1,7 @@
 //! The private, plain report from a completed build.
 use crate::{
     build::{self, Built},
-    interview, text,
+    draft, interview, text,
 };
 use persona_builder::error::{Error, Result};
 use persona_builder_ingest::private;
@@ -73,7 +73,7 @@ pub fn report(book: &Book, built: &Built, answered: usize, day: &str) -> Report 
             rows.push(row);
         }
     }
-    let areas: Vec<Area> = rows
+    let mut areas: Vec<Area> = rows
         .into_iter()
         .map(|(area, row)| {
             let examples = row.questions + row.messages;
@@ -110,6 +110,18 @@ pub fn report(book: &Book, built: &Built, answered: usize, day: &str) -> Report 
             }
         })
         .collect();
+    if let Some(test) = &built.backtest {
+        for area in draft::live_categories(book, &test.score) {
+            if !areas.iter().any(|existing| existing.area == area) {
+                areas.push(Area {
+                    area,
+                    level: Level::Strong,
+                    examples: 0,
+                    strengthen: Vec::new(),
+                });
+            }
+        }
+    }
     let strong = areas
         .iter()
         .filter(|area| area.level == Level::Strong)
@@ -189,9 +201,25 @@ pub fn render(report: &Report) -> Vec<String> {
     lines
 }
 
+/// Check area names before saving any member files.
+pub fn check(report: &Report) -> Result<()> {
+    if bad_names(report) {
+        return Err(Error::Invalid(text::REPORT_BAD_NAME.into()));
+    }
+    Ok(())
+}
+
+fn bad_names(report: &Report) -> bool {
+    report.areas.iter().any(|area| {
+        area.area.is_empty()
+            || area.area.chars().count() > 100
+            || area.area.chars().any(build::hidden)
+    })
+}
+
 /// Save the report privately in the member's state folder.
 pub fn write(home: &Path, slug: &str, report: &Report) -> Result<PathBuf> {
-    let mut bytes = serde_json::to_vec_pretty(report).map_err(|_| unreadable())?;
+    let mut bytes = serde_json::to_vec_pretty(report).expect("a report always serialises");
     bytes.push(b'\n');
     private::write_private(home, slug, REPORT, &bytes)
 }
@@ -209,14 +237,7 @@ pub fn read(home: &Path, slug: &str) -> Result<Option<Report>> {
         return Err(unreadable());
     }
     let report: Report = serde_json::from_slice(&bytes).map_err(|_| unreadable())?;
-    if report.schema != SCHEMA
-        || !build::is_date(&report.built)
-        || report.areas.iter().any(|area| {
-            area.area.is_empty()
-                || area.area.chars().count() > 100
-                || area.area.chars().any(build::hidden)
-        })
-    {
+    if report.schema != SCHEMA || !build::is_date(&report.built) || bad_names(&report) {
         return Err(unreadable());
     }
     Ok(Some(report))

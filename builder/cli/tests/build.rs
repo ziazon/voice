@@ -309,3 +309,38 @@ fn build_with_too_few_held_out_questions_says_so_honestly() {
     );
     assert!(!stdout.contains(": Strong."), "{stdout}");
 }
+
+#[test]
+fn build_refuses_bad_report_names_before_changing_member_files() {
+    let Some(python) = python() else { return };
+    let fixture = Fixture::new();
+    fixture.signed_in(&python);
+    let bad = "s".repeat(101);
+    let config = fixture.member.join("member.json");
+    let settings = fs::read_to_string(&config)
+        .unwrap()
+        .replace("\"scope\"", &format!("\"{bad}\""));
+    fs::write(config, settings).unwrap();
+    fixture.write_state("decisions.jsonl", &corpus(10).replace("Scope", &bad));
+    fixture.write_state("report.json", "previous report");
+    let before: Vec<_> = ["decisions.md", "measurements.md"]
+        .map(|name| (name, fs::read(fixture.member.join(name)).unwrap()))
+        .into();
+    let out = fixture.run(&["build", &fixture.member()]);
+    assert!(!out.status.success(), "{}", text(&out.stdout));
+    assert_eq!(
+        text(&out.stderr).trim(),
+        "persona-builder: A kind of decision in your assistant's settings (codebook.categories) has a name that is empty, longer than 100 characters, or holds a character that can't be shown, so nothing was saved. Rename it, then try again."
+    );
+    for (name, bytes) in before {
+        assert_eq!(
+            fs::read(fixture.member.join(name)).unwrap(),
+            bytes,
+            "{name} changed"
+        );
+    }
+    assert_eq!(
+        fs::read(fixture.state().join("report.json")).unwrap(),
+        b"previous report"
+    );
+}

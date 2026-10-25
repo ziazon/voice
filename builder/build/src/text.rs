@@ -116,6 +116,8 @@ pub fn too_big(what: &str, rows: usize) -> String {
     )
 }
 
+pub const REPORT_BAD_NAME: &str = "A kind of decision in your assistant's settings (codebook.categories) has a name that is empty, longer than 100 characters, or holds a character that can't be shown, so nothing was saved. Rename it, then try again.";
+
 pub const REPORT_UNREADABLE: &str = "Your last report couldn't be read, so it isn't shown. Build your assistant again to make a new one.";
 
 pub fn no_report(folder: &str) -> String {

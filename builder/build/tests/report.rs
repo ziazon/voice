@@ -118,6 +118,21 @@ fn enough_history_uses_chats_and_time_without_an_interview() {
 }
 
 #[test]
+fn at_150_answers_enough_examples_need_chats_and_time_only() {
+    let mut b = built();
+    b.tally = vec![("scope".into(), row(5, 0))];
+    assert_eq!(
+        make(&b, 150).areas[0].strengthen,
+        [Strengthen::Claudeai, Strengthen::Time]
+    );
+}
+
+#[test]
+fn untested_empty_tally_with_enough_history_is_getting_there() {
+    assert_eq!(make(&built(), 200).overall, Level::GettingThere);
+}
+
+#[test]
 fn area_levels_use_example_and_high_pick_boundaries() {
     let mut b = built();
     b.tally = vec![
@@ -171,7 +186,9 @@ fn overall_is_strong_at_half_the_areas_after_enough_history() {
         .map(|s| (s, row(5, 0)))
         .collect();
     tested(&mut b, &["scope", "methods"]);
-    assert_eq!(make(&b, 200).overall, Level::Strong);
+    let r = make(&b, 200);
+    assert_eq!(r.test, Some(Test { right: 30, of: 32 }));
+    assert_eq!(r.overall, Level::Strong);
     assert_eq!(make(&b, 150).overall, Level::Strong);
     assert_eq!(make(&b, 149).overall, Level::Thin);
     b.backtest
@@ -181,8 +198,47 @@ fn overall_is_strong_at_half_the_areas_after_enough_history() {
         .categories
         .remove("methods");
     assert_eq!(make(&b, 200).overall, Level::GettingThere);
+    b.backtest = None;
     b.tally.clear();
     assert_eq!(make(&b, 200).overall, Level::GettingThere);
+}
+
+#[test]
+fn live_categories_without_training_rows_are_appended_and_count_toward_half() {
+    let mut b = built();
+    b.tally = vec![("other".into(), row(5, 0)), ("extra".into(), row(5, 0))];
+    tested(&mut b, &["methods", "scope"]);
+    let r = make(&b, 200);
+    assert_eq!(
+        r.areas,
+        vec![
+            Area {
+                area: "other".into(),
+                level: Level::GettingThere,
+                examples: 5,
+                strengthen: vec![Strengthen::Claudeai, Strengthen::Time]
+            },
+            Area {
+                area: "extra".into(),
+                level: Level::GettingThere,
+                examples: 5,
+                strengthen: vec![Strengthen::Claudeai, Strengthen::Time]
+            },
+            Area {
+                area: "scope".into(),
+                level: Level::Strong,
+                examples: 0,
+                strengthen: vec![]
+            },
+            Area {
+                area: "methods".into(),
+                level: Level::Strong,
+                examples: 0,
+                strengthen: vec![]
+            },
+        ]
+    );
+    assert_eq!(r.overall, Level::Strong);
 }
 
 #[test]
@@ -297,6 +353,19 @@ fn render_tested_words_are_exact() {
     assert_eq!(
         report::render(&r)[0],
         "How well your assistant knows you: Getting there."
+    );
+}
+
+#[test]
+fn check_refuses_hidden_area_names_without_echoing_them_and_accepts_plain() {
+    assert!(report::check(&plain()).is_ok());
+    let mut r = plain();
+    r.areas[0].area = "scope\u{1b}[2J".into();
+    let result = report::check(&r);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "A kind of decision in your assistant's settings (codebook.categories) has a name that is empty, longer than 100 characters, or holds a character that can't be shown, so nothing was saved. Rename it, then try again."
     );
 }
 
