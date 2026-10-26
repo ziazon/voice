@@ -2,7 +2,7 @@
 use crate::{
     assistants::{claude_message, home},
     dto::*,
-    history::{BUSY, FIND, count, failure, locked, readable},
+    history::{BUSY, FIND, PERMISSION, count, failure, locked, readable},
 };
 use persona_builder::{assistants, error::Error, member::Member};
 use persona_builder_agent::{
@@ -144,6 +144,9 @@ pub fn build_assistant_in(
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
     let session = open(home, &request.slug)?;
+    if !crate::read_consent(home, &request.slug).agreed {
+        return Err(failure(PERMISSION));
+    }
     let mut last_spend = Spend {
         spent_usd: 0.0,
         daily_cap_usd: Cap::default().daily_usd(),
@@ -339,6 +342,9 @@ pub fn draft_interview_in(
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
     let session = open(home, &request.slug)?;
+    if !crate::read_consent(home, &request.slug).agreed {
+        return Err(failure(PERMISSION));
+    }
     can_draft(home, &request.slug, request.replace)?;
     let drafted = interview::draft(&claude, &session, claude::DEFAULT_MODEL, &book, &weights)
         .map_err(|e| call_failure(e, &session, DRAFT_FAILED))?;

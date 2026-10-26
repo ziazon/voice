@@ -23,6 +23,7 @@ function forgotten() {
   if (!assistant.value) return
   assistant.value = { ...assistant.value, consent: { agreed: false, agreedOn: null } }
   buildOpened.value = false
+  buildRunning.value = false
   resets.value += 1
 }
 const assistant = ref<Assistant | null>(null)

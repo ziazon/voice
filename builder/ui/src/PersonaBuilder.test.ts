@@ -133,6 +133,29 @@ it('shows four save cards and preserves the forget message while resetting permi
   expect(button(wrapper, 'I agree').exists()).toBe(true)
 })
 
+it('enables Your assistants after forgetting during an unsettled build', async () => {
+  const backend = fakeBackend({
+    listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed: true, agreedOn: '2026-10-25' } }]),
+    forgetPreview: vi.fn().mockResolvedValue({ files: 7 }),
+    buildAssistant: vi.fn().mockImplementation(() => new Promise(() => {})),
+  })
+  const wrapper = screen(PersonaBuilder, backend)
+  await flushPromises()
+  await button(wrapper, 'Open').trigger('click'); await flushPromises()
+  await button(wrapper, 'Build').trigger('click'); await flushPromises()
+  await button(wrapper, 'Build my assistant').trigger('click'); await flushPromises()
+  expect(backend.buildAssistant).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug }, expect.any(Function))
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeDefined()
+  expect(wrapper.text()).toContain('Stop the build first to choose another assistant.')
+  await button(wrapper, 'Save').trigger('click'); await flushPromises()
+  await button(wrapper, 'Forget…').trigger('click'); await flushPromises()
+  await button(wrapper, 'Delete these files').trigger('click'); await flushPromises()
+  expect(backend.forget).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug, files: 7 })
+  expect(wrapper.find('ul[aria-live="polite"]').exists()).toBe(false)
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeUndefined()
+  expect(wrapper.text()).not.toContain('Stop the build first to choose another assistant.')
+})
+
 it('keeps build disabled until permission, opens from sources, and preserves running lines across steps', async () => {
   let progress: ((value: { line: string, spend: { spentUsd: number, dailyCapUsd: number } }) => void) | undefined
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]), buildAssistant: vi.fn().mockImplementation((_request, callback) => { progress = callback; return new Promise(() => {}) }) })

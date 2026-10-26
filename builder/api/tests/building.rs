@@ -192,6 +192,14 @@ fn interview_stub(h: &Home) {
     let q = questions().to_string();
     h.stub(|source|source.replace("first = prompt.split", &format!("if prompt.startswith('Draft a calibration interview'):\n        print(json.dumps({{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":False,\"total_cost_usd\":0.02,\"structured_output\":json.loads({q:?})}}))\n        return 0\n    first = prompt.split")));
 }
+fn revoke_consent_stub(h: &Home) {
+    interview_stub(h);
+    let source = fs::read_to_string(h.bin.join("claude")).unwrap();
+    h.program(&source.replace(
+        "if ARGS[:1] == [\"--version\"]:",
+        "if ARGS[:1] == [\"--version\"]:\n        os.remove(os.path.join(os.getcwd(), '.claude/state/wren/consent.json'))",
+    ));
+}
 fn wait_for(path: &Path) {
     let start = Instant::now();
     while !path.exists() {
@@ -255,6 +263,34 @@ fn every_command_requires_permission_and_valid_assistant_without_writing() {
             before
         );
     }
+}
+#[test]
+fn build_rechecks_permission_after_claude_check() {
+    let _case = CASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    revoke_consent_stub(&h);
+    let before = h.snapshots();
+    let result = h.build(&Builds::new(), &mut |_| {});
+    assert!(!h.state("consent.json").exists());
+    assert_eq!(h.calls(), 0, "revoked history reached a model call");
+    assert_eq!(h.snapshots(), before);
+    safe(&h, result, PERMISSION);
+}
+#[test]
+fn draft_rechecks_permission_after_claude_check() {
+    let _case = CASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let h = Home::new(true);
+    revoke_consent_stub(&h);
+    let result = h.draft(false);
+    assert!(!h.state("consent.json").exists());
+    assert_eq!(h.calls(), 0, "revoked permission allowed a model call");
+    assert!(!h.state(interview::QUESTIONS_FILE).exists());
+    safe(&h, result, PERMISSION);
 }
 #[test]
 fn build_needs_history_and_refuses_the_state_lock() {
