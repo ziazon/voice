@@ -88,7 +88,7 @@ async function read() {
         <button type="button" class="btn btn-secondary" :disabled="loading || running" @click="choose(false)">Choose the download</button>
         <button type="button" class="btn btn-secondary" :disabled="loading || running" @click="choose(true)">Choose a folder</button>
       </div>
-      <p class="text-secondary mt-2">If your Mac unzipped the download, choose the folder it made.</p>
+      <p class="text-secondary mt-2">If your computer unzipped the download, choose the folder it made.</p>
       <template v-if="status">
         <template v-if="status.ready">
           <p>You chose {{ status.name }}. Persona Builder can read it: {{ status.chats.toLocaleString() }} chats.</p>

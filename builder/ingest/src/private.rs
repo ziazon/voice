@@ -495,7 +495,7 @@ fn only_mine(folder: &File, path: &Path, others: u32, how: &str) -> Result<()> {
         || std::os::unix::fs::MetadataExt::uid(&metadata) != me
     {
         return Err(Error::Invalid(format!(
-            "{} can be {how} by others on this Mac, so Persona Builder stopped. Make it a folder only you can {}, then try again",
+            "{} can be {how} by others on this computer, so Persona Builder stopped. Make it a folder only you can {}, then try again",
             path.display(),
             if how == "changed" { "change" } else { "open" }
         )));

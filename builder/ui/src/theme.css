@@ -1,0 +1,47 @@
+/* Persona Builder's look: the Navy & Amber palette, as awna.ai sets it, over Tabler. Load it after
+   Tabler's CSS; Tabler reads data-bs-theme on <html>.
+   Form fields get a literal colour per theme, never Tabler's light-dark(): its rules also match a
+   host page's data-theme, so a dark host would otherwise put light-theme text on a dark field. */
+:root {
+  --awna-navy: #1F2A4D;
+  --awna-amber: #F59F00;
+  --awna-paper: #FAF8F3;
+}
+
+[data-bs-theme='light'] {
+  color-scheme: light;
+  --tblr-primary: #1F2A4D;
+  --tblr-primary-rgb: 31, 42, 77;
+  --tblr-primary-fg: #FFFFFF;
+  --tblr-body-bg: #FAF8F3;
+  --tblr-body-bg-rgb: 250, 248, 243;
+  --tblr-body-color: #1F2A4D;
+  --tblr-body-color-rgb: 31, 42, 77;
+  --tblr-heading-color: #1F2A4D;
+  --tblr-secondary: #5B6478;
+  --tblr-bg-surface: #FFFFFF;
+  --tblr-bg-surface-secondary: #F2EFE7;
+  --tblr-bg-surface-tertiary: #FAF8F3;
+  --tblr-border-color: #E4E0D6;
+  --tblr-bg-forms: #FFFFFF;
+  --tblr-bg-forms-disabled: #F2EFE7;
+}
+
+[data-bs-theme='dark'] {
+  color-scheme: dark;
+  --tblr-primary: #F5B53F;
+  --tblr-primary-rgb: 245, 181, 63;
+  --tblr-primary-fg: #1F2A4D;
+  --tblr-body-bg: #0E1726;
+  --tblr-body-bg-rgb: 14, 23, 38;
+  --tblr-body-color: #E8ECF3;
+  --tblr-body-color-rgb: 232, 236, 243;
+  --tblr-heading-color: #E8ECF3;
+  --tblr-secondary: #A3ADC2;
+  --tblr-bg-surface: #172238;
+  --tblr-bg-surface-secondary: #111B2E;
+  --tblr-bg-surface-tertiary: #131E33;
+  --tblr-border-color: #26324A;
+  --tblr-bg-forms: #111B2E;
+  --tblr-bg-forms-disabled: #172238;
+}

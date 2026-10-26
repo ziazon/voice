@@ -5,7 +5,7 @@ import type { ClaudeAiFiles as Files } from '../types/generated/ClaudeAiFiles'
 import ClaudeAiFiles from './ClaudeAiFiles.vue'
 const assistant = { ...example, name: 'Ari', slug: 'ari' }
 const files = ['instructions.md', 'decisions-scope.md']
-it('loads, makes files, shows the list, steps, Finder and remake', async () => {
+it('loads, makes files, shows the list, steps, Show the folder and remake', async () => {
   const load = deferred<Files>(); const make = deferred<Files>()
   const backend = fakeBackend({ claudeAiFiles: vi.fn().mockReturnValue(load.promise), makeClaudeAiFiles: vi.fn().mockReturnValueOnce(make.promise).mockResolvedValue({ files: ['instructions.md', 'decisions-writing-voice.md'] }) })
   const wrapper = screen(ClaudeAiFiles, backend, { assistant })
@@ -25,7 +25,7 @@ it('loads, makes files, shows the list, steps, Finder and remake', async () => {
     "Add the other files to the Project's knowledge with the + button.",
   ])
   expect(wrapper.text()).toContain('If you change Ari, make the files again and replace them in the Project.')
-  await button(wrapper, 'Show in Finder').trigger('click'); await flushPromises()
+  await button(wrapper, 'Show the folder').trigger('click'); await flushPromises()
   expect(backend.showClaudeAiFiles).toHaveBeenCalledExactlyOnceWith({ slug: 'ari' })
   await button(wrapper, 'Make them again').trigger('click'); await flushPromises()
   expect(wrapper.findAll('code').map(item => item.text())).toEqual(['instructions.md', 'decisions-writing-voice.md'])
@@ -58,13 +58,13 @@ it.each([
 it.each([
   [{ message: 'The folder could not open.' }, 'The folder could not open.'],
   [new Error('private detail'), "Persona Builder couldn't open the folder."],
-])('disables every action during Finder and shows a safe small failure', async (error, message) => {
+])('disables every action during Show the folder and shows a safe small failure', async (error, message) => {
   const pending = deferred<void>()
   const wrapper = screen(ClaudeAiFiles, fakeBackend({ claudeAiFiles: vi.fn().mockResolvedValue({ files }), showClaudeAiFiles: vi.fn().mockReturnValue(pending.promise) }), { assistant })
   expect(wrapper.find('h2').exists()).toBe(true)
   await flushPromises()
-  expect(wrapper.findAll('button').map(b => b.text())).toContain('Show in Finder')
-  await button(wrapper, 'Show in Finder').trigger('click')
+  expect(wrapper.findAll('button').map(b => b.text())).toContain('Show the folder')
+  await button(wrapper, 'Show the folder').trigger('click')
   expect(wrapper.findAll('button').every(b => b.attributes('disabled') !== undefined)).toBe(true)
   pending.reject(error); await flushPromises()
   expect(wrapper.find('.alert-warning.small').text()).toBe(message)

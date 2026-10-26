@@ -12,7 +12,9 @@ pnpm -C builder/ui tauri dev
 ```
 
 A host calls `provideBackend(backend)` in its parent component's setup, then mounts
-`PersonaBuilder` as a child. It loads Tabler's CSS and chooses its theme. The standalone app
+`PersonaBuilder` as a child. It loads Tabler's CSS, then
+`@persona-builder/screens/theme.css` (the app's colours and readable form fields), and chooses its
+theme by setting `data-bs-theme` to `light` or `dark` on `<html>`. The standalone app
 provides the Tauri backend and follows the system's light or dark theme.
 
 The webview never names a file or folder. A request carries an assistant's slug or an id the Rust

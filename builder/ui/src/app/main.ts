@@ -1,4 +1,5 @@
 import '@tabler/core/dist/css/tabler.min.css'
+import '../theme.css'
 import { createApp } from 'vue'
 import PersonaBuilder from '../PersonaBuilder.vue'
 import { backendKey } from '../backend'

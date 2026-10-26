@@ -47,7 +47,7 @@ async function showFolder(assistant: Assistant) {
             <p class="text-secondary">{{ assistant.consent.agreed ? 'Permission given' : 'Needs your permission' }}</p>
             <div class="btn-list">
               <button type="button" class="btn btn-outline-primary" @click="emit('open', assistant)">Open</button>
-              <button type="button" class="btn btn-outline-secondary" @click="showFolder(assistant)">Show in Finder</button>
+              <button type="button" class="btn btn-outline-secondary" @click="showFolder(assistant)">Show the folder</button>
             </div>
             <div v-if="folderErrors[assistant.slug]" class="alert alert-danger small mt-3 mb-0" role="alert">{{ folderErrors[assistant.slug] }}</div>
           </div>
