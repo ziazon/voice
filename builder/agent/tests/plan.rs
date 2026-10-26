@@ -105,6 +105,33 @@ fn a_rejected_plan_explains_the_failed_call() {
 }
 
 #[test]
+fn a_rejected_plan_explains_any_failed_reply() {
+    for lines in [
+        vec![rate_limit_line("rejected")],
+        vec![
+            rate_limit_line("rejected"),
+            json!({"type":"result","subtype":"success","is_error":false,"result":"","total_cost_usd":0.01}).to_string(),
+        ],
+    ] {
+        let home = Scratch::new("plan-rejected-reply");
+        let stub = Stub::replying(&stream(&lines), 0);
+        let session = session(&home.0);
+        let schema = schema();
+        assert_eq!(
+            stub.claude()
+                .call(&session, &call("records", &schema))
+                .unwrap_err()
+                .to_string(),
+            text::PLAN_STOPPED
+        );
+        let lines = ledger_lines(&home.0);
+        assert_eq!(lines[0]["outcome"], "plan-limit");
+        assert_eq!(lines[0]["plan"], "rejected");
+        refused(&session, &stub);
+    }
+}
+
+#[test]
 fn allowed_and_unknown_statuses_change_nothing() {
     let home = Scratch::new("plan-allowed");
     let stub = Stub::replying(
