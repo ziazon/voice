@@ -125,6 +125,7 @@ pub(crate) struct Line<'a> {
     pub step: &'a str,
     pub model: &'a str,
     pub outcome: &'a str,
+    pub plan: Option<&'a str>,
     pub seconds: f64,
     pub usage: Usage,
     pub cost_usd: f64,
@@ -213,7 +214,10 @@ impl Session {
     /// running included) and this call could pass the daily cap.
     pub(crate) fn start(&self, agent: &str, step: &str, model: &str) -> Result<Started> {
         let _held = self.held();
-        let spent = self.recorded_today()?;
+        let (spent, stopped) = self.today()?;
+        if stopped {
+            return Err(Error::Invalid(text::PLAN_STOPPED.into()));
+        }
         let budget = self.cap.call_usd;
         if spent + budget > self.cap.daily_usd + 1e-9 {
             return Err(Error::Invalid(text::cap_reached(spent, self.cap.daily_usd)));
@@ -232,6 +236,7 @@ impl Session {
             step,
             model,
             outcome: "started",
+            plan: None,
             seconds: 0.0,
             usage: Usage::default(),
             cost_usd: budget,
@@ -276,6 +281,9 @@ impl Session {
         object.insert("step".into(), Value::from(line.step));
         object.insert("model".into(), Value::from(line.model));
         object.insert("outcome".into(), Value::from(line.outcome));
+        if let Some(plan) = line.plan {
+            object.insert("plan".into(), Value::from(plan));
+        }
         object.insert(
             "seconds".into(),
             Value::from((line.seconds * 10.0).round() / 10.0),
@@ -343,27 +351,41 @@ impl Session {
 
     /// The sum of today's `cost_usd`.
     fn recorded_today(&self) -> Result<f64> {
+        Ok(self.today()?.0)
+    }
+
+    /// Today's spend and plan stop use the same local calendar day.
+    fn today(&self) -> Result<(f64, bool)> {
         let today = local_day((self.clock)());
         let mut spent = 0.0;
+        let mut stopped = false;
         for raw in self.ledger_lines()? {
-            let (day, cost) = parse_line(&raw).ok_or_else(|| self.damaged())?;
+            let (day, cost, plan_stopped) = parse_line(&raw).ok_or_else(|| self.damaged())?;
             if day == today {
                 spent += cost;
+                stopped |= plan_stopped;
             }
         }
-        Ok(spent)
+        Ok((spent, stopped))
     }
 }
 
-/// A ledger line's day and cost, or `None` when it is not a ledger line.
-fn parse_line(raw: &str) -> Option<(String, f64)> {
+/// A ledger line's day, cost and plan stop, or `None` when it is not a ledger line.
+fn parse_line(raw: &str) -> Option<(String, f64, bool)> {
     let line: Value = serde_json::from_str(raw).ok()?;
     let day = line.get("day")?.as_str()?.to_owned();
     let cost = line
         .get("cost_usd")?
         .as_f64()
         .filter(|cost| cost.is_finite() && *cost >= 0.0)?;
-    Some((day, cost))
+    let stopped = match line.get("plan") {
+        None => false,
+        Some(Value::String(plan)) if matches!(plan.as_str(), "allowed_warning" | "rejected") => {
+            true
+        }
+        _ => return None,
+    };
+    Some((day, cost, stopped))
 }
 
 fn line_id(raw: &str) -> Option<String> {

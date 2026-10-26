@@ -168,3 +168,8 @@ pub fn seed_ledger(home: &Path, lines: &[String]) {
     fs::write(state.join("runs.jsonl"), text).unwrap();
     fs::set_permissions(state.join("runs.jsonl"), fs::Permissions::from_mode(0o600)).unwrap();
 }
+
+/// A plan status event, with invented session identifiers.
+pub fn rate_limit_line(status: &str) -> String {
+    json!({"type":"rate_limit_event","rate_limit_info":{"status":status,"resetsAt":1793003600,"rateLimitType":"five_hour","utilization":0.91},"uuid":"event-1","session_id":"s-1"}).to_string()
+}

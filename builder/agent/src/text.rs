@@ -4,6 +4,7 @@ use std::path::Path;
 pub const NOT_INSTALLED: &str = "Persona Builder works through your own Claude Code, and it isn't on this computer yet. Install it (https://code.claude.com/docs/en/setup), sign in with your own Claude account, then try again. Claude Code needs a paid Claude plan; the free plan doesn't include it.";
 pub const DOES_NOT_RUN: &str = "Claude Code is on this computer but didn't start. Open it once on its own to check it works, then try again.";
 pub const SIGNED_OUT: &str = "Claude Code isn't signed in. Open Claude Code, sign in with your own Claude account, then try again.";
+pub const PLAN_STOPPED: &str = "Your Claude plan is nearly used up, so Persona Builder has stopped for today and left the rest for you. Run the build again tomorrow to carry on.";
 pub const FAILED: &str = "Claude Code couldn't finish this step. Open Claude Code and check it answers you, then try again.";
 
 pub const API_KEY_SET: &str = "ANTHROPIC_API_KEY is set on this computer, so Claude Code may use that API key, billed separately, instead of your Claude plan.";

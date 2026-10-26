@@ -6,6 +6,8 @@
 //! folder's `.claude/settings.json` and `.mcp.json`; `--bare` is not used because it never reads the
 //! person's own login), `claude --help` 2.1.292 (`--safe-mode`, `--tools ""`, `--max-budget-usd`,
 //! `auth status --json`), and `https://code.claude.com/docs/en/setup` (where the installers put it).
+//! Sources, read 2026-10-26: `https://code.claude.com/docs/en/agent-sdk/python` (`RateLimitEvent`),
+//! and `https://code.claude.com/docs/en/headless` (stream-json).
 use crate::{
     child::{self, Ran},
     ledger::{Line, Session},
@@ -183,6 +185,7 @@ fn invalid(message: &str) -> Error {
 /// What a finished call came to: its ledger fields and what the caller gets.
 struct Judged {
     outcome: &'static str,
+    plan: Option<&'static str>,
     usage: Usage,
     cost: Option<f64>,
     result: Result<Reply>,
@@ -194,6 +197,7 @@ fn judge(ran: Ran, timeout: Duration) -> Option<Judged> {
         Ran::Stopped => {
             return Some(Judged {
                 outcome: "stopped",
+                plan: None,
                 usage: Usage::default(),
                 cost: None,
                 result: Err(invalid(text::STOPPED)),
@@ -202,6 +206,7 @@ fn judge(ran: Ran, timeout: Duration) -> Option<Judged> {
         Ran::CutOff => {
             return Some(Judged {
                 outcome: "cut-off",
+                plan: None,
                 usage: Usage::default(),
                 cost: None,
                 result: Err(Error::Invalid(text::cut_off(
@@ -211,27 +216,61 @@ fn judge(ran: Ran, timeout: Duration) -> Option<Judged> {
         }
         Ran::Finished { status, stdout } => (status, stdout),
     };
-    let reply = match serde_json::from_slice::<Value>(&stdout) {
-        Ok(reply) if reply.is_object() => reply,
-        _ => {
-            return Some(Judged {
-                outcome: "unreadable",
-                usage: Usage::default(),
-                cost: None,
-                result: Err(invalid(text::FAILED)),
-            });
+    let mut plan = None;
+    let mut reply = None;
+    let mut readable = true;
+    for raw in stdout.split(|&byte| byte == b'\n') {
+        if raw.iter().all(u8::is_ascii_whitespace) {
+            continue;
         }
-    };
-    let usage = usage_of(&reply);
+        let line = match serde_json::from_slice::<Value>(raw) {
+            Ok(line) if line.is_object() => line,
+            _ => {
+                readable = false;
+                continue;
+            }
+        };
+        match line.get("type").and_then(Value::as_str) {
+            Some("rate_limit_event") => {
+                match line
+                    .get("rate_limit_info")
+                    .and_then(|info| info.get("status"))
+                    .and_then(Value::as_str)
+                {
+                    Some("rejected") => plan = Some("rejected"),
+                    Some("allowed_warning") if plan.is_none() => plan = Some("allowed_warning"),
+                    _ => {}
+                }
+            }
+            Some("result") => reply = Some(line),
+            _ => {}
+        }
+    }
+    let reply = reply.filter(|_| readable);
+    let usage = reply.as_ref().map(usage_of).unwrap_or_default();
     let cost = reply
-        .get("total_cost_usd")
+        .as_ref()
+        .and_then(|reply| reply.get("total_cost_usd"))
         .and_then(Value::as_f64)
         .filter(|cost| cost.is_finite() && *cost >= 0.0);
-    let failed = |outcome, message: &str| Judged {
-        outcome,
-        usage,
-        cost,
-        result: Err(invalid(message)),
+    let failed = |outcome, message: &str| {
+        let (outcome, message) = if plan == Some("rejected")
+            && matches!(outcome, "error" | "no-output" | "unreadable")
+        {
+            ("plan-limit", text::PLAN_STOPPED)
+        } else {
+            (outcome, message)
+        };
+        Judged {
+            outcome,
+            plan,
+            usage,
+            cost,
+            result: Err(invalid(message)),
+        }
+    };
+    let Some(reply) = reply else {
+        return Some(failed("unreadable", text::FAILED));
     };
     let is_error = reply.get("is_error").and_then(Value::as_bool);
     if is_error == Some(true)
@@ -254,6 +293,7 @@ fn judge(ran: Ran, timeout: Duration) -> Option<Judged> {
     };
     Some(Judged {
         outcome: "ok",
+        plan,
         usage,
         cost,
         result: Ok(Reply {
@@ -387,7 +427,8 @@ impl Claude {
             "--tools",
             "",
             "--output-format",
-            "json",
+            "stream-json",
+            "--verbose",
             "--json-schema",
             &schema,
             "--setting-sources",
@@ -424,6 +465,7 @@ impl Claude {
             step: call.step,
             model: call.model,
             outcome: judged.outcome,
+            plan: judged.plan,
             seconds,
             usage: judged.usage,
             cost_usd,

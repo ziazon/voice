@@ -1092,3 +1092,24 @@ fn spending_limits_require_permission_and_damaged_limits_can_be_repaired() {
     set_spending_limit_in(&h.path, limit_request(20.0, 2.5)).unwrap();
     assert_eq!(spending_limit_in(&h.path, slug()).unwrap().daily_usd, 20.0);
 }
+
+#[test]
+fn a_build_stops_for_the_day_when_claude_code_says_the_plan_is_nearly_used() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s.replace("    first = prompt.split", "    print(json.dumps({\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed_warning\",\"resetsAt\":1793003600,\"rateLimitType\":\"five_hour\",\"utilization\":0.91},\"uuid\":\"event-1\",\"session_id\":\"s-1\"}))\n    first = prompt.split"));
+    safe(
+        &h,
+        h.build(&Builds::new(), &mut |_| {}),
+        agent_text::PLAN_STOPPED,
+    );
+    assert_eq!(h.calls(), 1);
+    let lines: Vec<Value> = fs::read_to_string(h.state("runs.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0]["plan"], "allowed_warning");
+}

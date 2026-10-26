@@ -238,8 +238,13 @@ pub(crate) fn opener_args(dir: &Path) -> (&'static str, Vec<OsString>) {
 pub(crate) fn claude_message(error: Error) -> String {
     match error {
         Error::Invalid(message)
-            if [text::NOT_INSTALLED, text::DOES_NOT_RUN, text::SIGNED_OUT]
-                .contains(&message.as_str()) =>
+            if [
+                text::NOT_INSTALLED,
+                text::DOES_NOT_RUN,
+                text::SIGNED_OUT,
+                text::PLAN_STOPPED,
+            ]
+            .contains(&message.as_str()) =>
         {
             message
         }
