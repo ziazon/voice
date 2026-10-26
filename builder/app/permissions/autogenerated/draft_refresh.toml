@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-draft-refresh"
+description = "Enables the draft_refresh command without any pre-configured scope."
+commands.allow = ["draft_refresh"]
+
+[[permission]]
+identifier = "deny-draft-refresh"
+description = "Denies the draft_refresh command without any pre-configured scope."
+commands.deny = ["draft_refresh"]

@@ -99,6 +99,7 @@ pub fn measure(
     model: &str,
     id: &str,
     now: &dyn Fn() -> String,
+    progress: &mut dyn FnMut(&str),
 ) -> Result<Measured> {
     // Session holds the state lock for its whole life. All writes reuse it through
     // unlocked store methods; neither this flow nor finish takes another lock.
@@ -154,7 +155,11 @@ pub fn measure(
     let mut asker =
         Asker::new(claude, session, home, &member.slug, model).with_misfit(text::apply_misfit);
     let mut answers = Vec::new();
-    for decisions in [&before, &changed] {
+    for (decisions, line) in [
+        (&before, text::testing_now(tests.len())),
+        (&changed, text::testing_change(tests.len())),
+    ] {
+        progress(&line);
         let mut found = BTreeMap::new();
         for batch in batches(&tests) {
             let (reply, _) = asker.ask(
@@ -169,7 +174,7 @@ pub fn measure(
         }
         answers.push(found);
     }
-    let grades = grade_answers(&mut asker, &tests, &answers)?;
+    let grades = grade_answers(&mut asker, &tests, &answers, progress)?;
     if version(refresh::decisions(member_dir)?.as_bytes()) != proposal.base {
         return Err(Error::Invalid(text::DECISIONS_CHANGED_TESTING.into()));
     }
@@ -209,6 +214,7 @@ fn grade_answers(
     asker: &mut Asker<'_>,
     tests: &[&Case],
     answers: &[BTreeMap<String, String>],
+    progress: &mut dyn FnMut(&str),
 ) -> Result<Vec<BTreeMap<String, Grade>>> {
     let mut pairs = BTreeMap::new();
     for version in answers {
@@ -228,6 +234,9 @@ fn grade_answers(
         .enumerate()
         .map(|(n, ((_, answer), expected))| (format!("item-{}", n + 1), *expected, answer.as_str()))
         .collect();
+    if !items.is_empty() {
+        progress(text::CHECKING_ANSWERS);
+    }
     let mut graded = BTreeMap::new();
     for batch in batches(&items) {
         let (reply, _) = asker.ask(
@@ -269,7 +278,7 @@ fn grade_answers(
         .collect())
 }
 
-fn reason(measurement: &Measurement) -> String {
+pub fn reason(measurement: &Measurement) -> String {
     if measurement.outcome == KeepOrRevert::Keep {
         return text::KEEP_REASON.into();
     }
@@ -377,7 +386,7 @@ pub fn finish(
     })
 }
 
-pub fn growth(store: &Store, since: Option<&str>) -> Result<Option<String>> {
+pub fn growth_counts(store: &Store, since: Option<&str>) -> Result<Option<Growth>> {
     let measurements: Vec<_> = store
         .measurements()?
         .into_iter()
@@ -404,10 +413,21 @@ pub fn growth(store: &Store, since: Option<&str>) -> Result<Option<String>> {
             }
         })
         .count();
-    Ok(Some(text::growth(
+    Ok(Some(Growth {
         kept,
-        measurements.len() - kept,
+        undone: measurements.len() - kept,
         passing,
-        newest.results.len(),
-    )))
+        of: newest.results.len(),
+    }))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Growth {
+    pub kept: usize,
+    pub undone: usize,
+    pub passing: usize,
+    pub of: usize,
+}
+pub fn growth(store: &Store, since: Option<&str>) -> Result<Option<String>> {
+    Ok(growth_counts(store, since)?.map(|g| text::growth(g.kept, g.undone, g.passing, g.of)))
 }

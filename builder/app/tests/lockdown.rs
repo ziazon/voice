@@ -75,6 +75,12 @@ fn lockdown_1_command_lists_agree_in_order() {
             "draft_interview",
             "save_interview_answers",
             "keep_interview_answers",
+            "show_report",
+            "review_status",
+            "keep_answer",
+            "draft_refresh",
+            "answer_refresh",
+            "apply_refresh",
         ]
     );
     let capability = json("capabilities/default.json");

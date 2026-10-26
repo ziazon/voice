@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+persona-builder-grow = { path = "../grow" }
 persona-builder-build = { path = "../build" }
 persona-builder-steps = { path = "../steps" }
 persona-builder = { path = "../core" }

@@ -41,6 +41,12 @@
     "allow-interview-status",
     "allow-draft-interview",
     "allow-save-interview-answers",
-    "allow-keep-interview-answers"
+    "allow-keep-interview-answers",
+    "allow-show-report",
+    "allow-review-status",
+    "allow-keep-answer",
+    "allow-draft-refresh",
+    "allow-answer-refresh",
+    "allow-apply-refresh"
   ]
 }

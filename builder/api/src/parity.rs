@@ -156,4 +156,28 @@ pub const PARITY: &[Parity] = &[
         app: "keep_interview_answers",
         cli: &[&["interview", "answer"]],
     },
+    Parity {
+        app: "show_report",
+        cli: &[&["report"]],
+    },
+    Parity {
+        app: "review_status",
+        cli: &[&["cases"], &["refresh", "show"]],
+    },
+    Parity {
+        app: "keep_answer",
+        cli: &[&["keep"]],
+    },
+    Parity {
+        app: "draft_refresh",
+        cli: &[&["refresh", "propose"]],
+    },
+    Parity {
+        app: "answer_refresh",
+        cli: &[&["refresh", "approve"], &["refresh", "reject"]],
+    },
+    Parity {
+        app: "apply_refresh",
+        cli: &[&["refresh", "apply"]],
+    },
 ];

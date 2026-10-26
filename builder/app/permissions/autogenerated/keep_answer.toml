@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-keep-answer"
+description = "Enables the keep_answer command without any pre-configured scope."
+commands.allow = ["keep_answer"]
+
+[[permission]]
+identifier = "deny-keep-answer"
+description = "Denies the keep_answer command without any pre-configured scope."
+commands.deny = ["keep_answer"]

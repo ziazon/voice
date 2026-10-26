@@ -139,6 +139,9 @@ impl Setup {
         .unwrap();
     }
     fn measure(&self, id: &str) -> Result<Measured> {
+        self.measure_progress(id, &mut |_| {})
+    }
+    fn measure_progress(&self, id: &str, progress: &mut dyn FnMut(&str)) -> Result<Measured> {
         let session = Session::open(&self.f.home, &self.f.member.slug, Cap::default()).unwrap();
         apply::measure(
             &Claude::at(self.stub.join("claude")),
@@ -151,6 +154,7 @@ impl Setup {
             "sonnet",
             id,
             &|| NOW.into(),
+            progress,
         )
     }
     fn measured(&self, id: &str) -> Measurement {
@@ -780,6 +784,28 @@ fn growth_counts_both_outcomes_and_uses_newest_current_version_grades() {
     s.store().save_measurement(&second).unwrap();
     assert_eq!(apply::growth(&s.store(),None).unwrap(),Some("Since the build: 1 change kept and 1 undone. Your assistant passes 0 of 1 tests from your answers.".into()));
     assert_eq!(apply::growth(&s.store(), Some("2026-03-06")).unwrap(), None);
+    assert_eq!(
+        apply::growth_counts(&s.store(), None).unwrap(),
+        Some(apply::Growth {
+            kept: 1,
+            undone: 1,
+            passing: 0,
+            of: 1
+        })
+    );
+    assert_eq!(
+        apply::growth_counts(&s.store(), Some("2026-03-05")).unwrap(),
+        Some(apply::Growth {
+            kept: 0,
+            undone: 1,
+            passing: 0,
+            of: 1
+        })
+    );
+    assert_eq!(
+        apply::growth_counts(&s.store(), Some("2026-03-06")).unwrap(),
+        None
+    );
 }
 
 #[test]
@@ -969,4 +995,67 @@ fn resume_rechecks_an_undone_result_by_the_keep_rule() {
     );
     assert_eq!(s.calls(), calls);
     assert_eq!(s.snapshot(), before);
+}
+
+#[test]
+fn progress_describes_each_test_phase_and_is_silent_when_already_measured() {
+    let s = Setup::new();
+    let mut cases = s.cases();
+    cases[0].r#match = Match::Rubric;
+    cases[0].options = None;
+    cases[0].expected = "Use a smaller first step.".into();
+    s.replace_cases(&cases);
+    let p = s.approved(CANDIDATE);
+    let mut lines = Vec::new();
+    s.measure_progress(&p.id, &mut |line| lines.push(line.to_owned()))
+        .unwrap();
+    assert_eq!(
+        lines,
+        vec![
+            "Testing your assistant as it is now on 1 test.",
+            "Testing it with the change on 1 test.",
+            "Checking the written answers against what you wanted.",
+        ]
+    );
+    lines.clear();
+    assert!(
+        s.measure_progress(&p.id, &mut |line| lines.push(line.to_owned()))
+            .unwrap()
+            .already
+    );
+    assert!(lines.is_empty());
+}
+#[test]
+fn waiting_tracks_unanswered_approved_and_measured_changes() {
+    let s = Setup::new();
+    let p = s.proposal(CANDIDATE);
+    assert_eq!(
+        refresh::waiting(&s.store(), &s.dir).unwrap(),
+        Some((p.clone(), false))
+    );
+    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap();
+    assert_eq!(
+        refresh::waiting(&s.store(), &s.dir).unwrap(),
+        Some((p.clone(), true))
+    );
+    s.measured(&p.id);
+    assert_eq!(refresh::waiting(&s.store(), &s.dir).unwrap(), None);
+}
+#[test]
+fn locked_answer_matches_answer_without_taking_another_lock() {
+    let expected = {
+        let s = Setup::new();
+        let p = s.proposal(CANDIDATE);
+        refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap()
+    };
+    let s = Setup::new();
+    let p = s.proposal(CANDIDATE);
+    let store = s.store();
+    let _lock = persona_builder_ingest::private::lock_state(&s.f.home, &s.f.member.slug).unwrap();
+    let actual = refresh::answer_locked(&store, &s.dir, &p.id, Decision::Approved, NOW);
+    assert!(
+        actual.is_ok(),
+        "locked answer must reuse the caller's lock: {actual:?}"
+    );
+    assert_eq!(actual.unwrap(), expected);
 }

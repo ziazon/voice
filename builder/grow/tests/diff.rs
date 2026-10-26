@@ -120,3 +120,27 @@ fn added_lines_allow_one_carriage_return_only_in_a_crlf_file() {
         assert_eq!(added.last().copied(), Some(expected), "{rows:?}");
     }
 }
+
+#[test]
+fn removed_rows_exclude_headers_and_preserve_final_carriage_returns() {
+    use persona_builder_grow::diff::removed_lines;
+    for (old, new, expected) in [
+        (
+            "keep\nreplace\nremove\n",
+            "keep\nreplaced\nadded\n",
+            vec!["replace", "remove"],
+        ),
+        (
+            "keep\r\nreplace\r\nremove\r\n",
+            "keep\r\nreplaced\r\nadded\r\n",
+            vec!["replace", "remove"],
+        ),
+        ("tail\r", "new\n", vec!["tail\r"]),
+        ("tail\r\r\n", "new\n", vec!["tail\r"]),
+    ] {
+        assert_eq!(
+            removed_lines(&unified("decisions.md", old, new).unwrap()),
+            expected
+        );
+    }
+}

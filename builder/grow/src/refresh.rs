@@ -409,14 +409,18 @@ pub(crate) fn check_stored(proposal: &Proposal) -> Result<()> {
     }
     Ok(())
 }
-pub fn open(store: &Store, member_dir: &Path) -> Result<Option<Proposal>> {
+pub fn waiting(store: &Store, member_dir: &Path) -> Result<Option<(Proposal, bool)>> {
     let base = version(decisions(member_dir)?.as_bytes());
-    let found = pending(store, &base)?.map(|(p, _)| p);
-    if let Some(p) = &found {
+    let found = pending(store, &base)?;
+    if let Some((p, _)) = &found {
         check_stored(p)?;
     }
     Ok(found)
 }
+pub fn open(store: &Store, member_dir: &Path) -> Result<Option<Proposal>> {
+    Ok(waiting(store, member_dir)?.map(|(p, _)| p))
+}
+
 pub fn show(store: &Store, member_dir: &Path, id: Option<&str>) -> Result<Option<Proposal>> {
     let found = match id {
         Some(id) => Some(
@@ -456,6 +460,17 @@ pub fn answer(
     now: &str,
 ) -> Result<Approval> {
     let _lock = store.lock()?;
+    answer_locked(store, member_dir, id, decision, now)
+}
+
+/// The caller holds the assistant's state lock.
+pub fn answer_locked(
+    store: &Store,
+    member_dir: &Path,
+    id: &str,
+    decision: Decision,
+    now: &str,
+) -> Result<Approval> {
     let proposal = store
         .proposal(id)?
         .ok_or_else(|| Error::Invalid(text::no_proposal(id)))?;

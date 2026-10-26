@@ -347,3 +347,27 @@ fn invalid_area_uses_its_own_100_character_message() {
         );
     }
 }
+
+#[test]
+fn locked_keep_matches_keep_without_taking_another_lock() {
+    let first = Fixture::new();
+    let expected = run(&first, &input()).unwrap();
+    let second = Fixture::new();
+    let store = Store::open(&second.home, &second.member).unwrap();
+    let _lock =
+        persona_builder_ingest::private::lock_state(&second.home, &second.member.slug).unwrap();
+    let actual = persona_builder_grow::keep::keep_locked(
+        &store,
+        &second.member,
+        &Filters::compile(&second.member.filters).unwrap(),
+        &serde_json::to_vec(&input()).unwrap(),
+        NOW,
+    );
+    assert!(
+        actual.is_ok(),
+        "locked keep must reuse the caller's lock: {actual:?}"
+    );
+    let actual = actual.unwrap();
+    assert_eq!(actual.signal, expected.signal);
+    assert_eq!(actual.case, expected.case);
+}

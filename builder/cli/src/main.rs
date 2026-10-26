@@ -1398,6 +1398,7 @@ fn refresh_apply(
         &model,
         &id,
         &utc_now,
+        &mut |line| println!("{line}"),
     )?;
     let finished = apply::finish(
         &store,

@@ -52,7 +52,7 @@ pub(crate) fn locked(home: &Path, slug: &str) -> Result<(Member, private::StateL
     locked_after(home, slug, &mut || {})
 }
 // The callback lets tests forget or withdraw permission between the check and the lock.
-fn locked_after(
+pub(crate) fn locked_after(
     home: &Path,
     slug: &str,
     between: &mut dyn FnMut(),

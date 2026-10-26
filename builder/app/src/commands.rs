@@ -281,3 +281,48 @@ pub fn keep_interview_answers(
 ) -> Result<persona_builder_api::dto::InterviewKept, persona_builder_api::dto::Failure> {
     persona_builder_api::keep_interview_answers(request)
 }
+
+#[tauri::command(async)]
+pub fn show_report(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::ReportView, persona_builder_api::dto::Failure> {
+    persona_builder_api::show_report(request)
+}
+
+#[tauri::command(async)]
+pub fn review_status(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::ReviewStatus, persona_builder_api::dto::Failure> {
+    persona_builder_api::review_status(request)
+}
+
+#[tauri::command(async)]
+pub fn keep_answer(
+    request: persona_builder_api::dto::KeepAnswerRequest,
+) -> Result<persona_builder_api::dto::ReviewStatus, persona_builder_api::dto::Failure> {
+    persona_builder_api::keep_answer(request)
+}
+
+#[tauri::command(async)]
+pub fn draft_refresh(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::RefreshDrafted, persona_builder_api::dto::Failure> {
+    persona_builder_api::draft_refresh(request)
+}
+
+#[tauri::command(async)]
+pub fn answer_refresh(
+    request: persona_builder_api::dto::RefreshAnswerRequest,
+) -> Result<persona_builder_api::dto::ReviewStatus, persona_builder_api::dto::Failure> {
+    persona_builder_api::answer_refresh(request)
+}
+
+#[tauri::command(async)]
+pub fn apply_refresh(
+    request: persona_builder_api::dto::RefreshApplyRequest,
+    on_progress: tauri::ipc::Channel<persona_builder_api::dto::BuildProgress>,
+) -> Result<persona_builder_api::dto::RefreshApplied, persona_builder_api::dto::Failure> {
+    persona_builder_api::apply_refresh(request, &mut |p| {
+        let _ = on_progress.send(p);
+    })
+}

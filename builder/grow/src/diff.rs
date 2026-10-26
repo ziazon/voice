@@ -218,3 +218,21 @@ pub fn added_lines(diff: &str) -> Vec<&str> {
     }
     added
 }
+
+/// Removed content rows, excluding file headers and one CRLF line ending.
+pub fn removed_lines(diff: &str) -> Vec<&str> {
+    let mut rows = diff.split_terminator('\n').skip(2).peekable();
+    let mut removed = Vec::new();
+    while let Some(row) = rows.next() {
+        if let Some(content) = row.strip_prefix('-') {
+            removed.push(
+                if rows.peek().copied() == Some("\\ No newline at end of file") {
+                    content
+                } else {
+                    content.strip_suffix('\r').unwrap_or(content)
+                },
+            );
+        }
+    }
+    removed
+}

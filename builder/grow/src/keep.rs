@@ -19,13 +19,13 @@ pub struct Kept {
     pub case: Case,
 }
 
-pub fn keep(
+fn check(
     store: &Store,
     member: &Member,
     filters: &Filters,
     input: &[u8],
     now: &str,
-) -> Result<Kept> {
+) -> Result<(Signal, Case)> {
     let invalid = || Error::Invalid(text::INPUT_SHAPE.into());
     if input.len() > 64 * 1024 {
         return Err(Error::Invalid(text::TOO_BIG.into()));
@@ -58,7 +58,7 @@ pub fn keep(
     object
         .entry("given_by")
         .or_insert(Value::String("subject".into()));
-    let mut signal: Signal = serde_json::from_value(value).map_err(|_| invalid())?;
+    let signal: Signal = serde_json::from_value(value).map_err(|_| invalid())?;
     let categories = book(member)?.categories;
     for (field, words, limit) in [
         ("area", Some(signal.area.as_str()), 100),
@@ -88,7 +88,7 @@ pub fn keep(
     if store.slug() != member.slug {
         return Err(invalid());
     }
-    let mut case = Case {
+    let case = Case {
         schema: CASE_V1.into(),
         id: "case-pending".into(),
         persona: signal.persona.clone(),
@@ -102,7 +102,10 @@ pub fn keep(
         status: Status::New,
     };
     case.check()?;
-    let _lock = store.lock()?;
+    Ok((signal, case))
+}
+
+fn save(store: &Store, mut signal: Signal, mut case: Case, now: &str) -> Result<Kept> {
     let day = &now[..10]; // Signal::check has checked the timestamp's ASCII date prefix.
     signal.id = store.next_id(Prefix::Signal, day)?;
     case.id = store.next_id(Prefix::Case, day)?;
@@ -119,4 +122,28 @@ pub fn keep(
     store.append_signal_unlocked(&signal)?;
     store.append_case_unlocked(&case)?;
     Ok(Kept { signal, case })
+}
+
+pub fn keep(
+    store: &Store,
+    member: &Member,
+    filters: &Filters,
+    input: &[u8],
+    now: &str,
+) -> Result<Kept> {
+    let (signal, case) = check(store, member, filters, input, now)?;
+    let _lock = store.lock()?;
+    save(store, signal, case, now)
+}
+
+/// The caller holds the assistant's state lock.
+pub fn keep_locked(
+    store: &Store,
+    member: &Member,
+    filters: &Filters,
+    input: &[u8],
+    now: &str,
+) -> Result<Kept> {
+    let (signal, case) = check(store, member, filters, input, now)?;
+    save(store, signal, case, now)
 }

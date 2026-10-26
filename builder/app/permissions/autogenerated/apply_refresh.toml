@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-apply-refresh"
+description = "Enables the apply_refresh command without any pre-configured scope."
+commands.allow = ["apply_refresh"]
+
+[[permission]]
+identifier = "deny-apply-refresh"
+description = "Denies the apply_refresh command without any pre-configured scope."
+commands.deny = ["apply_refresh"]

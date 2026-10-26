@@ -333,7 +333,9 @@ fn approved_change_is_applied_reported_and_resumes_without_calls() {
     let kept = "Kept. Your assistant now works this way.";
     let reason = "Every new test now passes, and none of the others got worse.";
     let growth = "Since the build: 1 change kept and 0 undone. Your assistant passes 2 of 2 tests from your answers.";
-    assert!(shown.starts_with(&format!("{kept}\n{reason}\n")), "{shown}");
+    assert!(shown.starts_with(&format!(
+        "Testing your assistant as it is now on 2 tests.\nTesting it with the change on 2 tests.\nChecking the written answers against what you wanted.\n{kept}\n{reason}\n"
+    )), "{shown}");
     assert!(shown.contains(growth), "{shown}");
     assert!(shown.find(growth).unwrap() < shown.find("Today, about $").unwrap());
     let out = f.run(&["report", &f.member()]);

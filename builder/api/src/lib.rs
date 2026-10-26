@@ -26,3 +26,6 @@ pub use use_it::*;
 
 pub mod building;
 pub use building::*;
+
+pub mod review;
+pub use review::*;

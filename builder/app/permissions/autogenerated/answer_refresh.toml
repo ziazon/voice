@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-answer-refresh"
+description = "Enables the answer_refresh command without any pre-configured scope."
+commands.allow = ["answer_refresh"]
+
+[[permission]]
+identifier = "deny-answer-refresh"
+description = "Denies the answer_refresh command without any pre-configured scope."
+commands.deny = ["answer_refresh"]

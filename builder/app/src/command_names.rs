@@ -38,4 +38,10 @@ pub const COMMANDS: &[&str] = &[
     "draft_interview",
     "save_interview_answers",
     "keep_interview_answers",
+    "show_report",
+    "review_status",
+    "keep_answer",
+    "draft_refresh",
+    "answer_refresh",
+    "apply_refresh",
 ];

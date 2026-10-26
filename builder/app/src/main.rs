@@ -47,6 +47,12 @@ fn main() {
             commands::draft_interview,
             commands::save_interview_answers,
             commands::keep_interview_answers,
+            commands::show_report,
+            commands::review_status,
+            commands::keep_answer,
+            commands::draft_refresh,
+            commands::answer_refresh,
+            commands::apply_refresh,
         ])
         .run(tauri::generate_context!())
     {

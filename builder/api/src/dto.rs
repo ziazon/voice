@@ -417,3 +417,165 @@ pub struct InterviewKept {
     pub unanswered: u32,
     pub private_left_out: u32,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ReportLevel {
+    Strong,
+    GettingThere,
+    Thin,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ReportHelp {
+    Interview,
+    Claudeai,
+    Time,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReportTest {
+    pub right: u32,
+    pub of: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReportArea {
+    pub area: String,
+    pub level: ReportLevel,
+    pub examples: u32,
+    pub help: Vec<ReportHelp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BuildReport {
+    pub built: String,
+    pub overall: ReportLevel,
+    pub answered: u32,
+    pub thin_below: u32,
+    pub held_out: u32,
+    pub test: Option<ReportTest>,
+    pub areas: Vec<ReportArea>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GrowthCounts {
+    pub kept: u32,
+    pub undone: u32,
+    pub passing: u32,
+    pub of: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReportView {
+    pub report: Option<BuildReport>,
+    pub unreadable: bool,
+    pub growth: Option<GrowthCounts>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TestCounts {
+    pub waiting: u32,
+    pub in_use: u32,
+    pub retired: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AreaTests {
+    pub area: String,
+    pub tests: TestCounts,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RefreshPoint {
+    pub why: String,
+    pub before: Vec<String>,
+    pub after: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RefreshChange {
+    pub id: String,
+    pub drafted: String,
+    pub summary: String,
+    pub points: Vec<RefreshPoint>,
+    pub learned_from: u32,
+    pub approved: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReviewStatus {
+    pub built: bool,
+    pub areas: Vec<String>,
+    pub tests: TestCounts,
+    pub by_area: Vec<AreaTests>,
+    pub change: Option<RefreshChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct KeepAnswerRequest {
+    pub slug: String,
+    pub area: String,
+    pub situation: String,
+    pub wanted: String,
+    pub assistant_said: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RefreshDrafted {
+    pub change: Option<RefreshChange>,
+    pub spend: Spend,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct RefreshAnswerRequest {
+    pub slug: String,
+    pub id: String,
+    pub approve: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct RefreshApplyRequest {
+    pub slug: String,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RefreshApplied {
+    pub kept: bool,
+    pub reason: String,
+    pub spend: Spend,
+}

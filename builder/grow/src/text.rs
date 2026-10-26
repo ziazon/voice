@@ -303,3 +303,17 @@ pub fn growth(kept: usize, undone: usize, passing: usize, of: usize) -> String {
     )
 }
 pub const ANSWER_TESTS: &str = "\n\nThe tests, one JSON object per line:\n";
+
+pub fn testing_now(n: usize) -> String {
+    format!(
+        "Testing your assistant as it is now on {n} {}.",
+        if n == 1 { "test" } else { "tests" }
+    )
+}
+pub fn testing_change(n: usize) -> String {
+    format!(
+        "Testing it with the change on {n} {}.",
+        if n == 1 { "test" } else { "tests" }
+    )
+}
+pub const CHECKING_ANSWERS: &str = "Checking the written answers against what you wanted.";

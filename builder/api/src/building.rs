@@ -91,19 +91,19 @@ impl Drop for Running<'_> {
             .remove(&self.slug);
     }
 }
-fn open(home: &Path, slug: &str) -> Result<Session> {
+pub(crate) fn open(home: &Path, slug: &str) -> Result<Session> {
     Session::open(home, slug, Cap::default()).map_err(|e| match e {
         Error::Invalid(message) if message == private::BUSY => failure(BUSY),
         _ => failure(BUILD_SAVE),
     })
 }
-fn spend(session: &Session) -> Result<Spend> {
+pub(crate) fn spend(session: &Session) -> Result<Spend> {
     Ok(Spend {
         spent_usd: session.spent_today().map_err(|_| failure(LEDGER))?,
         daily_cap_usd: session.cap().daily_usd(),
     })
 }
-fn call_failure(error: Error, session: &Session, fallback: &str) -> Failure {
+pub(crate) fn call_failure(error: Error, session: &Session, fallback: &str) -> Failure {
     match session.spent_today() {
         Ok(spent) if spent + session.cap().call_usd() > session.cap().daily_usd() + 1e-9 => {
             failure(&cap_reached(spent, session.cap().daily_usd()))
