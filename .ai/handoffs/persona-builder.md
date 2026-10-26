@@ -33,7 +33,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   says no folder holding files made from the forgotten history), two left (the "isn't there yet"
   advice reads oddly for `keep`; `build` on a missing folder still shows the raw file error first).
   Out of scope, noted: `spend` and `refresh propose|apply` still use the creating open, so after a
-  forget they make an empty state folder (they read only under the lock).
+  forget they make an empty state folder (they read history only under the lock; the limit is read
+  before it, the spending row's known limit).
 - **Not verified:** a forget from the app's window during a real `build`; the race is shown with
   the stub's sign-in check.
 
