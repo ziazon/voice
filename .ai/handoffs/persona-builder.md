@@ -2,6 +2,42 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.1: the installed app ships the look-up and record commands (2026-10-26, lane: V1)
+
+- **What:** an assistant the app makes now has a `SKILL.md` whose look-up (`similar`) and record
+  (`record`) commands run the `persona-builder` shipped inside the app,
+  `Persona Builder.app/Contents/MacOS/persona-builder`, written as one double-quoted word
+  (`"$HOME/Applications/…"`) when the assistant is made. The template names both commands
+  through two new placeholders, `{{SIMILAR}}` and `{{RECORD}}`, filled first; the guided build
+  fills them with its Python commands as before. New `persona-builder record`, byte for byte
+  Python's `record` (timestamp aside), appends to `live.jsonl` only in a state folder that
+  already exists (so it never undoes Forget), under a file lock rather than the build's lock.
+  The Mac build copies the command into the bundle and signs inside out (the command, then the
+  app, no `--deep`, per Apple TN2206); the installer refuses a copy without it. Brief:
+  `plans/briefs/PB8.1-shipped-commands.md`.
+- **Why not Tauri's `externalBin`:** its build script copies the sidecar into the cargo target
+  folder under its bare name, the CLI's own output name, and needs a target-triple copy a
+  universal build doesn't make (`tauri-build` 2.7.0 `copy_binaries`).
+- **Who built it:** Codex, from the brief in two parts, plus a follow-up (U+2028/U+2029 refused
+  in the path) and the Verifier's fix-ups (a value starting with `-`, `record --help` naming the
+  assistant's flags, a symlink test that proves `O_NOFOLLOW` on its own).
+- **Verified:** red first, then green. Mutation checks, each caught: creating a missing state
+  folder, accepting `$` in the path, a 65 KiB line limit; dropping `O_NOFOLLOW` first survived (the
+  symlink test's target was readable by others, so the mode check refused it), and the test was
+  fixed. Live: `bash scripts/build-mac-app.sh` built the real bundle; installed into a scratch home
+  with `install.sh --no-open`, the bundled command made an invented assistant, and the
+  `SKILL.md`'s own `similar` and `record` lines, run through `bash`, found the invented precedent
+  and wrote one 0600 line; after `forget --yes` the record line refused and recreated nothing.
+  `bash scripts/ci-local.sh` passed. Security review: no high or medium findings. Verifier
+  (Fable): PASS, two should-fixes, both fixed.
+- **Not verified:** making an assistant from the app's window (the app path is covered by
+  `builder/api/tests/assistants.rs` and the Verifier's reading of the bundle; owed with PB8's
+  walk). An assistant made before this keeps its old `SKILL.md`; make it again.
+- **Left, as cards:** the path is accepted from any location (an app opened from a disk image, or
+  run translocated by Gatekeeper, would write a path that goes away); the template's
+  double-quoted texts Claude fills (`"<q>"`, `"<pick>"`) would run `$(…)` (the same with Python);
+  `crew/_template/decisions.md` still mentions `crew_decisions.py similar` in prose.
+
 ## PB7.7d: stop for the day when Claude Code says the plan is nearly used up (2026-10-26, lane: V1)
 
 - **What:** V-Q8's answer (option 1): dollars only for the limit (PB7.7c), plus a guard from
