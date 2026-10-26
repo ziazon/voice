@@ -19,7 +19,7 @@ it('offers a file and folder choice when nothing is chosen', async () => {
   await button(wrapper, 'Choose a folder').trigger('click')
   await flushPromises()
   expect(backend.chooseClaudeaiExport).toHaveBeenLastCalledWith({ slug: 'example', folder: true })
-  expect(wrapper.text()).toContain('If your Mac unzipped the download, choose the folder it made.')
+  expect(wrapper.text()).toContain('If your computer unzipped the download, choose the folder it made.')
   expect(wrapper.find('a').exists()).toBe(false)
 })
 it('announces checking the chosen download', () => {

@@ -1,12 +1,12 @@
 //! Every sentence the agent crate shows a person: plain words, no tool words.
 use std::path::Path;
 
-pub const NOT_INSTALLED: &str = "Persona Builder works through your own Claude Code, and it isn't on this Mac yet. Install it (https://code.claude.com/docs/en/setup), sign in with your own Claude account, then try again. Claude Code needs a paid Claude plan; the free plan doesn't include it.";
-pub const DOES_NOT_RUN: &str = "Claude Code is on this Mac but didn't start. Open it once on its own to check it works, then try again.";
+pub const NOT_INSTALLED: &str = "Persona Builder works through your own Claude Code, and it isn't on this computer yet. Install it (https://code.claude.com/docs/en/setup), sign in with your own Claude account, then try again. Claude Code needs a paid Claude plan; the free plan doesn't include it.";
+pub const DOES_NOT_RUN: &str = "Claude Code is on this computer but didn't start. Open it once on its own to check it works, then try again.";
 pub const SIGNED_OUT: &str = "Claude Code isn't signed in. Open Claude Code, sign in with your own Claude account, then try again.";
 pub const FAILED: &str = "Claude Code couldn't finish this step. Open Claude Code and check it answers you, then try again.";
 
-pub const API_KEY_SET: &str = "ANTHROPIC_API_KEY is set on this Mac, so Claude Code may use that API key, billed separately, instead of your Claude plan.";
+pub const API_KEY_SET: &str = "ANTHROPIC_API_KEY is set on this computer, so Claude Code may use that API key, billed separately, instead of your Claude plan.";
 
 pub fn ready(version: &str) -> String {
     format!("Claude Code {version} is installed and signed in.")

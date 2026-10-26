@@ -92,6 +92,7 @@ fn a_folder_others_can_open_is_refused() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("can be opened by others"), "{error}");
+    assert!(error.contains("by others on this computer"), "{error}");
 }
 
 #[test]

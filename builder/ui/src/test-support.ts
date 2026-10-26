@@ -1,3 +1,6 @@
+import { readdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { mount } from '@vue/test-utils'
 import { afterEach, vi } from 'vitest'
 import { backendKey, type Backend } from './backend'
@@ -121,4 +124,12 @@ export const consentText = {
       ]
     }
   ]
+}
+
+export const source = dirname(fileURLToPath(import.meta.url))
+export function files(folder: string): string[] {
+  return readdirSync(folder, { withFileTypes: true }).flatMap(entry => {
+    const path = join(folder, entry.name)
+    return entry.isDirectory() ? files(path) : [path]
+  })
 }

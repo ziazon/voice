@@ -1,15 +1,7 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { expect, it } from 'vitest'
-
-const source = dirname(fileURLToPath(import.meta.url))
-function files(folder: string): string[] {
-  return readdirSync(folder, { withFileTypes: true }).flatMap(entry => {
-    const path = join(folder, entry.name)
-    return entry.isDirectory() ? files(path) : [path]
-  })
-}
+import { files, source } from './test-support'
 
 it('keeps the native API inside the standalone adapter', () => {
   const forbidden = files(source).filter(path => /\.(ts|vue)$/.test(path)

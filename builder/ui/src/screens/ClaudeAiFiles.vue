@@ -59,7 +59,7 @@ async function show() {
       <template v-else-if="files.length">
         <p>The files are ready:</p>
         <ul><li v-for="file in files" :key="file"><code>{{ file }}</code></li></ul>
-        <button type="button" class="btn btn-outline-secondary mb-3" :disabled="busy" @click="show">Show in Finder</button>
+        <button type="button" class="btn btn-outline-secondary mb-3" :disabled="busy" @click="show">Show the folder</button>
         <div v-if="showError" class="alert alert-warning small" role="alert">{{ showError }}</div>
         <ol>
           <li>In claude.ai, make a new Project.</li>
