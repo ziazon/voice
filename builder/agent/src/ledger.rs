@@ -8,7 +8,8 @@
 use crate::{claude::Usage, text};
 use persona_builder::error::{Error, Result};
 use persona_builder_ingest::private::{
-    StateLock, lock_state, private_folder, read_private_optional, write_private,
+    StateLock, lock_existing_state, lock_state, private_folder, read_private_optional,
+    write_private,
 };
 use serde_json::{Map, Value};
 use std::{
@@ -115,9 +116,31 @@ impl Session {
         Self::open_with_clock(home, slug, cap, Box::new(SystemTime::now))
     }
 
+    /// [`Session::open`], but only on a state folder that already exists: a missing one is an
+    /// `Error::Io` whose source is `NotFound`, and nothing is created.
+    pub fn open_existing(home: &Path, slug: &str, cap: Cap) -> Result<Session> {
+        Self::open_at(
+            home,
+            slug,
+            cap,
+            Box::new(SystemTime::now),
+            lock_existing_state,
+        )
+    }
+
     /// [`Session::open`] reading the day from `clock` (tests).
     pub fn open_with_clock(home: &Path, slug: &str, cap: Cap, clock: Clock) -> Result<Session> {
-        let lock = lock_state(home, slug)?;
+        Self::open_at(home, slug, cap, clock, lock_state)
+    }
+
+    fn open_at(
+        home: &Path,
+        slug: &str,
+        cap: Cap,
+        clock: Clock,
+        lock: fn(&Path, &str) -> Result<StateLock>,
+    ) -> Result<Session> {
+        let lock = lock(home, slug)?;
         private_folder(home, slug, WORK_FOLDER)?;
         Ok(Session {
             home: home.to_owned(),

@@ -201,6 +201,14 @@ fn revoke_consent_stub(h: &Home) {
         "if ARGS[:1] == [\"--version\"]:\n        os.remove(os.path.join(os.getcwd(), '.claude/state/wren/consent.json'))",
     ));
 }
+fn forget_stub(h: &Home) {
+    interview_stub(h);
+    let source = fs::read_to_string(h.bin.join("claude")).unwrap();
+    h.program(&source.replace(
+        "if ARGS[:1] == [\"--version\"]:",
+        "if ARGS[:1] == [\"--version\"]:\n        import shutil; shutil.rmtree(os.path.join(os.getcwd(), '.claude/state/wren'))",
+    ));
+}
 fn wait_for(path: &Path) {
     let start = Instant::now();
     while !path.exists() {
@@ -291,6 +299,33 @@ fn draft_rechecks_permission_after_claude_check() {
     assert!(!h.state("consent.json").exists());
     assert_eq!(h.calls(), 0, "revoked permission allowed a model call");
     assert!(!h.state(interview::QUESTIONS_FILE).exists());
+    safe(&h, result, PERMISSION);
+}
+#[test]
+fn build_forgotten_after_claude_check_leaves_no_state_folder() {
+    let _case = CASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    forget_stub(&h);
+    let before = h.snapshots();
+    let result = h.build(&Builds::new(), &mut |_| {});
+    assert!(!h.path.join(".claude/state/wren").exists());
+    assert_eq!(h.calls(), 0, "forgotten history reached a model call");
+    assert_eq!(h.snapshots(), before);
+    safe(&h, result, PERMISSION);
+}
+#[test]
+fn draft_forgotten_after_claude_check_leaves_no_state_folder() {
+    let _case = CASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let h = Home::new(true);
+    forget_stub(&h);
+    let result = h.draft(false);
+    assert!(!h.path.join(".claude/state/wren").exists());
+    assert_eq!(h.calls(), 0, "forgotten permission allowed a model call");
     safe(&h, result, PERMISSION);
 }
 #[test]

@@ -93,8 +93,11 @@ impl Drop for Running<'_> {
     }
 }
 pub(crate) fn open(home: &Path, slug: &str) -> Result<Session> {
-    Session::open(home, slug, Cap::default()).map_err(|e| match e {
+    Session::open_existing(home, slug, Cap::default()).map_err(|e| match e {
         Error::Invalid(message) if message == private::BUSY => failure(BUSY),
+        Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+            failure(PERMISSION)
+        }
         _ => failure(BUILD_SAVE),
     })
 }
