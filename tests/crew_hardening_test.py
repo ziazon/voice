@@ -225,6 +225,18 @@ class Hardening(unittest.TestCase):
         self.assertEqual(events[0]['body'], 'First paragraph\n\na) Keep `this`')
         self.assertEqual(events[0]['options'], ['Keep `this`'])
 
+    def test_pending_heading_body_trims_leading_blank(self):
+        events = self.pending_queue('### 🎛️ CONTROL-Q H · t\n\ntext\n')
+        self.assertEqual(events[0]['body'], 'text')
+
+    def test_pending_heading_body_trims_edges_keeps_interior_blank(self):
+        events = self.pending_queue('### 🎛️ CONTROL-Q H2 · t\n\none\n\ntwo\n\n')
+        self.assertEqual(events[0]['body'], 'one\n\ntwo')
+
+    def test_pending_plain_body_keeps_seven_hash_dial_line(self):
+        events = self.pending_queue('🎛️ CONTROL-Q HASHES · t\none\n####### 🎛️ x\ntwo\n')
+        self.assertEqual(events[0]['body'], 'one\n####### 🎛️ x\ntwo')
+
     def test_pending_body_stops_at_any_dial_line(self):
         for header in ('🎛️ CONTROL-Q K · t', '### 🎛️ CONTROL-Q K · t'):
             for stop in ('🎛️ Park status', '### 🎛️ Park status',

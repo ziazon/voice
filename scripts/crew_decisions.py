@@ -697,12 +697,18 @@ def open_asks(records):
     return [a for a in asks if a["kind"] == "wrap_up" or a["tool_id"] not in results]
 
 
-def control_header(line):
-    """`(Q|A, key)` for a queue question or answer header, plain or as a heading; None for prose."""
+def _dial_row(line):
+    """Strip indentation and an optional one-to-six-hash heading prefix."""
     row = line.lstrip()
     text = row.lstrip("#")
     if 1 <= len(row) - len(text) <= 6 and text.startswith(" "):
         row = text.lstrip()
+    return row
+
+
+def control_header(line):
+    """`(Q|A, key)` for a queue question or answer header, plain or as a heading; None for prose."""
+    row = _dial_row(line)
     if not row.startswith("🎛"):
         return None
     m = re.search(r"CONTROL-([QA]) ([A-Za-z0-9._-]+)(?: · |$)", re.sub(r"[*`]", "", row))
@@ -711,11 +717,7 @@ def control_header(line):
 
 def is_dial_line(line):
     """Whether a plain or heading line starts with a dial, even without a control header."""
-    row = line.lstrip()
-    text = row.lstrip("#")
-    if 1 <= len(row) - len(text) <= 6 and text.startswith(" "):
-        row = text.lstrip()
-    return row.startswith("🎛")
+    return _dial_row(line).startswith("🎛")
 
 
 def control_body(m, lines, index):
@@ -729,6 +731,8 @@ def control_body(m, lines, index):
             break
         body.append(line.rstrip())
     if heading:
+        while body and not body[0]:
+            body.pop(0)
         while body and not body[-1]:
             body.pop()
     text = "\n".join(body)
