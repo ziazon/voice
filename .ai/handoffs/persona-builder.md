@@ -14,8 +14,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   answers the permission sentence (non-creating) or "busy" (creating). That closes the item
   PB7.3a left. PB7.5's two refresh forget tests now check no state folder is left. No new
   sentence. Brief: `plans/briefs/PB7.5a-ledger-on-an-existing-state-folder.md`.
-- **Who wrote it:** Codex, in four passes (the slice; the lock identity fix-up; the rebase onto
-  PB7.5; one more test). Her sandbox refuses commits and socket tests, so Claude committed, ran
+- **Who wrote it:** Codex, in five passes (the slice; the lock identity fix-up; the rebase onto
+  PB7.5; one more test; the test race below). Her sandbox refuses commits and socket tests, so Claude committed, ran
   the gates and wrote this record.
 - **Verified:** red first in each pass, then green, with a mutation check per claim (cp backup,
   restored by `cmp`): five across the first three passes, as the brief lists them, and in the last
@@ -26,6 +26,17 @@ One record per slice, newest first. Paraphrase only; no real person.
   the last test: nothing medium or higher. Verifier (Fable): PASS, two should-fixes, both fixed;
   repeat (Opus): PASS, one should-fix (the last test), fixed; a delta pass (Opus) after the
   rebase onto PB8: the code unchanged by it and the new test closing that should-fix, both proven.
+- **The red gate, and its fix:** the first land's `ci-local.sh` failed on
+  `lock_with_nothing_between_still_locks` (busy just after a lock was dropped): the ingest lib tests
+  failed about two runs in three at the default thread count (earlier runs used two threads, which
+  hid it). The cause is a test race, not a product bug: a lib test that starts a child holds a copy
+  of every open descriptor until the child execs, another test's lock included. The state lock's
+  folder is opened close-on-exec, so a started child (Claude Code, in the app) lets go of the lock
+  once it runs: proven by a probe, kept as `a_started_child_keeps_no_lock_once_it_runs`, which goes
+  red with `O_CLOEXEC` removed. The ingest lib tests that lock or start a child now take one shared
+  test mutex (`serial_test`), as the `grow` and `api` tests already do: 0 of 40 runs failed at the
+  default thread count (and 0 of 20 in Claude's own check), against 34 of 40 with a fresh mutex per
+  call.
 - **Not verified, left:** no live proof in the app: the race needs a forget inside two system
   calls, which only the test seam reaches. Rebased onto PB7.5b, whose command-line forget holds
   `lock_existing_state` and so now gets the same check (by reading the code, a folder replaced between the open and the
