@@ -18,6 +18,7 @@ use persona_builder_steps::input::RecordList as Records;
 use std::path::{Path, PathBuf};
 
 mod assistants;
+mod record;
 
 /// The `persona-builder` command: a thin layer over the core library.
 #[derive(Parser)]
@@ -187,6 +188,12 @@ enum Command {
         k: usize,
         #[arg(long)]
         json: bool,
+    },
+    /// Keep one decision the assistant made, or your answer to one it handed back.
+    Record {
+        member_dir: PathBuf,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
     },
     /// Check that a draft repeats no run of words from your history.
     Shingle {
@@ -1996,6 +2003,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             k,
             json,
         }) => similar(member_dir, corpus, query, k, json),
+        Some(Command::Record { member_dir, args }) => record::run(member_dir, args),
         Some(Command::Round {
             member_dir,
             name,

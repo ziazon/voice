@@ -1,5 +1,6 @@
 use persona_builder::{
     assistants::{self, New},
+    cli_command::{cli_word, shipped_cli},
     consent,
     error::{Error, Result},
 };
@@ -11,6 +12,7 @@ fn today() -> String {
 
 pub fn make(name: &str, pronouns: &str, principal: &str, principal_pronouns: &str) -> Result<()> {
     let home = super::home()?;
+    let cli = cli_word(&shipped_cli()?, &home)?;
     let listed = assistants::make(
         &home,
         &New {
@@ -20,6 +22,7 @@ pub fn make(name: &str, pronouns: &str, principal: &str, principal_pronouns: &st
             principal_pronouns,
         },
         &today(),
+        &cli,
     )
     .map_err(|error| match error {
         Error::Exists(slug) => Error::Invalid(format!(

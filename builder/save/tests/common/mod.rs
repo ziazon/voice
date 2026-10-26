@@ -221,6 +221,7 @@ os.execv({}, [{}, *sys.argv[1:]])
             &template,
             dir,
             &NewMember {
+                decisions: persona_builder::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Rowan Vale",

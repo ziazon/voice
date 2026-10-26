@@ -8,6 +8,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod assistants;
 pub mod autonomy;
 pub mod block;
+pub mod cli_command;
 pub mod consent;
 pub mod crew;
 pub mod error;

@@ -17,6 +17,7 @@ fn fixture(scratch: &Scratch) -> PathBuf {
         &repo().join("crew/_template"),
         &member,
         &NewMember {
+            decisions: crate::crew::Decisions::Python,
             name: "Ari",
             pronouns: "they/them",
             principal: "Robin",

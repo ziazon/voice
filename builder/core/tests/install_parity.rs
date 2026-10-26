@@ -128,6 +128,7 @@ fn parity_case(name: &str, slug: &str, pronouns: &str, principal: &str, principa
             &fork.join("crew/_template"),
             &target,
             &NewMember {
+                decisions: persona_builder::crew::Decisions::Python,
                 name,
                 pronouns,
                 principal,
@@ -145,6 +146,7 @@ fn parity_case(name: &str, slug: &str, pronouns: &str, principal: &str, principa
         new_member_embedded(
             &embedded_target,
             &NewMember {
+                decisions: persona_builder::crew::Decisions::Python,
                 name,
                 pronouns,
                 principal,
@@ -195,4 +197,17 @@ fn unicode_name_matches_installer_files_and_bytes() {
 #[test]
 fn nested_principal_placeholder_matches_installer_order() {
     parity_case("Ari", "ari", "they/them", "{{PRINCIPAL_SLUG}}", "they/them");
+}
+
+#[test]
+fn nested_similar_placeholder_matches_installer_order() {
+    parity_case("Ari", "ari", "they/them", "{{SIMILAR}}", "they/them");
+}
+
+#[test]
+fn template_names_the_decision_commands_through_placeholders() {
+    let skill = fs::read_to_string(repo().join("crew/_template/SKILL.md")).unwrap();
+    assert!(skill.contains("   {{SIMILAR}} --query \"<the question and its options>\""));
+    assert_eq!(skill.matches("  {{RECORD}} \\").count(), 2);
+    assert!(!skill.contains("crew_decisions.py"));
 }

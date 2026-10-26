@@ -1,7 +1,12 @@
 //! App boundary: only the fixed, public sentences here can reach the webview.
 use crate::dto;
 use persona_builder::consent::Record;
-use persona_builder::{assistants, consent, crew, error::Error};
+use persona_builder::{
+    assistants,
+    cli_command::{CLI_FOLDER, cli_word, shipped_cli},
+    consent, crew,
+    error::Error,
+};
 use persona_builder_agent::{claude, ledger::local_day, text};
 use persona_builder_ingest::private::{read_private_optional, remove_private, write_private};
 use std::{
@@ -130,16 +135,22 @@ pub fn new_assistant_in(home: &Path, request: dto::NewAssistantRequest) -> Resul
         principal: &request.principal,
         principal_pronouns: &request.principal_pronouns,
     };
+    let cli = shipped_cli()
+        .and_then(|path| cli_word(&path, home))
+        .map_err(|error| match error {
+            Error::Invalid(message) if message == CLI_FOLDER => failure(CLI_FOLDER),
+            _ => failure(MAKE),
+        })?;
     let listed =
-        assistants::make(home, &new, &local_day(SystemTime::now())).map_err(
-            |error| match error {
+        assistants::make(home, &new, &local_day(SystemTime::now()), &cli).map_err(|error| {
+            match error {
                 Error::Exists(_) => failure(&format!(
                     "You already have an assistant called {}. Pick another name, or open that one.",
                     request.name
                 )),
                 _ => failure(MAKE),
-            },
-        )?;
+            }
+        })?;
     if clear_consent(home, &listed.member.slug).is_err() {
         let _ = std::fs::remove_dir_all(&listed.dir);
         return Err(failure(MAKE));

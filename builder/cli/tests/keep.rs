@@ -32,6 +32,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
+                decisions: persona_builder::crew::Decisions::Python,
                 name: "Robin",
                 pronouns: "they/them",
                 principal: "Robin",

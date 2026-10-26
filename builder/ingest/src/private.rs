@@ -225,6 +225,52 @@ pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Resul
     write_private_at(home, slug, None, name, bytes)
 }
 
+/// Append one line to an existing private state folder.
+pub fn append_private(home: &Path, slug: &str, name: &str, line: &[u8]) -> Result<PathBuf> {
+    let (directory, path) = place_directory(home, slug, None, false)?;
+    validate_private_name(name)?;
+    let path = path.join(name);
+    let name = CString::new(name).expect("validated file name");
+    // SAFETY: directory is live and name is terminated; links are never followed.
+    let mut fd = unsafe {
+        libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_WRONLY | libc::O_APPEND | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600,
+        )
+    };
+    if fd < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
+        // macOS can return ENOENT when another writer just created the file with O_CREAT.
+        // Open that existing file once, without creating anything if it has since gone away.
+        // SAFETY: the same directory descriptor and terminated name remain live; links stay refused.
+        fd = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_WRONLY | libc::O_APPEND | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+    }
+    if fd < 0 {
+        return Err(io(&path, std::io::Error::last_os_error()));
+    }
+    // SAFETY: openat returned a fresh descriptor, owned exactly once from here.
+    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+    let mut file = File::from(owned);
+    if !file.metadata().map_err(|e| io(&path, e))?.is_file() {
+        return Err(Error::Invalid(format!("{} is not a file", path.display())));
+    }
+    only_mine(&file, &path, 0o077, "opened")?;
+    // SAFETY: file owns a live descriptor. Blocking on this file leaves the build lock alone.
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } < 0 {
+        return Err(io(&path, std::io::Error::last_os_error()));
+    }
+    file.write_all(line).map_err(|e| io(&path, e))?;
+    file.sync_all().map_err(|e| io(&path, e))?;
+    Ok(path)
+}
+
 /// [`write_private`], into `folder` inside the state folder when one is given.
 pub fn write_private_at(
     home: &Path,
@@ -688,6 +734,100 @@ mod tests {
     impl Drop for Home {
         fn drop(&mut self) {
             fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn append_private_preserves_lines_and_uses_owner_only_mode() {
+        let home = Home::new();
+        let path = append_private(&home.0, "wren", "live.jsonl", b"first\n").unwrap();
+        append_private(&home.0, "wren", "live.jsonl", b"second\n").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"first\nsecond\n");
+        assert_eq!(
+            fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn append_private_refuses_missing_state_and_unsafe_targets() {
+        let home = Home::new();
+        assert!(append_private(&home.0, "absent", "live.jsonl", b"line\n").is_err());
+        assert!(!home.0.join(".claude/state/absent").exists());
+        for name in ["../escape.jsonl", "bad.txt"] {
+            assert!(append_private(&home.0, "wren", name, b"line\n").is_err());
+        }
+        let path = home.state().join("live.jsonl");
+        fs::write(&path, b"original").unwrap();
+        fs::set_permissions(&path, Permissions::from_mode(0o644)).unwrap();
+        assert!(append_private(&home.0, "wren", "live.jsonl", b"line\n").is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"original");
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        assert!(append_private(&home.0, "wren", "live.jsonl", b"line\n").is_err());
+        assert_eq!(fs::read_dir(&path).unwrap().count(), 0);
+        fs::remove_dir(&path).unwrap();
+        let target = home.0.join("target.jsonl");
+        fs::write(&target, b"untouched").unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        assert!(append_private(&home.0, "wren", "live.jsonl", b"line\n").is_err());
+        assert_eq!(fs::read(target).unwrap(), b"untouched");
+    }
+
+    #[test]
+    fn append_private_waits_for_the_live_file_lock() {
+        let home = Home::new();
+        let path = write_private(&home.0, "wren", "live.jsonl", b"existing\n").unwrap();
+        let file = File::open(&path).unwrap();
+        // SAFETY: file owns a live descriptor for the regular log file.
+        assert_eq!(unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) }, 0);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let task_home = home.0.clone();
+        let writer = std::thread::spawn(move || {
+            sender
+                .send(append_private(&task_home, "wren", "live.jsonl", b"next\n"))
+                .unwrap();
+        });
+        let while_locked = receiver.recv_timeout(std::time::Duration::from_millis(200));
+        drop(file);
+        writer.join().unwrap();
+        assert!(
+            matches!(
+                while_locked,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ),
+            "append did not wait for the live file lock: {while_locked:?}"
+        );
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+        assert_eq!(fs::read(path).unwrap(), b"existing\nnext\n");
+    }
+
+    #[test]
+    fn append_private_serializes_concurrent_writers_without_the_build_lock() {
+        let home = Home::new();
+        let _build = lock_state(&home.0, "wren").unwrap();
+        let start = std::sync::Barrier::new(4);
+        std::thread::scope(|scope| {
+            for writer in 0..4 {
+                let home = &home.0;
+                let start = &start;
+                scope.spawn(move || {
+                    start.wait();
+                    let line = format!("{writer}:{}\n", "x".repeat(32 * 1024));
+                    for _ in 0..8 {
+                        append_private(home, "wren", "live.jsonl", line.as_bytes()).unwrap();
+                    }
+                });
+            }
+        });
+        let log = fs::read_to_string(home.state().join("live.jsonl")).unwrap();
+        assert_eq!(log.lines().count(), 32);
+        for writer in 0..4 {
+            let expected = format!("{writer}:{}", "x".repeat(32 * 1024));
+            assert_eq!(log.lines().filter(|line| *line == expected).count(), 8);
         }
     }
 

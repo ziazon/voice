@@ -50,6 +50,7 @@ impl Home {
                 principal_pronouns: "they/them",
             },
             "2026-10-25",
+            "persona-builder",
         )
         .unwrap();
         MemberPaths::load(&made.dir.join("member.json"), &self.0).unwrap()

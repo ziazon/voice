@@ -47,6 +47,7 @@ fn make_member(path: &Path, name: &str) {
         &repo().join("crew/_template"),
         path,
         &NewMember {
+            decisions: crate::crew::Decisions::Python,
             name,
             pronouns: "they/them",
             principal: "Robin",

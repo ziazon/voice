@@ -34,6 +34,7 @@ fn member_show_prints_exact_file_bytes() {
         &template,
         &target,
         &NewMember {
+            decisions: persona_builder::crew::Decisions::Python,
             name: "Ari",
             pronouns: "they/them",
             principal: "Robin",

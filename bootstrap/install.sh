@@ -135,7 +135,9 @@ repo = Path(repo).resolve()
 home = Path.home().resolve()
 # Under the home folder the committed files say ~/…, so they name no account.
 shown = "~/" + str(repo.relative_to(home)) if repo.is_relative_to(home) else str(repo)
-values = {"NAME": name, "SLUG": slug, "PRONOUNS": pronouns, "PRINCIPAL": principal,
+values = {"SIMILAR": "python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json similar",
+          "RECORD": "python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json record",
+          "NAME": name, "SLUG": slug, "PRONOUNS": pronouns, "PRINCIPAL": principal,
           "PRINCIPAL_SLUG": principal_slug, "PRINCIPAL_PRONOUNS": principal_pronouns,
           "REPO": shown, "DATE": datetime.date.today().isoformat()}
 shutil.copytree(template, target, dirs_exist_ok=True)

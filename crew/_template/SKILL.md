@@ -34,8 +34,7 @@ agrees to anything *as {{PRINCIPAL}}*, and never decides a question that `autono
 2. **Precedents.** Find {{PRINCIPAL}}'s own past answers to questions like it:
 
    ```bash
-   python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json \
-     similar --query "<the question and its options>"
+   {{SIMILAR}} --query "<the question and its options>"
    ```
 
    It searches the private history in `~/.claude/state/{{SLUG}}/`. Never quote what it prints
@@ -73,7 +72,7 @@ Run every drafted question through §2. Then:
   and record it:
 
   ```bash
-  python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json record \
+  {{RECORD}} \
     --work "<what you are working on>" --kind decided --category <c> --tier high \
     --question "<q>" --{{SLUG}}-pick "<pick>"
   ```
@@ -84,7 +83,7 @@ Run every drafted question through §2. Then:
   what trains {{NAME}}:
 
   ```bash
-  python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json record \
+  {{RECORD}} \
     --work "<work>" --kind escalated --category <c> --tier <t> --rule <rules> \
     --question "<q>" --{{SLUG}}-pick "<pick>" --{{PRINCIPAL_SLUG}}-answer "<their answer>"
   ```

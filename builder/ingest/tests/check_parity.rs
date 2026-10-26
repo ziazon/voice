@@ -21,6 +21,7 @@ fn member(folder: &Path) {
         &repo().join("crew/_template"),
         folder,
         &NewMember {
+            decisions: persona_builder::crew::Decisions::Python,
             name: "Wren",
             pronouns: "she/her",
             principal: "Rowan Vale",

@@ -54,6 +54,14 @@ pub fn shown_path(repo: &Path, home: &Path) -> Result<String> {
     })
 }
 
+/// The commands an assistant's SKILL.md runs to look up and record decisions.
+pub enum Decisions<'a> {
+    /// The guided build's `scripts/crew_decisions.py`, inside the repo.
+    Python,
+    /// A `persona-builder` command, already written as one shell word (see `cli_word`).
+    Cli(&'a str),
+}
+
 pub struct NewMember<'a> {
     pub name: &'a str,
     pub pronouns: &'a str,
@@ -61,6 +69,7 @@ pub struct NewMember<'a> {
     pub principal_pronouns: &'a str,
     pub repo_shown: &'a str,
     pub date: &'a str,
+    pub decisions: Decisions<'a>,
 }
 
 pub fn new_member(template: &Path, target: &Path, new: &NewMember<'_>) -> Result<Member> {
@@ -105,7 +114,19 @@ fn create_member(
         .ok_or_else(|| Error::Invalid("name must contain a letter or digit".into()))?;
     let principal_slug = slugify(new.principal)
         .ok_or_else(|| Error::Invalid("principal must contain a letter or digit".into()))?;
+    let (similar, record) = match new.decisions {
+        Decisions::Python => (
+            "python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json similar".to_owned(),
+            "python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json record".to_owned(),
+        ),
+        Decisions::Cli(word) => (
+            format!("{word} similar {{{{REPO}}}}/crew/{{{{SLUG}}}}"),
+            format!("{word} record {{{{REPO}}}}/crew/{{{{SLUG}}}}"),
+        ),
+    };
     let values = [
+        ("SIMILAR", similar.as_str()),
+        ("RECORD", record.as_str()),
         ("NAME", new.name),
         ("SLUG", &slug),
         ("PRONOUNS", new.pronouns),
@@ -270,6 +291,7 @@ mod tests {
 
     fn input() -> NewMember<'static> {
         NewMember {
+            decisions: Decisions::Python,
             name: "Ari",
             pronouns: "they/them",
             principal: "Robin",
@@ -329,6 +351,30 @@ mod tests {
             assert!(error.to_string().contains(&missing.display().to_string()));
             assert!(matches!(error, Error::Io { path, source }
                 if path == missing && source.kind() == std::io::ErrorKind::NotFound));
+        }
+    }
+
+    #[test]
+    fn cli_commands_fill_nested_member_paths_in_both_templates() {
+        let scratch = Scratch::new();
+        for embedded in [false, true] {
+            let target = scratch
+                .path()
+                .join(if embedded { "embedded" } else { "disk" });
+            let mut new = input();
+            new.decisions = Decisions::Cli(
+                "\"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\"",
+            );
+            if embedded {
+                new_member_embedded(&target, &new).unwrap();
+            } else {
+                new_member(&repo().join("crew/_template"), &target, &new).unwrap();
+            }
+            let skill = fs::read_to_string(target.join("SKILL.md")).unwrap();
+            assert!(skill.contains("   \"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\" similar ~/projects/voice/crew/ari --query"));
+            assert_eq!(skill.matches("  \"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\" record ~/projects/voice/crew/ari \\").count(), 2);
+            assert!(!skill.contains("{{"));
+            assert!(!skill.contains("crew_decisions.py"));
         }
     }
 

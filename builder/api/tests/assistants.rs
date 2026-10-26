@@ -46,6 +46,20 @@ fn new_list_and_private_consent_round_trip() {
     assert!(list_assistants_in(h).unwrap().is_empty());
     let made = new_assistant_in(h, request()).unwrap();
     assert_eq!(made.slug, "ari");
+    let skill = fs::read_to_string(h.join(".claude/crew/ari/SKILL.md")).unwrap();
+    let word = persona_builder::cli_command::cli_word(
+        &persona_builder::cli_command::shipped_cli().unwrap(),
+        h,
+    )
+    .unwrap();
+    assert!(!skill.contains("{{"), "unfilled placeholder in SKILL.md");
+    assert!(
+        !skill.contains("crew_decisions.py"),
+        "app-made assistant names Python"
+    );
+    assert!(skill.contains(&format!("{word} similar ~/.claude/crew/ari --query")));
+    assert!(skill.contains(&format!("{word} record ~/.claude/crew/ari {}", '\\')));
+
     assert!(!made.consent.agreed);
     assert_eq!(list_assistants_in(h).unwrap(), vec![made]);
     let agreed = agree_consent_in(h, slug("ari")).unwrap();
@@ -342,5 +356,37 @@ fn missing_home_claude_check_returns_a_status() {
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn unsafe_app_folder_shows_the_move_sentence() {
+    const CHILD: &str = "PB_TEST_UNSAFE_APP_FOLDER";
+    if std::env::var_os(CHILD).is_some() {
+        let home = Home::new();
+        assert_eq!(
+            new_assistant_in(home.path(), request())
+                .unwrap_err()
+                .message,
+            persona_builder::cli_command::CLI_FOLDER
+        );
+        assert!(!home.path().join(".claude/crew/ari").exists());
+        return;
+    }
+    let scratch = Home::new();
+    let dir = scratch.path().join("Persona Builder $folder.app");
+    fs::create_dir(&dir).unwrap();
+    let executable = dir.join("app-test");
+    fs::copy(std::env::current_exe().unwrap(), &executable).unwrap();
+    let output = std::process::Command::new(executable)
+        .args(["--exact", "unsafe_app_folder_shows_the_move_sentence"])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }

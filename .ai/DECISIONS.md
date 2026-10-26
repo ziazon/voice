@@ -39,6 +39,13 @@
   Rust `discover`), and skips a question already mined from the history.
 - The Rust port of `sources` waits for the app's sources screen.
 
+## 2026-10-26: shipped decision commands (PB8.1)
+
+An app-made assistant's SKILL.md runs the `persona-builder` shipped inside the app
+(`Contents/MacOS/persona-builder`), named as one quoted path when the assistant is made; the guided
+build keeps `scripts/crew_decisions.py`. The template names both through `{{SIMILAR}}` and
+`{{RECORD}}`. An assistant made before this keeps its old SKILL.md; make it again to get the new one.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
