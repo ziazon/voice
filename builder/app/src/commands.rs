@@ -255,6 +255,20 @@ pub fn spend_today(
 }
 
 #[tauri::command(async)]
+pub fn spending_limit(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::SpendingLimit, persona_builder_api::dto::Failure> {
+    persona_builder_api::spending_limit(request)
+}
+
+#[tauri::command(async)]
+pub fn set_spending_limit(
+    request: persona_builder_api::dto::SpendingLimitRequest,
+) -> Result<persona_builder_api::dto::SpendingLimit, persona_builder_api::dto::Failure> {
+    persona_builder_api::set_spending_limit(request)
+}
+
+#[tauri::command(async)]
 pub fn interview_status(
     request: persona_builder_api::dto::SlugRequest,
 ) -> Result<persona_builder_api::dto::InterviewStatus, persona_builder_api::dto::Failure> {

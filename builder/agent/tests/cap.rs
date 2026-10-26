@@ -2,7 +2,7 @@ mod common;
 
 use common::*;
 use persona_builder_agent::{
-    ledger::{Cap, local_day},
+    ledger::{Cap, LIMIT, local_day},
     text,
 };
 use serde_json::json;
@@ -184,4 +184,52 @@ fn the_day_is_the_local_calendar_day() {
         .unwrap();
     let expected = String::from_utf8(out.stdout).unwrap();
     assert_eq!(local_day(SystemTime::now()), expected.trim());
+}
+
+#[test]
+fn loading_an_unsaved_limit_creates_nothing() {
+    let home = Scratch::new("limit-defaults");
+    assert!(!state(&home.0).exists());
+    assert_eq!(Cap::load(&home.0, "wren").unwrap(), Cap::default());
+    assert!(!state(&home.0).exists());
+}
+
+#[test]
+fn saved_limit_round_trips_in_a_private_file() {
+    let home = Scratch::new("limit-saved");
+    let cap = Cap::new(20.0, 2.5).unwrap();
+    let _lock = persona_builder_ingest::private::lock_state(&home.0, "wren").unwrap();
+    cap.save(&home.0, "wren").unwrap();
+    assert_eq!(Cap::load(&home.0, "wren").unwrap(), cap);
+    assert_eq!(
+        fs::metadata(state(&home.0).join(LIMIT))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    let saved: serde_json::Value =
+        serde_json::from_slice(&fs::read(state(&home.0).join(LIMIT)).unwrap()).unwrap();
+    assert_eq!(saved, json!({"daily_usd":20.0,"call_usd":2.5}));
+}
+
+#[test]
+fn damaged_saved_limits_stop_spending() {
+    for bad in [
+        "not json",
+        r#"{"daily_usd":2000,"call_usd":5}"#,
+        r#"{"daily_usd":10,"call_usd":20}"#,
+        r#"{"daily_usd":20,"call_usd":2.5,"extra":true}"#,
+        r#"{"daily_usd":20}"#,
+    ] {
+        let home = Scratch::new("limit-damaged");
+        persona_builder_ingest::private::write_private(&home.0, "wren", LIMIT, bad.as_bytes())
+            .unwrap();
+        assert_eq!(
+            Cap::load(&home.0, "wren").unwrap_err().to_string(),
+            text::limit_damaged(&state(&home.0).join(LIMIT)),
+            "{bad}"
+        );
+    }
 }

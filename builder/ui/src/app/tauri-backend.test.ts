@@ -84,6 +84,8 @@ it.each([
 it.each([
   ['stopBuild', 'stop_build', { slug: 'example' }],
   ['spendToday', 'spend_today', { slug: 'example' }],
+  ['spendingLimit', 'spending_limit', { slug: 'example' }],
+  ['setSpendingLimit', 'set_spending_limit', { slug: 'example', dailyUsd: 20, callUsd: 2.5 }],
   ['interviewStatus', 'interview_status', { slug: 'example' }],
   ['draftInterview', 'draft_interview', { slug: 'example', replace: true }],
   ['saveInterviewAnswers', 'save_interview_answers', { slug: 'example', answers: [{ n: 1, picks: ['A'], ownWords: '' }] }],

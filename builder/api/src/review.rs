@@ -6,7 +6,7 @@ use crate::{
     history::{FIND, PERMISSION, count, failure, locked, readable},
 };
 use persona_builder::{assistants, error::Error, member::Member};
-use persona_builder_agent::{claude, ledger::Cap};
+use persona_builder_agent::claude;
 use persona_builder_build::{interview, report};
 use persona_builder_grow::{
     apply, diff, keep,
@@ -350,7 +350,7 @@ pub fn apply_refresh_in(
     }
     let mut last_spend = Spend {
         spent_usd: 0.0,
-        daily_cap_usd: Cap::default().daily_usd(),
+        daily_cap_usd: session.cap().daily_usd(),
     };
     let measured = apply::measure(
         &claude,

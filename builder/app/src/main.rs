@@ -43,6 +43,8 @@ fn main() {
             commands::build_assistant,
             commands::stop_build,
             commands::spend_today,
+            commands::spending_limit,
+            commands::set_spending_limit,
             commands::interview_status,
             commands::draft_interview,
             commands::save_interview_answers,

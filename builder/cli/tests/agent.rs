@@ -176,3 +176,88 @@ fn spend_reports_today_against_the_cap() {
     );
     drop(held);
 }
+
+#[test]
+fn limit_show_prints_defaults_without_creating_state() {
+    let f = Fixture::new();
+    let out = f.run(&["limit", "show", f.member.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "Daily limit: about $50.00 a day, and at most $5.00 for one step, as Claude Code estimates it.\n"
+    );
+    assert!(!f.state().exists());
+}
+
+#[test]
+fn saved_limit_is_used_by_spend_and_flags_still_override() {
+    let f = Fixture::new();
+    let member = f.member.to_str().unwrap();
+    drop(Session::open(&f.home, "wren", Cap::default()).unwrap());
+    let out = f.run(&[
+        "limit",
+        "set",
+        member,
+        "--daily-usd",
+        "20",
+        "--step-usd",
+        "2.5",
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "Daily limit: about $20.00 a day, and at most $2.50 for one step, as Claude Code estimates it.\n"
+    );
+    let out = f.run(&["limit", "show", member]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains("$20.00 a day, and at most $2.50"));
+    for (flag, expected) in [(None, "20.00"), (Some("30"), "30.00"), (Some("1"), "1.00")] {
+        let mut args = vec!["spend", member];
+        if let Some(value) = flag {
+            args.extend(["--daily-cap-usd", value]);
+        }
+        let out = f.run(&args);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        assert!(text(&out.stdout).contains(&format!("of the ${expected} daily limit")));
+    }
+}
+
+#[test]
+fn invalid_limit_set_writes_nothing() {
+    let f = Fixture::new();
+    let out = f.run(&[
+        "limit",
+        "set",
+        f.member.to_str().unwrap(),
+        "--daily-usd",
+        "0",
+        "--step-usd",
+        "0",
+    ]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("the daily limit must be more than 0"));
+    assert!(!f.state().exists());
+}
+
+#[test]
+fn limit_set_needs_existing_state_and_refuses_a_running_session() {
+    let f = Fixture::new();
+    let args = [
+        "limit",
+        "set",
+        f.member.to_str().unwrap(),
+        "--daily-usd",
+        "20",
+        "--step-usd",
+        "2.5",
+    ];
+    let out = f.run(&args);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    assert!(!f.state().exists());
+    let held = Session::open(&f.home, "wren", Cap::default()).unwrap();
+    let out = f.run(&args);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("already working on this assistant"));
+    assert!(!f.state().join("limit.json").exists());
+    drop(held);
+}

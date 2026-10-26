@@ -34,6 +34,8 @@ pub const COMMANDS: &[&str] = &[
     "build_assistant",
     "stop_build",
     "spend_today",
+    "spending_limit",
+    "set_spending_limit",
     "interview_status",
     "draft_interview",
     "save_interview_answers",

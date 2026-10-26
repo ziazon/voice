@@ -337,6 +337,23 @@ pub struct Spend {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
+pub struct SpendingLimit {
+    pub daily_usd: f64,
+    pub call_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct SpendingLimitRequest {
+    pub slug: String,
+    pub daily_usd: f64,
+    pub call_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct BuildProgress {
     pub line: String,
     pub spend: Spend,

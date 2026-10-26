@@ -31,6 +31,9 @@ const NOTHING_YET: &str = "There's nothing to build from yet. Read your history 
 const SETTINGS: &str = "Something in this assistant's settings stops the build. Use the persona-builder command to see what.";
 const BUILD_FAILED: &str = "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: build again to carry on.";
 const PRIVATE: &str = "The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Build again to try once more.";
+const LIMIT_DAMAGED: &str = "Persona Builder can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
+const LIMIT_BAD: &str = "The daily limit must be more than $0 and at most $1,000. The most one step may use must be more than $0 and no more than the daily limit.";
+const LIMIT_SAVE: &str = "Persona Builder couldn't save the limit. Check there's space on this computer, then try again.";
 const LEDGER: &str = "Persona Builder's record of what this assistant has spent can't be read, so it won't spend anything more. Use the persona-builder command to see what's wrong.";
 const BUILD_SAVE: &str = "Persona Builder couldn't save your assistant. Check there's space on this computer, then try again.";
 const ENOUGH: &str =
@@ -93,7 +96,8 @@ impl Drop for Running<'_> {
     }
 }
 pub(crate) fn open(home: &Path, slug: &str) -> Result<Session> {
-    Session::open_existing(home, slug, Cap::default()).map_err(|e| match e {
+    let cap = Cap::load(home, slug).map_err(|_| failure(LIMIT_DAMAGED))?;
+    Session::open_existing(home, slug, cap).map_err(|e| match e {
         Error::Invalid(message) if message == private::BUSY => failure(BUSY),
         Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
             failure(PERMISSION)
@@ -153,7 +157,7 @@ pub fn build_assistant_in(
     }
     let mut last_spend = Spend {
         spent_usd: 0.0,
-        daily_cap_usd: Cap::default().daily_usd(),
+        daily_cap_usd: session.cap().daily_usd(),
     };
     let mut send = |line: &str| {
         if let Ok(now) = spend(&session) {
@@ -533,4 +537,113 @@ pub fn save_interview_answers(request: InterviewAnswersRequest) -> Result<Interv
 }
 pub fn keep_interview_answers(request: SlugRequest) -> Result<InterviewKept> {
     keep_interview_answers_in(&home(FIND)?, request)
+}
+
+pub fn spending_limit_in(home: &Path, request: SlugRequest) -> Result<SpendingLimit> {
+    readable(home, &request.slug)?;
+    let cap = Cap::load(home, &request.slug).map_err(|_| failure(LIMIT_DAMAGED))?;
+    Ok(SpendingLimit {
+        daily_usd: cap.daily_usd(),
+        call_usd: cap.call_usd(),
+    })
+}
+pub fn set_spending_limit_in(home: &Path, request: SpendingLimitRequest) -> Result<SpendingLimit> {
+    set_spending_limit_after(home, request, &mut || {})
+}
+fn set_spending_limit_after(
+    home: &Path,
+    request: SpendingLimitRequest,
+    between: &mut dyn FnMut(),
+) -> Result<SpendingLimit> {
+    readable(home, &request.slug)?;
+    let cap = Cap::new(request.daily_usd, request.call_usd).map_err(|_| failure(LIMIT_BAD))?;
+    between();
+    let _lock = private::lock_existing_state(home, &request.slug).map_err(|e| match e {
+        Error::Invalid(message) if message == private::BUSY => failure(BUSY),
+        Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+            failure(PERMISSION)
+        }
+        _ => failure(LIMIT_SAVE),
+    })?;
+    if !crate::read_consent(home, &request.slug).agreed {
+        return Err(failure(PERMISSION));
+    }
+    cap.save(home, &request.slug)
+        .map_err(|_| failure(LIMIT_SAVE))?;
+    Ok(SpendingLimit {
+        daily_usd: cap.daily_usd(),
+        call_usd: cap.call_usd(),
+    })
+}
+pub fn spending_limit(request: SlugRequest) -> Result<SpendingLimit> {
+    spending_limit_in(&home(FIND)?, request)
+}
+pub fn set_spending_limit(request: SpendingLimitRequest) -> Result<SpendingLimit> {
+    set_spending_limit_in(&home(FIND)?, request)
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+    use std::fs;
+
+    fn race(remove_folder: bool) {
+        let home = std::env::temp_dir().join(format!(
+            "pb-limit-race-{}-{remove_folder}",
+            std::process::id()
+        ));
+        fs::create_dir(&home).unwrap();
+        crate::new_assistant_in(
+            &home,
+            NewAssistantRequest {
+                name: "Wren".into(),
+                pronouns: "she/her".into(),
+                principal: "Robin".into(),
+                principal_pronouns: "they/them".into(),
+            },
+        )
+        .unwrap();
+        let slug = || SlugRequest {
+            slug: "wren".into(),
+        };
+        crate::agree_consent_in(&home, slug()).unwrap();
+        let state = home.join(".claude/state/wren");
+        let result = set_spending_limit_after(
+            &home,
+            SpendingLimitRequest {
+                slug: "wren".into(),
+                daily_usd: 20.0,
+                call_usd: 2.5,
+            },
+            &mut || {
+                if remove_folder {
+                    let preview = crate::forget_preview_in(&home, slug()).unwrap();
+                    crate::forget_in(
+                        &home,
+                        ForgetRequest {
+                            slug: "wren".into(),
+                            files: preview.files,
+                        },
+                    )
+                    .unwrap();
+                } else {
+                    fs::remove_file(state.join("consent.json")).unwrap();
+                }
+            },
+        );
+        let state_exists = state.exists();
+        let limit_exists = state.join("limit.json").exists();
+        fs::remove_dir_all(home).unwrap();
+        assert_eq!(result.unwrap_err().message, PERMISSION);
+        assert!(!limit_exists);
+        assert_eq!(state_exists, !remove_folder);
+    }
+    #[test]
+    fn limit_refuses_forgetting_between_check_and_lock_without_recreating_state() {
+        race(true);
+    }
+    #[test]
+    fn limit_rechecks_consent_under_the_lock() {
+        race(false);
+    }
 }

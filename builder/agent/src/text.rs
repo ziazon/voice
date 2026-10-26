@@ -39,3 +39,17 @@ pub fn cut_off(minutes: u64) -> String {
 }
 
 pub const STOPPED: &str = "Persona Builder stopped Claude Code, as you asked.";
+
+pub fn limit_damaged(path: &Path) -> String {
+    format!(
+        "The daily limit saved at {} can't be read, so Persona Builder won't spend anything. Set it again with `persona-builder limit set`, or on Connect Claude in the app.",
+        path.display()
+    )
+}
+pub fn limit(cap: crate::ledger::Cap) -> String {
+    format!(
+        "Daily limit: about ${:.2} a day, and at most ${:.2} for one step, as Claude Code estimates it.",
+        cap.daily_usd(),
+        cap.call_usd()
+    )
+}

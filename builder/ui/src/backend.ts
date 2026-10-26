@@ -10,6 +10,8 @@ import type { TurnOffRequest } from './types/generated/TurnOffRequest'
 import type { ClaudeAiFiles } from './types/generated/ClaudeAiFiles'
 import type { ForgetPreview } from './types/generated/ForgetPreview'
 import type { ForgetRequest } from './types/generated/ForgetRequest'
+import type { SpendingLimit } from './types/generated/SpendingLimit'
+import type { SpendingLimitRequest } from './types/generated/SpendingLimitRequest'
 import type { Spend } from './types/generated/Spend'
 import type { BuildProgress } from './types/generated/BuildProgress'
 import type { BuildDone } from './types/generated/BuildDone'
@@ -57,6 +59,8 @@ export interface Backend {
   buildAssistant(request: SlugRequest, onProgress: (progress: BuildProgress) => void): Promise<BuildDone>
   stopBuild(request: SlugRequest): Promise<void>
   spendToday(request: SlugRequest): Promise<Spend>
+  spendingLimit(request: SlugRequest): Promise<SpendingLimit>
+  setSpendingLimit(request: SpendingLimitRequest): Promise<SpendingLimit>
   interviewStatus(request: SlugRequest): Promise<InterviewStatus>
   draftInterview(request: DraftInterviewRequest): Promise<InterviewStatus>
   saveInterviewAnswers(request: InterviewAnswersRequest): Promise<InterviewStatus>

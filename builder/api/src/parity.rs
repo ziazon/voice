@@ -141,6 +141,14 @@ pub const PARITY: &[Parity] = &[
         cli: &[&["spend"]],
     },
     Parity {
+        app: "spending_limit",
+        cli: &[&["limit", "show"]],
+    },
+    Parity {
+        app: "set_spending_limit",
+        cli: &[&["limit", "set"]],
+    },
+    Parity {
         app: "interview_status",
         cli: &[&["interview", "draft"]],
     },

@@ -266,21 +266,40 @@ enum Command {
         corpus: String,
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
-        daily_cap_usd: f64,
-        /// The most one call may spend, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
-        call_cap_usd: f64,
+        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        #[arg(long)]
+        daily_cap_usd: Option<f64>,
+        /// The most one call may spend, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $5).
+        #[arg(long)]
+        call_cap_usd: Option<f64>,
     },
     /// Show how well your assistant knows you, from its last build.
     Report { member_dir: PathBuf },
+    /// Show or set how much building this assistant may use.
+    Limit {
+        #[command(subcommand)]
+        command: LimitCommand,
+    },
     /// Show what building this assistant has spent today.
     Spend {
         member_dir: PathBuf,
-        /// The daily limit, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
-        daily_cap_usd: f64,
+        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        #[arg(long)]
+        daily_cap_usd: Option<f64>,
+    },
+}
+
+#[derive(Subcommand)]
+enum LimitCommand {
+    /// Show the daily limit saved for this assistant.
+    Show { member_dir: PathBuf },
+    /// Set the daily limit and the most one step may use.
+    Set {
+        member_dir: PathBuf,
+        #[arg(long)]
+        daily_usd: f64,
+        #[arg(long)]
+        step_usd: f64,
     },
 }
 
@@ -292,12 +311,12 @@ enum RefreshCommand {
         /// The Claude model to draft with.
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
-        daily_cap_usd: f64,
-        /// The most one call may spend, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
-        call_cap_usd: f64,
+        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        #[arg(long)]
+        daily_cap_usd: Option<f64>,
+        /// The most one call may spend, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $5).
+        #[arg(long)]
+        call_cap_usd: Option<f64>,
     },
     /// Test an approved change on all your answers, then keep it or undo it.
     Apply {
@@ -308,12 +327,12 @@ enum RefreshCommand {
         /// The Claude model to test with.
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
-        daily_cap_usd: f64,
-        /// The most one call may spend, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
-        call_cap_usd: f64,
+        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        #[arg(long)]
+        daily_cap_usd: Option<f64>,
+        /// The most one call may spend, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $5).
+        #[arg(long)]
+        call_cap_usd: Option<f64>,
     },
     /// Show the change waiting for your answer.
     Show {
@@ -350,12 +369,12 @@ enum InterviewCommand {
         labels: Option<String>,
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_DAILY_USD)]
-        daily_cap_usd: f64,
-        /// The most one call may spend, in US dollars as Claude Code estimates them.
-        #[arg(long, default_value_t = persona_builder_agent::ledger::Cap::DEFAULT_CALL_USD)]
-        call_cap_usd: f64,
+        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        #[arg(long)]
+        daily_cap_usd: Option<f64>,
+        /// The most one call may spend, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $5).
+        #[arg(long)]
+        call_cap_usd: Option<f64>,
         /// Draft new questions in place of the ones waiting for your answers.
         #[arg(long)]
         replace: bool,
@@ -1112,14 +1131,38 @@ fn claude_check() -> Result<()> {
     }
     Ok(())
 }
-fn spend(member_dir: PathBuf, daily_cap_usd: f64) -> Result<()> {
-    use persona_builder_agent::{
-        ledger::{Cap, Session},
-        text,
-    };
+fn cap_for(
+    home: &std::path::Path,
+    slug: &str,
+    daily: Option<f64>,
+    call: Option<f64>,
+) -> Result<persona_builder_agent::ledger::Cap> {
+    use persona_builder_agent::ledger::Cap;
+    let saved = Cap::load(home, slug)?;
+    let daily = daily.unwrap_or(saved.daily_usd());
+    let call = call.unwrap_or_else(|| saved.call_usd().min(daily));
+    Cap::new(daily, call)
+}
+fn limit_show(member_dir: PathBuf) -> Result<()> {
+    use persona_builder_agent::{ledger::Cap, text};
+    let (member, home) = member_and_home(&member_dir)?;
+    println!("{}", text::limit(Cap::load(&home, &member.slug)?));
+    Ok(())
+}
+fn limit_set(member_dir: PathBuf, daily_usd: f64, step_usd: f64) -> Result<()> {
+    use persona_builder_agent::{ledger::Cap, text};
+    let (member, home) = member_and_home(&member_dir)?;
+    let cap = Cap::new(daily_usd, step_usd)?;
+    let _lock = persona_builder_ingest::private::lock_existing_state(&home, &member.slug)?;
+    cap.save(&home, &member.slug)?;
+    println!("{}", text::limit(cap));
+    Ok(())
+}
+fn spend(member_dir: PathBuf, daily_cap_usd: Option<f64>) -> Result<()> {
+    use persona_builder_agent::{ledger::Session, text};
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
-    let cap = Cap::new(daily_cap_usd, Cap::DEFAULT_CALL_USD.min(daily_cap_usd))?;
+    let cap = cap_for(&home, &member.slug, daily_cap_usd, None)?;
     let session = Session::open(&home, &member.slug, cap)?;
     println!("{}", text::spend(session.spent_today()?, cap.daily_usd()));
     Ok(())
@@ -1127,19 +1170,15 @@ fn spend(member_dir: PathBuf, daily_cap_usd: f64) -> Result<()> {
 struct BuildArgs {
     corpus: String,
     model: String,
-    daily_cap_usd: f64,
-    call_cap_usd: f64,
+    daily_cap_usd: Option<f64>,
+    call_cap_usd: Option<f64>,
 }
 fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
-    use persona_builder_agent::{
-        claude,
-        ledger::{Cap, Session},
-        text as spend_text,
-    };
+    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
     use persona_builder_build::{build, interview, report, run, text};
     let (member, home) = member_and_home(&member_dir)?;
     let prepared = run::prepare(&member, &member_dir, &home, &args.corpus)?;
-    let cap = Cap::new(args.daily_cap_usd, args.call_cap_usd)?;
+    let cap = cap_for(&home, &member.slug, args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
@@ -1192,16 +1231,12 @@ struct DraftArgs {
     corpus: String,
     labels: Option<String>,
     model: String,
-    daily_cap_usd: f64,
-    call_cap_usd: f64,
+    daily_cap_usd: Option<f64>,
+    call_cap_usd: Option<f64>,
     replace: bool,
 }
 fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
-    use persona_builder_agent::{
-        claude,
-        ledger::{Cap, Session},
-        text as spend_text,
-    };
+    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
     use persona_builder_build::{interview, report, text};
     use persona_builder_ingest::{
         corpus::read_records,
@@ -1246,7 +1281,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     {
         return Err(Error::Invalid(text::ALREADY_DRAFTED.into()));
     }
-    let cap = Cap::new(args.daily_cap_usd, args.call_cap_usd)?;
+    let cap = cap_for(&home, &member.slug, args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
@@ -1326,14 +1361,10 @@ fn interview_answer(
 fn refresh_propose(
     member_dir: PathBuf,
     model: String,
-    daily_cap_usd: f64,
-    call_cap_usd: f64,
+    daily_cap_usd: Option<f64>,
+    call_cap_usd: Option<f64>,
 ) -> Result<()> {
-    use persona_builder_agent::{
-        claude,
-        ledger::{Cap, Session},
-        text as spend_text,
-    };
+    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
     use persona_builder_grow::{
         refresh::{self, Proposed},
         store::{Store, utc_now},
@@ -1342,7 +1373,7 @@ fn refresh_propose(
     use persona_builder_ingest::filters::Filters;
     let (member, home) = member_and_home(&member_dir)?;
     let filters = Filters::compile(&member.filters)?;
-    let cap = Cap::new(daily_cap_usd, call_cap_usd)?;
+    let cap = cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
@@ -1375,15 +1406,11 @@ fn refresh_propose(
 fn refresh_apply(
     member_dir: PathBuf,
     model: String,
-    daily_cap_usd: f64,
-    call_cap_usd: f64,
+    daily_cap_usd: Option<f64>,
+    call_cap_usd: Option<f64>,
     id: String,
 ) -> Result<()> {
-    use persona_builder_agent::{
-        claude,
-        ledger::{Cap, Session},
-        text as spend_text,
-    };
+    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
     use persona_builder_build::report;
     use persona_builder_grow::{
         apply::{self, Measured},
@@ -1394,7 +1421,7 @@ fn refresh_apply(
     use persona_builder_ingest::filters::Filters;
     let (member, home) = member_and_home(&member_dir)?;
     let filters = Filters::compile(&member.filters)?;
-    let cap = Cap::new(daily_cap_usd, call_cap_usd)?;
+    let cap = cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
@@ -2053,6 +2080,14 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             },
         ),
         Some(Command::Report { member_dir }) => report(member_dir),
+        Some(Command::Limit { command }) => match command {
+            LimitCommand::Show { member_dir } => limit_show(member_dir),
+            LimitCommand::Set {
+                member_dir,
+                daily_usd,
+                step_usd,
+            } => limit_set(member_dir, daily_usd, step_usd),
+        },
         Some(Command::Spend {
             member_dir,
             daily_cap_usd,

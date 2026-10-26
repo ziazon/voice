@@ -5,6 +5,7 @@ import type { RefreshApplied } from '../types/generated/RefreshApplied'
 import type { ClaudeCodeStatus } from '../types/generated/ClaudeCodeStatus'
 import type { ClaudeAiFiles } from '../types/generated/ClaudeAiFiles'
 import type { ForgetPreview } from '../types/generated/ForgetPreview'
+import type { SpendingLimit } from '../types/generated/SpendingLimit'
 import type { Spend } from '../types/generated/Spend'
 import type { BuildProgress } from '../types/generated/BuildProgress'
 import type { BuildDone } from '../types/generated/BuildDone'
@@ -46,6 +47,8 @@ export const tauriBackend: Backend = {
   },
   stopBuild: request => invoke<void>('stop_build', { request }),
   spendToday: request => invoke<Spend>('spend_today', { request }),
+  spendingLimit: request => invoke<SpendingLimit>('spending_limit', { request }),
+  setSpendingLimit: request => invoke<SpendingLimit>('set_spending_limit', { request }),
   interviewStatus: request => invoke<InterviewStatus>('interview_status', { request }),
   draftInterview: request => invoke<InterviewStatus>('draft_interview', { request }),
   saveInterviewAnswers: request => invoke<InterviewStatus>('save_interview_answers', { request }),

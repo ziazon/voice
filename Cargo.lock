@@ -2762,6 +2762,7 @@ dependencies = [
  "libc",
  "persona-builder",
  "persona-builder-ingest",
+ "serde",
  "serde_json",
 ]
 

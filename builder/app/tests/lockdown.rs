@@ -78,6 +78,8 @@ fn lockdown_1_command_lists_agree_in_order() {
             "build_assistant",
             "stop_build",
             "spend_today",
+            "spending_limit",
+            "set_spending_limit",
             "interview_status",
             "draft_interview",
             "save_interview_answers",

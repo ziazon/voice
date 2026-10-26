@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-spending-limit"
+description = "Enables the spending_limit command without any pre-configured scope."
+commands.allow = ["spending_limit"]
+
+[[permission]]
+identifier = "deny-spending-limit"
+description = "Denies the spending_limit command without any pre-configured scope."
+commands.deny = ["spending_limit"]

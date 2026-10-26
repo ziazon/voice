@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useBackend } from '../backend'
 import { failureMessage } from '../failure'
+import type { Assistant } from '../types/generated/Assistant'
+import type { SpendingLimit } from '../types/generated/SpendingLimit'
 import type { ClaudeStatus } from '../types/generated/ClaudeStatus'
 
+const props = defineProps<{ assistant: Assistant }>()
 const emit = defineEmits<{ next: [] }>()
 const backend = useBackend()
 const status = ref<ClaudeStatus>()
@@ -23,7 +26,60 @@ async function check() {
     loading.value = false
   }
 }
+const limit = ref<SpendingLimit>()
+const day = ref('')
+const step = ref('')
+const loadingLimit = ref(true)
+const savingLimit = ref(false)
+const limitError = ref('')
+const savedMessage = ref('')
+const limitSaveFailure = "Persona Builder couldn't save the limit. Check there's space on this computer, then try again."
+const limitLoadFailure = "Persona Builder couldn't read the limit. Close it and open it again."
+const unchangedLimit = computed(() => limit.value !== undefined
+  && day.value === limit.value.dailyUsd.toFixed(2)
+  && step.value === limit.value.callUsd.toFixed(2))
+
+function showLimit(answer: SpendingLimit) {
+  limit.value = answer
+  day.value = answer.dailyUsd.toFixed(2)
+  step.value = answer.callUsd.toFixed(2)
+}
+async function loadLimit() {
+  try {
+    showLimit(await backend.spendingLimit({ slug: props.assistant.slug }))
+  } catch (failure) {
+    limitError.value = failureMessage(failure, limitLoadFailure)
+  } finally {
+    loadingLimit.value = false
+  }
+}
+function dollars(value: string): number | undefined {
+  const amount = value.trim().replace(/^\$/, '')
+  return /^\d+(\.\d{1,2})?$/.test(amount) ? Number(amount) : undefined
+}
+async function saveLimit() {
+  if (loadingLimit.value || savingLimit.value || unchangedLimit.value) return
+  limitError.value = ''
+  savedMessage.value = ''
+  const dailyUsd = dollars(day.value)
+  const callUsd = dollars(step.value)
+  if (dailyUsd === undefined || callUsd === undefined) {
+    limitError.value = 'Enter an amount in dollars, like 50.00.'
+    return
+  }
+  savingLimit.value = true
+  try {
+    const answer = await backend.setSpendingLimit({ slug: props.assistant.slug, dailyUsd, callUsd })
+    showLimit(answer)
+    savedMessage.value = `Saved. Persona Builder stops for the day at about $${answer.dailyUsd.toFixed(2)}, and one step may use at most $${answer.callUsd.toFixed(2)}.`
+  } catch (failure) {
+    limitError.value = failureMessage(failure, limitSaveFailure)
+  } finally {
+    savingLimit.value = false
+  }
+}
 onMounted(check)
+onMounted(loadLimit)
 </script>
 
 <template>
@@ -37,6 +93,34 @@ onMounted(check)
         <p v-if="status.ready && status.note" class="text-secondary">{{ status.note }}</p>
         <button v-if="status.ready" type="button" class="btn btn-primary" @click="emit('next')">Next: your history</button>
         <button v-if="!status.ready" type="button" class="btn btn-primary" @click="check">Check again</button>
+      </template>
+    </div>
+  </section>
+  <section class="card mt-3">
+    <div class="card-body p-5">
+      <h2 class="mb-3">How much it may use</h2>
+      <p>The amounts are Claude Code's own estimates.</p>
+      <div v-if="limitError" class="alert alert-danger" role="alert">{{ limitError }}</div>
+      <template v-if="limit">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="limit-day" class="form-label">Stop for the day at about</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input id="limit-day" v-model="day" class="form-control" inputmode="decimal" :disabled="loadingLimit || savingLimit" />
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label for="limit-step" class="form-label">Most one step may use</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input id="limit-step" v-model="step" class="form-control" inputmode="decimal" :disabled="loadingLimit || savingLimit" />
+            </div>
+          </div>
+        </div>
+        <p class="mt-3">If the build reaches the limit, it carries on tomorrow. Persona Builder checks the limit before every step, so it stops before it goes over.</p>
+        <button type="button" class="btn btn-primary" :disabled="loadingLimit || savingLimit || unchangedLimit" @click="saveLimit">Save the limit</button>
+        <p v-if="savedMessage" class="mt-3 mb-0" role="status">{{ savedMessage }}</p>
       </template>
     </div>
   </section>

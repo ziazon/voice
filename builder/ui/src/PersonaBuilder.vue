@@ -110,7 +110,7 @@ function home() {
             </template>
             <NewAssistant v-else-if="view === 'new'" @made="made" @cancel="home" />
             <Consent v-else-if="view === 'consent' && assistant" :key="assistant.slug" :assistant="assistant" @agreed="agreed" @next="goToStep('connect')" />
-            <ConnectClaude v-else-if="view === 'connect'" @next="goToStep('sources')" />
+            <ConnectClaude v-else-if="view === 'connect' && assistant" :key="assistant.slug" :assistant="assistant" @next="goToStep('sources')" />
             <Sources v-else-if="view === 'sources' && assistant" :key="assistant.slug" :assistant="assistant" @next="goToStep('build')" />
             <Report v-else-if="view === 'report' && assistant" :assistant="assistant" @build="goToStep('build')" @next="goToStep('review')" />
             <template v-else-if="view === 'save' && assistant">

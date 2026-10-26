@@ -38,6 +38,8 @@
     "allow-build-assistant",
     "allow-stop-build",
     "allow-spend-today",
+    "allow-spending-limit",
+    "allow-set-spending-limit",
     "allow-interview-status",
     "allow-draft-interview",
     "allow-save-interview-answers",

@@ -21,6 +21,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+pub const LIMIT: &str = "limit.json";
+
 const LEDGER: &str = "runs.jsonl";
 const WORK_FOLDER: &str = "agent";
 /// The largest cap Persona Builder accepts, in estimated US dollars a day.
@@ -30,6 +32,13 @@ static NEXT_CALL: AtomicU64 = AtomicU64::new(0);
 /// The daily cap and each call's budget, in US dollars as Claude Code estimates them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cap {
+    daily_usd: f64,
+    call_usd: f64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Saved {
     daily_usd: f64,
     call_usd: f64,
 }
@@ -54,6 +63,26 @@ impl Cap {
             daily_usd,
             call_usd,
         })
+    }
+    /// Read a saved limit without creating any state. Damaged values stop spending.
+    pub fn load(home: &Path, slug: &str) -> Result<Cap> {
+        let path = home.join(".claude/state").join(slug).join(LIMIT);
+        let damaged = || Error::Invalid(text::limit_damaged(&path));
+        let Some(bytes) = read_private_optional(home, slug, LIMIT)? else {
+            return Ok(Cap::default());
+        };
+        let saved: Saved = serde_json::from_slice(&bytes).map_err(|_| damaged())?;
+        Cap::new(saved.daily_usd, saved.call_usd).map_err(|_| damaged())
+    }
+    /// Atomically save the limit as 0600. The caller must hold the state lock.
+    pub fn save(&self, home: &Path, slug: &str) -> Result<()> {
+        let saved = Saved {
+            daily_usd: self.daily_usd,
+            call_usd: self.call_usd,
+        };
+        let bytes = serde_json::to_vec(&saved).expect("a validated cap is finite");
+        write_private(home, slug, LIMIT, &bytes)?;
+        Ok(())
     }
     pub fn daily_usd(&self) -> f64 {
         self.daily_usd

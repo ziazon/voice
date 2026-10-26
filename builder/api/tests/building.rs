@@ -926,3 +926,131 @@ fn long_history_without_thin_kinds_spends_nothing() {
             .is_empty()
     );
 }
+
+const LIMIT_DAMAGED: &str = "Persona Builder can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
+const LIMIT_BAD: &str = "The daily limit must be more than $0 and at most $1,000. The most one step may use must be more than $0 and no more than the daily limit.";
+fn limit_request(daily_usd: f64, call_usd: f64) -> SpendingLimitRequest {
+    SpendingLimitRequest {
+        slug: "wren".into(),
+        daily_usd,
+        call_usd,
+    }
+}
+#[test]
+fn spending_limit_defaults_and_saved_values_reach_todays_spend() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    let before: Vec<_> = fs::read_dir(h.state(""))
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(
+        spending_limit_in(&h.path, slug()).unwrap(),
+        SpendingLimit {
+            daily_usd: 50.0,
+            call_usd: 5.0
+        }
+    );
+    assert_eq!(
+        fs::read_dir(h.state(""))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect::<Vec<_>>(),
+        before
+    );
+    let saved = set_spending_limit_in(&h.path, limit_request(20.0, 2.5)).unwrap();
+    assert_eq!(
+        saved,
+        SpendingLimit {
+            daily_usd: 20.0,
+            call_usd: 2.5
+        }
+    );
+    assert_eq!(spending_limit_in(&h.path, slug()).unwrap(), saved);
+    assert_eq!(spend_today_in(&h.path, slug()).unwrap().daily_cap_usd, 20.0);
+}
+#[test]
+fn a_build_enforces_the_saved_daily_limit() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s);
+    set_spending_limit_in(&h.path, limit_request(1.0, 1.0)).unwrap();
+    h.write(
+        "runs.jsonl",
+        format!(
+            "{}\n",
+            json!({"day":local_day(SystemTime::now()),"cost_usd":0.5})
+        )
+        .as_bytes(),
+    );
+    let before = h.snapshots();
+    safe(
+        &h,
+        h.build(&Builds::new(), &mut |_| {}),
+        "Today's spending limit for this assistant is reached: about $0.50 of $1.00, as Claude Code estimates it. Build again tomorrow to carry on.",
+    );
+    assert_eq!(h.calls(), 0);
+    assert_eq!(h.snapshots(), before);
+}
+#[test]
+fn invalid_spending_limits_write_nothing_even_while_busy() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    let _session = persona_builder_agent::ledger::Session::open(
+        &h.path,
+        "wren",
+        persona_builder_agent::ledger::Cap::default(),
+    )
+    .unwrap();
+    for (day, call) in [(0.0, 0.0), (2000.0, 5.0), (10.0, 20.0), (f64::NAN, 5.0)] {
+        safe(
+            &h,
+            set_spending_limit_in(&h.path, limit_request(day, call)),
+            LIMIT_BAD,
+        );
+        assert!(!h.state("limit.json").exists());
+    }
+}
+#[test]
+fn a_running_session_prevents_changing_the_limit() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    set_spending_limit_in(&h.path, limit_request(20.0, 2.5)).unwrap();
+    let before = fs::read(h.state("limit.json")).unwrap();
+    let _session = persona_builder_agent::ledger::Session::open(
+        &h.path,
+        "wren",
+        persona_builder_agent::ledger::Cap::default(),
+    )
+    .unwrap();
+    safe(
+        &h,
+        set_spending_limit_in(&h.path, limit_request(30.0, 3.0)),
+        BUSY,
+    );
+    assert_eq!(fs::read(h.state("limit.json")).unwrap(), before);
+    assert_eq!(
+        spending_limit_in(&h.path, slug()).unwrap().daily_usd,
+        20.0,
+        "reading takes no lock"
+    );
+}
+#[test]
+fn spending_limits_require_permission_and_damaged_limits_can_be_repaired() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(false);
+    safe(&h, spending_limit_in(&h.path, slug()), PERMISSION);
+    safe(
+        &h,
+        set_spending_limit_in(&h.path, limit_request(20.0, 2.5)),
+        PERMISSION,
+    );
+    assert!(!h.state("limit.json").exists());
+    agree_consent_in(&h.path, slug()).unwrap();
+    h.write("limit.json", b"not json");
+    safe(&h, spending_limit_in(&h.path, slug()), LIMIT_DAMAGED);
+    safe(&h, spend_today_in(&h.path, slug()), LIMIT_DAMAGED);
+    set_spending_limit_in(&h.path, limit_request(20.0, 2.5)).unwrap();
+    assert_eq!(spending_limit_in(&h.path, slug()).unwrap().daily_usd, 20.0);
+}
