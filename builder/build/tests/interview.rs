@@ -644,13 +644,6 @@ fn short_form_counts_covers_each_kind_and_keeps_its_own_round() {
         interview::schema(8)["properties"]["questions"]["items"]["properties"]["n"]["maximum"],
         8
     );
-    let prompt = interview::prompt(Form::Short, &book(&member()).unwrap(), &kinds);
-    assert!(
-        prompt.contains("Exactly 4 questions on each kind"),
-        "{prompt}"
-    );
-    assert!(prompt.contains("fewest examples"), "{prompt}");
-    assert!(!prompt.contains("tooling"));
     let mut draft = good_draft();
     draft["questions"].as_array_mut().unwrap().truncate(8);
     for q in draft["questions"].as_array_mut().unwrap() {
@@ -717,4 +710,19 @@ fn short_draft_retries_a_missing_kind_with_the_short_count_and_ledger_step() {
             .lines()
             .all(|line| serde_json::from_str::<Value>(line).unwrap()["step"] == "interview-short")
     );
+}
+
+#[test]
+fn short_prompt_uses_per_thin_questions_on_each_kind() {
+    let kinds = vec![("scope".into(), Some(0)), ("methods".into(), Some(3))];
+    let prompt = interview::prompt(interview::Form::Short, &book(&member()).unwrap(), &kinds);
+    assert!(
+        prompt.contains(&format!(
+            "Exactly {} questions on each kind",
+            interview::PER_THIN
+        )),
+        "{prompt}"
+    );
+    assert!(prompt.contains("fewest examples"), "{prompt}");
+    assert!(!prompt.contains("tooling"));
 }

@@ -471,3 +471,36 @@ fn long_history_answers_use_the_short_round_without_replacing_full_answers() {
         full.as_bytes()
     );
 }
+
+#[test]
+fn answer_uses_the_short_form_from_a_custom_corpus() {
+    let f = Fixture::new();
+    f.write_state("other.jsonl", &corpus(150));
+    assert!(!f.state().join("decisions.jsonl").exists());
+    f.write_state("interview-short-questions.json", &short_draft().to_string());
+    f.write_state(
+        "interview-short-answers.json",
+        r#"{"answered":"2026-10-24","answers":{"1":{"pick":"A"}}}"#,
+    );
+    let out = f.run(&[
+        "interview",
+        "answer",
+        &f.member(),
+        "--corpus",
+        "other.jsonl",
+        "--answers",
+        "interview-short-answers.json",
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let kept: Value = serde_json::from_str(
+        fs::read_to_string(f.state().join("decisions-interview-short.jsonl"))
+            .unwrap()
+            .trim(),
+    )
+    .unwrap();
+    assert_eq!(kept["id"], "question:interview-short-01");
+    assert_eq!(kept["project"], "interview");
+    assert_eq!(kept["split"], "train");
+    assert!(!f.state().join("decisions-interview.jsonl").exists());
+    assert_eq!(f.calls(), 0);
+}

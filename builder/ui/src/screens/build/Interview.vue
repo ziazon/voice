@@ -99,7 +99,8 @@ function pick(n: number, letter: string, multi: boolean, checked: boolean) {
       <template v-if="status">
         <p v-if="status.answered >= status.thinBelow && !status.thinKinds.length && !status.questions.length">Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions, enough to build from.</p>
         <template v-else>
-          <p v-if="status.answered >= status.thinBelow">Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions, enough to build from, but a few kinds of decision have fewer than five examples so far: {{ status.thinKinds.join(', ') }}. A few questions on each fills them out.</p>
+          <p v-if="status.answered >= status.thinBelow && !status.thinKinds.length">Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions, enough to build from. These questions are on kinds of decision that had few examples.</p>
+          <p v-else-if="status.answered >= status.thinBelow">Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions, enough to build from, but a few kinds of decision have fewer than five examples so far: {{ status.thinKinds.join(', ') }}. A few questions on each fills them out.</p>
           <p v-else>Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions. About {{ status.thinBelow.toLocaleString() }} helps your assistant know you well. Answering twenty questions fills it out.</p>
           <ReadProgress v-if="drafting" :progress="null" label="Drafting" />
           <template v-if="!status.questions.length">

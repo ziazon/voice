@@ -22,6 +22,14 @@ it('names thin kinds in enough history and drafts a short interview', async () =
   expect(wrapper.findAll('fieldset')).toHaveLength(4)
   expect(wrapper.text()).toContain('Questions 1–4 of 8')
 })
+it('explains waiting short questions when no kinds are thin anymore', async () => {
+  const wrapper = screen(Interview, fakeBackend({ interviewStatus: vi.fn().mockResolvedValue({ ...status, answered: 150, questions: questions.slice(0, 4) }) }), { slug: 'example' })
+  await flushPromises()
+  expect(wrapper.findAll('p')[0]!.text()).toBe("Your history holds 150 answers to Claude's questions, enough to build from. These questions are on kinds of decision that had few examples.")
+  expect(wrapper.findAll('fieldset')).toHaveLength(4)
+  expect(button(wrapper, 'Keep my answers').exists()).toBe(true)
+  expect(button(wrapper, 'Draft different questions').exists()).toBe(true)
+})
 it('drafts thin history with progress and disables the card', async () => {
   const draft = deferred<typeof status>()
   const backend = fakeBackend({ draftInterview: vi.fn().mockReturnValue(draft.promise) })

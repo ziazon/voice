@@ -231,17 +231,18 @@ pub fn prompt(form: Form, book: &Book, weights: &[(String, Option<usize>)]) -> S
     let (listed, spread) = if form == Form::Short {
         (
             " (the kinds of decision their history holds the fewest examples of)",
-            "Exactly 4 questions on each kind of decision listed above.",
+            format!("Exactly {PER_THIN} questions on each kind of decision listed above."),
         )
     } else if counted {
         (
             " (with how many past decisions of each their history holds, the thinnest first)",
-            "Put at least one question on each kind of decision, and give the rest to the kinds listed first, which their history holds least of.",
+            "Put at least one question on each kind of decision, and give the rest to the kinds listed first, which their history holds least of.".to_owned(),
         )
     } else {
         (
             "",
-            "Put at least one question on each kind of decision, and spread the rest evenly.",
+            "Put at least one question on each kind of decision, and spread the rest evenly."
+                .to_owned(),
         )
     };
     format!(

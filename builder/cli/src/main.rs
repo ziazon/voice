@@ -363,6 +363,8 @@ enum InterviewCommand {
     /// Keep your answers to the interview as training for your assistant.
     Answer {
         member_dir: PathBuf,
+        #[arg(long, default_value = "decisions.jsonl")]
+        corpus: String,
         /// Your answers: a file in your assistant's private folder.
         #[arg(long)]
         answers: String,
@@ -1283,6 +1285,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
 }
 fn interview_answer(
     member_dir: PathBuf,
+    corpus: String,
     answers: String,
     questions: Option<String>,
     replace: bool,
@@ -1295,8 +1298,8 @@ fn interview_answer(
     };
     use persona_builder_steps::input::read_object;
     let (member, home) = member_and_home(&member_dir)?;
-    let records = match read_private_optional(&home, &member.slug, "decisions.jsonl")? {
-        Some(bytes) => persona_builder_ingest::corpus::read_records("decisions.jsonl", &bytes)?,
+    let records = match read_private_optional(&home, &member.slug, &corpus)? {
+        Some(bytes) => persona_builder_ingest::corpus::read_records(&corpus, &bytes)?,
         None => Vec::new(),
     };
     let form = interview::Form::for_answered(interview::answered(&records));
@@ -1991,10 +1994,11 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             ),
             InterviewCommand::Answer {
                 member_dir,
+                corpus,
                 answers,
                 questions,
                 replace,
-            } => interview_answer(member_dir, answers, questions, replace),
+            } => interview_answer(member_dir, corpus, answers, questions, replace),
         },
         Some(Command::Refresh { command }) => match command {
             RefreshCommand::Propose {
