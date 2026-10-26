@@ -60,7 +60,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   interview writers (`save_interview_answers`, `keep_interview_answers`) now take `locked()`, which
   checks permission again once the lock is held and refuses a state folder Forget removed. That
   glue (four lines) was written by Claude in the conflict resolution. Final commits: the brief
-  `354a20e`, the slice `e5e3d47`, the fixes `53b7aaa` and `3b79964` (`9613f48` before this rebase).
+  `354a20e`, the slice `e5e3d47`, the fixes `53b7aaa` and `3b79964` (`6c1a0e6` and `9613f48` before this rebase).
+  A repeat pass (Opus) on this rebase: pass, the only code differences the four lines above.
 - **Not verified:** the screens in the running app, light and dark (owed walk); a real Claude Code
   build and stop (the tests use a stub `claude`); closing the app mid-build (the process ends; the
   call already sent is counted at its budget, as before).
