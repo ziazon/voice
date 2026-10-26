@@ -21,7 +21,7 @@ reuse the existing `PERMISSION` constant.
 The app commands that run Claude Code check permission (`readable`), check Claude Code
 (`claude.check(home)`, which runs `claude --version`), then call `building::open`, which calls
 `Session::open`. `Session::open` takes `lock_state`, which **creates** `~/.claude/state/<slug>/`
-when it is missing, and then makes its `work/` folder. Forget (`use_it::forget_in`) deletes the
+when it is missing, and then makes its work folder (`agent/`, the `WORK_FOLDER` constant). Forget (`use_it::forget_in`) deletes the
 whole state folder, permission included. A forget landing between the first check and the open
 leaves a new, empty state folder behind: no data is written and no call is made (the permission
 re-check after the open refuses), but a forget's "deleted" must stay deleted.
@@ -44,7 +44,7 @@ and `draft_interview_in`; PB7.5 (not on `main` yet) makes it `pub(crate)` and us
    with `lock_existing_state` from `open_existing` (clock `Box::new(SystemTime::now)`). Import
    `lock_existing_state` beside `lock_state`. `open` and `open_with_clock` keep their behaviour:
    the CLI and every existing caller are unchanged. Do not add an `open_existing_with_clock`.
-   The `work/` folder is still made with `private_folder` after the lock, inside the folder the
+   The work folder (`agent/`) is still made with `private_folder` after the lock, inside the folder the
    lock now proves exists.
 2. **The app's one opener uses it.** In `builder/api/src/building.rs`, `fn open` calls
    `Session::open_existing(home, slug, Cap::default())` and maps the errors:
@@ -83,7 +83,7 @@ before changing `ledger.rs` or `building.rs`.
    `home/.claude/state/wren` still does not exist; then `Session::open(...)` for `wren` succeeds
    and, while it is held, `open_existing` for `wren` is refused with the busy sentence
    ("already working on this assistant"); after dropping it, `open_existing` succeeds and
-   `home/.claude/state/wren/work` exists. Match the file's existing style (`common::*`).
+   `home/.claude/state/wren/agent` exists. Match the file's existing style (`common::*`).
 
 Then make them green with decisions 1 and 2. Then, for each claim separately, a mutation check
 (back the file up with `cp`, mutate, run only that test, see red, restore with `cp`, confirm with
@@ -112,3 +112,65 @@ Report each mutation and the failing assertion you saw.
   with a short body saying why. No AI attribution line.
 - Report: the files changed, the red you saw for each new test (the assertion text), the three
   mutation results, and the final exit codes.
+
+## Fix-up pass (after the security review and the Verifier)
+
+Both reviews found the same gap. `lock_state_folder` (`builder/ingest/src/private.rs`) opens the
+state folder, then `flock`s it in a second step. A Forget that locks, deletes and unlocks between
+those two steps leaves this lock on a deleted folder; everything after it walks the path again,
+so `Session::open_at`'s `private_folder(.., WORK_FOLDER)` recreates `~/.claude/state/<slug>/agent/`
+(empty: the permission re-check then refuses). PB7.3a's history writers have the same split. The
+lock must guard the folder that is at the path, not just the one that was opened.
+
+Decisions (made, do not reopen):
+
+1. **Check the locked folder is still the one at the path.** In `lock_state_folder`, after the
+   `flock` succeeds, open the path again with `state_directory(home, slug, false)` and compare the
+   two descriptors' device and inode (`File::metadata` on a `try_clone`, then
+   `std::os::unix::fs::MetadataExt::{dev, ino}`). Drop the second descriptor straight after.
+   - Missing now (the reopen is `NotFound`), or a different folder: with `create == false`, return
+     `Err(io(&path, std::io::Error::from(std::io::ErrorKind::NotFound)))`, the same error a missing
+     folder gives today, so every caller's existing NotFound arm (the permission sentence) applies.
+   - With `create == true` (`lock_state`: Forget and the CLI), return `Err(Error::Invalid(BUSY.into()))`:
+     another command changed the folder under it, so "already working on this assistant, try
+     again" is the honest answer. Do not retry.
+   - Any other error from the reopen or `metadata` is returned as it is.
+   Comment it in one line: the lock must hold the folder at the path, not one a forget removed
+   between the open and the lock.
+2. **A test seam, not a test-only build.** Split `lock_state_folder` into
+   `fn lock_state_folder(home, slug, create)` calling a private
+   `fn lock_state_folder_after(home: &Path, slug: &str, create: bool, between: &mut dyn FnMut())`
+   that runs `between()` after opening the folder and before `flock` (the same pattern as
+   `history::locked_after`). Nothing outside this file calls the seam.
+3. No other change to `lock_state`, `lock_existing_state` or their callers.
+
+Tests, red first (in the existing `#[cfg(test)] mod tests` of `private.rs`, each on its own
+scratch home under `std::env::temp_dir()` with a unique name, removed at the end; make the state
+folder with `lock_state` once and drop that lock first):
+- `existing_lock_refuses_a_folder_forgotten_before_the_lock`: `between` runs
+  `fs::remove_dir_all(<home>/.claude/state/wren)`; `lock_state_folder_after(.., false, ..)` is an
+  `Error::Io` with source kind NotFound, and the state folder still does not exist.
+- `existing_lock_refuses_a_folder_replaced_before_the_lock`: `between` removes the folder and
+  makes a new empty one (`fs::create_dir` then mode 0700); the result is `Error::Io` NotFound and
+  the new folder still exists and is empty.
+- `creating_lock_refuses_a_folder_replaced_before_the_lock`: the same replacement with
+  `create == true`; the result is `Error::Invalid` whose text equals `BUSY`.
+- `lock_with_nothing_between_still_locks`: `between` does nothing, both modes return `Ok`, and a
+  second `lock_existing_state` while the first is held is `BUSY`.
+Before the fix the first three must fail on their assertions (today the lock succeeds). Then make
+them green. Mutation checks (cp backup, `cmp -s` restore, never `git checkout --`): the identity
+comparison removed (always equal) → the three refusal tests red; the `create == true` branch
+returning NotFound instead of BUSY → the creating test red. Report each.
+
+Records: in `.ai/SECURITY.md`, the row "Reading history without permission": after "take it only on
+a state folder that already exists (so a forget's delete is never undone)" add ", and check after
+locking that the folder they locked is still the one at its path". Add
+`builder/ingest/src/private.rs` (tests) to that row's test list.
+
+Commit separately on top (never amend):
+`builder: PB7.5a the state lock checks it holds the folder at the path`, message in a file.
+If your sandbox refuses the commit, leave the change uncommitted and say so. Run from `builder/`:
+`cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo test -p persona-builder-ingest`, `cargo test -p persona-builder-agent`,
+`cargo test -p persona-builder-api` (the api's wire tests may not bind sockets in your sandbox:
+say so, Claude runs the full gate).
