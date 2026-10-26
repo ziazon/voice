@@ -49,16 +49,18 @@ impl Cap {
     pub const DEFAULT_DAILY_USD: f64 = 50.0;
     pub const DEFAULT_CALL_USD: f64 = 5.0;
 
-    /// Both finite, and 0.01 <= `call_usd` <= `daily_usd` <= 1000: Claude Code gets each budget in cents.
+    /// Both finite whole cents, and 0.01 <= `call_usd` <= `daily_usd` <= 1000: Claude Code gets each budget in cents.
     pub fn new(daily_usd: f64, call_usd: f64) -> Result<Cap> {
         if !(daily_usd.is_finite()
             && call_usd.is_finite()
             && call_usd >= LEAST_USD
             && call_usd <= daily_usd
-            && daily_usd <= MOST_USD)
+            && daily_usd <= MOST_USD
+            && ((daily_usd * 100.0).round() - daily_usd * 100.0).abs() <= 1e-6
+            && ((call_usd * 100.0).round() - call_usd * 100.0).abs() <= 1e-6)
         {
             return Err(Error::Invalid(format!(
-                "the daily limit must be at least $0.01 and at most ${MOST_USD:.0}, and each step's limit at least $0.01 and no more than the daily limit"
+                "the daily limit must be at least $0.01 and at most ${MOST_USD:.0}, and each step's limit at least $0.01 and no more than the daily limit, both in whole cents"
             )));
         }
         Ok(Cap {

@@ -53,3 +53,5 @@ pub fn limit(cap: crate::ledger::Cap) -> String {
         cap.call_usd()
     )
 }
+
+pub const NO_STATE_FOR_LIMIT: &str = "This assistant has no private folder yet, so there's nowhere to keep its limit. Run `persona-builder consent agree` first.";

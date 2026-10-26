@@ -160,3 +160,38 @@ with `cp` from a backup (never `git checkout`), and say which test caught it:
 1. `building::open` using `Cap::default()` again;
 2. `set_spending_limit` skipping the consent re-check under the lock;
 3. `Cap::load` accepting a file `Cap::new` would refuse.
+
+## Second pass: the Verifier's fix-ups (2026-10-26)
+
+The branch now has two commits; read `git diff origin/main...HEAD` first. The step minimum is
+already $0.01 (`LEAST_USD` in `ledger.rs`). Make these four changes, each test-first (see the test
+fail on today's code, then pass), and nothing else. Do not commit.
+
+1. **Whole cents.** `Cap::new` also refuses either value that is not a whole number of cents
+   (`((x * 100.0).round() - x * 100.0).abs() > 1e-6`), so the budget Claude Code gets
+   (`format!("{budget:.2}")`) is exactly what the ledger reserves. Its message ends
+   `…no more than the daily limit, both in whole cents`. `LIMIT_BAD` (api) gains a last sentence
+   `Both are in whole cents, like 2.50.`; update every test that pins either sentence
+   (`builder/api/tests/building.rs`, `builder/cli/tests/agent.rs`). Tests: in `cap.rs`
+   `caps_must_be_sensible`, refuse (10.0, 0.025) and (20.555, 1.0), accept (0.07, 0.07) and (999.99, 0.01).
+2. **`limit set` with no state folder says so in words.** In `limit_set` (`builder/cli/src/main.rs`),
+   map `lock_existing_state`'s `Error::Io` with `NotFound` to
+   `Error::Invalid("This assistant has no private folder yet, so there's nowhere to keep its limit. Run `persona-builder consent agree` first.")`
+   (put the sentence in `builder/agent/src/text.rs` as `pub const NO_STATE_FOR_LIMIT`), as `forget`
+   matches NotFound. Extend `limit_set_needs_existing_state_and_refuses_a_running_session` to assert
+   the sentence is in stderr and no path or "os error" is.
+3. **An explicit `--call-cap-usd` above the day is still refused.** Add a CLI test: with nothing
+   saved, run whichever spending command reaches `cap_for` before anything else can fail in the
+   fixture (read the code: `refresh propose` or `interview draft`, not `build` if `run::prepare`
+   fails first) with `--daily-cap-usd 10 --call-cap-usd 20`: exit 1 and stderr contains
+   `no more than the daily limit`. Also with a saved limit of 20/2.5 and `--daily-cap-usd 1` only:
+   the call cap becomes 1 (`spend` doesn't show the step, so assert through whichever command does,
+   or skip this half if none prints it; say which).
+4. **The screen.** In `ConnectClaude.vue`'s `dollars()`, the amount must match
+   `^\d{1,4}(\.\d{1,2})?$` (so it can never become `Infinity`), and `unchangedLimit` compares the
+   parsed numbers to the loaded ones (so `50` over `50.00` is unchanged; an unparsable field counts
+   as changed, so Save is enabled and shows the amount sentence). Tests in `ConnectClaude.test.ts`:
+   a 310-digit amount shows *Enter an amount in dollars, like 50.00.* and sends nothing; typing `50`
+   and `5` over the loaded values leaves *Save the limit* disabled.
+
+Done means `bash scripts/ci-local.sh` green, and a report listing each test seen red then green.

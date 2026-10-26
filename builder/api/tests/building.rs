@@ -928,7 +928,7 @@ fn long_history_without_thin_kinds_spends_nothing() {
 }
 
 const LIMIT_DAMAGED: &str = "Persona Builder can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
-const LIMIT_BAD: &str = "The daily limit must be at least $0.01 and at most $1,000. The most one step may use must be at least $0.01 and no more than the daily limit.";
+const LIMIT_BAD: &str = "The daily limit must be at least $0.01 and at most $1,000. The most one step may use must be at least $0.01 and no more than the daily limit. Both are in whole cents, like 2.50.";
 fn limit_request(daily_usd: f64, call_usd: f64) -> SpendingLimitRequest {
     SpendingLimitRequest {
         slug: "wren".into(),

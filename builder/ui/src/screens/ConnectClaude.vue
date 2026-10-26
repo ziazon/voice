@@ -36,8 +36,8 @@ const savedMessage = ref('')
 const limitSaveFailure = "Persona Builder couldn't save the limit. Check there's space on this computer, then try again."
 const limitLoadFailure = "Persona Builder couldn't read the limit. Close it and open it again."
 const unchangedLimit = computed(() => limit.value !== undefined
-  && day.value === limit.value.dailyUsd.toFixed(2)
-  && step.value === limit.value.callUsd.toFixed(2))
+  && dollars(day.value) === limit.value.dailyUsd
+  && dollars(step.value) === limit.value.callUsd)
 
 function showLimit(answer: SpendingLimit) {
   limit.value = answer
@@ -55,7 +55,7 @@ async function loadLimit() {
 }
 function dollars(value: string): number | undefined {
   const amount = value.trim().replace(/^\$/, '')
-  return /^\d+(\.\d{1,2})?$/.test(amount) ? Number(amount) : undefined
+  return /^\d{1,4}(\.\d{1,2})?$/.test(amount) ? Number(amount) : undefined
 }
 async function saveLimit() {
   if (loadingLimit.value || savingLimit.value || unchangedLimit.value) return

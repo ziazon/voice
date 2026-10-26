@@ -110,3 +110,23 @@ it('disables save while saving', async () => {
   pending.resolve({ dailyUsd: 20, callUsd: 5 })
   await flushPromises()
 })
+
+it('rejects a 310-digit dollar amount before sending', async () => {
+  const backend = fakeBackend()
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  await wrapper.get('#limit-day').setValue('9'.repeat(310))
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeUndefined()
+  await button(wrapper, 'Save the limit').trigger('click')
+  expect(wrapper.get('.alert-danger').text()).toBe('Enter an amount in dollars, like 50.00.')
+  expect(backend.setSpendingLimit).not.toHaveBeenCalled()
+})
+it('keeps save disabled for unchanged amounts without decimal places', async () => {
+  const backend = fakeBackend()
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  await wrapper.get('#limit-day').setValue('50')
+  await wrapper.get('#limit-step').setValue('5')
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
+  expect(backend.setSpendingLimit).not.toHaveBeenCalled()
+})

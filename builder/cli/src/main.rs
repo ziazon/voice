@@ -1153,7 +1153,14 @@ fn limit_set(member_dir: PathBuf, daily_usd: f64, step_usd: f64) -> Result<()> {
     use persona_builder_agent::{ledger::Cap, text};
     let (member, home) = member_and_home(&member_dir)?;
     let cap = Cap::new(daily_usd, step_usd)?;
-    let _lock = persona_builder_ingest::private::lock_existing_state(&home, &member.slug)?;
+    let _lock = persona_builder_ingest::private::lock_existing_state(&home, &member.slug).map_err(
+        |error| match error {
+            Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                Error::Invalid(text::NO_STATE_FOR_LIMIT.into())
+            }
+            error => error,
+        },
+    )?;
     cap.save(&home, &member.slug)?;
     println!("{}", text::limit(cap));
     Ok(())

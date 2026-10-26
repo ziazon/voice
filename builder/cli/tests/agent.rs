@@ -236,6 +236,7 @@ fn invalid_limit_set_writes_nothing() {
     ]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
     assert!(text(&out.stderr).contains("the daily limit must be at least $0.01"));
+    assert!(text(&out.stderr).contains("no more than the daily limit, both in whole cents"));
     assert!(!f.state().exists());
 }
 
@@ -253,6 +254,10 @@ fn limit_set_needs_existing_state_and_refuses_a_running_session() {
     ];
     let out = f.run(&args);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    let stderr = text(&out.stderr);
+    assert!(stderr.contains("This assistant has no private folder yet, so there's nowhere to keep its limit. Run `persona-builder consent agree` first."), "{stderr}");
+    assert!(!stderr.contains(f.home.to_str().unwrap()), "{stderr}");
+    assert!(!stderr.contains("os error"), "{stderr}");
     assert!(!f.state().exists());
     let held = Session::open(&f.home, "wren", Cap::default()).unwrap();
     let out = f.run(&args);
@@ -260,4 +265,21 @@ fn limit_set_needs_existing_state_and_refuses_a_running_session() {
     assert!(text(&out.stderr).contains("already working on this assistant"));
     assert!(!f.state().join("limit.json").exists());
     drop(held);
+}
+
+#[test]
+fn explicit_call_cap_above_the_day_is_refused() {
+    let f = Fixture::new();
+    let out = f.run(&[
+        "refresh",
+        "propose",
+        f.member.to_str().unwrap(),
+        "--daily-cap-usd",
+        "10",
+        "--call-cap-usd",
+        "20",
+    ]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("no more than the daily limit"));
+    assert!(!f.state().exists());
 }
