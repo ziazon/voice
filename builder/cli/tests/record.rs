@@ -100,22 +100,33 @@ fn records_match_python_bytes_with_and_without_optional_fields() {
         return;
     }
     for (optional, work, question) in [
-        (false, "kit", "Garder le café \"petit\"?"),
-        (true, "kit", "Garder le café \"petit\"?"),
-        (false, "- fix login", "-5 or 5?"),
+        (None, "kit", "Garder le café \"petit\"?"),
+        (
+            Some(("Le café d’abord.", "Oui, merci.")),
+            "kit",
+            "Garder le café \"petit\"?",
+        ),
+        (None, "- fix login", "-5 or 5?"),
+        (Some(("-r x", "-a b")), "- fix login", "-5 or 5?"),
+        (None, "-5", "negative integer"),
+        (None, "-", "single dash"),
+        (None, "--kind", "explicit equals"),
+        (None, "-.5", "negative fraction"),
+        (None, "-5.25", "negative decimal"),
     ] {
         let f = Fixture::new();
         f.seed();
         let mut arguments = args();
         arguments[1] = work;
         arguments[9] = question;
-        if optional {
-            arguments.extend([
-                "--rule",
-                "Le café d’abord.",
-                "--robin-answer",
-                "Oui, merci.",
-            ]);
+        if let Some((rule, answer)) = optional {
+            arguments.extend(["--rule", rule, "--robin-answer", answer]);
+        }
+        if work == "--kind" {
+            arguments.splice(0..2, ["--work=--kind"]);
+            // Exercise several joined tokens before and after separate values.
+            arguments.splice(1..3, ["--kind=decided"]);
+            arguments.extend(["--rule=--rule", "--robin-answer=--work"]);
         }
         let out = f.run(&arguments);
         success(&out);
@@ -148,7 +159,7 @@ fn records_match_python_bytes_with_and_without_optional_fields() {
             rust.replace(timestamp, "TIMESTAMP"),
             python.replace(python_row["timestamp"].as_str().unwrap(), "TIMESTAMP")
         );
-        if !optional {
+        if optional.is_none() && work != "--kind" {
             assert!(row["rule"].is_null());
             assert!(row["robin_answer"].is_null());
         }
@@ -304,4 +315,142 @@ fn refuses_member_state_outside_private_folder() {
     assert_eq!(out.status.code(), Some(1));
     assert!(!f.log().exists());
     assert!(!f.home.join("elsewhere").exists());
+}
+
+#[test]
+fn rule_without_value_before_answer() {
+    let f = Fixture::new();
+    f.seed();
+    let mut arguments = args();
+    arguments.extend(["--rule", "--robin-answer"]);
+    let out = f.run(&arguments);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("error:"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!f.log().exists());
+}
+
+#[test]
+fn pick_without_value_before_rule() {
+    let f = Fixture::new();
+    f.seed();
+    let mut arguments = args();
+    arguments.truncate(11);
+    arguments.push("--rule");
+    let out = f.run(&arguments);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("error:"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!f.log().exists());
+}
+
+#[test]
+fn work_without_value_before_help() {
+    let f = Fixture::new();
+    f.seed();
+    let mut arguments = args();
+    arguments.drain(0..2);
+    arguments.extend(["--work", "--help"]);
+    let out = f.run(&arguments);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("error:"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!f.log().exists());
+}
+
+#[test]
+fn work_without_value_before_separator() {
+    let f = Fixture::new();
+    f.seed();
+    let mut arguments = args();
+    arguments.drain(0..2);
+    arguments.extend(["--work", "--"]);
+    let out = f.run(&arguments);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("error:"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!f.log().exists());
+}
+
+#[test]
+fn work_without_value_before_unknown_short_flag() {
+    let f = Fixture::new();
+    f.seed();
+    let mut arguments = args();
+    arguments.drain(0..2);
+    arguments.extend(["--work", "-x"]);
+    let out = f.run(&arguments);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("error:"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!f.log().exists());
+}
+
+#[test]
+fn record_long_help_without_member() {
+    let f = Fixture::new();
+    let out = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        .env("HOME", &f.home)
+        .args(["record", "--help"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let stdout = text(&out.stdout);
+    for expected in [
+        "Keep one decision the assistant made, or your answer to one it handed back.",
+        "--<assistant>-pick",
+        "--<you>-answer",
+        "--work",
+        "--kind",
+        "--category",
+        "--tier",
+        "--question",
+        "--rule",
+    ] {
+        assert!(stdout.contains(expected), "missing {expected}: {stdout}");
+    }
+    assert!(out.stderr.is_empty(), "{}", text(&out.stderr));
+    assert!(!f.state().exists());
+}
+
+#[test]
+fn record_short_help_without_member() {
+    let f = Fixture::new();
+    let out = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        .env("HOME", &f.home)
+        .args(["record", "-h"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let stdout = text(&out.stdout);
+    for expected in [
+        "Keep one decision the assistant made, or your answer to one it handed back.",
+        "--<assistant>-pick",
+        "--<you>-answer",
+        "--work",
+        "--kind",
+        "--category",
+        "--tier",
+        "--question",
+        "--rule",
+    ] {
+        assert!(stdout.contains(expected), "missing {expected}: {stdout}");
+    }
+    assert!(out.stderr.is_empty(), "{}", text(&out.stderr));
+    assert!(!f.state().exists());
 }

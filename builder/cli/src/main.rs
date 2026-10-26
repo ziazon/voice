@@ -192,6 +192,7 @@ enum Command {
     /// Keep one decision the assistant made, or your answer to one it handed back.
     #[command(disable_help_flag = true)]
     Record {
+        #[arg(allow_hyphen_values = true)]
         member_dir: PathBuf,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,

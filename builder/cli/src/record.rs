@@ -6,36 +6,56 @@ use serde_json::{Map, Value};
 use std::path::PathBuf;
 
 pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
+    if member_dir == std::path::Path::new("--help") || member_dir == std::path::Path::new("-h") {
+        record_command("<assistant>-pick", "<you>-answer")
+            .print_help()
+            .map_err(|source| Error::Io {
+                path: member_dir,
+                source,
+            })?;
+        println!();
+        return Ok(());
+    }
     let (member, home) = crate::member_and_home(&member_dir)?;
     let pick_flag = format!("{}-pick", member.slug);
     let answer_flag = format!("{}-answer", member.principal_slug);
-    // clap keeps argument names for the life of the command; these member-specific names
-    // belong to this invocation, rather than being static flags on the outer parser.
-    let mut command = Command::new("persona-builder record")
-        .about("Keep one decision the assistant made, or your answer to one it handed back.");
-    for name in [
-        "work", "kind", "category", "tier", "question", "pick", "rule", "answer",
-    ] {
-        let flag = match name {
-            "pick" => pick_flag.as_str(),
-            "answer" => answer_flag.as_str(),
-            other => other,
-        };
-        let mut arg = Arg::new(name)
-            .long(flag.to_owned())
-            .allow_hyphen_values(true)
-            .required(!matches!(name, "rule" | "answer"));
-        if name == "kind" {
-            arg = arg.value_parser(["decided", "escalated"]);
-        }
-        if name == "tier" {
-            arg = arg.value_parser(["high", "medium", "low"]);
-        }
-        command = command.arg(arg);
-    }
+    let mut command = record_command(&pick_flag, &answer_flag);
+    let argv: Vec<_> = std::iter::once("persona-builder record".to_owned())
+        .chain(args)
+        .collect();
     let matches = command
-        .try_get_matches_from(std::iter::once("persona-builder record".to_owned()).chain(args))
+        .try_get_matches_from_mut(&argv)
         .unwrap_or_else(|error| error.exit());
+    let mut values: Vec<_> = command
+        .get_arguments()
+        .filter_map(|arg| {
+            matches
+                .index_of(arg.get_id().as_str())
+                .map(|index| (index, arg))
+        })
+        .collect();
+    values.sort_by_key(|(index, _)| *index);
+    // clap counts --flag=value as two indices; argv keeps it in one token.
+    let mut joined = 0;
+    for (index, arg) in values {
+        let flag = arg.get_long().expect("record flag");
+        let explicit = argv[index - joined - 1].starts_with(&format!("--{flag}="));
+        if explicit {
+            joined += 1;
+        } else if option_like_value(
+            matches
+                .get_one::<String>(arg.get_id().as_str())
+                .expect("record value"),
+        ) {
+            command
+                .clone()
+                .error(
+                    clap::error::ErrorKind::InvalidValue,
+                    format!("a value is required for --{flag}"),
+                )
+                .exit();
+        }
+    }
     let mut row = Map::new();
     row.insert(
         "timestamp".into(),
@@ -103,4 +123,45 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
             .expect("required argument")
     );
     Ok(())
+}
+
+/// argparse's option-like value rule: a leading dash needs a space or a negative
+/// number matching ^-\d+$|^-\d*\.\d+$ (unless supplied as --flag=value).
+fn option_like_value(value: &str) -> bool {
+    let Some(number) = value.strip_prefix('-') else {
+        return false;
+    };
+    let digits = |s: &str| s.bytes().all(|byte| byte.is_ascii_digit());
+    let negative = !number.is_empty() && digits(number)
+        || number.split_once('.').is_some_and(|(whole, fraction)| {
+            digits(whole) && !fraction.is_empty() && digits(fraction)
+        });
+    !number.is_empty() && !value.contains(' ') && !negative
+}
+
+fn record_command(pick_flag: &str, answer_flag: &str) -> Command {
+    // Member-specific names belong to this invocation of the command.
+    let mut command = Command::new("persona-builder record")
+        .about("Keep one decision the assistant made, or your answer to one it handed back.");
+    for name in [
+        "work", "kind", "category", "tier", "question", "pick", "rule", "answer",
+    ] {
+        let flag = match name {
+            "pick" => pick_flag,
+            "answer" => answer_flag,
+            other => other,
+        };
+        let mut arg = Arg::new(name)
+            .long(flag.to_owned())
+            .allow_hyphen_values(true)
+            .required(!matches!(name, "rule" | "answer"));
+        if name == "kind" {
+            arg = arg.value_parser(["decided", "escalated"]);
+        }
+        if name == "tier" {
+            arg = arg.value_parser(["high", "medium", "low"]);
+        }
+        command = command.arg(arg);
+    }
+    command
 }
