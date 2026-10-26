@@ -47,11 +47,28 @@ const FOLDERS: &str =
     "Persona Builder couldn't look through your Claude Code history. Close it and open it again.";
 const READ: &str =
     "Persona Builder couldn't read your Claude Code history. Close it and open it again.";
-fn lock(home: &Path, slug: &str) -> Result<private::StateLock> {
-    private::lock_state(home, slug).map_err(|e| match e {
+fn locked(home: &Path, slug: &str) -> Result<(Member, private::StateLock)> {
+    locked_after(home, slug, &mut || {})
+}
+// The callback lets tests forget or withdraw permission between the check and the lock.
+fn locked_after(
+    home: &Path,
+    slug: &str,
+    between: &mut dyn FnMut(),
+) -> Result<(Member, private::StateLock)> {
+    let member = readable(home, slug)?;
+    between();
+    let lock = private::lock_existing_state(home, slug).map_err(|e| match e {
         Error::Invalid(text) if text == private::BUSY => failure(BUSY),
+        Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+            failure(PERMISSION)
+        }
         _ => failure(SAVE),
-    })
+    })?;
+    if !crate::read_consent(home, slug).agreed {
+        return Err(failure(PERMISSION));
+    }
+    Ok((member, lock))
 }
 fn count(value: usize) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
@@ -105,8 +122,7 @@ pub fn read_claude_code_in(
     request: ReadRequest,
     progress: &mut dyn FnMut(ReadProgress),
 ) -> Result<ReadCounts> {
-    let member = readable(home, &request.slug)?;
-    let _lock = lock(home, &request.slug)?;
+    let (member, _lock) = locked(home, &request.slug)?;
     let projects = home.join(".claude/projects");
     if !projects.try_exists().map_err(|_| failure(READ))? {
         return Ok(ReadCounts {
@@ -247,8 +263,7 @@ fn chat_list(rows: Vec<claudeai::ReviewRow>) -> ChatList {
     list
 }
 pub fn use_claudeai_export_in(home: &Path, slug: &str, path: &Path) -> Result<ExportStatus> {
-    readable(home, slug)?;
-    let _lock = lock(home, slug)?;
+    let (_member, _lock) = locked(home, slug)?;
     let path = path
         .to_str()
         .filter(|_| path.is_absolute())
@@ -266,8 +281,7 @@ pub fn claudeai_export_status_in(
     export_status(home, &request.slug)
 }
 pub fn list_claudeai_chats_in(home: &Path, request: SlugRequest) -> Result<ChatList> {
-    let member = readable(home, &request.slug)?;
-    let _lock = lock(home, &request.slug)?;
+    let (member, _lock) = locked(home, &request.slug)?;
     let export = export(home, &request.slug)?;
     let existing = private::read_private_optional(home, &request.slug, REVIEW)
         .map_err(|_| failure(EXPORT_BAD))?
@@ -291,7 +305,7 @@ pub fn mark_claudeai_chats_in(home: &Path, request: MarkChatsRequest) -> Result<
     if request.uuids.is_empty() && !request.unmarked {
         return Err(failure(NO_CHATS));
     }
-    let _lock = lock(home, &request.slug)?;
+    let (_member, _lock) = locked(home, &request.slug)?;
     let mut rows = review(home, &request.slug, EXPORT_GONE, SAVE)?;
     claudeai::mark(
         &mut rows,
@@ -316,8 +330,7 @@ pub fn read_claudeai_in(
     request: SlugRequest,
     progress: &mut dyn FnMut(ReadProgress),
 ) -> Result<ClaudeaiCounts> {
-    let member = readable(home, &request.slug)?;
-    let _lock = lock(home, &request.slug)?;
+    let (member, _lock) = locked(home, &request.slug)?;
     let export = export(home, &request.slug)?;
     let rows = review(home, &request.slug, NO_CHATS, EXPORT_BAD)?;
     let filters = Filters::compile(&member.filters).map_err(|_| failure(EXPORT_BAD))?;
@@ -343,8 +356,7 @@ pub fn read_claudeai_in(
     })
 }
 pub fn merge_histories_in(home: &Path, request: SlugRequest) -> Result<MergeCounts> {
-    let member = readable(home, &request.slug)?;
-    let _lock = lock(home, &request.slug)?;
+    let (member, _lock) = locked(home, &request.slug)?;
     let names = private::list_private(home, &request.slug).map_err(|_| failure(MERGE))?;
     let discovered = corpus::discover(&names, "decisions.jsonl");
     if discovered.is_empty() {
@@ -421,4 +433,101 @@ pub fn read_claudeai(
 }
 pub fn merge_histories(request: SlugRequest) -> Result<MergeCounts> {
     merge_histories_in(&home()?, request)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+    struct Home(PathBuf);
+
+    impl Home {
+        fn new() -> Self {
+            let home = Self(std::env::temp_dir().join(format!(
+                "pb-history-lock-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            )));
+            fs::create_dir(&home.0).unwrap();
+            crate::new_assistant_in(
+                &home.0,
+                NewAssistantRequest {
+                    name: "Ari".into(),
+                    pronouns: "they/them".into(),
+                    principal: "Robin".into(),
+                    principal_pronouns: "they/them".into(),
+                },
+            )
+            .unwrap();
+            crate::agree_consent_in(&home.0, SlugRequest { slug: "ari".into() }).unwrap();
+            home
+        }
+
+        fn state(&self) -> PathBuf {
+            self.0.join(".claude/state/ari")
+        }
+
+        fn files(&self) -> Vec<std::ffi::OsString> {
+            let mut names: Vec<_> = fs::read_dir(self.state())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            names.sort();
+            names
+        }
+    }
+
+    impl Drop for Home {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_forget_between_the_check_and_the_lock_is_refused_and_recreates_nothing() {
+        let home = Home::new();
+        let result = locked_after(&home.0, "ari", &mut || {
+            let preview =
+                crate::forget_preview_in(&home.0, SlugRequest { slug: "ari".into() }).unwrap();
+            crate::forget_in(
+                &home.0,
+                ForgetRequest {
+                    slug: "ari".into(),
+                    files: preview.files,
+                },
+            )
+            .unwrap();
+        });
+        assert_eq!(result.unwrap_err().message, PERMISSION);
+        assert_eq!(
+            fs::symlink_metadata(home.state()).unwrap_err().kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
+
+    #[test]
+    fn permission_withdrawn_between_the_check_and_the_lock_is_refused() {
+        let home = Home::new();
+        let mut expected = home.files();
+        expected.retain(|name| name != "consent.json");
+        let result = locked_after(&home.0, "ari", &mut || {
+            fs::remove_file(home.state().join("consent.json")).unwrap();
+        });
+        assert_eq!(result.unwrap_err().message, PERMISSION);
+        assert_eq!(home.files(), expected);
+    }
+
+    #[test]
+    fn current_permission_returns_the_member_and_holds_the_state_lock() {
+        let home = Home::new();
+        let (member, _lock) = locked(&home.0, "ari").unwrap();
+        assert_eq!(member.slug, "ari");
+        assert!(matches!(
+            private::lock_state(&home.0, "ari"),
+            Err(Error::Invalid(text)) if text == private::BUSY
+        ));
+    }
 }

@@ -415,7 +415,16 @@ pub struct StateLock(#[allow(dead_code)] OwnedFd);
 /// Lock the member's state folder (created 0700 when missing), or refuse when another build holds it.
 /// `flock` locks belong to the open file description, so a second lock in the same process conflicts too.
 pub fn lock_state(home: &Path, slug: &str) -> Result<StateLock> {
-    let (directory, path) = state_directory(home, slug, true)?;
+    lock_state_folder(home, slug, true)
+}
+
+/// Lock the member's state folder only if it already exists, or refuse when another build holds it.
+pub fn lock_existing_state(home: &Path, slug: &str) -> Result<StateLock> {
+    lock_state_folder(home, slug, false)
+}
+
+fn lock_state_folder(home: &Path, slug: &str, create: bool) -> Result<StateLock> {
+    let (directory, path) = state_directory(home, slug, create)?;
     // SAFETY: directory is a live descriptor owned by this function.
     if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
         let source = std::io::Error::last_os_error();
