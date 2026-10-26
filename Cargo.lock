@@ -2771,8 +2771,10 @@ version = "0.1.0"
 dependencies = [
  "persona-builder",
  "persona-builder-agent",
+ "persona-builder-build",
  "persona-builder-ingest",
  "persona-builder-save",
+ "persona-builder-steps",
  "serde",
  "serde_json",
  "ts-rs",

@@ -28,6 +28,8 @@ target/
 build/
 # ...except the crate that runs the build's model steps.
 !builder/build/
+# ...and the app's build screens.
+!builder/ui/src/screens/build/
 DerivedData/
 .DS_Store
 

@@ -18,6 +18,10 @@ use std::{
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::Command,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -71,6 +75,7 @@ pub struct Ready {
 pub struct Claude {
     program: PathBuf,
     timeout: Duration,
+    stop: Option<Arc<AtomicBool>>,
 }
 
 /// The places Claude Code is looked for after `PATH`: an app opened from the Finder gets a short
@@ -186,6 +191,14 @@ struct Judged {
 fn judge(ran: Ran, timeout: Duration) -> Option<Judged> {
     let (status, stdout) = match ran {
         Ran::NotStarted => return None,
+        Ran::Stopped => {
+            return Some(Judged {
+                outcome: "stopped",
+                usage: Usage::default(),
+                cost: None,
+                result: Err(invalid(text::STOPPED)),
+            });
+        }
         Ran::CutOff => {
             return Some(Judged {
                 outcome: "cut-off",
@@ -256,10 +269,17 @@ impl Claude {
         Claude {
             program,
             timeout: DEFAULT_TIMEOUT,
+            stop: None,
         }
     }
     pub fn with_timeout(self, timeout: Duration) -> Claude {
         Claude { timeout, ..self }
+    }
+    pub fn with_stop(self, stop: Arc<AtomicBool>) -> Claude {
+        Claude {
+            stop: Some(stop),
+            ..self
+        }
     }
     pub fn program(&self) -> &Path {
         &self.program
@@ -283,6 +303,7 @@ impl Claude {
             None,
             CHECK_TIMEOUT.min(self.timeout),
             CHECK_CAP,
+            None,
         ) {
             Ran::Finished { status, stdout } if status.success() => Some(stdout),
             _ => None,
@@ -342,6 +363,13 @@ impl Claude {
         if !call.schema.is_object() {
             return Err(invalid("a step's answer shape must be a JSON object"));
         }
+        if self
+            .stop
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::SeqCst))
+        {
+            return Err(invalid(text::STOPPED));
+        }
         let folder = session.work_folder()?;
         let started = session.start(AGENT_ID, call.step, call.model)?;
         let schema = call.schema.to_string();
@@ -378,6 +406,7 @@ impl Claude {
             Some(call.prompt.as_bytes()),
             self.timeout,
             STDOUT_CAP,
+            self.stop.as_deref(),
         );
         let seconds = begun.elapsed().as_secs_f64();
         let Some(judged) = judge(ran, self.timeout) else {

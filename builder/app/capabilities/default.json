@@ -34,6 +34,13 @@
     "allow-make-claude-ai-files",
     "allow-show-claude-ai-files",
     "allow-forget-preview",
-    "allow-forget"
+    "allow-forget",
+    "allow-build-assistant",
+    "allow-stop-build",
+    "allow-spend-today",
+    "allow-interview-status",
+    "allow-draft-interview",
+    "allow-save-interview-answers",
+    "allow-keep-interview-answers"
   ]
 }

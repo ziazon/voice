@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-interview-status"
+description = "Enables the interview_status command without any pre-configured scope."
+commands.allow = ["interview_status"]
+
+[[permission]]
+identifier = "deny-interview-status"
+description = "Denies the interview_status command without any pre-configured scope."
+commands.deny = ["interview_status"]

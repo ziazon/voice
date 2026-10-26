@@ -345,3 +345,50 @@ fn build_refuses_bad_report_names_before_changing_member_files() {
         b"previous report"
     );
 }
+
+#[test]
+fn shared_build_path_writes_exactly_the_cli_outputs() {
+    use persona_builder_agent::{
+        claude::Claude,
+        ledger::{Cap, Session},
+    };
+    use persona_builder_build::{build, run};
+    let Some(python) = python() else { return };
+    let cli = Fixture::new();
+    cli.signed_in(&python);
+    cli.write_state("decisions.jsonl", &corpus(32));
+    let out = cli.run(&["build", &cli.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let shared = Fixture::new();
+    shared.signed_in(&python);
+    shared.write_state("decisions.jsonl", &corpus(32));
+    let member = persona_builder::member::read_member(&shared.member.join("member.json")).unwrap();
+    let prepared = run::prepare(&member, &shared.member, &shared.home, "decisions.jsonl").unwrap();
+    let claude = Claude::at(shared.bin.join("claude"));
+    let session = Session::open(&shared.home, &member.slug, Cap::default()).unwrap();
+    let mut progress = Vec::new();
+    let built = build::build(
+        &claude,
+        &session,
+        &shared.home,
+        &prepared.inputs(&member, "decisions.jsonl", "sonnet"),
+        &mut |line| progress.push(line.to_owned()),
+    )
+    .unwrap();
+    let checked = run::check(&member, &prepared, &built, "sonnet").unwrap();
+    run::save(&member, &shared.member, &shared.home, checked).unwrap();
+    for name in ["decisions.md", "measurements.md"] {
+        assert_eq!(
+            fs::read(cli.member.join(name)).unwrap(),
+            fs::read(shared.member.join(name)).unwrap(),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        fs::read(cli.state().join("report.json")).unwrap(),
+        fs::read(shared.state().join("report.json")).unwrap()
+    );
+    for line in progress {
+        assert!(text(&out.stdout).contains(&format!("{line}\n")), "{line}");
+    }
+}

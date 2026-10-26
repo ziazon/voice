@@ -199,15 +199,7 @@ pub fn claude_check_in(
             },
             Err(error) => dto::ClaudeStatus {
                 ready: false,
-                message: match error {
-                    Error::Invalid(message)
-                        if [text::NOT_INSTALLED, text::DOES_NOT_RUN, text::SIGNED_OUT]
-                            .contains(&message.as_str()) =>
-                    {
-                        message
-                    }
-                    _ => text::FAILED.into(),
-                },
+                message: claude_message(error),
                 note: None,
             },
         },
@@ -240,6 +232,19 @@ pub(crate) fn opener_args(dir: &Path) -> (&'static str, Vec<OsString>) {
     return ("xdg-open", vec![dir.into()]);
     #[cfg(target_os = "windows")]
     return ("explorer", vec![dir.into()]);
+}
+
+/// Only the agent's public fixed sentences cross the app boundary.
+pub(crate) fn claude_message(error: Error) -> String {
+    match error {
+        Error::Invalid(message)
+            if [text::NOT_INSTALLED, text::DOES_NOT_RUN, text::SIGNED_OUT]
+                .contains(&message.as_str()) =>
+        {
+            message
+        }
+        _ => text::FAILED.into(),
+    }
 }
 
 #[cfg(all(test, target_os = "macos"))]

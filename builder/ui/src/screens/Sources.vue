@@ -5,6 +5,7 @@ import Claudeai from './sources/Claudeai.vue'
 import PutTogether from './sources/PutTogether.vue'
 
 defineProps<{ assistant: Assistant }>()
+const emit = defineEmits<{ next: [] }>()
 </script>
 
 <template>
@@ -16,5 +17,6 @@ defineProps<{ assistant: Assistant }>()
       <Claudeai :slug="assistant.slug" />
       <PutTogether :slug="assistant.slug" />
     </div>
+    <button type="button" class="btn btn-primary mt-4" @click="emit('next')">Next: build your assistant</button>
   </section>
 </template>

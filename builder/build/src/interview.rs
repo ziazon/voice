@@ -24,6 +24,8 @@ pub const THIN_BELOW: usize = 150;
 pub const COUNT: usize = 20;
 /// The drafted questions, in the state folder, for the person to swap and then answer.
 pub const QUESTIONS_FILE: &str = "interview-questions.json";
+/// The app's answers so far, in the round-answers shape.
+pub const ANSWERS_FILE: &str = "interview-answers.json";
 /// The answers as records; the merge keeps this file in training.
 pub const OUT: &str = "decisions-interview.jsonl";
 /// The step's name in the ledger, and the round name that gives ids `question:interview-NN`.
@@ -90,6 +92,33 @@ pub fn weights(
     book: &Book,
     tally: Option<&[(String, Row)]>,
 ) -> Result<Vec<(String, Option<usize>)>> {
+    let counts = tally.map(|rows| {
+        rows.iter()
+            .map(|(name, row)| (name.clone(), row.questions + row.messages))
+            .collect::<Vec<_>>()
+    });
+    weighted(book, counts.as_deref())
+}
+
+/// The last checked report's example counts, thinnest first.
+pub fn weights_from_report(
+    book: &Book,
+    report: Option<&crate::report::Report>,
+) -> Result<Vec<(String, Option<usize>)>> {
+    let counts = report.map(|report| {
+        report
+            .areas
+            .iter()
+            .map(|area| (area.area.clone(), area.examples))
+            .collect::<Vec<_>>()
+    });
+    weighted(book, counts.as_deref())
+}
+
+fn weighted(
+    book: &Book,
+    counts: Option<&[(String, usize)]>,
+) -> Result<Vec<(String, Option<usize>)>> {
     let mut kinds: Vec<&str> = Vec::new();
     for kind in &book.categories {
         if kind != "other" && !kinds.contains(&kind.as_str()) {
@@ -99,7 +128,7 @@ pub fn weights(
     if kinds.is_empty() {
         return Err(invalid(text::NOTHING_TO_ASK));
     }
-    let Some(rows) = tally else {
+    let Some(rows) = counts else {
         return Ok(kinds.iter().map(|kind| (kind.to_string(), None)).collect());
     };
     let mut counted: Vec<_> = kinds
@@ -108,7 +137,7 @@ pub fn weights(
             let records = rows
                 .iter()
                 .find(|(name, _)| name == kind)
-                .map_or(0, |(_, row)| row.questions + row.messages);
+                .map_or(0, |(_, count)| *count);
             (kind.to_string(), Some(records))
         })
         .collect();

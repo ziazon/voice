@@ -128,4 +128,32 @@ pub const PARITY: &[Parity] = &[
         app: "forget",
         cli: &[&["forget"]],
     },
+    Parity {
+        app: "build_assistant",
+        cli: &[&["build"]],
+    },
+    Parity {
+        app: "stop_build",
+        cli: &[&["build"]],
+    },
+    Parity {
+        app: "spend_today",
+        cli: &[&["spend"]],
+    },
+    Parity {
+        app: "interview_status",
+        cli: &[&["interview", "draft"]],
+    },
+    Parity {
+        app: "draft_interview",
+        cli: &[&["interview", "draft"]],
+    },
+    Parity {
+        app: "save_interview_answers",
+        cli: &[&["interview", "answer"]],
+    },
+    Parity {
+        app: "keep_interview_answers",
+        cli: &[&["interview", "answer"]],
+    },
 ];

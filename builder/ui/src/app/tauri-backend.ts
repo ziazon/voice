@@ -1,6 +1,11 @@
 import type { ClaudeCodeStatus } from '../types/generated/ClaudeCodeStatus'
 import type { ClaudeAiFiles } from '../types/generated/ClaudeAiFiles'
 import type { ForgetPreview } from '../types/generated/ForgetPreview'
+import type { Spend } from '../types/generated/Spend'
+import type { BuildProgress } from '../types/generated/BuildProgress'
+import type { BuildDone } from '../types/generated/BuildDone'
+import type { InterviewStatus } from '../types/generated/InterviewStatus'
+import type { InterviewKept } from '../types/generated/InterviewKept'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type { Backend } from '../backend'
 import type { AppInfo } from '../types/generated/AppInfo'
@@ -20,6 +25,17 @@ import type { ClaudeaiCounts } from '../types/generated/ClaudeaiCounts'
 import type { MergeCounts } from '../types/generated/MergeCounts'
 
 export const tauriBackend: Backend = {
+  buildAssistant: (request, onProgress) => {
+    const channel = new Channel<BuildProgress>()
+    channel.onmessage = onProgress
+    return invoke<BuildDone>('build_assistant', { request, onProgress: channel })
+  },
+  stopBuild: request => invoke<void>('stop_build', { request }),
+  spendToday: request => invoke<Spend>('spend_today', { request }),
+  interviewStatus: request => invoke<InterviewStatus>('interview_status', { request }),
+  draftInterview: request => invoke<InterviewStatus>('draft_interview', { request }),
+  saveInterviewAnswers: request => invoke<InterviewStatus>('save_interview_answers', { request }),
+  keepInterviewAnswers: request => invoke<InterviewKept>('keep_interview_answers', { request }),
   appInfo: () => invoke<AppInfo>('app_info'),
   listAssistants: () => invoke<Assistant[]>('list_assistants'),
   newAssistant: request => invoke<Assistant>('new_assistant', { request }),

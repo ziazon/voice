@@ -16,16 +16,17 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-const FIND: &str = "Persona Builder couldn't find that assistant. Close it and open it again.";
+pub(crate) const FIND: &str =
+    "Persona Builder couldn't find that assistant. Close it and open it again.";
 const ELSEWHERE: &str = "This assistant keeps its history outside your Claude folder. Use the persona-builder command for it.";
-const PERMISSION: &str =
+pub(crate) const PERMISSION: &str =
     "Persona Builder needs your permission before it reads anything. Give it in the first step.";
-fn failure(message: &str) -> Failure {
+pub(crate) fn failure(message: &str) -> Failure {
     Failure {
         message: message.into(),
     }
 }
-fn readable(home: &Path, slug: &str) -> Result<Member> {
+pub(crate) fn readable(home: &Path, slug: &str) -> Result<Member> {
     assistants::assistant_dir(home, slug).map_err(|_| failure(FIND))?;
     let member = assistants::list(home)
         .map_err(|_| failure(FIND))?
@@ -40,14 +41,14 @@ fn readable(home: &Path, slug: &str) -> Result<Member> {
     Ok(member)
 }
 type Result<T> = std::result::Result<T, Failure>;
-const BUSY: &str =
+pub(crate) const BUSY: &str =
     "Persona Builder is already working on this assistant. Wait for it to finish, then try again.";
 const SAVE: &str = "Persona Builder couldn't save what it read. Check there's space on this computer, then try again.";
 const FOLDERS: &str =
     "Persona Builder couldn't look through your Claude Code history. Close it and open it again.";
 const READ: &str =
     "Persona Builder couldn't read your Claude Code history. Close it and open it again.";
-fn locked(home: &Path, slug: &str) -> Result<(Member, private::StateLock)> {
+pub(crate) fn locked(home: &Path, slug: &str) -> Result<(Member, private::StateLock)> {
     locked_after(home, slug, &mut || {})
 }
 // The callback lets tests forget or withdraw permission between the check and the lock.
@@ -70,7 +71,7 @@ fn locked_after(
     }
     Ok((member, lock))
 }
-fn count(value: usize) -> u32 {
+pub(crate) fn count(value: usize) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
 }
 fn progress_callback(progress: &mut dyn FnMut(ReadProgress)) -> impl FnMut(usize, usize) + '_ {

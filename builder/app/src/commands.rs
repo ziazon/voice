@@ -229,3 +229,55 @@ pub fn forget(
 ) -> Result<persona_builder_api::dto::Said, persona_builder_api::dto::Failure> {
     persona_builder_api::forget(request)
 }
+
+#[tauri::command(async)]
+pub fn build_assistant(
+    request: persona_builder_api::dto::SlugRequest,
+    on_progress: tauri::ipc::Channel<persona_builder_api::dto::BuildProgress>,
+) -> Result<persona_builder_api::dto::BuildDone, persona_builder_api::dto::Failure> {
+    persona_builder_api::build_assistant(request, &mut |p| {
+        let _ = on_progress.send(p);
+    })
+}
+
+#[tauri::command(async)]
+pub fn stop_build(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<(), persona_builder_api::dto::Failure> {
+    persona_builder_api::stop_build(request)
+}
+
+#[tauri::command(async)]
+pub fn spend_today(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::Spend, persona_builder_api::dto::Failure> {
+    persona_builder_api::spend_today(request)
+}
+
+#[tauri::command(async)]
+pub fn interview_status(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::InterviewStatus, persona_builder_api::dto::Failure> {
+    persona_builder_api::interview_status(request)
+}
+
+#[tauri::command(async)]
+pub fn draft_interview(
+    request: persona_builder_api::dto::DraftInterviewRequest,
+) -> Result<persona_builder_api::dto::InterviewStatus, persona_builder_api::dto::Failure> {
+    persona_builder_api::draft_interview(request)
+}
+
+#[tauri::command(async)]
+pub fn save_interview_answers(
+    request: persona_builder_api::dto::InterviewAnswersRequest,
+) -> Result<persona_builder_api::dto::InterviewStatus, persona_builder_api::dto::Failure> {
+    persona_builder_api::save_interview_answers(request)
+}
+
+#[tauri::command(async)]
+pub fn keep_interview_answers(
+    request: persona_builder_api::dto::SlugRequest,
+) -> Result<persona_builder_api::dto::InterviewKept, persona_builder_api::dto::Failure> {
+    persona_builder_api::keep_interview_answers(request)
+}

@@ -40,6 +40,13 @@ fn main() {
             commands::show_claude_ai_files,
             commands::forget_preview,
             commands::forget,
+            commands::build_assistant,
+            commands::stop_build,
+            commands::spend_today,
+            commands::interview_status,
+            commands::draft_interview,
+            commands::save_interview_answers,
+            commands::keep_interview_answers,
         ])
         .run(tauri::generate_context!())
     {

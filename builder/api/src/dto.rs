@@ -325,3 +325,95 @@ pub struct ForgetRequest {
     pub slug: String,
     pub files: u32,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Spend {
+    pub spent_usd: f64,
+    pub daily_cap_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BuildProgress {
+    pub line: String,
+    pub spend: Spend,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BuildDone {
+    pub answered: u32,
+    pub held_out: u32,
+    pub tested: bool,
+    pub spend: Spend,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InterviewOption {
+    pub letter: String,
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InterviewQuestion {
+    pub n: u32,
+    pub kind: String,
+    pub question: String,
+    pub multi_select: bool,
+    pub recommended: Option<String>,
+    pub options: Vec<InterviewOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct InterviewAnswer {
+    pub n: u32,
+    pub picks: Vec<String>,
+    pub own_words: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InterviewStatus {
+    pub answered: u32,
+    pub thin_below: u32,
+    pub questions: Vec<InterviewQuestion>,
+    pub answers: Vec<InterviewAnswer>,
+    pub kept: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct DraftInterviewRequest {
+    pub slug: String,
+    pub replace: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct InterviewAnswersRequest {
+    pub slug: String,
+    pub answers: Vec<InterviewAnswer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InterviewKept {
+    pub kept: u32,
+    pub unanswered: u32,
+    pub private_left_out: u32,
+}

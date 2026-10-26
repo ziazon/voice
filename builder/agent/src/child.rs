@@ -4,7 +4,10 @@ use std::{
     io::{self, Read, Write},
     os::unix::process::CommandExt,
     process::{Child, Command, ExitStatus, Stdio},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -17,6 +20,7 @@ pub(crate) enum Ran {
     },
     /// Past its time limit, or its output could not be collected.
     CutOff,
+    Stopped,
     NotStarted,
 }
 
@@ -25,7 +29,13 @@ const COLLECT_GRACE: Duration = Duration::from_secs(1);
 
 /// Run `command` in a process group of its own, with `input` on its stdin (then closed) and at
 /// most `cap` bytes of its stdout kept. Stderr goes nowhere: it can echo what the child was sent.
-pub(crate) fn run(command: &mut Command, input: Option<&[u8]>, timeout: Duration, cap: u64) -> Ran {
+pub(crate) fn run(
+    command: &mut Command,
+    input: Option<&[u8]>,
+    timeout: Duration,
+    cap: u64,
+    stop: Option<&AtomicBool>,
+) -> Ran {
     let started = Instant::now();
     command
         .stdin(if input.is_some() {
@@ -51,10 +61,12 @@ pub(crate) fn run(command: &mut Command, input: Option<&[u8]>, timeout: Duration
         }
         // Every way out kills the group first: descendants may still hold the pipes open, and the
         // scope waits for the writer, which a held-open, unread stdin would block.
-        settle(&mut child, started, timeout)
+        settle(&mut child, started, timeout, stop)
     });
-    let Some(status) = status else {
-        return Ran::CutOff;
+    let status = match status {
+        Ok(Some(status)) => status,
+        Ok(None) => return Ran::CutOff,
+        Err(()) => return Ran::Stopped,
     };
     let left = timeout.saturating_sub(started.elapsed()).max(COLLECT_GRACE);
     match stdout.recv_timeout(left) {
@@ -64,23 +76,33 @@ pub(crate) fn run(command: &mut Command, input: Option<&[u8]>, timeout: Duration
 }
 
 /// Wait for `child` until `timeout` from `started`, then kill its group either way and reap it;
-/// its exit status, or `None` when it was cut off.
-fn settle(child: &mut Child, started: Instant, timeout: Duration) -> Option<ExitStatus> {
+/// its exit status, `None` when it was cut off, or `Err(())` when stopped.
+fn settle(
+    child: &mut Child,
+    started: Instant,
+    timeout: Duration,
+    stop: Option<&AtomicBool>,
+) -> Result<Option<ExitStatus>, ()> {
     let pid = child.id();
     // The child is reaped only after its group's kill (`has_exited` leaves it unreaped), so its
     // zombie keeps the group id from being reused before the kill lands.
     loop {
+        if stop.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
+            kill_group(pid);
+            let _ = child.wait();
+            return Err(());
+        }
         match has_exited(pid) {
             Some(true) => {
                 kill_group(pid);
-                return child.wait().ok();
+                return Ok(child.wait().ok());
             }
             // `waitid` failed, so the child may be reaped already and its group id free for
             // reuse: no group kill. A child still running goes on to the time limit below.
             None => match child.try_wait() {
-                Ok(Some(status)) => return Some(status),
+                Ok(Some(status)) => return Ok(Some(status)),
                 Ok(None) => {}
-                Err(_) => return None,
+                Err(_) => return Ok(None),
             },
             Some(false) => {}
         }
@@ -90,7 +112,7 @@ fn settle(child: &mut Child, started: Instant, timeout: Duration) -> Option<Exit
         } else {
             kill_group(pid);
             let _ = child.wait();
-            return None;
+            return Ok(None);
         }
     }
 }

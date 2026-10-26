@@ -496,3 +496,43 @@ fn answers_refuse_a_file_with_no_answer() {
         "round: question 1: pick is not an option"
     );
 }
+
+#[test]
+fn report_weights_use_examples_and_zero_for_absent_areas() {
+    use persona_builder_build::report::{Area, Level, Report, SCHEMA};
+    let book = book(&member()).unwrap();
+    assert_eq!(
+        interview::weights_from_report(&book, None).unwrap(),
+        interview::weights(&book, None).unwrap()
+    );
+    let report = Report {
+        schema: SCHEMA.into(),
+        built: "2026-10-25".into(),
+        overall: Level::Thin,
+        answered: 10,
+        held: 0,
+        test: None,
+        areas: vec![
+            Area {
+                area: "scope".into(),
+                level: Level::Thin,
+                examples: 8,
+                strengthen: vec![],
+            },
+            Area {
+                area: "methods".into(),
+                level: Level::Thin,
+                examples: 2,
+                strengthen: vec![],
+            },
+        ],
+    };
+    assert_eq!(
+        interview::weights_from_report(&book, Some(&report)).unwrap(),
+        vec![
+            ("tooling".into(), Some(0)),
+            ("methods".into(), Some(2)),
+            ("scope".into(), Some(8))
+        ]
+    );
+}

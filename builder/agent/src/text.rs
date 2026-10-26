@@ -37,3 +37,5 @@ pub fn cut_off(minutes: u64) -> String {
         "Claude Code was still working on this step after {minutes} {unit}, so Persona Builder stopped it. Try again; if it happens again, try a smaller step."
     )
 }
+
+pub const STOPPED: &str = "Persona Builder stopped Claude Code, as you asked.";

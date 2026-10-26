@@ -331,3 +331,19 @@ fn answer_with_nothing_answered_writes_nothing() {
     );
     assert!(!f.state().join("decisions-interview.jsonl").exists());
 }
+
+#[test]
+fn draft_weights_by_the_last_report_without_labels() {
+    let f = Fixture::new();
+    f.signed_in(&ok_reply(&draft()));
+    f.write_state("report.json", r#"{"schema":"persona-builder/report/1","built":"2026-10-24","overall":"thin","answered":3,"held":0,"test":null,"areas":[{"area":"scope","level":"thin","examples":3,"strengthen":[]}]}"#);
+    let out = f.run(&["interview", "draft", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let asked = fs::read_to_string(f.bin.join("stdin")).unwrap();
+    assert!(asked.contains("- scope: 3 past decisions\n"), "{asked}");
+    assert!(
+        asked.contains("- sequencing: 0 past decisions\n"),
+        "{asked}"
+    );
+    assert!(text(&out.stdout).starts_with(&persona_builder_build::text::drafted(20, true)));
+}

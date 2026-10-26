@@ -68,6 +68,13 @@ fn lockdown_1_command_lists_agree_in_order() {
             "show_claude_ai_files",
             "forget_preview",
             "forget",
+            "build_assistant",
+            "stop_build",
+            "spend_today",
+            "interview_status",
+            "draft_interview",
+            "save_interview_answers",
+            "keep_interview_answers",
         ]
     );
     let capability = json("capabilities/default.json");

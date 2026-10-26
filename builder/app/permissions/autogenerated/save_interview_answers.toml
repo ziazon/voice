@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-interview-answers"
+description = "Enables the save_interview_answers command without any pre-configured scope."
+commands.allow = ["save_interview_answers"]
+
+[[permission]]
+identifier = "deny-save-interview-answers"
+description = "Denies the save_interview_answers command without any pre-configured scope."
+commands.deny = ["save_interview_answers"]

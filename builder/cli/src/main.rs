@@ -1131,63 +1131,31 @@ struct BuildArgs {
 fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     use persona_builder_agent::{
         claude,
-        ledger::{Cap, Session, local_day},
+        ledger::{Cap, Session},
         text as spend_text,
     };
-    use persona_builder_build::{
-        build::{self, Inputs},
-        draft, interview, report, text,
-    };
-    use persona_builder_ingest::{corpus::read_records, filters::Filters, private};
-    use persona_builder_steps::book::book;
+    use persona_builder_build::{build, interview, report, run, text};
     let (member, home) = member_and_home(&member_dir)?;
-    let book = book(&member)?;
-    report::check_names(book.categories.iter().map(String::as_str))?;
-    let codebook = draft::read_codebook(&member_dir)?;
-    draft::preflight(&member_dir)?;
-    let (folder, name) = private::place(&args.corpus)?;
-    private::validate_name(name)?;
-    let corpus = private::read_private_at(&home, &member.slug, folder, name)?;
-    let answered = interview::answered(&read_records(&args.corpus, &corpus)?);
-    let filters = Filters::compile(&member.filters)?;
+    let prepared = run::prepare(&member, &member_dir, &home, &args.corpus)?;
     let cap = Cap::new(args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
     let session = Session::open(&home, &member.slug, cap)?;
-    if answered < interview::THIN_BELOW {
-        println!("{}", text::thin_history(answered));
+    if prepared.answered < interview::THIN_BELOW {
+        println!("{}", text::thin_history(prepared.answered));
     }
     let built = build::build(
         &claude,
         &session,
         &home,
-        &Inputs {
-            member: &member,
-            book: &book,
-            codebook: &codebook,
-            corpus_name: &args.corpus,
-            corpus: &corpus,
-            filters: &filters,
-            model: &args.model,
-        },
+        &prepared.inputs(&member, &args.corpus, &args.model),
         &mut |line| println!("{line}"),
     )?;
     println!("{}", text::CHECKING);
-    let decisions = draft::decisions(&member, &book, &built);
-    let day = local_day(std::time::SystemTime::now());
-    let entries = draft::entries(&book, &built, &args.model, &day);
-    draft::check_private(&filters, &decisions, &entries)?;
-    let report = report::report(&book, &built, answered, &day);
-    report::check(&report)?;
-    let existing = draft::read_text(
-        &member_dir.join(draft::MEASUREMENTS),
-        draft::MEASUREMENTS_MOST,
-    )?;
-    let measurements = draft::measurements(existing.as_deref(), &member, &entries);
-    draft::write(&member_dir, &decisions, &measurements)?;
+    let checked = run::check(&member, &prepared, &built, &args.model)?;
+    let report = run::save(&member, &member_dir, &home, checked)?;
     println!("{}", text::written(&member_dir.display().to_string()));
-    report::write(&home, &member.slug, &report)?;
     for line in report::render(&report) {
         println!("{line}");
     }
@@ -1232,7 +1200,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
         ledger::{Cap, Session},
         text as spend_text,
     };
-    use persona_builder_build::{interview, text};
+    use persona_builder_build::{interview, report, text};
     use persona_builder_ingest::{
         corpus::read_records,
         private::{read_private_optional, write_private},
@@ -1261,7 +1229,16 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
         }
         None => None,
     };
-    let weights = interview::weights(&book, rows.as_deref())?;
+    let (weights, weighted) = match rows {
+        Some(rows) => (interview::weights(&book, Some(&rows))?, true),
+        None => {
+            let report = report::read(&home, &member.slug).ok().flatten();
+            (
+                interview::weights_from_report(&book, report.as_ref())?,
+                report.is_some(),
+            )
+        }
+    };
     let cap = Cap::new(args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
@@ -1280,7 +1257,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
         interview::QUESTIONS_FILE,
         pretty(&serde_json::Value::Object(drafted)).as_bytes(),
     )?;
-    println!("{}", text::drafted(interview::COUNT, rows.is_some()));
+    println!("{}", text::drafted(interview::COUNT, weighted));
     println!(
         "saved to ~/.claude/state/{}/{}",
         member.slug,

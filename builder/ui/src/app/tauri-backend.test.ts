@@ -81,3 +81,24 @@ it.each([
   args.onProgress.onmessage({ done: 2, total: 5 })
   expect(onProgress).toHaveBeenCalledExactlyOnceWith({ done: 2, total: 5 })
 })
+it.each([
+  ['stopBuild', 'stop_build', { slug: 'example' }],
+  ['spendToday', 'spend_today', { slug: 'example' }],
+  ['interviewStatus', 'interview_status', { slug: 'example' }],
+  ['draftInterview', 'draft_interview', { slug: 'example', replace: true }],
+  ['saveInterviewAnswers', 'save_interview_answers', { slug: 'example', answers: [{ n: 1, picks: ['A'], ownWords: '' }] }],
+  ['keepInterviewAnswers', 'keep_interview_answers', { slug: 'example' }],
+] as const)('maps build method %s with a request', async (method, command, request) => {
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(await (tauriBackend[method] as (value: typeof request) => Promise<unknown>)(request)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
+})
+it('buildAssistant passes a progress channel', async () => {
+  const onProgress = vi.fn()
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(await tauriBackend.buildAssistant({ slug: 'example' }, onProgress)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith('build_assistant', { request: { slug: 'example' }, onProgress: expect.any(Channel) })
+  const args = vi.mocked(invoke).mock.calls[0]![1] as { onProgress: Channel<unknown> }
+  args.onProgress.onmessage({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50 } })
+  expect(onProgress).toHaveBeenCalledExactlyOnceWith({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50 } })
+})

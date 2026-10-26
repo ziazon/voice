@@ -3,6 +3,13 @@ import type { TurnOffRequest } from './types/generated/TurnOffRequest'
 import type { ClaudeAiFiles } from './types/generated/ClaudeAiFiles'
 import type { ForgetPreview } from './types/generated/ForgetPreview'
 import type { ForgetRequest } from './types/generated/ForgetRequest'
+import type { Spend } from './types/generated/Spend'
+import type { BuildProgress } from './types/generated/BuildProgress'
+import type { BuildDone } from './types/generated/BuildDone'
+import type { InterviewStatus } from './types/generated/InterviewStatus'
+import type { DraftInterviewRequest } from './types/generated/DraftInterviewRequest'
+import type { InterviewAnswersRequest } from './types/generated/InterviewAnswersRequest'
+import type { InterviewKept } from './types/generated/InterviewKept'
 import { inject, provide, type InjectionKey } from 'vue'
 import type { AppInfo } from './types/generated/AppInfo'
 import type { Assistant } from './types/generated/Assistant'
@@ -34,6 +41,13 @@ import type { MergeCounts } from './types/generated/MergeCounts'
  * A host app must keep the same rule.
  */
 export interface Backend {
+  buildAssistant(request: SlugRequest, onProgress: (progress: BuildProgress) => void): Promise<BuildDone>
+  stopBuild(request: SlugRequest): Promise<void>
+  spendToday(request: SlugRequest): Promise<Spend>
+  interviewStatus(request: SlugRequest): Promise<InterviewStatus>
+  draftInterview(request: DraftInterviewRequest): Promise<InterviewStatus>
+  saveInterviewAnswers(request: InterviewAnswersRequest): Promise<InterviewStatus>
+  keepInterviewAnswers(request: SlugRequest): Promise<InterviewKept>
   appInfo(): Promise<AppInfo>
   listAssistants(): Promise<Assistant[]>
   newAssistant(request: NewAssistantRequest): Promise<Assistant>

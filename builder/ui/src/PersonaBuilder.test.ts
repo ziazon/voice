@@ -12,7 +12,7 @@ it('shows Welcome and disables all steps before choosing an assistant', async ()
   ])
   for (const [index, item] of items.entries()) {
     expect(item.attributes('aria-disabled')).toBe('true')
-    expect(item.text()).toContain(index < 3 || index === 6 ? 'Choose an assistant first' : 'Not here yet')
+    expect(item.text()).toContain(index < 4 || index === 6 ? 'Choose an assistant first' : 'Not here yet')
   }
   expect(wrapper.get('main h1').text()).toBe('Persona Builder')
   expect(wrapper.text()).toContain('Version 1.2.3')
@@ -92,14 +92,14 @@ it('keeps your history disabled until permission and opens it from a ready conne
   expect(wrapper.findAll('.card-title').map(item => item.text())).toEqual(['Claude Code', 'claude.ai (if you use it)', 'Put it together'])
 })
 
-it('opens save without requiring permission and keeps steps four to six unavailable', async () => {
+it('opens save without requiring permission and keeps steps five and six unavailable', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) })
   const wrapper = screen(PersonaBuilder, backend)
   await flushPromises()
   await button(wrapper, 'Open').trigger('click')
   await flushPromises()
   const items = wrapper.findAll('ol li')
-  for (const item of items.slice(3, 6)) {
+  for (const item of items.slice(4, 6)) {
     expect(item.attributes('aria-disabled')).toBe('true')
     expect(item.text()).toContain('Not here yet')
   }
@@ -131,4 +131,27 @@ it('shows four save cards and preserves the forget message while resetting permi
   await button(wrapper, 'Your permission').trigger('click'); await flushPromises()
   expect(wrapper.text()).not.toContain('You agreed on')
   expect(button(wrapper, 'I agree').exists()).toBe(true)
+})
+
+it('keeps build disabled until permission, opens from sources, and preserves running lines across steps', async () => {
+  let progress: ((value: { line: string, spend: { spentUsd: number, dailyCapUsd: number } }) => void) | undefined
+  const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]), buildAssistant: vi.fn().mockImplementation((_request, callback) => { progress = callback; return new Promise(() => {}) }) })
+  const wrapper = screen(PersonaBuilder, backend); await flushPromises()
+  await button(wrapper, 'Open').trigger('click'); await flushPromises()
+  const build = button(wrapper, 'Build')
+  expect(build.attributes('disabled')).toBeDefined()
+  expect(wrapper.findAll('ol li')[3]!.text()).toContain('Needs your permission first')
+  await button(wrapper, 'I agree').trigger('click'); await flushPromises()
+  expect(button(wrapper, 'Build').attributes('disabled')).toBeUndefined()
+  await button(wrapper, 'Next: your history').trigger('click'); await flushPromises()
+  await button(wrapper, 'Next: build your assistant').trigger('click'); await flushPromises()
+  expect(wrapper.get('main h2').text()).toBe('Build your assistant')
+  await button(wrapper, 'Build my assistant').trigger('click')
+  progress!({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50 } }); await flushPromises()
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeDefined()
+  expect(wrapper.text()).toContain('Stop the build first to choose another assistant.')
+  await button(wrapper, 'Your history').trigger('click'); await flushPromises()
+  await button(wrapper, 'Build').trigger('click'); await flushPromises()
+  expect(wrapper.get('ul[aria-live="polite"]').text()).toContain('Reading your history')
+  expect(backend.buildAssistant).toHaveBeenCalledTimes(1)
 })

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-draft-interview"
+description = "Enables the draft_interview command without any pre-configured scope."
+commands.allow = ["draft_interview"]
+
+[[permission]]
+identifier = "deny-draft-interview"
+description = "Denies the draft_interview command without any pre-configured scope."
+commands.deny = ["draft_interview"]

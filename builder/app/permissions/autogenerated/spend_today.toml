@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-spend-today"
+description = "Enables the spend_today command without any pre-configured scope."
+commands.allow = ["spend_today"]
+
+[[permission]]
+identifier = "deny-spend-today"
+description = "Denies the spend_today command without any pre-configured scope."
+commands.deny = ["spend_today"]
