@@ -2,6 +2,63 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.5: how well it knows you, and review, from the app (2026-10-25, lane: V1)
+
+- **What:** the app's last two empty steps. *How well it knows you* reads the last build's report
+  in plain words: overall and per kind of decision (Strong / Getting there / Thin, as badges), what
+  would help where it is thin, the honest line when fewer than 30 questions were kept back to test
+  it, and how the assistant has grown since the build. *Review* keeps an answer the person writes
+  (an `instruction`, or a `correction` when they say what the assistant answered; source
+  `review`), shows how many tests the answers have made, and runs a refresh: Claude drafts a
+  change, each point is shown as before and after with its reason, the person approves or
+  rejects it, and an approved change is tested on all their answers with its lines as they come,
+  then kept or undone. Six new app commands in `builder/api/src/review.rs` (44 in all), each in
+  the parity table. Every step in the side list now has a screen. Brief:
+  `plans/briefs/PB7.5-report-and-review.md`.
+- **Shared with the CLI:** the grow crate gains `keep_locked` and `answer_locked` (the CLI's
+  `keep` and `answer` minus the lock, so the app runs them under its own non-creating lock with
+  the permission re-checked), `refresh::waiting` (the open change and whether it is approved),
+  `diff::removed_lines`, `apply::growth_counts` and a public `apply::reason`. The test run sends
+  progress lines (as it is now, with the change, checking the written answers), and the CLI's
+  `refresh apply` prints them before its outcome; nothing else in the CLI's output changed.
+- **Decided at pickup (the plan didn't say):** the webview names only a change it was shown (an
+  answer only for the waiting, unapproved change; a test only for the waiting, approved one; else
+  "that change isn't waiting for your answer any more", before any write or call); the app keeps
+  `instruction` and `correction` answers only (no report marks or picks yet); no stop for a
+  refresh's test (it writes nothing to the assistant until it finishes); finishing a test whose
+  result couldn't be saved stays a CLI step. No new crate or package (`persona-builder-grow` is a
+  workspace crate the api now uses).
+- **Who wrote it:** Codex, in four passes (the Rust side; the screens; Review reloading its status
+  when shown again, from Claude's review; the Verifier's fixes). Claude briefed, reviewed, wrote
+  this record, ran the gates outside Codex's sandbox and committed.
+- **Verified:** `ci-local.sh` green on `189e76f` (socket tests included) and on the final code
+  head `8a75701`. The touched crates' tests (grow, api, cli, app) also green on `97692aa`. Codex's
+  mutation checks, each red and restored by `cmp`: the waiting-change id check dropped from
+  answering, an unapproved change accepted for testing, an empty `reason`, the privacy check
+  dropped from keeping, `keep` in place of `keep_locked` (busy), the permission re-check after
+  the ledger opens dropped (apply, then draft), the "with the change" line dropped, before and
+  after swapped, a command in `COMMANDS` only, *Review* enabled before permission, *Review*
+  mounted with `v-if` (its lines lost), the reload on showing *Review* again dropped.
+  `/security-review` (sub-agent): nothing medium or higher; one low (below). Verifier (Fable) on
+  `189e76f`: pass, all eleven claims proven, one should-fix inherited from PB7.4 (below) and four
+  nits, three fixed in `8a75701` (47 lines, in files she saw: *Review* reloads by default when a
+  host omits `active`, a new draft clears the last test's lines, a base moved under the test reads
+  as "changed since you approved"), plus the missing draft forget-between test the security
+  review asked for.
+- **Not built, filed:** PB7.5a (`cjtJmnI6`): the app commands that spend (build, the interview
+  draft, the refresh draft and test) open the ledger with a lock that creates the state folder,
+  so a Forget landing between the first check and the open leaves an empty state folder (no data,
+  no call: the permission re-check refuses). Recorded as a known limit in `.ai/SECURITY.md`.
+- **Not verified:** the screens in a running app, light and dark (owed walk). One run of the api
+  tests inside Codex's sandbox hit an intermittent busy answer in the existing `use_it` tests;
+  the rerun and both full `ci-local.sh` runs passed.
+- **Skills Review:** ✅ tdd-skill (red first; 13 mutation checks) · ✅ security-and-hardening (the
+  webview can only act on the change it was shown; permission re-checked under every lock) · ✅
+  frontend (Review kept mounted across steps and reloaded when shown; loading, empty, error
+  states) · ⚠️ design-guide (light and dark not seen: owed walk) · ✅ plain-language (every
+  sentence from the brief, checked word for word by the Verifier) · ✅ source-driven-development
+  (built on the grow crate's own keep, refresh and apply).
+
 ## PB7.4: build, stop, spend and the interview, from the app (2026-10-25, lane: V1)
 
 - **What:** the app's *Build* step. It shows today's spend against the daily limit, builds the
