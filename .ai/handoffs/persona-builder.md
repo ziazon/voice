@@ -31,8 +31,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   `bash scripts/ci-local.sh` passed. Security review: no high or medium findings. Verifier
   (Fable): PASS, two should-fixes, both fixed. The repeat pass (Opus) then failed the first fix:
   taking every value that starts with a dash let a flag left empty swallow the next flag's name
-  and write a wrong line, where Python refuses. Fixed by argparse's own rule (a dash value needs
-  a space, the `--flag=value` form, or to be a negative number), with a test for each case, and
+  and write a wrong line, where Python refuses; a second repeat pass found the same through a
+  following `--flag="text with a space"`. Fixed with a rule stricter than Python's on purpose: a
+  value given on its own that starts with two dashes, or with one dash and no space (a negative
+  number aside), is refused; such a value can still be given as `--flag=value`. Where the two
+  differ, Rust only refuses, never writes a different line. A test covers each case, and
   `record --help` works again without an assistant folder.
 - **Not verified:** making an assistant from the app's window (the app path is covered by
   `builder/api/tests/assistants.rs` and the Verifier's reading of the bundle; owed with PB8's
