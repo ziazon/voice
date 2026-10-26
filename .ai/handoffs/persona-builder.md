@@ -2,6 +2,30 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.8: a short interview for the thin kinds only (2026-10-26, lane: V1)
+
+- **What:** from V-Q7 (answered with option 1). With 150 or more answered questions, `interview draft`
+  (CLI and app) no longer refuses when the report has thin kinds of decision: it drafts four questions on
+  each of the five thinnest kinds (fewer than five examples, never `other`), in its own form
+  (`interview::Form::Short`: round `interview-short`, files `interview-short-questions.json`,
+  `interview-short-answers.json`, `decisions-interview-short.jsonl`, always trained), so a kept full
+  interview is never overwritten. The report's item and the app say *Answer a few questions about it*,
+  with an *Answer a few questions* button that leads to the interview; the interview card names the
+  kinds. `interview answer` takes `--corpus` and follows the same form. Brief (three passes):
+  `plans/briefs/PB7.8-short-interview.md`. Built by Codex.
+- **Verified:** red first for every new test (build, report, ingest, CLI, api, both screens, the
+  installer); mutation checks by Codex (three), the Verifier (five) and the repeat pass (four), each
+  caught and restored with `cmp`. `ci-local.sh` green on the head (twice: before and after the second
+  fix-ups). No live Claude call (fake Claude only; a real draft spends plan usage).
+- **Reviews:** security review (sub-agent): two lows, both fixed (the installer's merge and host
+  names; an empty interview refused before any call). Verifier (Fable): PASS, two should-fixes (a thin
+  `other` row was a dead end: fixed; the form follows the count: a known-limit line in
+  `.ai/SECURITY.md`). Repeat (Opus): PASS.
+- **Known limits:** with a long history, a sixth thin kind, or a thin row no longer in the codebook,
+  still gets the item though this short interview won't ask about it (the next one asks the thinnest
+  five again); a second short interview replaces the first one's kept answers, as the full one does.
+- **Not verified:** the screens in a window (owed as a walk), and a real draft through Claude Code.
+
 ## PB7.5b: the command-line forget takes the state lock (2026-10-26, lane: V1)
 
 - **What:** `persona-builder forget <member> --yes` now previews first (keeping its refusals for a
