@@ -2,6 +2,47 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.7a: the look, readable form fields, and "this computer" (2026-10-26, lane: V2)
+
+- **What:** split from PB7.7 (the reviewed mocks). `builder/ui/src/theme.css` sets the Navy & Amber
+  palette from the mocks over Tabler, in both themes. The app loads it right after Tabler's CSS, and
+  a host app can load it as `@persona-builder/screens/theme.css` (the README says so). Form fields
+  get a literal colour per theme (`--tblr-bg-forms`, `--tblr-bg-forms-disabled`), and each theme sets
+  its own `color-scheme`. Before, Tabler's `[data-theme=dark]` rule set `color-scheme: dark`, so
+  `light-dark()` put a near-black field under the palette's navy text whenever a host page's theme was
+  dark. Every user-facing "this Mac" or "your Mac" now says "this computer" (`NOT_INSTALLED`,
+  `DOES_NOT_RUN`, `API_KEY_SET`, the `only_mine` refusal, the claude.ai unzip line). "Show in Finder"
+  now says "Show the folder" (assistants and the claude.ai files), and `.ai/SECURITY.md` matches.
+  Brief: `plans/briefs/PB7.7a-look-fields-this-computer.md`.
+- **Who wrote it:** Codex, in one pass. Claude wrote the brief, reviewed the diff and ran the live
+  check.
+- **Commits:** `3066b18` (brief), `0198701` (code and tests).
+- **Verified:**
+  - Red first, then green. These tests are new: `builder/agent/tests/text.rs`, the extra assertion in
+    `builder/ingest/tests/private_at.rs`, `builder/ui/src/wording.test.ts` (no `Mac` or `Finder` in any
+    screen source), and `builder/ui/src/theme.test.ts` (literal colours, no `light-dark(`, Tabler
+    loads first, the export exists).
+  - Seven mutation checks each turned a test red, and each was put back and checked with `cmp`.
+  - Rust: 332 tests pass. Screens: 230 tests pass, plus typecheck and build.
+  - Live check: the built CSS in headless Chrome, in four setups: light, dark, light under a dark
+    host `data-theme`, and dark under a light one. The field's contrast was 14.03:1 or 14.53:1 in
+    every setup, with the palette's body, primary and field colours.
+  - The control was the same palette without the field fix. Under a dark host it gave 1.28:1, the
+    faint text the mock review found. Screenshots matched the numbers.
+- **Reviews:** `/security-review` (sub-agent) found nothing. No Verifier was run: the change touches
+  no trigger path and is under 400 lines.
+- **Not verified:**
+  - No Windows or Linux webview was checked; only Chrome on this Mac.
+  - The root `README.md` still says "your Mac" when it describes the kit. It is outside this item.
+  - Each screen's wording against its mock is PB7.7b.
+- **Skills Review:**
+  - ✅ tdd-skill: red first, seven mutations.
+  - ✅ frontend: one stylesheet, loaded after the framework and exported for a host.
+  - ✅ design-guide: literal per-theme field colours, with the contrast measured.
+  - ✅ plain-language: "this computer", "Show the folder".
+  - ✅ security-and-hardening: nothing remote in the CSS, and no warning text loses meaning.
+  - ⚠️ source-driven-development: Tabler's own built CSS (1.6.1) was the source, not its docs.
+
 ## PB7.5c: the command-line history commands take the state lock (2026-10-26, lane: V1)
 
 - **What:** filed from PB7.5b's reviews. The CLI's ten history commands (`mine`, `claudeai
