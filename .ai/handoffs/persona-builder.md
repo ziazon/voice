@@ -2,6 +2,41 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.5d: the CLI's build, interview draft and keep take the state lock before they read (2026-10-26, lane: V1)
+
+- **What:** filed from PB7.5c's reviews. The three CLI commands read history, then took the
+  creating state lock, then wrote files made from what they read, so a forget in between left a
+  recreated state folder holding them. Now `build` opens the ledger only on a state folder that
+  already exists (`Session::open_existing`, as the app does) and prepares again under the lock;
+  `interview draft` does the same when the folder was there at its first look (else it may make
+  it, as before) and plans again under the lock (`draft_plan`); `keep` takes the non-creating lock
+  before it reads the signal and keeps it with `keep_locked`. A folder forgotten in the race reads
+  as the PB7.5c "isn't there yet" sentence. The PB7.5d known limit is gone from `.ai/SECURITY.md`.
+  `consent agree` is left as is (only a version and a date). Brief:
+  `plans/briefs/PB7.5d-cli-spenders-lock-before-reading.md`.
+- **Who wrote it:** Codex, one pass; Claude committed, ran the gates and wrote this record and one
+  SECURITY.md wording fix.
+- **Verified:** red first, in `builder/cli/tests/history_lock.rs`: a stub Claude Code whose sign-in
+  check deletes the state folder (a forget between the first read and the lock), for `build` and
+  `interview draft`: refused, no state folder afterwards, no Claude call, member files unchanged;
+  `keep` is busy under a held lock on a signal that doesn't exist (a read first would say it
+  doesn't exist), then keeps it; `keep` with no state folder creates none. Mutation checks (cp
+  backup, `cmp`): by Codex, `build` on the creating open, `interview draft` always creating, always
+  non-creating (the fresh-assistant `interview.rs` tests go red), `keep` reading before the lock; by
+  V1, `build` on the creating open again (red). The CLI's tests, clippy and fmt green;
+  `ci-local.sh` in the land (it never lands on red).
+- **Reviews:** `/security-review` (sub-agent): no high or medium; two lows left: `interview draft`
+  on a folder not there at first look can still, if a `mine` and a forget both land before its
+  lock, leave a folder holding questions drafted from the book alone (no history); and the CLI's
+  missing-file errors still print the full path (only to the person's own terminal; older than
+  this slice). Verifier (Fable): PASS, no should-fix; one nit fixed (the SECURITY.md sentence now
+  says no folder holding files made from the forgotten history), two left (the "isn't there yet"
+  advice reads oddly for `keep`; `build` on a missing folder still shows the raw file error first).
+  Out of scope, noted: `spend` and `refresh propose|apply` still use the creating open, so after a
+  forget they make an empty state folder (they read only under the lock).
+- **Not verified:** a forget from the app's window during a real `build`; the race is shown with
+  the stub's sign-in check.
+
 ## PB7.5c: the command-line history commands take the state lock (2026-10-26, lane: V1)
 
 - **What:** filed from PB7.5b's reviews. The CLI's ten history commands (`mine`, `claudeai
