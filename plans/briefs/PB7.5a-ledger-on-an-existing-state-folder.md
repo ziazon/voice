@@ -198,3 +198,20 @@ Commit separately on top (never amend), message in a file:
 `builder: PB7.5a the refresh forget tests check no state folder is left`. If your sandbox refuses
 the commit, leave it uncommitted and say so. Run from `builder/` with `CARGO_BUILD_JOBS=2`:
 `cargo fmt --all -- --check` and `cargo test -p persona-builder-api --test review -- --test-threads=2`.
+
+## Second fix-up pass (the repeat Verifier's should-fix)
+
+The repeat Verifier changed `state_directory(home, slug, false)` (the re-open after `flock` in
+`lock_state_folder_after`) to `state_directory(home, slug, create)` and no test went red: a
+creating lock whose folder was forgotten between the open and the `flock` would then make a fresh
+empty folder at the path before answering busy.
+
+Add one test beside the four in `builder/ingest/src/private.rs`'s `mod tests`, using its `Home`:
+`creating_lock_refuses_a_folder_forgotten_before_the_lock`: `between` runs
+`fs::remove_dir_all(home.state())`, `create == true`; assert the result is `Err(Error::Invalid(text))`
+with `text == BUSY`, and `!home.state().exists()`. No product code change. Red proof: make that
+mutation (cp backup, `cmp -s` restore, never `git checkout --`), see the new test fail on the
+`exists` assertion, restore, see it pass. Commit on top (never amend):
+`builder: PB7.5a a forgotten folder stays forgotten under the creating lock`. Run from `builder/`
+with `CARGO_BUILD_JOBS=2`: `cargo fmt --all -- --check`,
+`cargo test -p persona-builder-ingest --lib -- --test-threads=2`.
