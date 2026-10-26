@@ -107,10 +107,12 @@ fn records_match_python_bytes_with_and_without_optional_fields() {
             "Garder le café \"petit\"?",
         ),
         (None, "- fix login", "-5 or 5?"),
+        (None, "-x y", "short dash with a space"),
         (Some(("-r x", "-a b")), "- fix login", "-5 or 5?"),
         (None, "-5", "negative integer"),
         (None, "-", "single dash"),
         (None, "--kind", "explicit equals"),
+        (None, "--rule=keep it short", "explicit equals with a space"),
         (None, "-.5", "negative fraction"),
         (None, "-5.25", "negative decimal"),
     ] {
@@ -127,6 +129,8 @@ fn records_match_python_bytes_with_and_without_optional_fields() {
             // Exercise several joined tokens before and after separate values.
             arguments.splice(1..3, ["--kind=decided"]);
             arguments.extend(["--rule=--rule", "--robin-answer=--work"]);
+        } else if work == "--rule=keep it short" {
+            arguments.splice(0..2, ["--work=--rule=keep it short"]);
         }
         let out = f.run(&arguments);
         success(&out);
@@ -348,6 +352,20 @@ fn pick_without_value_before_rule() {
         text(&out.stderr)
     );
     assert!(!f.log().exists());
+}
+
+#[test]
+fn work_without_value_before_two_dashes_with_spaces() {
+    for value in ["--rule=keep it short", "--ques=what now?", "--x y"] {
+        let f = Fixture::new();
+        f.seed();
+        let mut arguments = args();
+        arguments.drain(0..2);
+        arguments.extend(["--work", value]);
+        let out = f.run(&arguments);
+        assert_eq!(out.status.code(), Some(2), "{value}: {}", text(&out.stderr));
+        assert!(!f.log().exists(), "{value}: wrote a record");
+    }
 }
 
 #[test]

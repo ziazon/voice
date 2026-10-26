@@ -125,9 +125,14 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-/// argparse's option-like value rule: a leading dash needs a space or a negative
-/// number matching ^-\d+$|^-\d*\.\d+$ (unless supplied as --flag=value).
+/// Stricter than argparse on purpose: a value starting with two dashes must be
+/// given as --flag=value. Otherwise, a leading dash is option-like only when the
+/// value is longer than one character, has no space, and is not a negative number
+/// matching ^-\d+$|^-\d*\.\d+$.
 fn option_like_value(value: &str) -> bool {
+    if value.starts_with("--") {
+        return true;
+    }
     let Some(number) = value.strip_prefix('-') else {
         return false;
     };
