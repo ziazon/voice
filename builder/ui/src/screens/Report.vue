@@ -15,16 +15,18 @@ const loading = ref(true)
 const error = ref('')
 const report = computed(() => view.value?.report)
 const strong = computed(() => report.value?.areas.filter(area => area.level === 'strong').length ?? 0)
+const longHistory = computed(() => !!report.value && report.value.answered >= report.value.thinBelow)
+const shortInterview = computed(() => longHistory.value && report.value?.areas.some(area => area.help.includes('interview')))
 const levels: Record<ReportLevel, { label: string, badge: string }> = {
   strong: { label: 'Strong', badge: 'bg-green-lt' },
   gettingThere: { label: 'Getting there', badge: 'bg-yellow-lt' },
   thin: { label: 'Thin', badge: 'bg-secondary-lt' },
 }
-const help: Record<ReportHelp, string> = {
-  interview: 'Answer the interview',
+const help = computed<Record<ReportHelp, string>>(() => ({
+  interview: longHistory.value ? 'Answer a few questions about it' : 'Answer the interview',
   claudeai: 'Add your claude.ai chats',
   time: 'Keep using Claude: it learns from every answer',
-}
+}))
 onMounted(async () => {
   try {
     view.value = await backend.showReport({ slug: props.assistant.slug })
@@ -87,6 +89,9 @@ onMounted(async () => {
                 </tr>
               </tbody>
             </table>
+          </div>
+          <div v-if="shortInterview" class="card-body">
+            <button type="button" class="btn btn-secondary" @click="emit('build')">Answer a few questions</button>
           </div>
           <div v-if="view.growth" class="card-body">
             <p class="mb-0">Since the build: {{ view.growth.kept.toLocaleString() }} {{ view.growth.kept === 1 ? 'change' : 'changes' }} kept and {{ view.growth.undone.toLocaleString() }} undone. Your assistant passes {{ view.growth.passing.toLocaleString() }} of {{ view.growth.of.toLocaleString() }} tests from your answers.</p>

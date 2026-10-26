@@ -481,3 +481,20 @@ fn read_refuses_changed_or_oversized_reports_without_echoing_them() {
     private::write_private(&home.0, "wren", REPORT, &bytes).unwrap();
     assert!(report::read(&home.0, "wren").unwrap().is_some());
 }
+
+#[test]
+fn render_short_interview_at_150_and_full_at_149() {
+    let mut r = plain();
+    r.answered = 150;
+    assert!(
+        report::render(&r)
+            .join("\n")
+            .contains("answer a few questions about it (persona-builder interview draft)")
+    );
+    r.answered = 149;
+    assert!(
+        report::render(&r)
+            .join("\n")
+            .contains("answer the interview (persona-builder interview draft)")
+    );
+}

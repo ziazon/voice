@@ -415,3 +415,14 @@ fn universal_newlines_count_blank_lines_in_errors() {
         "x.jsonl:4: a line is not a JSON object",
     );
 }
+
+#[test]
+fn short_interview_always_trains() {
+    assert_eq!(
+        corpus::discover(
+            &["decisions-interview-short.jsonl".into()],
+            "decisions.jsonl"
+        ),
+        vec![("decisions-interview-short.jsonl".into(), Mode::Train)]
+    );
+}

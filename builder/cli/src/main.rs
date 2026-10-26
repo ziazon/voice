@@ -239,7 +239,7 @@ enum Command {
         #[command(subcommand)]
         command: ClaudeCommand,
     },
-    /// Interview yourself when your history is thin: twenty questions, then your answers.
+    /// Interview yourself: twenty questions for a thin history, or a few on thin kinds.
     Interview {
         #[command(subcommand)]
         command: InterviewCommand,
@@ -340,7 +340,7 @@ enum RefreshCommand {
 
 #[derive(Subcommand)]
 enum InterviewCommand {
-    /// Draft twenty questions from your areas of work, more of them on the kinds of decision your history holds least of.
+    /// Draft twenty questions for a thin history, or a few on each thin kind of decision.
     Draft {
         member_dir: PathBuf,
         #[arg(long, default_value = "decisions.jsonl")]
@@ -367,8 +367,8 @@ enum InterviewCommand {
         #[arg(long)]
         answers: String,
         /// The questions you answered: a file in your assistant's private folder.
-        #[arg(long, default_value = persona_builder_build::interview::QUESTIONS_FILE)]
-        questions: String,
+        #[arg(long)]
+        questions: Option<String>,
         /// Keep these answers in place of the ones kept before.
         #[arg(long)]
         replace: bool,
@@ -1213,15 +1213,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
         None => Vec::new(),
     };
     let answered = interview::answered(&records);
-    if answered >= interview::THIN_BELOW {
-        println!("{}", text::enough(answered));
-        return Ok(());
-    }
-    if !args.replace
-        && read_private_optional(&home, &member.slug, interview::QUESTIONS_FILE)?.is_some()
-    {
-        return Err(Error::Invalid(text::ALREADY_DRAFTED.into()));
-    }
+    let form = interview::Form::for_answered(answered);
     let rows = match &args.labels {
         Some(labels) => {
             let given = read_objects(labels, &json_at(&home, &member.slug, labels)?)?;
@@ -1239,29 +1231,48 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
             )
         }
     };
+    let weights = if form == interview::Form::Short {
+        interview::thin_kinds(&weights)
+    } else {
+        weights
+    };
+    if form == interview::Form::Short && weights.is_empty() {
+        println!("{}", text::enough(answered));
+        return Ok(());
+    }
+    if !args.replace && read_private_optional(&home, &member.slug, form.questions_file())?.is_some()
+    {
+        return Err(Error::Invalid(text::ALREADY_DRAFTED.into()));
+    }
     let cap = Cap::new(args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
     let session = Session::open(&home, &member.slug, cap)?;
     // Again under the lock: another draft may have saved questions since the first look.
-    if !args.replace
-        && read_private_optional(&home, &member.slug, interview::QUESTIONS_FILE)?.is_some()
+    if !args.replace && read_private_optional(&home, &member.slug, form.questions_file())?.is_some()
     {
         return Err(Error::Invalid(text::ALREADY_DRAFTED.into()));
     }
-    let drafted = interview::draft(&claude, &session, &args.model, &book, &weights)?;
+    let drafted = interview::draft(form, &claude, &session, &args.model, &book, &weights)?;
     write_private(
         &home,
         &member.slug,
-        interview::QUESTIONS_FILE,
+        form.questions_file(),
         pretty(&serde_json::Value::Object(drafted)).as_bytes(),
     )?;
-    println!("{}", text::drafted(interview::COUNT, weighted));
+    println!(
+        "{}",
+        if form == interview::Form::Short {
+            text::drafted_short(form.count(&weights), &weights)
+        } else {
+            text::drafted(interview::COUNT, weighted)
+        }
+    );
     println!(
         "saved to ~/.claude/state/{}/{}",
         member.slug,
-        interview::QUESTIONS_FILE
+        form.questions_file()
     );
     println!("{}", text::swap(&member_dir.display().to_string()));
     println!(
@@ -1273,7 +1284,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
 fn interview_answer(
     member_dir: PathBuf,
     answers: String,
-    questions: String,
+    questions: Option<String>,
     replace: bool,
 ) -> Result<()> {
     use persona_builder_build::{interview, text};
@@ -1284,25 +1295,28 @@ fn interview_answer(
     };
     use persona_builder_steps::input::read_object;
     let (member, home) = member_and_home(&member_dir)?;
-    if !replace && read_private_optional(&home, &member.slug, interview::OUT)?.is_some() {
+    let records = match read_private_optional(&home, &member.slug, "decisions.jsonl")? {
+        Some(bytes) => persona_builder_ingest::corpus::read_records("decisions.jsonl", &bytes)?,
+        None => Vec::new(),
+    };
+    let form = interview::Form::for_answered(interview::answered(&records));
+    let questions = questions.unwrap_or_else(|| form.questions_file().into());
+
+    if !replace && read_private_optional(&home, &member.slug, form.out())?.is_some() {
         return Err(Error::Invalid(text::ALREADY_ANSWERED.into()));
     }
     let filters = Filters::compile(&member.filters)?;
     let asked = read_object(&questions, &json_at(&home, &member.slug, &questions)?)?;
     let answered = read_object(&answers, &json_at(&home, &member.slug, &answers)?)?;
-    let kept = interview::answer(&member, &filters, &asked, &answered)?;
+    let kept = interview::answer(form, &member, &filters, &asked, &answered)?;
     write_private(
         &home,
         &member.slug,
-        interview::OUT,
+        form.out(),
         to_jsonl(&kept.records).as_bytes(),
     )?;
     print!("{}", interview::summary(&kept));
-    println!(
-        "saved to ~/.claude/state/{}/{}",
-        member.slug,
-        interview::OUT
-    );
+    println!("saved to ~/.claude/state/{}/{}", member.slug, form.out());
     println!("{}", text::merge_next(&member_dir.display().to_string()));
     Ok(())
 }

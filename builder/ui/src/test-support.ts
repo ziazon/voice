@@ -59,9 +59,9 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     buildAssistant: vi.fn().mockResolvedValue({ answered: 2, heldOut: 0, tested: true, spend: { spentUsd: 1, dailyCapUsd: 50 } }),
     stopBuild: vi.fn().mockResolvedValue(undefined),
     spendToday: vi.fn().mockResolvedValue({ spentUsd: 0, dailyCapUsd: 50 }),
-    interviewStatus: vi.fn().mockResolvedValue({ answered: 0, thinBelow: 150, questions: [], answers: [], kept: false }),
-    draftInterview: vi.fn().mockResolvedValue({ answered: 0, thinBelow: 150, questions: [], answers: [], kept: false }),
-    saveInterviewAnswers: vi.fn().mockResolvedValue({ answered: 0, thinBelow: 150, questions: [], answers: [], kept: false }),
+    interviewStatus: vi.fn().mockResolvedValue({ answered: 0, thinBelow: 150, thinKinds: [], questions: [], answers: [], kept: false }),
+    draftInterview: vi.fn().mockResolvedValue({ answered: 0, thinBelow: 150, thinKinds: [], questions: [], answers: [], kept: false }),
+    saveInterviewAnswers: vi.fn().mockResolvedValue({ answered: 0, thinBelow: 150, thinKinds: [], questions: [], answers: [], kept: false }),
     keepInterviewAnswers: vi.fn().mockResolvedValue({ kept: 2, unanswered: 18, privateLeftOut: 1 }),
     ...overrides,
   }

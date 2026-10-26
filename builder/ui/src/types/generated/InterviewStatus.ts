@@ -2,4 +2,4 @@
 import type { InterviewAnswer } from "./InterviewAnswer";
 import type { InterviewQuestion } from "./InterviewQuestion";
 
-export type InterviewStatus = { answered: number, thinBelow: number, questions: Array<InterviewQuestion>, answers: Array<InterviewAnswer>, kept: boolean, };
+export type InterviewStatus = { thinKinds: Array<string>, answered: number, thinBelow: number, questions: Array<InterviewQuestion>, answers: Array<InterviewAnswer>, kept: boolean, };

@@ -32,7 +32,8 @@ const NOTHING: &str = "There's nothing to build from yet. Read your history and 
 const ANSWER_BAD: &str = "Persona Builder couldn't keep that answer. Close it and open it again.";
 const NO_ANSWERS: &str = "Answer at least one question first.";
 const NO_QUESTIONS: &str = "Draft the questions first.";
-const ENOUGH: &str = "Your history already holds enough answers to build from. The interview is for a thinner history.";
+const ENOUGH: &str =
+    "Your history already holds enough answers to build from, and no kind of decision is thin.";
 const ALREADY: &str = "Your questions are already drafted. Answer them, or draft different ones.";
 struct Home {
     path: PathBuf,
@@ -519,6 +520,7 @@ fn interview_drafting_letters_replacement_damage_and_enough() {
     let status = h.draft(false).unwrap();
     assert_eq!(status.questions.len(), 20);
     assert_eq!(status.thin_below, 150);
+    assert!(status.thin_kinds.is_empty());
     assert_eq!(
         status.questions[0]
             .options
@@ -612,8 +614,14 @@ fn kept_answers_equal_core_records_and_count_private_ones() {
     let a: Value =
         serde_json::from_slice(&read_private(&h.path, "wren", interview::ANSWERS_FILE).unwrap())
             .unwrap();
-    let expected =
-        interview::answer(&m, &filters, q.as_object().unwrap(), a.as_object().unwrap()).unwrap();
+    let expected = interview::answer(
+        interview::Form::Full,
+        &m,
+        &filters,
+        q.as_object().unwrap(),
+        a.as_object().unwrap(),
+    )
+    .unwrap();
     let kept = keep_interview_answers_in(&h.path, slug()).unwrap();
     assert_eq!(kept.kept, 1);
     assert_eq!(kept.private_left_out, 1);
@@ -750,4 +758,136 @@ fn keep_requires_questions_and_refuses_a_wholly_private_set() {
         "Every answer looked personal or secret, so none was kept. Answer without names or private details, then try again.",
     );
     assert!(!h.state(interview::OUT).exists());
+}
+
+fn report_for_long_history(thin: bool) -> Vec<u8> {
+    let kinds = [
+        "scope",
+        "sequencing",
+        "methods",
+        "framing",
+        "writing-voice",
+        "communication",
+        "collaboration",
+        "compliance-ethics",
+        "tooling",
+        "verification",
+        "placement-naming",
+        "go-no-go",
+    ];
+    let report = serde_json::to_vec(&json!({"schema":"persona-builder/report/1","built":"2026-10-24","overall":"thin","answered":150,"held":0,"test":null,
+        "areas":kinds.iter().enumerate().map(|(n, kind)|json!({"area":kind,"level":if thin && n < 2 {"thin"} else {"strong"},"examples":if thin && n < 2 {n * 3} else {40},"strengthen":[]})).collect::<Vec<_>>()})).unwrap();
+    serde_json::from_slice::<persona_builder_build::report::Report>(&report).unwrap();
+    report
+}
+
+fn short_interview_stub(h: &Home) {
+    let mut q = questions();
+    q["questions"].as_array_mut().unwrap().truncate(8);
+    for (at, question) in q["questions"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .enumerate()
+    {
+        question["header"] = json!(["scope", "sequencing"][at % 2]);
+    }
+    let q = q.to_string();
+    h.stub(|source|source.replace("first = prompt.split", &format!("print(json.dumps({{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":False,\"total_cost_usd\":0.02,\"structured_output\":json.loads({q:?})}}))\n    return 0\n    first = prompt.split")));
+}
+
+#[test]
+fn interview_status_names_thin_kinds_only_for_long_histories() {
+    let _case = CASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let h = Home::new(true);
+    h.write("report.json", &report_for_long_history(true));
+    h.corpus(149, 0);
+    assert!(
+        interview_status_in(&h.path, slug())
+            .unwrap()
+            .thin_kinds
+            .is_empty()
+    );
+    h.corpus(150, 0);
+    let status = interview_status_in(&h.path, slug()).unwrap();
+    assert_eq!(status.thin_kinds, ["scope", "sequencing"]);
+    assert!(status.questions.is_empty());
+    assert_eq!(h.calls(), 0);
+}
+
+#[test]
+fn long_history_drafts_saves_and_keeps_short_answers_without_changing_full_answers() {
+    let _case = CASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let h = Home::new(true);
+    h.corpus(150, 0);
+    h.write("report.json", &report_for_long_history(true));
+    let full = format!("{}\n", question(999, "train"));
+    h.write("decisions-interview.jsonl", full.as_bytes());
+    short_interview_stub(&h);
+    let status = h.draft(false).unwrap();
+    assert_eq!(status.questions.len(), 8);
+    assert_eq!(status.thin_kinds, ["scope", "sequencing"]);
+    assert_eq!(h.calls(), 1);
+    assert!(h.state("interview-short-questions.json").exists());
+    assert!(!h.state(interview::QUESTIONS_FILE).exists());
+    let answers = vec![answer(1, &["A"], ""), answer(2, &[], "Wait a week")];
+    assert_eq!(h.answers(answers.clone()).unwrap().answers, answers);
+    assert!(h.state("interview-short-answers.json").exists());
+    assert!(!h.state(interview::ANSWERS_FILE).exists());
+    let kept = keep_interview_answers_in(&h.path, slug()).unwrap();
+    assert_eq!(kept.kept, 2);
+    assert_eq!(kept.unanswered, 6);
+    assert_eq!(
+        fs::read(h.state("decisions-interview.jsonl")).unwrap(),
+        full.as_bytes()
+    );
+    let records: Vec<Value> = fs::read_to_string(h.state("decisions-interview-short.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(records.len(), 2);
+    for (at, record) in records.iter().enumerate() {
+        assert_eq!(
+            record["id"],
+            format!("question:interview-short-{:02}", at + 1)
+        );
+        assert_eq!(record["project"], "interview");
+        assert_eq!(record["split"], "train");
+    }
+    assert_eq!(
+        fs::read(h.state("decisions-interview.jsonl")).unwrap(),
+        full.as_bytes()
+    );
+    assert!(interview_status_in(&h.path, slug()).unwrap().kept);
+    let ledger = fs::read_to_string(h.state("runs.jsonl")).unwrap();
+    assert!(
+        ledger
+            .lines()
+            .all(|line| serde_json::from_str::<Value>(line).unwrap()["step"] == "interview-short")
+    );
+}
+
+#[test]
+fn long_history_without_thin_kinds_spends_nothing() {
+    let _case = CASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let h = Home::new(true);
+    h.corpus(150, 0);
+    h.write("report.json", &report_for_long_history(false));
+    interview_stub(&h);
+    safe(&h, h.draft(false), ENOUGH);
+    assert_eq!(h.calls(), 0);
+    assert!(!h.state("runs.jsonl").exists());
+    assert!(
+        interview_status_in(&h.path, slug())
+            .unwrap()
+            .thin_kinds
+            .is_empty()
+    );
 }

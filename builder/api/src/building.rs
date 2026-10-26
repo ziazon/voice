@@ -33,7 +33,8 @@ const BUILD_FAILED: &str = "The build stopped before it finished, so your assist
 const PRIVATE: &str = "The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Build again to try once more.";
 const LEDGER: &str = "Persona Builder's record of what this assistant has spent can't be read, so it won't spend anything more. Use the persona-builder command to see what's wrong.";
 const BUILD_SAVE: &str = "Persona Builder couldn't save your assistant. Check there's space on this computer, then try again.";
-const ENOUGH: &str = "Your history already holds enough answers to build from. The interview is for a thinner history.";
+const ENOUGH: &str =
+    "Your history already holds enough answers to build from, and no kind of decision is thin.";
 const ALREADY_DRAFTED: &str =
     "Your questions are already drafted. Answer them, or draft different ones.";
 const DRAFT_FAILED: &str =
@@ -212,11 +213,11 @@ fn object(home: &Path, slug: &str, name: &str) -> Option<Map<String, Value>> {
         .as_object()
         .cloned()
 }
-fn questions(home: &Path, slug: &str) -> Option<Map<String, Value>> {
-    object(home, slug, interview::QUESTIONS_FILE).filter(|q| round::check_questions(q).is_ok())
+fn questions(home: &Path, slug: &str, form: interview::Form) -> Option<Map<String, Value>> {
+    object(home, slug, form.questions_file()).filter(|q| round::check_questions(q).is_ok())
 }
-fn answers(home: &Path, slug: &str) -> Option<Map<String, Value>> {
-    let file = object(home, slug, interview::ANSWERS_FILE)?;
+fn answers(home: &Path, slug: &str, form: interview::Form) -> Option<Map<String, Value>> {
+    let file = object(home, slug, form.answers_file())?;
     let rows = file.get("answers")?.as_object()?;
     for (n, row) in rows {
         n.parse::<u32>().ok()?;
@@ -245,9 +246,28 @@ fn answered(home: &Path, slug: &str) -> Result<usize> {
         })
         .unwrap_or(Ok(0))
 }
+fn form(home: &Path, slug: &str) -> Result<interview::Form> {
+    Ok(interview::Form::for_answered(answered(home, slug)?))
+}
+fn interview_weights(
+    home: &Path,
+    member: &Member,
+    form: interview::Form,
+) -> Result<Vec<(String, Option<usize>)>> {
+    let book = book(member).map_err(|_| failure(SETTINGS))?;
+    let report = report::read(home, &member.slug).ok().flatten();
+    let weights =
+        interview::weights_from_report(&book, report.as_ref()).map_err(|_| failure(SETTINGS))?;
+    Ok(if form == interview::Form::Short {
+        interview::thin_kinds(&weights)
+    } else {
+        weights
+    })
+}
 fn status(home: &Path, member: &Member) -> Result<InterviewStatus> {
     let slug = &member.slug;
-    let questions = questions(home, slug)
+    let form = form(home, slug)?;
+    let questions = questions(home, slug, form)
         .map(|file| {
             file["questions"]
                 .as_array()
@@ -280,7 +300,7 @@ fn status(home: &Path, member: &Member) -> Result<InterviewStatus> {
                 .collect()
         })
         .unwrap_or_default();
-    let mut answers: Vec<_> = answers(home, slug)
+    let mut answers: Vec<_> = answers(home, slug, form)
         .map(|file| {
             file["answers"]
                 .as_object()
@@ -304,11 +324,19 @@ fn status(home: &Path, member: &Member) -> Result<InterviewStatus> {
         .unwrap_or_default();
     answers.sort_by_key(|a| a.n);
     Ok(InterviewStatus {
+        thin_kinds: if form == interview::Form::Short {
+            interview_weights(home, member, form)?
+                .into_iter()
+                .map(|(kind, _)| kind)
+                .collect()
+        } else {
+            vec![]
+        },
         answered: count(answered(home, slug)?),
         thin_below: count(interview::THIN_BELOW),
         questions,
         answers,
-        kept: private::read_private_optional(home, slug, interview::OUT)
+        kept: private::read_private_optional(home, slug, form.out())
             .map_err(|_| failure(SETTINGS))?
             .is_some(),
     })
@@ -316,11 +344,13 @@ fn status(home: &Path, member: &Member) -> Result<InterviewStatus> {
 pub fn interview_status_in(home: &Path, request: SlugRequest) -> Result<InterviewStatus> {
     status(home, &readable(home, &request.slug)?)
 }
-fn can_draft(home: &Path, slug: &str, replace: bool) -> Result<()> {
-    if answered(home, slug)? >= interview::THIN_BELOW {
+fn can_draft(home: &Path, member: &Member, replace: bool) -> Result<()> {
+    let slug = &member.slug;
+    let form = form(home, slug)?;
+    if form == interview::Form::Short && interview_weights(home, member, form)?.is_empty() {
         return Err(failure(ENOUGH));
     }
-    if !replace && questions(home, slug).is_some() {
+    if !replace && questions(home, slug, form).is_some() {
         return Err(failure(ALREADY_DRAFTED));
     }
     Ok(())
@@ -332,11 +362,8 @@ pub fn draft_interview_in(
     request: DraftInterviewRequest,
 ) -> Result<InterviewStatus> {
     let member = readable(home, &request.slug)?;
-    can_draft(home, &request.slug, request.replace)?;
+    can_draft(home, &member, request.replace)?;
     let book = book(&member).map_err(|_| failure(SETTINGS))?;
-    let report = report::read(home, &request.slug).ok().flatten();
-    let weights =
-        interview::weights_from_report(&book, report.as_ref()).map_err(|_| failure(SETTINGS))?;
     let claude = claude::find_in(path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
     claude
         .check(home)
@@ -345,17 +372,26 @@ pub fn draft_interview_in(
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
     }
-    can_draft(home, &request.slug, request.replace)?;
-    let drafted = interview::draft(&claude, &session, claude::DEFAULT_MODEL, &book, &weights)
-        .map_err(|e| call_failure(e, &session, DRAFT_FAILED))?;
+    can_draft(home, &member, request.replace)?;
+    let form = form(home, &request.slug)?;
+    let weights = interview_weights(home, &member, form)?;
+    let drafted = interview::draft(
+        form,
+        &claude,
+        &session,
+        claude::DEFAULT_MODEL,
+        &book,
+        &weights,
+    )
+    .map_err(|e| call_failure(e, &session, DRAFT_FAILED))?;
     if request.replace {
-        private::remove_private(home, &request.slug, interview::ANSWERS_FILE)
+        private::remove_private(home, &request.slug, form.answers_file())
             .map_err(|_| failure(ANSWERS_SAVE))?;
     }
     private::write_private(
         home,
         &request.slug,
-        interview::QUESTIONS_FILE,
+        form.questions_file(),
         pretty(&Value::Object(drafted)).as_bytes(),
     )
     .map_err(|_| failure(ANSWERS_SAVE))?;
@@ -371,7 +407,8 @@ pub fn save_interview_answers_in(
         return Err(failure(ANSWER_BAD));
     }
     let (member, _lock) = locked(home, &request.slug)?;
-    let questions = questions(home, &request.slug).ok_or_else(|| failure(NO_QUESTIONS))?;
+    let form = form(home, &request.slug)?;
+    let questions = questions(home, &request.slug, form).ok_or_else(|| failure(NO_QUESTIONS))?;
     let mut seen = HashSet::new();
     let mut kept = Map::new();
     for answer in request.answers {
@@ -414,7 +451,7 @@ pub fn save_interview_answers_in(
     round::round(
         &member,
         &filters,
-        interview::STEP,
+        form.step(),
         &questions,
         file.as_object().expect("object"),
         false,
@@ -423,7 +460,7 @@ pub fn save_interview_answers_in(
     private::write_private(
         home,
         &request.slug,
-        interview::ANSWERS_FILE,
+        form.answers_file(),
         pretty(&file).as_bytes(),
     )
     .map_err(|_| failure(ANSWERS_SAVE))?;
@@ -431,20 +468,22 @@ pub fn save_interview_answers_in(
 }
 pub fn keep_interview_answers_in(home: &Path, request: SlugRequest) -> Result<InterviewKept> {
     let (member, _lock) = locked(home, &request.slug)?;
-    let questions = questions(home, &request.slug).ok_or_else(|| failure(NO_QUESTIONS))?;
-    let answers = answers(home, &request.slug)
+    let form = form(home, &request.slug)?;
+    let questions = questions(home, &request.slug, form).ok_or_else(|| failure(NO_QUESTIONS))?;
+    let answers = answers(home, &request.slug, form)
         .filter(|a| a["answers"].as_object().is_some_and(|a| !a.is_empty()))
         .ok_or_else(|| failure(NO_ANSWERS))?;
     let filters = Filters::compile(&member.filters).map_err(|_| failure(SETTINGS))?;
-    let kept = interview::answer(&member, &filters, &questions, &answers).map_err(|e| match e {
-        Error::Invalid(message) if message == text::NO_ANSWERS => failure(NO_ANSWERS),
-        Error::Invalid(message) if message == text::ALL_LEFT_OUT => failure(ALL_LEFT_OUT),
-        _ => failure(ANSWER_BAD),
-    })?;
+    let kept =
+        interview::answer(form, &member, &filters, &questions, &answers).map_err(|e| match e {
+            Error::Invalid(message) if message == text::NO_ANSWERS => failure(NO_ANSWERS),
+            Error::Invalid(message) if message == text::ALL_LEFT_OUT => failure(ALL_LEFT_OUT),
+            _ => failure(ANSWER_BAD),
+        })?;
     private::write_private(
         home,
         &request.slug,
-        interview::OUT,
+        form.out(),
         to_jsonl(&kept.records).as_bytes(),
     )
     .map_err(|_| failure(ANSWERS_SAVE))?;

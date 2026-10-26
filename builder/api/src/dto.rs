@@ -386,6 +386,7 @@ pub struct InterviewAnswer {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct InterviewStatus {
+    pub thin_kinds: Vec<String>,
     pub answered: u32,
     pub thin_below: u32,
     pub questions: Vec<InterviewQuestion>,

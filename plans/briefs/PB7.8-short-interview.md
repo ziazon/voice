@@ -152,3 +152,20 @@ existing interview tests use.
   the CLI package (use the real package names), `cargo clippy` on each `--all-targets -- -D warnings`,
   `cargo fmt --check`, and `pnpm -C builder/ui test` plus `pnpm -C builder/ui typecheck` all pass.
 - Report the files you changed, the commands you ran and their results, and anything you could not do.
+
+## Fix-up pass (Claude's review)
+
+1. `interview::prompt`: the short rule says "Exactly 4 questions" as a literal; build it from
+   `PER_THIN` with `format!`, so the number can never drift from the count. The prompt test checks
+   the number through `PER_THIN`.
+2. `Interview.vue`: with a long history, a short interview's questions waiting, and `thinKinds` now
+   empty (a later build filled those kinds), the line ends in an empty list (*"…so far: . A few
+   questions…"*). In that case say *"Your history holds {n} answers to Claude's questions, enough to
+   build from. These questions are on kinds of decision that had few examples."* instead. Test it
+   (red first).
+3. `persona-builder interview answer`: it reads the form from a hard-coded `decisions.jsonl`, while
+   `interview draft` takes `--corpus`. Give `answer` the same `--corpus` argument (same default and
+   help text as `draft`'s) and use it. Test: with `--corpus other.jsonl` holding 150 answered
+   questions and no `decisions.jsonl`, `answer` uses the short form.
+
+Same Done-means: the touched crates' tests, clippy, fmt, the UI tests and typecheck. Do not commit.

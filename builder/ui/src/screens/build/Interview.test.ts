@@ -3,12 +3,24 @@ import { expect, it, vi } from 'vitest'
 import { button, deferred, fakeBackend, screen } from '../../test-support'
 import Interview from './Interview.vue'
 const questions = Array.from({ length: 20 }, (_, i) => ({ n: i + 1, kind: 'Work', question: `Question ${i + 1}?`, multiSelect: i === 0, recommended: 'A', options: ['A', 'B', 'C', 'D'].map(letter => ({ letter, label: `Option ${letter}`, description: `Description ${letter}` })) }))
-const status = { answered: 10, thinBelow: 150, questions, answers: [], kept: false }
+const status = { answered: 10, thinBelow: 150, thinKinds: [], questions, answers: [], kept: false }
 it('shows only the short line for enough history', async () => {
   const wrapper = screen(Interview, fakeBackend({ interviewStatus: vi.fn().mockResolvedValue({ ...status, answered: 150, questions: [] }) }), { slug: 'example' })
   await flushPromises()
   expect(wrapper.text()).toContain("Your history holds 150 answers to Claude's questions, enough to build from.")
+  expect(wrapper.findAll('p').map(line => line.text())).toEqual(["Your history holds 150 answers to Claude's questions, enough to build from."])
   expect(wrapper.findAll('button')).toHaveLength(0)
+})
+it('names thin kinds in enough history and drafts a short interview', async () => {
+  const short = { ...status, answered: 150, thinKinds: ['Scope', 'Go or no-go'], questions: questions.slice(0, 8) }
+  const backend = fakeBackend({ interviewStatus: vi.fn().mockResolvedValue({ ...short, questions: [] }), draftInterview: vi.fn().mockResolvedValue(short) })
+  const wrapper = screen(Interview, backend, { slug: 'example' }); await flushPromises()
+  expect(wrapper.text()).toContain("Your history holds 150 answers to Claude's questions, enough to build from, but a few kinds of decision have fewer than five examples so far: Scope, Go or no-go. A few questions on each fills them out.")
+  expect(wrapper.text()).not.toContain('Answering twenty questions fills it out.')
+  await button(wrapper, 'Draft the questions').trigger('click'); await flushPromises()
+  expect(backend.draftInterview).toHaveBeenCalledWith({ slug: 'example', replace: false })
+  expect(wrapper.findAll('fieldset')).toHaveLength(4)
+  expect(wrapper.text()).toContain('Questions 1–4 of 8')
 })
 it('drafts thin history with progress and disables the card', async () => {
   const draft = deferred<typeof status>()

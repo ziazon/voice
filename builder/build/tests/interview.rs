@@ -152,7 +152,7 @@ fn weights_refuse_a_codebook_with_nothing_to_ask_about() {
 #[test]
 fn the_prompt_names_the_areas_and_the_kinds_of_decision_only() {
     let book = book(&member()).unwrap();
-    let plain = interview::prompt(&book, &weights());
+    let plain = interview::prompt(interview::Form::Full, &book, &weights());
     assert!(plain.starts_with("Draft "), "{plain}");
     assert!(
         plain.contains("Their areas of work: teaching, garden.\n"),
@@ -168,7 +168,7 @@ fn the_prompt_names_the_areas_and_the_kinds_of_decision_only() {
         ("tooling".to_owned(), Some(0)),
         ("scope".to_owned(), Some(7)),
     ];
-    let weighted = interview::prompt(&book, &counted);
+    let weighted = interview::prompt(interview::Form::Full, &book, &counted);
     assert!(
         weighted.contains("- tooling: 0 past decisions\n- scope: 7 past decisions\n"),
         "{weighted}"
@@ -189,7 +189,7 @@ fn check_keeps_a_good_draft_and_only_the_keys_round_reads() {
             .unwrap()
             .remove("description");
     });
-    let file = interview::check(&weights(), &draft).unwrap();
+    let file = interview::check(interview::Form::Full, &weights(), &draft).unwrap();
     let first = &file["questions"][0];
     assert_eq!(
         first,
@@ -204,7 +204,11 @@ fn check_keeps_a_good_draft_and_only_the_keys_round_reads() {
 #[test]
 fn check_refuses_a_draft_that_does_not_fit_the_form() {
     let weights = weights();
-    let refused = |draft: Value| interview::check(&weights, &draft).unwrap_err().to_string();
+    let refused = |draft: Value| {
+        interview::check(interview::Form::Full, &weights, &draft)
+            .unwrap_err()
+            .to_string()
+    };
     let mut nineteen = good_draft();
     nineteen["questions"].as_array_mut().unwrap().pop();
     assert_eq!(
@@ -325,6 +329,7 @@ fn draft_makes_one_tool_less_call_with_fixed_instructions_and_shape() {
     let stub = Stub::new(&[ok_reply(&good_draft())]);
     let book = book(&member()).unwrap();
     let file = interview::draft(
+        interview::Form::Full,
         &stub.claude(),
         &session(&home.0, Cap::default()),
         "sonnet",
@@ -332,14 +337,20 @@ fn draft_makes_one_tool_less_call_with_fixed_instructions_and_shape() {
         &weights(),
     )
     .unwrap();
-    assert_eq!(file, interview::check(&weights(), &good_draft()).unwrap());
+    assert_eq!(
+        file,
+        interview::check(interview::Form::Full, &weights(), &good_draft()).unwrap()
+    );
     assert_eq!(stub.calls(), 1);
-    assert_eq!(stub.stdin(0), interview::prompt(&book, &weights()));
+    assert_eq!(
+        stub.stdin(0),
+        interview::prompt(interview::Form::Full, &book, &weights())
+    );
     let argv = stub.argv(0);
     assert_eq!(after(&argv, "--system-prompt"), interview::SYSTEM);
     assert_eq!(
         after(&argv, "--json-schema"),
-        interview::schema().to_string()
+        interview::schema(interview::COUNT).to_string()
     );
     assert_eq!(after(&argv, "--model"), "sonnet");
     let ledger = fs::read_to_string(home.0.join(".claude/state/ada/runs.jsonl")).unwrap();
@@ -353,6 +364,7 @@ fn draft_asks_once_more_when_the_first_draft_does_not_fit() {
     let stub = Stub::new(&[ok_reply(&bad), ok_reply(&good_draft())]);
     let book = book(&member()).unwrap();
     let file = interview::draft(
+        interview::Form::Full,
         &stub.claude(),
         &session(&home.0, Cap::default()),
         "sonnet",
@@ -363,7 +375,7 @@ fn draft_asks_once_more_when_the_first_draft_does_not_fit() {
     assert_eq!(file["questions"].as_array().unwrap().len(), 20);
     assert_eq!(stub.calls(), 2);
     let again = stub.stdin(1);
-    assert!(again.starts_with(&interview::prompt(&book, &weights())));
+    assert!(again.starts_with(&interview::prompt(interview::Form::Full, &book, &weights())));
     assert!(
         again.ends_with("Your last draft didn't fit the form: question 2: the header must be one of the kinds of decision. Draft all 20 questions again, following every rule above.\n"),
         "{again}"
@@ -377,6 +389,7 @@ fn draft_stops_after_two_drafts_that_do_not_fit() {
     let bad = with_question(2, |q| q["header"] = json!(SENTINEL));
     let stub = Stub::new(&[ok_reply(&bad), ok_reply(&bad), ok_reply(&good_draft())]);
     let error = interview::draft(
+        interview::Form::Full,
         &stub.claude(),
         &session(&home.0, Cap::default()),
         "sonnet",
@@ -400,6 +413,7 @@ fn draft_never_retries_a_call_that_failed() {
             .to_string();
     let stub = Stub::new(&[failed, ok_reply(&good_draft())]);
     let error = interview::draft(
+        interview::Form::Full,
         &stub.claude(),
         &session(&home.0, Cap::default()),
         "sonnet",
@@ -417,6 +431,7 @@ fn draft_spends_nothing_past_the_daily_cap() {
     let stub = Stub::new(&[ok_reply(&good_draft())]);
     let session = session(&home.0, Cap::new(1.0, 1.0).unwrap());
     let first = interview::draft(
+        interview::Form::Full,
         &stub.claude(),
         &session,
         "sonnet",
@@ -425,6 +440,7 @@ fn draft_spends_nothing_past_the_daily_cap() {
     );
     assert!(first.is_ok());
     let error = interview::draft(
+        interview::Form::Full,
         &stub.claude(),
         &session,
         "sonnet",
@@ -450,14 +466,15 @@ fn answers(answers: Value) -> Map<String, Value> {
 fn answers_become_training_records_in_the_interview_shape() {
     let member = member();
     let filters = Filters::compile(&member.filters).unwrap();
-    let questions = interview::check(&weights(), &good_draft()).unwrap();
+    let questions = interview::check(interview::Form::Full, &weights(), &good_draft()).unwrap();
     let given = answers(json!({
         "1": {"pick": "B"},
         "2": {"pick": "A"},
         "3": {"own_words": "Ask my therapist first"},
         "4": {"own_words": "Neither: wait a week", "notes": "busy month"}
     }));
-    let kept = interview::answer(&member, &filters, &questions, &given).unwrap();
+    let kept =
+        interview::answer(interview::Form::Full, &member, &filters, &questions, &given).unwrap();
     assert_eq!(kept.records.len(), 3);
     assert_eq!((kept.unanswered, kept.personal, kept.secret), (16, 1, 0));
     let first = Value::Object(kept.records[0].clone());
@@ -480,11 +497,18 @@ fn answers_become_training_records_in_the_interview_shape() {
 fn answers_refuse_a_file_with_no_answer() {
     let member = member();
     let filters = Filters::compile(&member.filters).unwrap();
-    let questions = interview::check(&weights(), &good_draft()).unwrap();
-    let error =
-        interview::answer(&member, &filters, &questions, &answers(json!({"1": {}}))).unwrap_err();
+    let questions = interview::check(interview::Form::Full, &weights(), &good_draft()).unwrap();
+    let error = interview::answer(
+        interview::Form::Full,
+        &member,
+        &filters,
+        &questions,
+        &answers(json!({"1": {}})),
+    )
+    .unwrap_err();
     assert_eq!(error.to_string(), text::NO_ANSWERS);
     let error = interview::answer(
+        interview::Form::Full,
         &member,
         &filters,
         &questions,
@@ -534,5 +558,163 @@ fn report_weights_use_examples_and_zero_for_absent_areas() {
             ("methods".into(), Some(2)),
             ("scope".into(), Some(8))
         ]
+    );
+}
+
+#[test]
+fn forms_have_separate_files_and_rounds_at_the_boundary() {
+    use interview::Form;
+    assert_eq!(Form::for_answered(149), Form::Full);
+    assert_eq!(Form::for_answered(150), Form::Short);
+    assert_eq!(
+        (
+            Form::Full.step(),
+            Form::Full.questions_file(),
+            Form::Full.answers_file(),
+            Form::Full.out()
+        ),
+        (
+            "interview",
+            "interview-questions.json",
+            "interview-answers.json",
+            "decisions-interview.jsonl"
+        )
+    );
+    assert_eq!(
+        (
+            Form::Short.step(),
+            Form::Short.questions_file(),
+            Form::Short.answers_file(),
+            Form::Short.out()
+        ),
+        (
+            "interview-short",
+            "interview-short-questions.json",
+            "interview-short-answers.json",
+            "decisions-interview-short.jsonl"
+        )
+    );
+}
+
+#[test]
+fn thin_kinds_keep_only_counts_under_five_and_at_most_five_in_order() {
+    let weights = vec![
+        ("Scope".into(), Some(0)),
+        ("Methods".into(), Some(3)),
+        ("Go or no-go".into(), Some(4)),
+        ("Timing".into(), Some(5)),
+        ("Tools".into(), Some(40)),
+    ];
+    let mut book = book(&member()).unwrap();
+    book.categories = vec![
+        "Tools".into(),
+        "Timing".into(),
+        "Go or no-go".into(),
+        "Methods".into(),
+        "Scope".into(),
+    ];
+    let report: persona_builder_build::report::Report = serde_json::from_value(json!({
+        "schema":"persona-builder/report/1", "built":"2026-10-24", "overall":"thin", "answered":150, "held":0, "test":null,
+        "areas": weights.iter().map(|(kind, n)| json!({"area":kind,"examples":n,"level":"thin","strengthen":[]})).collect::<Vec<_>>()
+    })).unwrap();
+    let from_report = interview::weights_from_report(&book, Some(&report)).unwrap();
+    assert_eq!(interview::thin_kinds(&from_report), weights[..3]);
+    assert_eq!(interview::thin_kinds(&weights), weights[..3]);
+    let seven = (0..7)
+        .map(|n| (format!("Kind {n}"), Some(n / 2)))
+        .collect::<Vec<_>>();
+    assert_eq!(interview::thin_kinds(&seven), seven[..5]);
+    assert!(interview::thin_kinds(&[("Scope".into(), None)]).is_empty());
+}
+
+#[test]
+fn short_form_counts_covers_each_kind_and_keeps_its_own_round() {
+    use interview::Form;
+    let kinds = vec![("scope".into(), Some(0)), ("methods".into(), Some(3))];
+    assert_eq!(Form::Short.count(&kinds), 8);
+    assert_eq!(
+        interview::schema(8)["properties"]["questions"]["minItems"],
+        8
+    );
+    assert_eq!(
+        interview::schema(8)["properties"]["questions"]["maxItems"],
+        8
+    );
+    assert_eq!(
+        interview::schema(8)["properties"]["questions"]["items"]["properties"]["n"]["maximum"],
+        8
+    );
+    let prompt = interview::prompt(Form::Short, &book(&member()).unwrap(), &kinds);
+    assert!(
+        prompt.contains("Exactly 4 questions on each kind"),
+        "{prompt}"
+    );
+    assert!(prompt.contains("fewest examples"), "{prompt}");
+    assert!(!prompt.contains("tooling"));
+    let mut draft = good_draft();
+    draft["questions"].as_array_mut().unwrap().truncate(8);
+    for q in draft["questions"].as_array_mut().unwrap() {
+        q["header"] = json!("scope");
+    }
+    let error = interview::check(Form::Short, &kinds, &draft)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(error, "the kinds of decision listed each need a question");
+    for q in &mut draft["questions"].as_array_mut().unwrap()[4..] {
+        q["header"] = json!("methods");
+    }
+    let checked = interview::check(Form::Short, &kinds, &draft).unwrap();
+    let member = member();
+    let filters = Filters::compile(&member.filters).unwrap();
+    let kept = interview::answer(
+        Form::Short,
+        &member,
+        &filters,
+        &checked,
+        &answers(json!({"1": {"pick":"A"}})),
+    )
+    .unwrap();
+    assert_eq!(kept.records[0]["id"], "question:interview-short-01");
+    assert_eq!(kept.records[0]["project"], "interview");
+}
+
+#[test]
+fn short_draft_retries_a_missing_kind_with_the_short_count_and_ledger_step() {
+    use interview::Form;
+    let kinds = vec![("scope".into(), Some(0)), ("methods".into(), Some(3))];
+    let mut bad = good_draft();
+    bad["questions"].as_array_mut().unwrap().truncate(8);
+    for q in bad["questions"].as_array_mut().unwrap() {
+        q["header"] = json!("scope");
+    }
+    let mut good = bad.clone();
+    for q in &mut good["questions"].as_array_mut().unwrap()[4..] {
+        q["header"] = json!("methods");
+    }
+    let home = Scratch::new();
+    let stub = Stub::new(&[ok_reply(&bad), ok_reply(&good)]);
+    let file = interview::draft(
+        Form::Short,
+        &stub.claude(),
+        &session(&home.0, Cap::default()),
+        "sonnet",
+        &book(&member()).unwrap(),
+        &kinds,
+    )
+    .unwrap();
+    assert_eq!(file["questions"].as_array().unwrap().len(), 8);
+    assert_eq!(stub.calls(), 2);
+    assert!(stub.stdin(1).contains(
+        "the kinds of decision listed each need a question. Draft all 8 questions again"
+    ));
+    assert_eq!(
+        after(&stub.argv(0), "--json-schema"),
+        interview::schema(8).to_string()
+    );
+    let ledger = fs::read_to_string(home.0.join(".claude/state/ada/runs.jsonl")).unwrap();
+    assert!(
+        ledger
+            .lines()
+            .all(|line| serde_json::from_str::<Value>(line).unwrap()["step"] == "interview-short")
     );
 }

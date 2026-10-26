@@ -189,6 +189,9 @@ pub fn render(report: &Report) -> Vec<String> {
                 .strengthen
                 .iter()
                 .map(|way| match way {
+                    Strengthen::Interview if report.answered >= interview::THIN_BELOW => {
+                        text::REPORT_STRENGTHEN_SHORT
+                    }
                     Strengthen::Interview => text::REPORT_STRENGTHEN_INTERVIEW,
                     Strengthen::Claudeai => text::REPORT_STRENGTHEN_CLAUDEAI,
                     Strengthen::Time => text::REPORT_STRENGTHEN_TIME,

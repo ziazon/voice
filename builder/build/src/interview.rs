@@ -1,6 +1,5 @@
-//! The interview when the history is thin (`bootstrap/PROMPT.md` step 7,
-//! `crew/_template/interview.md`): one call drafts twenty questions in the shape `round` reads,
-//! and the person's answers become training records in `decisions-interview.jsonl`.
+//! Full interviews fill a thin history; short interviews fill out kinds with few examples.
+//! Both draft questions in the shape `round` reads and keep answers as training records.
 use crate::text;
 use persona_builder::{
     error::{Error, Result},
@@ -19,7 +18,7 @@ use persona_builder_steps::{
 };
 use serde_json::{Map, Value, json};
 
-/// Below this many answered questions the history is thin and the interview is offered.
+/// Below this many answered questions the full interview is offered.
 pub const THIN_BELOW: usize = 150;
 pub const COUNT: usize = 20;
 /// The drafted questions, in the state folder, for the person to swap and then answer.
@@ -30,6 +29,66 @@ pub const ANSWERS_FILE: &str = "interview-answers.json";
 pub const OUT: &str = "decisions-interview.jsonl";
 /// The step's name in the ledger, and the round name that gives ids `question:interview-NN`.
 pub const STEP: &str = "interview";
+/// The short interview covers at most five kinds, four questions on each.
+pub const MOST_THIN_KINDS: usize = 5;
+pub const PER_THIN: usize = 4;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Form {
+    Full,
+    Short,
+}
+
+impl Form {
+    pub fn for_answered(answered: usize) -> Self {
+        if answered < THIN_BELOW {
+            Self::Full
+        } else {
+            Self::Short
+        }
+    }
+    pub fn step(self) -> &'static str {
+        match self {
+            Self::Full => STEP,
+            Self::Short => "interview-short",
+        }
+    }
+    pub fn questions_file(self) -> &'static str {
+        match self {
+            Self::Full => QUESTIONS_FILE,
+            Self::Short => "interview-short-questions.json",
+        }
+    }
+    pub fn answers_file(self) -> &'static str {
+        match self {
+            Self::Full => ANSWERS_FILE,
+            Self::Short => "interview-short-answers.json",
+        }
+    }
+    pub fn out(self) -> &'static str {
+        match self {
+            Self::Full => OUT,
+            Self::Short => "decisions-interview-short.jsonl",
+        }
+    }
+    pub fn count(self, weights: &[(String, Option<usize>)]) -> usize {
+        match self {
+            Self::Full => COUNT,
+            Self::Short => PER_THIN * weights.len(),
+        }
+    }
+}
+
+/// Counted kinds with fewer than five examples, retaining the thinnest-first order.
+pub fn thin_kinds(weights: &[(String, Option<usize>)]) -> Vec<(String, Option<usize>)> {
+    weights
+        .iter()
+        .filter(|(_, n)| n.is_some_and(|n| n < crate::build::THIN))
+        .take(MOST_THIN_KINDS)
+        .cloned()
+        .collect()
+}
+
 const MAX_QUESTION: usize = 400;
 const MAX_LABEL: usize = 100;
 const MAX_DESCRIPTION: usize = 300;
@@ -38,19 +97,19 @@ const MAX_DESCRIPTION: usize = 300;
 pub const SYSTEM: &str = "You draft calibration interview questions for Persona Builder, which builds a person's AI assistant from how they decide. You have no tools. Answer only with the JSON the schema asks for.";
 
 /// The answers the call must give: the round-questions shape. Fixed, for the same reason.
-pub fn schema() -> Value {
+pub fn schema(count: usize) -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
         "required": ["questions"],
         "properties": {"questions": {
-            "type": "array", "minItems": COUNT, "maxItems": COUNT,
+            "type": "array", "minItems": count, "maxItems": count,
             "items": {
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["n", "header", "question", "multiSelect", "recommended", "options"],
                 "properties": {
-                    "n": {"type": "integer", "minimum": 1, "maximum": COUNT},
+                    "n": {"type": "integer", "minimum": 1, "maximum": count},
                     "header": {"type": "string"},
                     "question": {"type": "string", "minLength": 1, "maxLength": MAX_QUESTION},
                     "multiSelect": {"type": "boolean"},
@@ -147,7 +206,8 @@ fn weighted(
 }
 
 /// The call's prompt: the person's areas of work and kinds of decision, never a record.
-pub fn prompt(book: &Book, weights: &[(String, Option<usize>)]) -> String {
+pub fn prompt(form: Form, book: &Book, weights: &[(String, Option<usize>)]) -> String {
+    let count = form.count(weights);
     let areas: Vec<&str> = book
         .domains
         .iter()
@@ -168,7 +228,12 @@ pub fn prompt(book: &Book, weights: &[(String, Option<usize>)]) -> String {
             None => format!("- {kind}\n"),
         })
         .collect();
-    let (listed, spread) = if counted {
+    let (listed, spread) = if form == Form::Short {
+        (
+            " (the kinds of decision their history holds the fewest examples of)",
+            "Exactly 4 questions on each kind of decision listed above.",
+        )
+    } else if counted {
         (
             " (with how many past decisions of each their history holds, the thinnest first)",
             "Put at least one question on each kind of decision, and give the rest to the kinds listed first, which their history holds least of.",
@@ -180,13 +245,13 @@ pub fn prompt(book: &Book, weights: &[(String, Option<usize>)]) -> String {
         )
     };
     format!(
-        "Draft a calibration interview for one person: {COUNT} questions about the kinds of decision they make, so that an AI assistant can learn how they decide.
+        "Draft a calibration interview for one person: {count} questions about the kinds of decision they make, so that an AI assistant can learn how they decide.
 
 Their areas of work: {areas}.
 The kinds of decision to ask about{listed}:
 {kinds}
 Rules:
-- Exactly {COUNT} questions, with `n` numbering them 1 to {COUNT} in order.
+- Exactly {count} questions, with `n` numbering them 1 to {count} in order.
 - Each `header` is the kind of decision the question is about, written exactly as listed above.
 - {spread}
 - Each question describes one concrete, everyday situation from one of their areas of work and asks what they would do. Spread the questions across their areas.
@@ -198,17 +263,22 @@ Rules:
     )
 }
 
-/// A drafted questions file checked whole: `round`'s rules, exactly twenty numbered 1 to 20, each
+/// A drafted questions file checked whole: `round`'s rules, the form's count numbered in order, each
 /// header one of the kinds of decision, and short enough to show. Answers the file rebuilt with
 /// only the keys `round` reads. No error repeats the draft's own words.
-pub fn check(weights: &[(String, Option<usize>)], drafted: &Value) -> Result<Map<String, Value>> {
-    let twenty = || invalid(format!("the interview needs exactly {COUNT} questions"));
-    let file = drafted.as_object().ok_or_else(twenty)?;
+pub fn check(
+    form: Form,
+    weights: &[(String, Option<usize>)],
+    drafted: &Value,
+) -> Result<Map<String, Value>> {
+    let count = form.count(weights);
+    let wrong_count = || invalid(format!("the interview needs exactly {count} questions"));
+    let file = drafted.as_object().ok_or_else(wrong_count)?;
     let questions = file
         .get("questions")
         .and_then(Value::as_array)
-        .filter(|questions| questions.len() == COUNT)
-        .ok_or_else(twenty)?;
+        .filter(|questions| questions.len() == count)
+        .ok_or_else(wrong_count)?;
     check_questions(file)?;
     let too_long = |n: usize, what: &str, most: usize| {
         invalid(format!(
@@ -220,14 +290,14 @@ pub fn check(weights: &[(String, Option<usize>)], drafted: &Value) -> Result<Map
             .as_str()
             .is_some_and(|text| text.chars().count() > most)
     };
-    let mut clean = Vec::with_capacity(COUNT);
+    let mut clean = Vec::with_capacity(count);
     for (at, q) in questions.iter().enumerate() {
         let n = at + 1;
         // `round` has checked the shape: an object, a distinct positive `n`, string fields, 2 to
         // 4 options with distinct labels, and a recommended letter among them.
         if q["n"].as_u64() != Some(n as u64) {
             return Err(invalid(format!(
-                "the questions must be numbered 1 to {COUNT} in order"
+                "the questions must be numbered 1 to {count} in order"
             )));
         }
         let header = q["header"].as_str().unwrap_or("");
@@ -261,6 +331,13 @@ pub fn check(weights: &[(String, Option<usize>)], drafted: &Value) -> Result<Map
             "options": options,
         }));
     }
+    if form == Form::Short
+        && weights
+            .iter()
+            .any(|(kind, _)| !clean.iter().any(|q| q["header"] == *kind))
+    {
+        return Err(invalid("the kinds of decision listed each need a question"));
+    }
     Ok(Map::from_iter([(
         "questions".to_owned(),
         Value::from(clean),
@@ -270,33 +347,35 @@ pub fn check(weights: &[(String, Option<usize>)], drafted: &Value) -> Result<Map
 /// One call drafts the questions; a draft that fails [`check`] is asked for once more, with the
 /// problem named. A call that fails, or that the cap refuses, is never retried here.
 pub fn draft(
+    form: Form,
     claude: &Claude,
     session: &Session,
     model: &str,
     book: &Book,
     weights: &[(String, Option<usize>)],
 ) -> Result<Map<String, Value>> {
-    let schema = schema();
-    let first = prompt(book, weights);
+    let count = form.count(weights);
+    let schema = schema(count);
+    let first = prompt(form, book, weights);
     let mut asked = first.clone();
     let mut problem = String::new();
     for _ in 0..2 {
         let reply = claude.call(
             session,
             &Call {
-                step: STEP,
+                step: form.step(),
                 system: SYSTEM,
                 prompt: &asked,
                 model,
                 schema: &schema,
             },
         )?;
-        match check(weights, &reply.output) {
+        match check(form, weights, &reply.output) {
             Ok(file) => return Ok(file),
             Err(error) => {
                 problem = error.to_string();
                 asked = format!(
-                    "{first}\nYour last draft didn't fit the form: {problem}. Draft all {COUNT} questions again, following every rule above.\n"
+                    "{first}\nYour last draft didn't fit the form: {problem}. Draft all {count} questions again, following every rule above.\n"
                 );
             }
         }
@@ -304,15 +383,16 @@ pub fn draft(
     Err(invalid(text::draft_failed(&problem)))
 }
 
-/// The person's answers as training records (`question:interview-NN`, project `interview`), by
+/// The person's answers as training records (the form's round, project `interview`), by
 /// `round`'s rules and through the filters. Nothing kept is refused, so an earlier file stays.
 pub fn answer(
+    form: Form,
     member: &Member,
     filters: &Filters,
     questions: &Map<String, Value>,
     answers: &Map<String, Value>,
 ) -> Result<Round> {
-    let mut kept = round(member, filters, STEP, questions, answers, false)?;
+    let mut kept = round(member, filters, form.step(), questions, answers, false)?;
     if kept.records.is_empty() {
         return Err(invalid(if kept.personal + kept.secret == 0 {
             text::NO_ANSWERS

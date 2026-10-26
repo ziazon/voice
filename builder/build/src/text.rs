@@ -11,7 +11,7 @@ pub const NOTHING_TO_ASK: &str = "Your assistant's settings name no kinds of dec
 
 pub fn enough(answered: usize) -> String {
     format!(
-        "Your history already holds {answered} answered questions, enough to build from. The interview is for a thinner history."
+        "Your history already holds {answered} answered questions, enough to build from, and no kind of decision is thin."
     )
 }
 
@@ -180,3 +180,17 @@ pub fn report_examples(examples: usize) -> String {
 pub fn report_strengthen(ways: &[&str]) -> String {
     format!(" To strengthen it: {}.", ways.join("; "))
 }
+
+/// A short interview focuses on the kinds with few examples.
+pub fn drafted_short(count: usize, kinds: &[(String, Option<usize>)]) -> String {
+    let kinds = kinds
+        .iter()
+        .map(|(kind, _)| kind.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "Drafted {count} questions on the kinds of decision your history holds the fewest examples of: {kinds}."
+    )
+}
+pub const REPORT_STRENGTHEN_SHORT: &str =
+    "answer a few questions about it (persona-builder interview draft)";

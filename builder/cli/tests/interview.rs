@@ -136,13 +136,16 @@ fn draft_asks_nothing_when_the_history_is_not_thin() {
     let f = Fixture::new();
     f.signed_in(&ok_reply(&draft()));
     f.write_state("decisions.jsonl", &corpus(150));
+    f.write_state("report.json", &long_history_report(false));
+    f.write_state("interview-short-questions.json", &short_draft().to_string());
     let out = f.run(&["interview", "draft", &f.member()]);
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert_eq!(
         text(&out.stdout),
-        format!("{}\n", persona_builder_build::text::enough(150))
+        "Your history already holds 150 answered questions, enough to build from, and no kind of decision is thin.\n"
     );
     assert_eq!(f.calls(), 0);
+    assert!(!f.state().join("runs.jsonl").exists());
     assert!(!f.state().join("interview-questions.json").exists());
 }
 
@@ -346,4 +349,125 @@ fn draft_weights_by_the_last_report_without_labels() {
         "{asked}"
     );
     assert!(text(&out.stdout).starts_with(&persona_builder_build::text::drafted(20, true)));
+}
+
+fn long_history_report(thin: bool) -> String {
+    let kinds = [
+        "scope",
+        "sequencing",
+        "methods",
+        "framing",
+        "writing-voice",
+        "communication",
+        "collaboration",
+        "compliance-ethics",
+        "tooling",
+        "verification",
+        "placement-naming",
+        "go-no-go",
+    ];
+    let report = json!({"schema":"persona-builder/report/1","built":"2026-10-24","overall":"thin","answered":150,"held":0,"test":null,
+        "areas":kinds.iter().enumerate().map(|(n, kind)|json!({"area":kind,"level":if thin && n < 2 {"thin"} else {"strong"},"examples":if thin && n < 2 {n * 3} else {40},"strengthen":[]})).collect::<Vec<_>>()}).to_string();
+    serde_json::from_str::<persona_builder_build::report::Report>(&report).unwrap();
+    report
+}
+
+fn short_draft() -> Value {
+    let mut output = draft();
+    let questions = output["questions"].as_array_mut().unwrap();
+    questions.truncate(8);
+    for (at, q) in questions.iter_mut().enumerate() {
+        q["header"] = json!(["scope", "sequencing"][at % 2]);
+    }
+    output
+}
+
+#[test]
+fn long_history_drafts_only_the_thin_kinds() {
+    let f = Fixture::new();
+    f.signed_in(&ok_reply(&short_draft()));
+    f.write_state("decisions.jsonl", &corpus(150));
+    f.write_state("report.json", &long_history_report(true));
+    let out = f.run(&["interview", "draft", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(f.calls(), 1);
+    let saved: Value = serde_json::from_slice(
+        &fs::read(f.state().join("interview-short-questions.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved["questions"].as_array().unwrap().len(), 8);
+    assert!(!f.state().join("interview-questions.json").exists());
+    assert!(text(&out.stdout).starts_with("Drafted 8 questions on the kinds of decision your history holds the fewest examples of: scope, sequencing.\nsaved to ~/.claude/state/wren/interview-short-questions.json\n"), "{}", text(&out.stdout));
+    let ledger = fs::read_to_string(f.state().join("runs.jsonl")).unwrap();
+    assert!(
+        ledger
+            .lines()
+            .all(|line| serde_json::from_str::<Value>(line).unwrap()["step"] == "interview-short")
+    );
+}
+
+#[test]
+fn long_history_answers_use_the_short_round_without_replacing_full_answers() {
+    let f = Fixture::new();
+    f.write_state("decisions.jsonl", &corpus(150));
+    f.write_state("interview-short-questions.json", &short_draft().to_string());
+    let full = corpus(2);
+    f.write_state("decisions-interview.jsonl", &full);
+    f.write_state(
+        "interview-short-answers.json",
+        r#"{"answered":"2026-10-24","answers":{"1":{"pick":"A"},"2":{"own_words":"Wait a week"}}}"#,
+    );
+    let out = f.run(&[
+        "interview",
+        "answer",
+        &f.member(),
+        "--answers",
+        "interview-short-answers.json",
+        "--replace",
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        fs::read(f.state().join("decisions-interview.jsonl")).unwrap(),
+        full.as_bytes()
+    );
+    let kept: Vec<Value> = fs::read_to_string(f.state().join("decisions-interview-short.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(kept.len(), 2);
+    for (at, record) in kept.iter().enumerate() {
+        assert_eq!(
+            record["id"],
+            format!("question:interview-short-{:02}", at + 1)
+        );
+        assert_eq!(record["project"], "interview");
+        assert_eq!(record["split"], "train");
+    }
+    assert_eq!(
+        fs::read(f.state().join("decisions-interview.jsonl")).unwrap(),
+        full.as_bytes()
+    );
+    let out = f.run(&[
+        "interview",
+        "answer",
+        &f.member(),
+        "--answers",
+        "interview-short-answers.json",
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains(persona_builder_build::text::ALREADY_ANSWERED));
+    let out = f.run(&[
+        "interview",
+        "answer",
+        &f.member(),
+        "--answers",
+        "interview-short-answers.json",
+        "--replace",
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        fs::read(f.state().join("decisions-interview.jsonl")).unwrap(),
+        full.as_bytes()
+    );
 }
