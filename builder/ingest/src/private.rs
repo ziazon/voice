@@ -711,6 +711,16 @@ mod tests {
     }
 
     #[test]
+    fn creating_lock_refuses_a_folder_forgotten_before_the_lock() {
+        let home = Home::new();
+        let result = lock_state_folder_after(&home.0, "wren", true, &mut || {
+            fs::remove_dir_all(home.state()).unwrap();
+        });
+        assert!(matches!(result, Err(Error::Invalid(text)) if text == BUSY));
+        assert!(!home.state().exists());
+    }
+
+    #[test]
     fn creating_lock_refuses_a_folder_replaced_before_the_lock() {
         let home = Home::new();
         let result = lock_state_folder_after(&home.0, "wren", true, &mut || {
