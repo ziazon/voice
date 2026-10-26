@@ -47,12 +47,12 @@ One record per slice, newest first. Paraphrase only; no real person.
   review asked for.
 - **Not built, filed:** PB7.5a (`cjtJmnI6`): the app commands that spend (build, the interview
   draft, the refresh draft and test) open the ledger with a lock that creates the state folder,
-  so a Forget landing between the first check and the open leaves an empty state folder (no data,
-  no call: the permission re-check refuses). Recorded as a known limit in `.ai/SECURITY.md`.
+  so a Forget landing between the first check and the open recreates the state folder holding only
+  an empty `agent/` folder (no data, no call: the permission re-check refuses). Recorded as a known limit in `.ai/SECURITY.md`.
 - **Not verified:** the screens in a running app, light and dark (owed walk). One run of the api
   tests inside Codex's sandbox hit an intermittent busy answer in the existing `use_it` tests;
   the rerun and both full `ci-local.sh` runs passed.
-- **Skills Review:** ✅ tdd-skill (red first; 13 mutation checks) · ✅ security-and-hardening (the
+- **Skills Review:** ✅ tdd-skill (red first; 13 mutation checks, the permission one counted twice: apply, then draft) · ✅ security-and-hardening (the
   webview can only act on the change it was shown; permission re-checked under every lock) · ✅
   frontend (Review kept mounted across steps and reloaded when shown; loading, empty, error
   states) · ⚠️ design-guide (light and dark not seen: owed walk) · ✅ plain-language (every
