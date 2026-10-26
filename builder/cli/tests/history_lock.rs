@@ -153,11 +153,17 @@ fn history_commands_refuse_busy_state_then_succeed_after_unlock() {
     for &(command, args) in COMMANDS {
         let f = Fixture::new();
         f.seed();
+        if command[0] == "claudeai" {
+            write_private(&f.home, "wren", "claudeai-review.tsv", b"junk\n").unwrap();
+        }
         let before = files(&f.state());
         let lock = lock_state(&f.home, "wren").unwrap();
         refused(&f.run(command, args), private::BUSY, command);
         assert_eq!(files(&f.state()), before, "{command:?}: files changed");
         drop(lock);
+        if command[0] == "claudeai" {
+            f.seed();
+        }
         let output = f.run(command, args);
         assert!(
             output.status.success(),
@@ -183,6 +189,29 @@ fn existing_history_commands_never_recreate_missing_state() {
     }
 }
 
+fn failed_input_does_not_create_state(command: &[&str], args: &[&str]) {
+    let f = Fixture::new();
+    let output = f.run(command, args);
+    assert_eq!(output.status.code(), Some(1), "{command:?}");
+    assert!(!f.state().exists(), "{command:?}: created empty state");
+}
+
+#[test]
+fn missing_projects_do_not_create_state() {
+    failed_input_does_not_create_state(&["mine"], &["--projects", "missing-projects"]);
+}
+
+#[test]
+fn missing_export_does_not_create_state() {
+    failed_input_does_not_create_state(
+        &["claudeai", "titles"],
+        &["--export", "missing-export.json"],
+    );
+}
+
+// This test's lock creates the folder. mine.rs's
+// dry_run_prints_summary_without_creating_state pins that a dry run creates nothing;
+// this test pins that a dry run is not refused while the lock is held.
 #[test]
 fn mine_dry_run_ignores_busy_state_and_writes_nothing() {
     let f = Fixture::new();
