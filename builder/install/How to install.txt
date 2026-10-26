@@ -1,0 +1,17 @@
+How to install Persona Builder on your Mac
+
+Persona Builder works with Claude Code, which you sign in to yourself. If you don't have it yet,
+the app tells you how to get it.
+
+1. Double-click the zip file you were sent. A folder called "Persona Builder" appears next to it.
+2. Open Terminal: press Command and Space, type Terminal, then press Return.
+3. Type bash and a space. Drag the file install.sh from the "Persona Builder" folder into the
+   Terminal window, then press Return.
+4. Persona Builder opens. Next time, you'll find it in the Applications folder inside your home
+   folder (in the Finder, choose Go, then Home).
+
+This copy isn't signed by Apple yet, so the installer tells your Mac it is safe to open. It asks
+for no password and changes nothing else on your Mac.
+
+To remove the app, drag it from that Applications folder to the Trash. Your assistant stays. To
+delete what the app made, use Forget in the app first.

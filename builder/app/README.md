@@ -4,3 +4,13 @@ The Tauri shell opens the screens package and exposes only the commands listed i
 
 `dev.personabuilder.desktop` is a placeholder until signing. The app keeps no data under this
 identifier, so changing it later costs nothing.
+
+## Making a copy for a Mac
+
+From the repo root, run `bash scripts/build-mac-app.sh`. Add `--universal` for a copy that runs
+on both chips; this needs both Mac Rust targets (`rustup target add aarch64-apple-darwin
+x86_64-apple-darwin`). It writes `dist/persona-builder-<version>-mac-<label>.zip` and its `.sha256`.
+
+The copy is ad-hoc signed, not by Apple, until the public release (PB-D3), so share it only with
+people you know. They follow `How to install.txt` inside the zip. Send the `.sha256` separately;
+they compare it with the zip's SHA-256 on their Mac by running `shasum -a 256 <zip>`.

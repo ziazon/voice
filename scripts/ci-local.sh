@@ -9,8 +9,10 @@ for t in crew_decisions crew_sources crew_extra_sources crew_labels crew_hardeni
 done
 echo 'bash tests/crew_install_test.sh'
 bash tests/crew_install_test.sh
-echo 'shellcheck scripts/ci-local.sh bootstrap/install.sh tests/crew_install_test.sh'
-shellcheck scripts/ci-local.sh bootstrap/install.sh tests/crew_install_test.sh
+echo 'bash tests/mac_install_test.sh'
+bash tests/mac_install_test.sh
+echo 'shellcheck scripts/ci-local.sh bootstrap/install.sh tests/crew_install_test.sh scripts/build-mac-app.sh builder/install/install.sh tests/mac_install_test.sh'
+shellcheck scripts/ci-local.sh bootstrap/install.sh tests/crew_install_test.sh scripts/build-mac-app.sh builder/install/install.sh tests/mac_install_test.sh
 
 if command -v cargo >/dev/null 2>&1; then
   echo 'cargo fmt --check'

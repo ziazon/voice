@@ -18,6 +18,7 @@ which talks to GitHub alone. Reporting: `SECURITY.md`.
 
 | Risk | Control | Proven how |
 | --- | --- | --- |
+| A copy of the app is swapped or damaged on its way to someone | The copy is ad-hoc signed and the installer checks the signature (`codesign --verify --deep --strict`) before and after copying; it clears the download quarantine only on its own copy in `~/Applications` and nothing else, asks for no password, and refuses a copy for the other chip; the build writes the zip's SHA-256 to send separately. Known limit: an ad-hoc signature shows a copy is whole, not who made it, so copies go only to people the maintainer knows until it is signed (PB-D3) | `tests/mac_install_test.sh` |
 | Personal data committed | The repo ships no members; member-specific values come from config outside the repo; `privacy-check` scans a member's tracked files before the build commits | `tests/crew_*_test.py`, build step 11 |
 | Raw history leaks | Every write is an O_EXCL, O_NOFOLLOW 0600 file in a 0700 folder outside the repo; miners refuse a work folder inside a git tree | `tests/crew_hardening_test.py`, `tests/slack_mine_test.py` |
 | Principal's own words committed | `crew_decisions.py shingle` (no run of 6 of their words) | build step 11 |

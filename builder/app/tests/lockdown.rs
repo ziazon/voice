@@ -12,6 +12,13 @@ fn json(name: &str) -> Value {
     serde_json::from_str(&source(name)).unwrap()
 }
 
+#[test]
+fn bundle_is_an_ad_hoc_signed_app_only() {
+    let config = json("tauri.conf.json");
+    assert_eq!(config["bundle"]["targets"], serde_json::json!(["app"]));
+    assert_eq!(config["bundle"]["macOS"]["signingIdentity"], "-");
+}
+
 fn list_after(text: &str, marker: &str) -> Vec<String> {
     text.split_once(marker)
         .unwrap_or_else(|| panic!("missing {marker}"))

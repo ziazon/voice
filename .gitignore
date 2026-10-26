@@ -26,6 +26,7 @@ checkpoints*/
 # Build output
 target/
 build/
+/dist/
 # ...except the crate that runs the build's model steps.
 !builder/build/
 # ...and the app's build screens.
