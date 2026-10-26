@@ -235,7 +235,7 @@ fn invalid_limit_set_writes_nothing() {
         "0",
     ]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
-    assert!(text(&out.stderr).contains("the daily limit must be more than 0"));
+    assert!(text(&out.stderr).contains("the daily limit must be at least $0.01"));
     assert!(!f.state().exists());
 }
 

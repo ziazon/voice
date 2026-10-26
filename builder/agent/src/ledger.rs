@@ -27,6 +27,8 @@ const LEDGER: &str = "runs.jsonl";
 const WORK_FOLDER: &str = "agent";
 /// The largest cap Persona Builder accepts, in estimated US dollars a day.
 const MOST_USD: f64 = 1000.0;
+/// The smallest step budget: Claude Code is given it to the cent.
+const LEAST_USD: f64 = 0.01;
 static NEXT_CALL: AtomicU64 = AtomicU64::new(0);
 
 /// The daily cap and each call's budget, in US dollars as Claude Code estimates them.
@@ -47,16 +49,16 @@ impl Cap {
     pub const DEFAULT_DAILY_USD: f64 = 50.0;
     pub const DEFAULT_CALL_USD: f64 = 5.0;
 
-    /// Both finite, and 0 < `call_usd` <= `daily_usd` <= 1000.
+    /// Both finite, and 0.01 <= `call_usd` <= `daily_usd` <= 1000: Claude Code gets each budget in cents.
     pub fn new(daily_usd: f64, call_usd: f64) -> Result<Cap> {
         if !(daily_usd.is_finite()
             && call_usd.is_finite()
-            && call_usd > 0.0
+            && call_usd >= LEAST_USD
             && call_usd <= daily_usd
             && daily_usd <= MOST_USD)
         {
             return Err(Error::Invalid(format!(
-                "the daily limit must be more than 0 and at most ${MOST_USD:.0}, and each step's limit more than 0 and no more than the daily limit"
+                "the daily limit must be at least $0.01 and at most ${MOST_USD:.0}, and each step's limit at least $0.01 and no more than the daily limit"
             )));
         }
         Ok(Cap {

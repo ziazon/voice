@@ -30,10 +30,13 @@ fn caps_must_be_sensible() {
     let cap = Cap::new(20.0, 2.5).unwrap();
     assert_eq!((cap.daily_usd(), cap.call_usd()), (20.0, 2.5));
     Cap::new(1000.0, 1000.0).unwrap();
+    Cap::new(0.01, 0.01).unwrap();
     for (daily, call) in [
         (0.0, 0.0),
         (10.0, 0.0),
         (10.0, -1.0),
+        (10.0, 0.004),
+        (0.001, 0.001),
         (10.0, 11.0),
         (1000.5, 1.0),
         (f64::NAN, 1.0),
