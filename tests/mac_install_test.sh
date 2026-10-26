@@ -128,3 +128,18 @@ run --open-now
 check "$scratch/err" 'Usage:' 'usage explanation missing'
 not_installed
 echo 'mac_install_test: bad argument passed'
+
+# Symlink out of the bundle: refuse before quarantine removal can reach the outside file.
+kit symlink-outside "$arch"
+outside="$scratch/outside"
+printf 'keep\n' > "$outside"
+xattr -w com.apple.quarantine '0081;00000000;Test;' "$outside"
+mkdir -p "$kit_dir/Persona Builder.app/Contents/Resources"
+ln -s "$outside" "$kit_dir/Persona Builder.app/Contents/Resources/outside"
+codesign -s - --force --deep "$kit_dir/Persona Builder.app" >/dev/null 2>&1
+run --no-open
+[ "$status" = 1 ] || fail 'symlink out of the bundle was not refused'
+check "$scratch/err" 'looks damaged' 'outside-symlink damage explanation missing'
+not_installed
+xattr -p com.apple.quarantine "$outside" >/dev/null || fail 'outside file quarantine was removed'
+echo 'mac_install_test: symlink out of the bundle passed'

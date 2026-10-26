@@ -38,7 +38,10 @@ else
 fi
 
 version=$(python3 -I -c 'import json; print(json.load(open("builder/app/tauri.conf.json"))["version"])')
-if [ -n "$(git status --porcelain -- builder crew Cargo.toml Cargo.lock)" ]; then
+if ! source_status=$(git status --porcelain -- builder crew Cargo.toml Cargo.lock); then
+  fail 'build from a git checkout of the repo, so uncommitted changes can be checked'
+fi
+if [ -n "$source_status" ]; then
   fail 'commit or set aside your changes under builder/, crew/ and the Cargo files first'
 fi
 pnpm -C builder/ui install --frozen-lockfile

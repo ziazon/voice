@@ -14,9 +14,10 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Decided at pickup (the plan didn't say):** `~/Applications`, not `/Applications` (no password);
   the installer refuses a copy built for the other chip in plain words; the person compares the
   SHA-256 in Terminal before running the installer (step 3 of the how-to), since the installer
-  travels in the zip and can't vouch for itself; the build refuses uncommitted changes under
-  `builder/`, `crew/` and the Cargo files, because the app embeds the template and the screens.
-- **Verified:** `tests/mac_install_test.sh` (seven cases on fake signed apps, a space in the path;
+  travels in the zip and can't vouch for itself; the build runs only from a git checkout and refuses uncommitted
+  changes under `builder/`, `crew/` and the Cargo files, because the app embeds the template and the
+  screens; the SHA-256 goes in a separate message that says to check it first.
+- **Verified:** `tests/mac_install_test.sh` (eight cases on fake signed apps, a space in the path;
   wired into `ci-local.sh`), red first for the config test; mutation checks by Codex (seven), V1
   (one) and the Verifier (ten: each case live; the two signature checks and the quarantine re-check
   overlap by design). Live: the real app built on an Apple-chip Mac (18.5 MiB, arm64,
@@ -27,10 +28,12 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Reviews:** security review (sub-agent): one medium, the SHA-256 step missing from the how-to
   and the SECURITY row overclaiming; fixed. Verifier (Fable): five of six claims proven, the sixth
   partly (the zip's AppleDouble entries broke a Terminal `unzip`; fixed with `--norsrc
-  --noextattr`).
+  --noextattr`). Repeat pass (Opus): no must-fix; its three should-fixes are in (a case for a
+  symlink out of the bundle, caught when the first signature check is removed; the build's check
+  fails closed outside a git checkout; the separate message carries the SHA-256).
 - **Not verified:** the app opening on a person's Mac (a window; owed to the attended install),
   Intel Macs (no Intel Rust target on the build Mac). Left as known: the binary carries the build
-  account's home path in panic locations (cargo registry paths; no project path).
+  account's home path in panic locations (cargo registry and rustup toolchain paths; no project path).
 
 ## PB7.5: how well it knows you, and review, from the app (2026-10-25, lane: V1)
 
