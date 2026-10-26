@@ -8,7 +8,7 @@ use std::{
         fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
         unix::{
             ffi::OsStrExt,
-            fs::{OpenOptionsExt, PermissionsExt},
+            fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
         },
     },
     path::{Component, Path, PathBuf},
@@ -424,7 +424,17 @@ pub fn lock_existing_state(home: &Path, slug: &str) -> Result<StateLock> {
 }
 
 fn lock_state_folder(home: &Path, slug: &str, create: bool) -> Result<StateLock> {
+    lock_state_folder_after(home, slug, create, &mut || {})
+}
+
+fn lock_state_folder_after(
+    home: &Path,
+    slug: &str,
+    create: bool,
+    between: &mut dyn FnMut(),
+) -> Result<StateLock> {
     let (directory, path) = state_directory(home, slug, create)?;
+    between();
     // SAFETY: directory is a live descriptor owned by this function.
     if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
         let source = std::io::Error::last_os_error();
@@ -432,6 +442,28 @@ fn lock_state_folder(home: &Path, slug: &str, create: bool) -> Result<StateLock>
             return Err(Error::Invalid(BUSY.into()));
         }
         return Err(io(&path, source));
+    }
+    // The lock must hold the folder at the path, not one a forget removed between the open and the lock.
+    let same_folder = match state_directory(home, slug, false) {
+        Ok((current, _)) => {
+            let locked = File::from(directory.try_clone().map_err(|e| io(&path, e))?)
+                .metadata()
+                .map_err(|e| io(&path, e))?;
+            let at_path = File::from(current.try_clone().map_err(|e| io(&path, e))?)
+                .metadata()
+                .map_err(|e| io(&path, e))?;
+            drop(current);
+            locked.dev() == at_path.dev() && locked.ino() == at_path.ino()
+        }
+        Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => false,
+        Err(other) => return Err(other),
+    };
+    if !same_folder {
+        return Err(if create {
+            Error::Invalid(BUSY.into())
+        } else {
+            io(&path, std::io::Error::from(std::io::ErrorKind::NotFound))
+        });
     }
     Ok(StateLock(directory))
 }
@@ -618,6 +650,87 @@ fn directory_errno() -> *mut libc::c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Home(PathBuf);
+
+    impl Home {
+        fn new() -> Self {
+            let home = Self(std::env::temp_dir().join(format!(
+                "pb-state-lock-{}-{}-{}",
+                std::process::id(),
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            )));
+            fs::create_dir(&home.0).unwrap();
+            drop(lock_state(&home.0, "wren").unwrap());
+            home
+        }
+
+        fn state(&self) -> PathBuf {
+            self.0.join(".claude/state/wren")
+        }
+
+        fn replace_state(&self) {
+            fs::remove_dir_all(self.state()).unwrap();
+            fs::create_dir(self.state()).unwrap();
+            fs::set_permissions(self.state(), Permissions::from_mode(0o700)).unwrap();
+        }
+    }
+
+    impl Drop for Home {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn existing_lock_refuses_a_folder_forgotten_before_the_lock() {
+        let home = Home::new();
+        let result = lock_state_folder_after(&home.0, "wren", false, &mut || {
+            fs::remove_dir_all(home.state()).unwrap();
+        });
+        assert!(matches!(
+            result,
+            Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound
+        ));
+        assert!(!home.state().exists());
+    }
+
+    #[test]
+    fn existing_lock_refuses_a_folder_replaced_before_the_lock() {
+        let home = Home::new();
+        let result = lock_state_folder_after(&home.0, "wren", false, &mut || {
+            home.replace_state();
+        });
+        assert!(matches!(
+            result,
+            Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound
+        ));
+        assert!(home.state().is_dir());
+        assert_eq!(fs::read_dir(home.state()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn creating_lock_refuses_a_folder_replaced_before_the_lock() {
+        let home = Home::new();
+        let result = lock_state_folder_after(&home.0, "wren", true, &mut || {
+            home.replace_state();
+        });
+        assert!(matches!(result, Err(Error::Invalid(text)) if text == BUSY));
+    }
+
+    #[test]
+    fn lock_with_nothing_between_still_locks() {
+        let home = Home::new();
+        for create in [false, true] {
+            let lock = lock_state_folder_after(&home.0, "wren", create, &mut || {}).unwrap();
+            assert!(matches!(
+                lock_existing_state(&home.0, "wren"),
+                Err(Error::Invalid(text)) if text == BUSY
+            ));
+            drop(lock);
+        }
+    }
 
     #[test]
     fn private_read_caps_bytes_after_the_metadata_check() {
