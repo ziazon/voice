@@ -31,6 +31,14 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Rebased onto PB7.5a** (V1, 2026-10-26): `building::open` loads the saved limit first, then
   opens with PB7.5a's `Session::open_existing` (a missing state folder still reads as no saved limit,
   then the permission sentence); `.ai/SECURITY.md`'s spending row carries both slices' sentences.
+  `/security-review` (sub-agent) on the rebased branch: no high or medium; two new lows left: the
+  CLI's `limit set` checks no permission (the app re-checks it under the lock; no history is
+  written), and `Cap::save` writes through a creating path, so only something outside the app
+  deleting the folder between the lock and the write could recreate it holding `limit.json` alone.
+  Delta Verifier (Opus): PASS, PB7.5a's race tests and the limit race tests green at the rebased
+  head; nits left: a forget between the limit file's check and its read shows the damaged-limit
+  sentence instead of the permission one, and that sentence covers any limit read failure.
+  `ci-local.sh` runs again on the rebased head in the land (it never lands on red).
 
 ## PB7.5a: app commands that spend open the ledger only on an existing state folder (2026-10-26, lane: V2)
 
