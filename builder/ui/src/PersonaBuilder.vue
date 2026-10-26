@@ -90,7 +90,7 @@ function home() {
               <Save :key="`save-${assistant.slug}-${resets}`" :assistant="assistant" />
               <TurnOn :key="`on-${assistant.slug}-${resets}`" :assistant="assistant" />
               <ClaudeAiFiles :key="`files-${assistant.slug}-${resets}`" :assistant="assistant" />
-              <Forget :key="`forget-${assistant.slug}-${resets}`" :assistant="assistant" @forgotten="forgotten" />
+              <Forget :key="`forget-${assistant.slug}`" :assistant="assistant" @forgotten="forgotten" />
             </template>
           </main>
         </div>

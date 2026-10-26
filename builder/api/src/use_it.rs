@@ -269,13 +269,13 @@ pub fn forget_preview_in(home: &Path, request: dto::SlugRequest) -> Result<dto::
 }
 pub fn forget_in(home: &Path, request: dto::ForgetRequest) -> Result<dto::Said> {
     let listed = listed(home, &request.slug)?;
-    let preview = core_forget::forget(&listed.dir, home, false).map_err(|_| failure(FORGET))?;
     let name = &listed.member.name;
-    if preview.files == 0 {
-        return Ok(said(nothing_to_forget(name)));
-    }
     let _lock = lock_state(home, &request.slug).map_err(|error| lock_error(error, name, FORGET))?;
     let preview = core_forget::forget(&listed.dir, home, false).map_err(|_| failure(FORGET))?;
+    if preview.files == 0 {
+        let _ = fs::remove_dir(&preview.path);
+        return Ok(said(nothing_to_forget(name)));
+    }
     if count(preview.files) != request.files {
         return Err(failure(FORGET_CHANGED));
     }

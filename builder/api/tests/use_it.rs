@@ -638,3 +638,45 @@ fn dto_contract() {
     assert!(from_value::<TurnOffRequest>(json!({"slug":"ari","extra":1})).is_err());
     assert!(from_value::<ForgetRequest>(json!({"slug":"ari","files":3,"extra":1})).is_err());
 }
+
+#[test]
+fn sentence_commands_refuse_a_name_with_a_line_break() {
+    let h = Home::new();
+    let path = h.member().join("member.json");
+    let mut member: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    member["name"] = serde_json::json!("Ari\nAnother line");
+    fs::write(&path, serde_json::to_vec(&member).unwrap()).unwrap();
+    for result in [
+        turn_on_in(&h.0, &h.claude(), slug("ari")).map(|_| ()),
+        make_claude_ai_files_in(&h.0, slug("ari")).map(|_| ()),
+        forget_in(&h.0, forget_request(0)).map(|_| ()),
+    ] {
+        assert_eq!(result.unwrap_err().message, FIND);
+    }
+}
+
+#[test]
+fn forget_state_removed_after_preview_is_nothing_to_forget() {
+    let h = Home::new();
+    h.packed();
+    let files = succeeds(forget_preview_in(&h.0, slug("ari"))).files;
+    assert!(files > 0);
+    fs::remove_dir_all(h.state()).unwrap();
+    assert_eq!(
+        succeeds(forget_in(&h.0, forget_request(files))).message,
+        "There's nothing to forget: Persona Builder hasn't kept anything for Ari yet."
+    );
+    assert!(!h.state().exists());
+}
+
+#[test]
+fn forget_empty_state_is_nothing_to_forget_and_removes_the_folder() {
+    let h = Home::new();
+    drop(lock_state(&h.0, "ari").unwrap());
+    assert!(h.state().is_dir());
+    assert_eq!(
+        succeeds(forget_in(&h.0, forget_request(3))).message,
+        "There's nothing to forget: Persona Builder hasn't kept anything for Ari yet."
+    );
+    assert!(!h.state().exists());
+}

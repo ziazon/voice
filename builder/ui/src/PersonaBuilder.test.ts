@@ -114,7 +114,7 @@ it('opens save without requiring permission and keeps steps four to six unavaila
   expect(backend.agreeConsent).not.toHaveBeenCalled()
 })
 
-it('shows four save cards and forget resets permission and remounts every card', async () => {
+it('shows four save cards and preserves the forget message while resetting permission', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed: true, agreedOn: '2026-10-25' } }]), forgetPreview: vi.fn().mockResolvedValue({ files: 7 }) })
   const wrapper = screen(PersonaBuilder, backend)
   await flushPromises(); await button(wrapper, 'Open').trigger('click'); await flushPromises()
@@ -122,6 +122,7 @@ it('shows four save cards and forget resets permission and remounts every card',
   expect(wrapper.findAll('main h2').map(h => h.text())).toEqual(['Keep a copy', 'Use it in Claude Code', 'Use it in claude.ai', 'Forget what Example learned from'])
   await button(wrapper, 'Forget…').trigger('click'); await flushPromises()
   await button(wrapper, 'Delete these files').trigger('click'); await flushPromises()
+  expect(wrapper.get('.alert-success').text()).toBe('Deleted 7 files.')
   expect(wrapper.findAll('ol li')[1]!.text()).toContain('Needs your permission first')
   expect(wrapper.findAll('ol li')[1]!.get('button').attributes('disabled')).toBeDefined()
   expect(backend.saveOptions).toHaveBeenCalledTimes(2)
