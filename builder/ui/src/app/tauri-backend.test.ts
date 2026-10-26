@@ -102,3 +102,28 @@ it('buildAssistant passes a progress channel', async () => {
   args.onProgress.onmessage({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50 } })
   expect(onProgress).toHaveBeenCalledExactlyOnceWith({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50 } })
 })
+
+it.each([
+  ['showReport', 'show_report', { slug: 'example' }],
+  ['reviewStatus', 'review_status', { slug: 'example' }],
+  ['keepAnswer', 'keep_answer', { slug: 'example', area: 'Planning', situation: 'Choose a path', wanted: 'Keep it simple', assistantSaid: '' }],
+  ['draftRefresh', 'draft_refresh', { slug: 'example' }],
+  ['answerRefresh', 'answer_refresh', { slug: 'example', id: 'change-1', approve: true }],
+] as const)('maps review method %s with a request', async (method, command, request) => {
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(tauriBackend[method]).toBeTypeOf('function')
+  expect(await (tauriBackend[method] as (value: typeof request) => Promise<unknown>)(request)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
+})
+it('applyRefresh passes a progress channel whose messages reach the callback', async () => {
+  const onProgress = vi.fn()
+  const request = { slug: 'example', id: 'change-1' }
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(tauriBackend.applyRefresh).toBeTypeOf('function')
+  expect(await tauriBackend.applyRefresh(request, onProgress)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith('apply_refresh', { request, onProgress: expect.any(Channel) })
+  const args = vi.mocked(invoke).mock.calls[0]![1] as { onProgress: Channel<unknown> }
+  const progress = { line: 'Testing it with the change on 2 tests.', spend: { spentUsd: 2, dailyCapUsd: 50 } }
+  args.onProgress.onmessage(progress)
+  expect(onProgress).toHaveBeenCalledExactlyOnceWith(progress)
+})

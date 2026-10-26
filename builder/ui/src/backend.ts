@@ -1,3 +1,10 @@
+import type { ReportView } from './types/generated/ReportView'
+import type { ReviewStatus } from './types/generated/ReviewStatus'
+import type { KeepAnswerRequest } from './types/generated/KeepAnswerRequest'
+import type { RefreshDrafted } from './types/generated/RefreshDrafted'
+import type { RefreshAnswerRequest } from './types/generated/RefreshAnswerRequest'
+import type { RefreshApplyRequest } from './types/generated/RefreshApplyRequest'
+import type { RefreshApplied } from './types/generated/RefreshApplied'
 import type { ClaudeCodeStatus } from './types/generated/ClaudeCodeStatus'
 import type { TurnOffRequest } from './types/generated/TurnOffRequest'
 import type { ClaudeAiFiles } from './types/generated/ClaudeAiFiles'
@@ -41,6 +48,12 @@ import type { MergeCounts } from './types/generated/MergeCounts'
  * A host app must keep the same rule.
  */
 export interface Backend {
+  showReport(request: SlugRequest): Promise<ReportView>
+  reviewStatus(request: SlugRequest): Promise<ReviewStatus>
+  keepAnswer(request: KeepAnswerRequest): Promise<ReviewStatus>
+  draftRefresh(request: SlugRequest): Promise<RefreshDrafted>
+  answerRefresh(request: RefreshAnswerRequest): Promise<ReviewStatus>
+  applyRefresh(request: RefreshApplyRequest, onProgress: (progress: BuildProgress) => void): Promise<RefreshApplied>
   buildAssistant(request: SlugRequest, onProgress: (progress: BuildProgress) => void): Promise<BuildDone>
   stopBuild(request: SlugRequest): Promise<void>
   spendToday(request: SlugRequest): Promise<Spend>

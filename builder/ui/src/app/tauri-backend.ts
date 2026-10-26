@@ -1,3 +1,7 @@
+import type { ReportView } from '../types/generated/ReportView'
+import type { ReviewStatus } from '../types/generated/ReviewStatus'
+import type { RefreshDrafted } from '../types/generated/RefreshDrafted'
+import type { RefreshApplied } from '../types/generated/RefreshApplied'
 import type { ClaudeCodeStatus } from '../types/generated/ClaudeCodeStatus'
 import type { ClaudeAiFiles } from '../types/generated/ClaudeAiFiles'
 import type { ForgetPreview } from '../types/generated/ForgetPreview'
@@ -25,6 +29,16 @@ import type { ClaudeaiCounts } from '../types/generated/ClaudeaiCounts'
 import type { MergeCounts } from '../types/generated/MergeCounts'
 
 export const tauriBackend: Backend = {
+  showReport: request => invoke<ReportView>('show_report', { request }),
+  reviewStatus: request => invoke<ReviewStatus>('review_status', { request }),
+  keepAnswer: request => invoke<ReviewStatus>('keep_answer', { request }),
+  draftRefresh: request => invoke<RefreshDrafted>('draft_refresh', { request }),
+  answerRefresh: request => invoke<ReviewStatus>('answer_refresh', { request }),
+  applyRefresh: (request, onProgress) => {
+    const channel = new Channel<BuildProgress>()
+    channel.onmessage = onProgress
+    return invoke<RefreshApplied>('apply_refresh', { request, onProgress: channel })
+  },
   buildAssistant: (request, onProgress) => {
     const channel = new Channel<BuildProgress>()
     channel.onmessage = onProgress

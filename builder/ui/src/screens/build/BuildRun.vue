@@ -7,7 +7,7 @@ import type { BuildDone } from '../../types/generated/BuildDone'
 import ReadProgress from '../sources/ReadProgress.vue'
 
 const props = defineProps<{ slug: string }>()
-const emit = defineEmits<{ running: [boolean], finished: [] }>()
+const emit = defineEmits<{ running: [boolean], finished: [], report: [] }>()
 const backend = useBackend()
 const spend = ref<Spend | null>(null)
 const running = ref(false)
@@ -97,7 +97,7 @@ defineExpose({ rebuild })
         Done. Your assistant is built from {{ done.answered.toLocaleString() }} answers to Claude's questions.
         <template v-if="!done.tested"> There weren't enough answers kept aside to test it yet, so it decides nothing on its own until it can be tested.</template>
       </div>
-      <p v-if="done" class="text-secondary">Next, see how well it knows you.</p>
+      <button v-if="done" type="button" class="btn btn-secondary" @click="emit('report')">See how well it knows you</button>
       <button v-if="running" type="button" class="btn btn-outline-danger" @click="stop">{{ stopping ? 'Stopping…' : 'Stop' }}</button>
       <button v-else type="button" class="btn btn-primary" @click="build()">{{ attempted ? 'Build again' : 'Build my assistant' }}</button>
     </div>

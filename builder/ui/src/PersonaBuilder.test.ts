@@ -10,9 +10,9 @@ it('shows Welcome and disables all steps before choosing an assistant', async ()
   expect(items.map(item => item.get('[data-step-title]').text())).toEqual([
     'Your permission', 'Connect Claude', 'Your history', 'Build', 'How well it knows you', 'Review', 'Save',
   ])
-  for (const [index, item] of items.entries()) {
+  for (const item of items) {
     expect(item.attributes('aria-disabled')).toBe('true')
-    expect(item.text()).toContain(index < 4 || index === 6 ? 'Choose an assistant first' : 'Not here yet')
+    expect(item.text()).toContain('Choose an assistant first')
   }
   expect(wrapper.get('main h1').text()).toBe('Persona Builder')
   expect(wrapper.text()).toContain('Version 1.2.3')
@@ -92,7 +92,7 @@ it('keeps your history disabled until permission and opens it from a ready conne
   expect(wrapper.findAll('.card-title').map(item => item.text())).toEqual(['Claude Code', 'claude.ai (if you use it)', 'Put it together'])
 })
 
-it('opens save without requiring permission and keeps steps five and six unavailable', async () => {
+it('opens save without requiring permission and gates report and review', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) })
   const wrapper = screen(PersonaBuilder, backend)
   await flushPromises()
@@ -101,7 +101,8 @@ it('opens save without requiring permission and keeps steps five and six unavail
   const items = wrapper.findAll('ol li')
   for (const item of items.slice(4, 6)) {
     expect(item.attributes('aria-disabled')).toBe('true')
-    expect(item.text()).toContain('Not here yet')
+    expect(item.text()).toContain('Needs your permission first')
+    expect(item.get('button').attributes('disabled')).toBeDefined()
   }
   const save = items[6]!
   expect(save.attributes('aria-disabled')).toBeUndefined()
@@ -177,4 +178,56 @@ it('keeps build disabled until permission, opens from sources, and preserves run
   await button(wrapper, 'Build').trigger('click'); await flushPromises()
   expect(wrapper.get('ul[aria-live="polite"]').text()).toContain('Reading your history')
   expect(backend.buildAssistant).toHaveBeenCalledTimes(1)
+})
+
+it('enables report and review only after permission and follows build to report to review', async () => {
+  const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]), showReport: vi.fn()
+    .mockResolvedValueOnce({ report: null, unreadable: false, growth: null })
+    .mockResolvedValue({ report: { built: '2026-10-25', overall: 'thin', answered: 2, thinBelow: 150, heldOut: 0, test: null, areas: [] }, unreadable: false, growth: null }) })
+  const wrapper = screen(PersonaBuilder, backend); await flushPromises()
+  await button(wrapper, 'Open').trigger('click'); await flushPromises()
+  for (const title of ['How well it knows you', 'Review']) {
+    expect(button(wrapper, title).attributes('disabled')).toBeDefined()
+    await button(wrapper, title).trigger('click')
+  }
+  expect(backend.showReport).not.toHaveBeenCalled()
+  expect(backend.reviewStatus).not.toHaveBeenCalled()
+  await button(wrapper, 'I agree').trigger('click'); await flushPromises()
+  for (const title of ['How well it knows you', 'Review']) expect(button(wrapper, title).attributes('disabled')).toBeUndefined()
+  await button(wrapper, 'Build').trigger('click'); await flushPromises()
+  await button(wrapper, 'Build my assistant').trigger('click'); await flushPromises()
+  await button(wrapper, 'See how well it knows you').trigger('click'); await flushPromises()
+  expect(wrapper.get('main h2').text()).toBe('How well it knows you')
+  await button(wrapper, 'Go to Build').trigger('click'); await flushPromises()
+  expect(wrapper.get('[aria-current="step"]').text()).toBe('Build')
+  await button(wrapper, 'How well it knows you').trigger('click'); await flushPromises()
+  expect(backend.showReport).toHaveBeenCalledTimes(2)
+  await button(wrapper, 'Next: review what it learns').trigger('click'); await flushPromises()
+  expect(wrapper.get('[aria-current="step"]').text()).toBe('Review')
+  expect(backend.reviewStatus).toHaveBeenCalledExactlyOnceWith({ slug: 'example' })
+})
+it('keeps review test lines across steps and blocks choosing another assistant until finished', async () => {
+  let progress!: (value: { line: string, spend: { spentUsd: number, dailyCapUsd: number } }) => void
+  let finish!: (value: { kept: boolean, reason: string, spend: { spentUsd: number, dailyCapUsd: number } }) => void
+  const status = { built: true, areas: ['Planning'], tests: { waiting: 1, inUse: 0, retired: 0 }, byArea: [], change: { id: 'prop-one', drafted: '2026-10-25', summary: 'Try one part.', points: [], learnedFrom: 1, approved: true } }
+  const backend = fakeBackend({
+    listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed: true, agreedOn: '2026-10-25' } }]),
+    reviewStatus: vi.fn().mockResolvedValue(status),
+    applyRefresh: vi.fn().mockImplementation((_request, callback) => { progress = callback; return new Promise(resolve => { finish = resolve }) }),
+  })
+  const wrapper = screen(PersonaBuilder, backend); await flushPromises()
+  await button(wrapper, 'Open').trigger('click'); await flushPromises()
+  await button(wrapper, 'Review').trigger('click'); await flushPromises()
+  await button(wrapper, 'Test it').trigger('click')
+  progress({ line: 'Testing it with the change on 1 test.', spend: { spentUsd: 1, dailyCapUsd: 50 } }); await flushPromises()
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeDefined()
+  expect(wrapper.text()).toContain('Wait for the test to finish to choose another assistant.')
+  await button(wrapper, 'Your permission').trigger('click'); await flushPromises()
+  await button(wrapper, 'Review').trigger('click'); await flushPromises()
+  expect(wrapper.get('ul[aria-live="polite"]').text()).toContain('Testing it with the change on 1 test.')
+  expect(backend.reviewStatus).toHaveBeenCalledTimes(1)
+  expect(backend.applyRefresh).toHaveBeenCalledTimes(1)
+  finish({ kept: true, reason: 'Every test passed.', spend: { spentUsd: 2, dailyCapUsd: 50 } }); await flushPromises()
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeUndefined()
+  expect(wrapper.text()).not.toContain('Wait for the test to finish to choose another assistant.')
 })

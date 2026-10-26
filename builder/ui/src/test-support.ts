@@ -17,7 +17,14 @@ export const saveOptions: SaveOptions = {
   suggestedName: 'example-assistant',
 }
 export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
+  const reviewStatus = { built: false, areas: [], tests: { waiting: 0, inUse: 0, retired: 0 }, byArea: [], change: null }
   return {
+    showReport: vi.fn().mockResolvedValue({ report: null, unreadable: false, growth: null }),
+    reviewStatus: vi.fn().mockResolvedValue(reviewStatus),
+    keepAnswer: vi.fn().mockResolvedValue(reviewStatus),
+    draftRefresh: vi.fn().mockResolvedValue({ change: null, spend: { spentUsd: 0, dailyCapUsd: 50 } }),
+    answerRefresh: vi.fn().mockResolvedValue(reviewStatus),
+    applyRefresh: vi.fn().mockResolvedValue({ kept: true, reason: 'Every test passed.', spend: { spentUsd: 0, dailyCapUsd: 50 } }),
     appInfo: vi.fn().mockResolvedValue({ version: '1.2.3', agents: [] }),
     listAssistants: vi.fn().mockResolvedValue([]),
     newAssistant: vi.fn().mockResolvedValue(assistant),

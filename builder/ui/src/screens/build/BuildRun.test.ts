@@ -89,3 +89,11 @@ it('does not start a build when stopped while putting history together', async (
   expect(wrapper.get('.alert-info').text()).toContain('Stopped. Your assistant is as it was before this build.')
   expect(wrapper.emitted('running')).toEqual([[true], [false]])
 })
+
+it('opens the report after a build', async () => {
+  const wrapper = screen(BuildRun, fakeBackend(), { slug: 'example' }); await flushPromises()
+  expect(wrapper.text()).not.toContain('See how well it knows you')
+  await button(wrapper, 'Build my assistant').trigger('click'); await flushPromises()
+  await button(wrapper, 'See how well it knows you').trigger('click')
+  expect(wrapper.emitted('report')).toEqual([[]])
+})

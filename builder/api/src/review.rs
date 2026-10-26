@@ -217,7 +217,18 @@ fn keep_answer_after(
         return Err(failure(KEEP_PRIVATE));
     }
     let store = Store::open(home, &member).map_err(|_| failure(REVIEW_SETTINGS))?;
-    let mut input = json!({"kind":if request.assistant_said.is_empty(){"instruction"}else{"correction"},"area":request.area,"situation":request.situation,"wanted":request.wanted,"source":"review"});
+    let kind = if request.assistant_said.is_empty() {
+        "instruction"
+    } else {
+        "correction"
+    };
+    let mut input = json!({
+        "kind": kind,
+        "area": request.area,
+        "situation": request.situation,
+        "wanted": request.wanted,
+        "source": "review",
+    });
     if !request.assistant_said.is_empty() {
         input["persona_said"] = json!(request.assistant_said);
     }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import Welcome from './screens/Welcome.vue'
 import Assistants from './screens/Assistants.vue'
 import NewAssistant from './screens/NewAssistant.vue'
@@ -11,29 +11,42 @@ import TurnOn from './screens/TurnOn.vue'
 import ClaudeAiFiles from './screens/ClaudeAiFiles.vue'
 import Forget from './screens/Forget.vue'
 import Build from './screens/Build.vue'
+import Report from './screens/Report.vue'
+import Review from './screens/Review.vue'
 import type { Assistant } from './types/generated/Assistant'
 import type { Consent as ConsentAnswer } from './types/generated/Consent'
 import { steps } from './steps'
 
-const view = ref<'home' | 'new' | 'consent' | 'connect' | 'sources' | 'save' | 'build'>('home')
+const view = ref<'home' | 'new' | 'consent' | 'connect' | 'sources' | 'save' | 'build' | 'report' | 'review'>('home')
 const buildOpened = ref(false)
 const buildRunning = ref(false)
+const reviewOpened = ref(false)
+const reviewRunning = ref(false)
+watch(view, value => {
+  if (value === 'review') reviewOpened.value = true
+})
 const resets = ref(0)
 function forgotten() {
   if (!assistant.value) return
   assistant.value = { ...assistant.value, consent: { agreed: false, agreedOn: null } }
   buildOpened.value = false
+  reviewOpened.value = false
+  reviewRunning.value = false
   buildRunning.value = false
   resets.value += 1
 }
 const assistant = ref<Assistant | null>(null)
 function open(chosen: Assistant) {
   buildOpened.value = false
+  reviewOpened.value = false
+  reviewRunning.value = false
   assistant.value = chosen
   view.value = chosen.consent.agreed ? 'connect' : 'consent'
 }
 function made(chosen: Assistant) {
   buildOpened.value = false
+  reviewOpened.value = false
+  reviewRunning.value = false
   assistant.value = chosen
   view.value = 'consent'
 }
@@ -46,18 +59,19 @@ function goToStep(step: string) {
   if (!assistant.value) return
   if (step === 'consent') view.value = 'consent'
   if (step === 'save') view.value = 'save'
-  if ((step === 'connect' || step === 'sources' || step === 'build') && assistant.value.consent.agreed) {
+  if ((step === 'connect' || step === 'sources' || step === 'build' || step === 'report' || step === 'review') && assistant.value.consent.agreed) {
     view.value = step
     if (step === 'build') buildOpened.value = true
   }
 }
 function disabled(step: string) {
   if (step === 'consent' || step === 'save') return !assistant.value
-  if (step === 'connect' || step === 'sources' || step === 'build') return !assistant.value?.consent.agreed
-  return true
+  return !assistant.value?.consent.agreed
 }
 function home() {
   buildOpened.value = false
+  reviewOpened.value = false
+  reviewRunning.value = false
   buildRunning.value = false
   assistant.value = null
   view.value = 'home'
@@ -73,7 +87,7 @@ function home() {
             <h2 v-if="assistant" class="h4 mb-4">Making {{ assistant.name }}</h2>
             <ol class="ps-3 mb-0">
               <li v-for="step in steps" :key="step.id" :aria-disabled="disabled(step.id) ? 'true' : undefined" class="mb-4 ps-1">
-                <button v-if="assistant && (step.id === 'consent' || step.id === 'connect' || step.id === 'sources' || step.id === 'build' || step.id === 'save')" type="button"
+                <button v-if="assistant" type="button"
                   class="btn btn-link p-0 text-start text-reset" :disabled="disabled(step.id)"
                   :aria-disabled="disabled(step.id) ? 'true' : undefined" :aria-current="view === step.id ? 'step' : undefined"
                   @click="goToStep(step.id)">
@@ -81,15 +95,14 @@ function home() {
                 </button>
                 <span v-else data-step-title class="d-block">{{ step.title }}</span>
                 <span v-if="disabled(step.id)" class="d-block text-secondary small">{{
-                  step.id === 'consent' || step.id === 'connect' || step.id === 'sources' || step.id === 'build' || step.id === 'save'
-                    ? (assistant ? 'Needs your permission first' : 'Choose an assistant first')
-                    : 'Not here yet'
+                  assistant ? 'Needs your permission first' : 'Choose an assistant first'
                 }}</span>
               </li>
             </ol>
           </aside>
           <main class="col-9">
-            <button v-if="view !== 'home'" type="button" class="btn btn-link p-0 mb-4" :disabled="buildRunning" @click="home">Your assistants</button>
+            <button v-if="view !== 'home'" type="button" class="btn btn-link p-0 mb-4" :disabled="buildRunning || reviewRunning" @click="home">Your assistants</button>
+            <p v-if="reviewRunning" class="text-secondary">Wait for the test to finish to choose another assistant.</p>
             <p v-if="buildRunning" class="text-secondary">Stop the build first to choose another assistant.</p>
             <template v-if="view === 'home'">
               <Welcome />
@@ -99,13 +112,15 @@ function home() {
             <Consent v-else-if="view === 'consent' && assistant" :key="assistant.slug" :assistant="assistant" @agreed="agreed" @next="goToStep('connect')" />
             <ConnectClaude v-else-if="view === 'connect'" @next="goToStep('sources')" />
             <Sources v-else-if="view === 'sources' && assistant" :key="assistant.slug" :assistant="assistant" @next="goToStep('build')" />
+            <Report v-else-if="view === 'report' && assistant" :assistant="assistant" @build="goToStep('build')" @next="goToStep('review')" />
             <template v-else-if="view === 'save' && assistant">
               <Save :key="`save-${assistant.slug}-${resets}`" :assistant="assistant" />
               <TurnOn :key="`on-${assistant.slug}-${resets}`" :assistant="assistant" />
               <ClaudeAiFiles :key="`files-${assistant.slug}-${resets}`" :assistant="assistant" />
               <Forget :key="`forget-${assistant.slug}`" :assistant="assistant" @forgotten="forgotten" />
             </template>
-            <Build v-if="buildOpened && assistant" v-show="view === 'build'" :key="assistant.slug" :assistant="assistant" @running="buildRunning = $event" />
+            <Build v-if="buildOpened && assistant" v-show="view === 'build'" :key="assistant.slug" :assistant="assistant" @running="buildRunning = $event" @report="goToStep('report')" />
+            <Review v-if="reviewOpened && assistant" v-show="view === 'review'" :key="assistant.slug" :assistant="assistant" @running="reviewRunning = $event" />
           </main>
         </div>
       </div>
