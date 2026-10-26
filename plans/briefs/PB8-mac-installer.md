@@ -248,3 +248,17 @@ delete what the app made, use Forget in the app first.
    of `How to install.txt` says.
 
 Done when `bash tests/mac_install_test.sh` and `shellcheck` on the three scripts pass.
+
+## Second fix-ups, from the repeat Verifier pass (V1, 2026-10-25)
+
+1. **`tests/mac_install_test.sh`, an eighth case, *Symlink out of the bundle*:** a fake app whose
+   `Contents/Resources/outside` is a symlink to a file outside the kit (in the scratch folder) that
+   carries `com.apple.quarantine`; sign the app after adding the link. Expect exit 1, `looks damaged`
+   on stderr, nothing installed, and the outside file still quarantined. (It fails if the first
+   `codesign` check is removed or moved after `xattr -dr`; check that with a scratch copy.)
+2. **`scripts/build-mac-app.sh`, fail closed:** capture `git status --porcelain -- builder crew Cargo.toml Cargo.lock`
+   first; when the command itself fails (not a git checkout, or no git), stop with
+   `build-mac-app: build from a git checkout of the repo, so uncommitted changes can be checked`.
+   The existing message stays for a dirty tree.
+
+Done when `bash tests/mac_install_test.sh` and `shellcheck` on the three scripts pass.
