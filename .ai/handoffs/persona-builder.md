@@ -2,6 +2,38 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.5c: the command-line history commands take the state lock (2026-10-26, lane: V1)
+
+- **What:** filed from PB7.5b's reviews. The CLI's ten history commands (`mine`, `claudeai
+  titles|mark|mine`, `merge`, `split`, `chunk`, `distil-in`, `round`, `interview answer`) now hold
+  the state lock from before their first read of `~/.claude/state/<slug>/` until they return, so a
+  forget (app or CLI) is refused as busy while one runs, or the command finds nothing; before, one
+  running during a forget could write part of the history back. `mine` and `claudeai titles` may
+  make the state folder (creating lock); the other eight take the non-creating lock and answer a
+  missing folder with a fixed sentence (`claudeai mark|mine` keep today's "no review file yet").
+  Dry runs take no lock. A failed `mine` or `claudeai titles` (a missing projects folder or
+  export) checks those before the lock, so it leaves no empty state folder. The PB7.5c known limit
+  is gone from `.ai/SECURITY.md`; a new one names PB7.5d. Brief, with its fix-up pass:
+  `plans/briefs/PB7.5c-cli-history-lock.md`.
+- **Who wrote it:** Codex, in two passes (the slice; the review fix-ups). Her sandbox can't bind
+  sockets, so Claude committed, ran the gates and wrote this record.
+- **Verified:** red first (`builder/cli/tests/history_lock.rs`: busy for each of the ten, files
+  unchanged, then success; nothing recreated for the eight; a dry run not refused; no state folder
+  after a missing projects folder or export). Mutation checks (cp backup, `cmp`): by Codex,
+  removing `merge`'s lock, making the lock always creating, locking `mine`'s dry run, and moving
+  `claudeai titles`'s lock below its read (caught by a junk review under the lock); by V1, removing
+  `round`'s lock (both its tests red). The CLI's tests, clippy and fmt green; `ci-local.sh` in the
+  land (it never lands on red).
+- **Reviews:** `/security-review` (sub-agent): no high; one low from this slice (the empty state
+  folder after a failed `mine`/`titles`), fixed; one medium predating it, filed as PB7.5d
+  (`EMin30aO`): the CLI's `build`, `interview draft` and `keep` read history before they take the
+  creating lock. Verifier (Fable): PASS, two should-fixes (the claudeai lock-order test; "a forget
+  waits" was wrong, it is refused as busy), both fixed, plus two nits fixed (two lock helpers, a
+  test comment).
+- **Not verified:** no live race with a real forget during a long `mine`; the lock is shown by
+  holding it from the test. `consent agree` still writes `consent.json` with no lock (noted on
+  PB7.5d).
+
 ## PB7.7c: a daily limit in dollars, set on Connect Claude (2026-10-26, lane: V1)
 
 - **What:** split from PB7.7. Each assistant keeps its own limit in `limit.json` in its state folder
