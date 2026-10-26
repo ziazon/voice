@@ -709,6 +709,34 @@ def control_header(line):
     return (m.group(1), m.group(2)) if m else None
 
 
+def is_dial_line(line):
+    """Whether a plain or heading line starts with a dial, even without a control header."""
+    row = line.lstrip()
+    text = row.lstrip("#")
+    if 1 <= len(row) - len(text) <= 6 and text.startswith(" "):
+        row = text.lstrip()
+    return row.startswith("🎛")
+
+
+def control_body(m, lines, index):
+    """The bounded block after a control header, withheld when its text is private."""
+    heading = re.match(r"^#{1,6} ", lines[index].lstrip())
+    body = []
+    for line in lines[index + 1:]:
+        if is_dial_line(line) or (heading and re.match(r"^#{1,6} ", line.lstrip())):
+            break
+        if not heading and not line.strip():
+            break
+        body.append(line.rstrip())
+    if heading:
+        while body and not body[-1]:
+            body.pop()
+    text = "\n".join(body)
+    if any(p.search(text) for p in (m.personal, m.secret)):
+        return {"body": None, "body_withheld": True}
+    return {"body": text}
+
+
 def open_control_qs(m, queues):
     """Questions waiting in a queue file: keys whose newest header is a question.
     Read the last 512 KiB (QUEUE_TAIL_BYTES)."""
@@ -718,18 +746,21 @@ def open_control_qs(m, queues):
         tail = data[-QUEUE_TAIL_BYTES:]
         first = data[:len(data) - len(tail)].count(b"\n") + 1
         open_by_key = {}
-        for n, line in enumerate(tail.decode(errors="ignore").splitlines(), first):
+        lines = tail.decode(errors="ignore").splitlines()
+        for n, line in enumerate(lines, first):
             header = control_header(line)
             if not header:
                 continue
             if header[0] == "Q":
-                open_by_key[header[1]] = (n, line.strip())
+                open_by_key[header[1]] = (n, line.strip(), control_body(m, lines, n - first))
             else:
                 open_by_key.pop(header[1], None)
-        for key, (n, line) in open_by_key.items():
+        for key, (n, line, body) in open_by_key.items():
             if not any(p.search(line) for p in (m.personal, m.secret)):
+                options = [match.group(1) for row in (body["body"] or "").splitlines()
+                           if (match := re.match(r"^\s*[a-z]\)\s+(.*)$", row))]
                 found.append({"kind": "control-q", "project": path.parent.name, "key": key, "line": n,
-                              "question": line, "options": []})
+                              "question": line, "options": options, **body})
     return found
 
 
@@ -746,7 +777,8 @@ def answered_escalations(m, queues):
         tail = data[-QUEUE_TAIL_BYTES:]
         first = data[:len(data) - len(tail)].count(b"\n") + 1
         sessions, answers = {}, {}
-        for n, line in enumerate(tail.decode(errors="ignore").splitlines(), first):
+        lines = tail.decode(errors="ignore").splitlines()
+        for n, line in enumerate(lines, first):
             header = control_header(line)
             if not header:
                 continue
@@ -765,7 +797,8 @@ def answered_escalations(m, queues):
                 if not name or name == m.name or any(p.search(line) for p in (m.personal, m.secret)):
                     continue
                 answers[key] = {"kind": "control-a", "project": path.parent.name, "key": key,
-                                "line": n, "answer": line.strip(), "session": sessions[key]}
+                                "line": n, "answer": line.strip(), "session": sessions[key],
+                                **control_body(m, lines, n - first)}
         found.extend(answers.values())
     return found
 

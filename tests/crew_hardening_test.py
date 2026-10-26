@@ -187,6 +187,125 @@ class Hardening(unittest.TestCase):
         self.assertEqual(seen.parent.stat().st_mode & 0o777, 0o700)
         self.assertEqual(self.h.crew(self.member, *args).stdout, '')
 
+    def pending_queue(self, text):
+        queues = self.h.root / 'queues/project'
+        queues.mkdir(parents=True, exist_ok=True)
+        (queues / 'queue.md').write_text(text)
+        member = self.h.member(dict(ADA, queue_answerer='Desk'))
+        seen = self.h.root / 'seen.json'
+        seen.unlink(missing_ok=True)
+        proc = self.h.crew(member, 'pending', '--projects', str(self.h.projects),
+                           '--queues', str(queues.parent), '--seen', str(seen))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return [json.loads(line) for line in proc.stdout.splitlines()]
+
+    def test_pending_plain_body_stops_at_blank_and_extracts_options(self):
+        events = self.pending_queue(
+            '  🎛️ CONTROL-Q BODY · Which order?\n'
+            '**Choose the order.**  \n'
+            'Keep `code` verbatim.\n'
+            '  a) Oldest first  \n'
+            'b) Newest first ← Ada (high)\n'
+            'One last detail.\n \t\nMore prose outside the block.\n')
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['body'], '**Choose the order.**\nKeep `code` verbatim.\n'
+                         '  a) Oldest first\nb) Newest first ← Ada (high)\nOne last detail.')
+        self.assertEqual(events[0]['options'], ['Oldest first', 'Newest first ← Ada (high)'])
+
+    def test_pending_body_stops_at_next_control_header(self):
+        events = self.pending_queue('🎛️ CONTROL-Q FIRST · Pick?\nFirst body\n'
+                                    '🎛️ CONTROL-Q SECOND · Pick?\nSecond body\n')
+        self.assertEqual([e['key'] for e in events], ['FIRST', 'SECOND'])
+        self.assertEqual([e['body'] for e in events], ['First body', 'Second body'])
+
+    def test_pending_heading_body_keeps_blanks_until_any_heading(self):
+        events = self.pending_queue('### 🎛️ CONTROL-Q HEADING · Pick?\nFirst paragraph\n\n'
+                                    'a) Keep `this`\n\n \t\n## Next section\nOutside\n')
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['body'], 'First paragraph\n\na) Keep `this`')
+        self.assertEqual(events[0]['options'], ['Keep `this`'])
+
+    def test_pending_body_stops_at_any_dial_line(self):
+        for header in ('🎛️ CONTROL-Q K · t', '### 🎛️ CONTROL-Q K · t'):
+            for stop in ('🎛️ Park status', '### 🎛️ Park status',
+                         '  🎛️ Park status', '  ### 🎛️ Park status', '🎛️ CONTROL-Z BAD'):
+                with self.subTest(header=header, stop=stop):
+                    events = self.pending_queue(header + '\nasked\n' + stop + '\nnot\n')
+                    self.assertEqual(len(events), 1)
+                    self.assertEqual(events[0]['body'], 'asked')
+
+    def test_pending_heading_body_stops_at_indented_heading(self):
+        events = self.pending_queue('### 🎛️ CONTROL-Q H · x\nbody\n  ## Next\noutside\n')
+        self.assertEqual(events[0]['body'], 'body')
+
+    def test_pending_private_later_body_line_is_withheld(self):
+        private = 'my therapist'
+        events = self.pending_queue('🎛️ CONTROL-Q LATER · x\nSafe first line\n'
+                                    + private + '\na) Safe last line\n')
+        self.assertEqual(len(events), 1)
+        self.assertIsNone(events[0]['body'])
+        self.assertTrue(events[0]['body_withheld'])
+        self.assertEqual(events[0]['options'], [])
+        self.assertNotIn(private, json.dumps(events))
+
+    def test_pending_heading_body_stops_at_plain_control_header(self):
+        events = self.pending_queue('### 🎛️ CONTROL-Q H1 · x\none\n\ntwo\n'
+                                    '🎛️ CONTROL-Q P2 · y\n')
+        self.assertEqual([e['key'] for e in events], ['H1', 'P2'])
+        self.assertEqual(events[0]['body'], 'one\n\ntwo')
+
+    def test_pending_options_require_space_and_text(self):
+        events = self.pending_queue('🎛️ CONTROL-Q OPTIONS · x\na)\nb)x\nc) real\n')
+        self.assertEqual(events[0]['options'], ['real'])
+
+    def test_pending_indented_heading_header_keeps_blanks(self):
+        events = self.pending_queue('  ### 🎛️ CONTROL-Q IH · x\nbody\n\nmore\n## End\n')
+        self.assertEqual(events[0]['body'], 'body\n\nmore')
+
+    def test_pending_heading_body_heading_levels(self):
+        for stop in ('# End', '###### End'):
+            with self.subTest(stop=stop):
+                events = self.pending_queue('### 🎛️ CONTROL-Q LEVEL · x\nbody\n'
+                                            '####### Deep\n##Next\n' + stop + '\noutside\n')
+                self.assertEqual(events[0]['body'], 'body\n####### Deep\n##Next')
+
+    def test_pending_answer_carries_body(self):
+        events = self.pending_queue(
+            '🎛️ CONTROL-Q ANSWER · 2026-10-23T10:00Z · session abc123 (Autonomous on) · attended\n'
+            '🎛️ CONTROL-A ANSWER · 2026-10-23T11:00Z · Desk · answered by Sam · attended\n'
+            '**Sam picked (b):** Newest first\n1. Apply the order.\n\nOutside\n')
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'control-a')
+        self.assertEqual(events[0]['session'], 'abc123')
+        self.assertEqual(events[0]['body'], '**Sam picked (b):** Newest first\n1. Apply the order.')
+
+    def test_pending_private_body_is_withheld_but_event_is_emitted(self):
+        for kind in ('Q', 'A'):
+            for private in ('my therapist', '123456789'):
+                with self.subTest(kind=kind, pattern='personal' if private.startswith('my') else 'secret'):
+                    header = '🎛️ CONTROL-Q PRIVATE · Pick?\n'
+                    if kind == 'A':
+                        header = (
+                            '🎛️ CONTROL-Q PRIVATE · session abc123 (Autonomous on)\n'
+                            '🎛️ CONTROL-A PRIVATE · 2026-10-23 · Desk · answered by Sam\n')
+                    events = self.pending_queue(header + 'a) ' + private + '\n')
+                    self.assertEqual(len(events), 1)
+                    self.assertEqual(events[0]['kind'], 'control-' + kind.lower())
+                    self.assertIsNone(events[0]['body'])
+                    self.assertTrue(events[0]['body_withheld'])
+                    self.assertEqual(events[0].get('options', []), [])
+                    self.assertNotIn(private, json.dumps(events))
+
+    def test_pending_header_at_eof_has_empty_body(self):
+        events = self.pending_queue('🎛️ CONTROL-Q EMPTY · Pick?')
+        self.assertEqual(events[0]['body'], '')
+        self.assertEqual(events[0]['options'], [])
+
+    def test_pending_body_cut_at_eof(self):
+        events = self.pending_queue('🎛️ CONTROL-Q EOF · Pick?\nFirst line\na) Last line  ')
+        self.assertEqual(events[0]['body'], 'First line\na) Last line')
+        self.assertEqual(events[0]['options'], ['Last line'])
+
     def test_queue_answers_come_only_from_the_configured_answerer(self):
         queues = self.h.root / 'queues'
         (queues / 'project').mkdir(parents=True)
