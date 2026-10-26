@@ -124,3 +124,24 @@ sentence is unchanged.
 `pnpm -C builder/ui test -- --maxWorkers=2` and `pnpm -C builder/ui typecheck` both pass, and
 `git diff --stat` shows only files under `builder/ui/src/screens/` and `builder/ui/src/PersonaBuilder.test.ts`
 (plus `test-support.ts` only if a fixture needs a name). Report each file changed and each test added.
+
+## Follow-up from the reviews (made, do not reopen)
+
+The security review and the Verifier found two sentences that promise more than the code does, and
+three Rust messages that now disagree with the renamed build button. Fix all five; red first.
+
+1. **`screens/review/TeachIt.vue`**: the hint becomes `Leave out anything private, such as someone's
+   name. Persona Builder catches some private details, but not names.` (The filters match private
+   topics and secrets, not personal names.)
+2. **`screens/TurnOn.vue`**: the added sentence becomes `Turning {name} on adds a skill and a short
+   block to your Claude Code instructions. Turning it off removes what it added, except anything
+   you've changed since.` (`install::off` leaves a changed file where it is.)
+3. **`builder/api/src/building.rs`**: `STOPPED` → `…What was already finished is kept, so running the
+   build again carries on from there.` (the same text as `STOPPED` in `BuildRun.vue`); `BUILD_FAILED`
+   → `…What it already finished is kept: run the build again to carry on.`; `PRIVATE` → `…Run the
+   build again to try once more.` Update `builder/api/tests/building.rs` to match.
+4. **`screens/build/Interview.vue`**: the button `Add them to your history and build again` → `Add
+   them to your history and run the build again`, and its tests.
+
+Run `cargo test -p persona-builder-api -j 2` (offline, `CARGO_NET_OFFLINE=true`), `cargo fmt --check`,
+the screen tests and the type check. Do not commit.

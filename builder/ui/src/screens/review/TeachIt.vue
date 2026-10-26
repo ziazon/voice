@@ -67,7 +67,7 @@ async function keep() {
               <label :for="`${slug}-review-said`" class="form-label">What your assistant said, if it got this wrong (optional)</label>
               <textarea :id="`${slug}-review-said`" v-model="assistantSaid" class="form-control" rows="2" maxlength="2000" />
             </div>
-            <p class="form-hint">Leave out anything private, such as someone's name. It's checked before it's kept.</p>
+            <p class="form-hint">Leave out anything private, such as someone's name. Persona Builder catches some private details, but not names.</p>
             <button type="submit" class="btn btn-primary" :disabled="busy || !ready">Keep my answer</button>
           </fieldset>
         </form>

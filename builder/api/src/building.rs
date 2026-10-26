@@ -26,11 +26,11 @@ use std::{
 };
 
 type Result<T> = std::result::Result<T, Failure>;
-const STOPPED: &str = "Stopped. Your assistant is as it was before this build. What was already finished is kept, so building again carries on from there.";
+const STOPPED: &str = "Stopped. Your assistant is as it was before this build. What was already finished is kept, so running the build again carries on from there.";
 const NOTHING_YET: &str = "There's nothing to build from yet. Read your history and put it together first, in Your history.";
 const SETTINGS: &str = "Something in this assistant's settings stops the build. Use the persona-builder command to see what.";
-const BUILD_FAILED: &str = "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: build again to carry on.";
-const PRIVATE: &str = "The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Build again to try once more.";
+const BUILD_FAILED: &str = "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.";
+const PRIVATE: &str = "The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Run the build again to try once more.";
 const LIMIT_DAMAGED: &str = "Persona Builder can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
 const LIMIT_BAD: &str = "The daily limit must be at least $0.01 and at most $1,000. The most one step may use must be at least $0.01 and no more than the daily limit. Both are in whole cents, like 2.50.";
 const LIMIT_SAVE: &str = "Persona Builder couldn't save the limit. Check there's space on this computer, then try again.";

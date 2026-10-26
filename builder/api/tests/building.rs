@@ -27,7 +27,7 @@ const PERMISSION: &str =
 const FIND: &str = "Persona Builder couldn't find that assistant. Close it and open it again.";
 const BUSY: &str =
     "Persona Builder is already working on this assistant. Wait for it to finish, then try again.";
-const STOPPED: &str = "Stopped. Your assistant is as it was before this build. What was already finished is kept, so building again carries on from there.";
+const STOPPED: &str = "Stopped. Your assistant is as it was before this build. What was already finished is kept, so running the build again carries on from there.";
 const NOTHING: &str = "There's nothing to build from yet. Read your history and put it together first, in Your history.";
 const ANSWER_BAD: &str = "Persona Builder couldn't keep that answer. Close it and open it again.";
 const NO_ANSWERS: &str = "Answer at least one question first.";
@@ -412,6 +412,44 @@ fn saved_build_keeps_last_progress_spend_when_final_read_fails() {
             .contains("32 held-out questions")
     );
     assert!(h.state("report.json").exists());
+}
+
+#[test]
+fn failed_build_explains_how_to_run_again_without_changing_the_assistant() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s);
+    fs::write(h.bin.join("plan.json"), br#"{"0":"error"}"#).unwrap();
+    let before = h.snapshots();
+    safe(
+        &h,
+        h.build(&Builds::new(), &mut |_| {}),
+        "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.",
+    );
+    assert_eq!(h.snapshots(), before);
+    assert!(!h.state("report.json").exists());
+}
+
+#[test]
+fn private_build_explains_how_to_retry_without_saving() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s);
+    // The name appears in the assembled draft, not the model's individual points.
+    let member_path = h.member().join("member.json");
+    let mut member: Value = serde_json::from_slice(&fs::read(&member_path).unwrap()).unwrap();
+    member["filters"]["personal"] = json!("Wren");
+    fs::write(member_path, serde_json::to_vec(&member).unwrap()).unwrap();
+    let before = h.snapshots();
+    safe(
+        &h,
+        h.build(&Builds::new(), &mut |_| {}),
+        "The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Run the build again to try once more.",
+    );
+    assert_eq!(h.snapshots(), before);
+    assert!(!h.state("report.json").exists());
 }
 
 #[test]

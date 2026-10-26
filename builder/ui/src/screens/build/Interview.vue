@@ -133,7 +133,7 @@ function pick(n: number, letter: string, multi: boolean, checked: boolean) {
             </div>
             <template v-if="kept">
               <div class="alert alert-success" role="alert">Kept {{ kept.kept.toLocaleString() }} answers. {{ kept.privateLeftOut.toLocaleString() }} that looked private were left out.</div>
-              <button type="button" class="btn btn-primary mb-3" :disabled="busy" @click="emit('rebuild')">Add them to your history and build again</button>
+              <button type="button" class="btn btn-primary mb-3" :disabled="busy" @click="emit('rebuild')">Add them to your history and run the build again</button>
             </template>
             <div v-if="replacing" class="alert alert-warning" role="alert">
               <p>This replaces these questions and your answers to them.</p>
