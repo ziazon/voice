@@ -174,3 +174,27 @@ If your sandbox refuses the commit, leave the change uncommitted and say so. Run
 `cargo test -p persona-builder-ingest`, `cargo test -p persona-builder-agent`,
 `cargo test -p persona-builder-api` (the api's wire tests may not bind sockets in your sandbox:
 say so, Claude runs the full gate).
+
+## Rebase pass (PB7.5 landed on `main`)
+
+PB7.5 is now on `main`: `draft_refresh_in` and `apply_refresh_in` (`builder/api/src/review.rs`)
+open the ledger through `building::open`, so they already use `Session::open_existing` after the
+rebase. Its two forget tests in `builder/api/tests/review.rs`,
+`apply_refuses_forgotten_state_between_check_and_open_without_calls` and
+`draft_refuses_forgotten_state_between_check_and_open_without_calls`, assert only
+`!h.state("growth").exists()`, the known limit this card removes.
+
+Decisions (made, do not reopen):
+
+1. In both tests replace `assert!(!h.state("growth").exists());` with
+   `assert!(!h.path.join(".claude/state/wren").exists());` (use the `Home` fixture's own field and
+   slug; read the fixture to confirm the names, and if they differ use its exact equivalents).
+   No other test change, no product code change.
+2. Red proof: back up `builder/api/src/building.rs` with `cp`, put `fn open` back on
+   `Session::open(home, slug, Cap::default())`, run only those two tests, and confirm both fail on
+   the new assertion; restore with `cp` and confirm with `cmp -s`. Then run them green.
+
+Commit separately on top (never amend), message in a file:
+`builder: PB7.5a the refresh forget tests check no state folder is left`. If your sandbox refuses
+the commit, leave it uncommitted and say so. Run from `builder/` with `CARGO_BUILD_JOBS=2`:
+`cargo fmt --all -- --check` and `cargo test -p persona-builder-api --test review -- --test-threads=2`.
