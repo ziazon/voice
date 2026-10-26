@@ -2,6 +2,36 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.7c: a daily limit in dollars, set on Connect Claude (2026-10-26, lane: V1)
+
+- **What:** split from PB7.7. Each assistant keeps its own limit in `limit.json` in its state folder
+  (0600; default $50 a day and $5 a step when none is saved). Every app command that spends (build,
+  the interview draft, the refresh draft and its test) opens the ledger at that limit, so the
+  build's *Today's use* shows it. Connect Claude gains the mock's *How much it may use* card, dollars
+  only: *Stop for the day at about* and *Most one step may use*, *Save the limit*. Two app commands
+  (`spending_limit`, `set_spending_limit`); the CLI gains `limit show|set`, and its
+  `--daily-cap-usd`/`--call-cap-usd` flags now default to the saved limit. `Cap::new` now also needs
+  each step at least $0.01 and both amounts in whole cents, since Claude Code gets its budget to
+  the cent. Brief (two passes): `plans/briefs/PB7.7c-daily-limit.md`. Built by Codex; one copy fix
+  (the load-failure sentence) and the $0.01 floor by Claude.
+- **Verified:** red first for the new tests (agent `cap.rs`, api `building.rs` and its race tests,
+  CLI `agent.rs`, `ConnectClaude.test.ts`); mutation checks by Codex (four: the default cap in
+  `open`, the consent re-check under the lock, `load` accepting a refused file, clamping an explicit
+  step cap) and V1 (the $0.01 floor). `ci-local.sh` green on the head.
+- **Reviews:** security review (sub-agent): two lows; the sub-cent step budget fixed, the
+  load-before-lock window recorded as a known limit in `.ai/SECURITY.md`. Verifier (Fable): FAIL on
+  a stale test sentence (fixed), three should-fixes fixed (the CLI's missing-folder sentence, a test
+  for an explicit step cap above the day, whole cents); repeat (Opus): PASS, three nits left (a
+  value within 1e-8 of a cent is kept unrounded; no sub-cent damaged-file case in the test; 10000 on
+  the screen gets the amount sentence, not the $1,000 one).
+- **Known limits:** a run reads the limit just before it takes the state lock, so a limit saved in
+  that moment applies from the next run; a limit set below today's spend shows only when the next
+  step is refused. The share-of-plan choice is PB7.7d, parked on V-Q8.
+- **Not verified:** the screen in a window (owed as a walk), and a real build at a saved limit.
+- **Rebased onto PB7.5a** (V1, 2026-10-26): `building::open` loads the saved limit first, then
+  opens with PB7.5a's `Session::open_existing` (a missing state folder still reads as no saved limit,
+  then the permission sentence); `.ai/SECURITY.md`'s spending row carries both slices' sentences.
+
 ## PB7.5a: app commands that spend open the ledger only on an existing state folder (2026-10-26, lane: V2)
 
 - **What:** a finding from PB7.5's Verifier pass and security review (inherited from PB7.4). The
