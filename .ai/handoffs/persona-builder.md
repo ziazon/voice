@@ -33,10 +33,13 @@ One record per slice, newest first. Paraphrase only; no real person.
   taking every value that starts with a dash let a flag left empty swallow the next flag's name
   and write a wrong line, where Python refuses; a second repeat pass found the same through a
   following `--flag="text with a space"`. Fixed with a rule stricter than Python's on purpose: a
-  value given on its own that starts with two dashes, or with one dash and no space (a negative
-  number aside), is refused; such a value can still be given as `--flag=value`. Where the two
-  differ, Rust only refuses, never writes a different line. A test covers each case, and
-  `record --help` works again without an assistant folder.
+  value given on its own that starts with two dashes, or with one dash and no space (a lone `-`
+  and a negative number aside), is refused; such a value can still be given as `--flag=value`.
+  So a flag left empty never takes another flag as its value. One difference is kept on purpose:
+  Python refuses a value that starts `-h` and has a space (`"-how should we name it?"`), because
+  argparse reads it as its help flag; Rust keeps it as the text it is. Every other difference a
+  916-case probe found is a Rust refusal. A test covers each case, and `record --help` works again
+  without an assistant folder.
 - **Not verified:** making an assistant from the app's window (the app path is covered by
   `builder/api/tests/assistants.rs` and the Verifier's reading of the bundle; owed with PB8's
   walk). An assistant made before this keeps its old `SKILL.md`; make it again.
