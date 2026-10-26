@@ -31,6 +31,7 @@ async function draft() {
   kept.value = false
   error.value = ''
   outcome.value = ''
+  lines.value = []
   try {
     const result = await backend.draftRefresh({ slug: props.slug })
     spend.value = result.spend

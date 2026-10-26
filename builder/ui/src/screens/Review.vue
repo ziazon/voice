@@ -8,7 +8,7 @@ import TeachIt from './review/TeachIt.vue'
 import Tests from './review/Tests.vue'
 import Refresh from './review/Refresh.vue'
 
-const props = defineProps<{ assistant: Assistant, active: boolean }>()
+const props = withDefaults(defineProps<{ assistant: Assistant, active?: boolean }>(), { active: true })
 const emit = defineEmits<{ running: [boolean] }>()
 const backend = useBackend()
 const status = ref<ReviewStatus | null>(null)

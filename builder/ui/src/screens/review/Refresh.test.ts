@@ -133,3 +133,12 @@ it.each(['draft', 'test'] as const)('keeps a successful %s distinct from a faile
     expect(wrapper.emitted('running')).toEqual([[true], [false]])
   }
 })
+
+it('clears previous test progress as soon as a new draft starts', async () => {
+  const backend = fakeBackend({ applyRefresh: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Old test progress.', spend }); return Promise.resolve({ kept: true, reason: 'Passed.', spend }) }), draftRefresh: vi.fn().mockReturnValue(deferred<RefreshDrafted>().promise) })
+  const wrapper = screen(Refresh, backend, { slug: 'example', status: { ...status, change: { ...change, approved: true } } })
+  await button(wrapper, 'Test it').trigger('click'); await flushPromises()
+  expect(wrapper.get('ul[aria-live="polite"]').text()).toBe('Old test progress.')
+  await wrapper.setProps({ status }); await button(wrapper, 'Draft a change').trigger('click')
+  expect(wrapper.find('ul[aria-live="polite"]').exists()).toBe(false)
+})

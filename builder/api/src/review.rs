@@ -317,6 +317,11 @@ pub fn answer_refresh_in(home: &Path, request: RefreshAnswerRequest) -> Result<R
     })?;
     status(home, &member)
 }
+fn stale_measure(e: &Error, id: &str) -> bool {
+    matches!(e, Error::Invalid(message) if message == text::CHANGE_DOES_NOT_FIT
+        || message == text::DECISIONS_CHANGED_TESTING || message == &text::cases_moved(id)
+        || message == &text::base_moved(id))
+}
 pub fn apply_refresh_in(
     home: &Path,
     path: Option<&OsStr>,
@@ -368,15 +373,12 @@ pub fn apply_refresh_in(
             });
         },
     )
-    .map_err(|e| match &e {
-        Error::Invalid(message)
-            if message == text::CHANGE_DOES_NOT_FIT
-                || message == text::DECISIONS_CHANGED_TESTING
-                || message == &text::cases_moved(&request.id) =>
-        {
+    .map_err(|e| {
+        if stale_measure(&e, &request.id) {
             failure(TEST_OLD)
+        } else {
+            call_failure(e, &session, TEST_FAILED)
         }
-        _ => call_failure(e, &session, TEST_FAILED),
     })?;
     let finished = apply::finish(
         &store,
@@ -431,6 +433,13 @@ pub fn apply_refresh(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn measure_recognizes_a_moved_base_as_stale() {
+        assert!(stale_measure(
+            &Error::Invalid(text::base_moved("change")),
+            "change"
+        ));
+    }
     #[test]
     fn keep_refuses_forgetting_between_check_and_lock_without_recreating_state() {
         let home = std::env::temp_dir().join(format!("pb-review-forget-{}", std::process::id()));

@@ -86,3 +86,11 @@ it('keeps Refresh lines and outcome across a status reload', async () => {
   expect(wrapper.get('ul[aria-live="polite"]').text()).toBe('Testing the change.')
   expect(wrapper.get('.alert-success').text()).toBe('Kept. Your assistant now works this way. Every test passed.')
 })
+
+it('loads once and works when the host omits active', async () => {
+  const backend = fakeBackend({ reviewStatus: vi.fn().mockResolvedValue(status) })
+  const wrapper = screen(Review, backend, { assistant }); await flushPromises()
+  expect(wrapper.props('active')).toBe(true)
+  expect(backend.reviewStatus).toHaveBeenCalledExactlyOnceWith({ slug: 'example' })
+  expect(wrapper.getComponent(Refresh).props('status')).toEqual(status)
+})
