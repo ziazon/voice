@@ -5,6 +5,7 @@ use persona_builder::{
     json::to_python_json,
     member::read_member,
 };
+use persona_builder_ingest::private::StateLock;
 use persona_builder_save::{
     flow::{self, Choice, GithubRemotes, MemberPaths, RemoteCheck, Saved, Saver},
     git::Git,
@@ -14,7 +15,7 @@ use persona_builder_save::{
     text,
 };
 use persona_builder_steps::input::RecordList as Records;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 mod assistants;
 
@@ -572,6 +573,29 @@ fn checked_member(
     })?;
     Ok(member)
 }
+fn nothing_yet(slug: &str) -> Error {
+    Error::Invalid(format!(
+        "~/.claude/state/{slug} isn't there yet, so there's nothing to read. Start with persona-builder mine, persona-builder claudeai titles or persona-builder interview draft."
+    ))
+}
+fn no_review() -> Error {
+    Error::Invalid("there's no review file yet: run persona-builder claudeai titles first".into())
+}
+fn history_lock(
+    home: &Path,
+    slug: &str,
+    create: bool,
+    missing: impl FnOnce() -> Error,
+) -> Result<StateLock> {
+    use persona_builder_ingest::private::{lock_existing_state, lock_state};
+    if create {
+        return lock_state(home, slug);
+    }
+    lock_existing_state(home, slug).map_err(|error| match error {
+        Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => missing(),
+        error => error,
+    })
+}
 fn mine(
     member_dir: PathBuf,
     projects: Option<PathBuf>,
@@ -585,6 +609,13 @@ fn mine(
     let split = split_choice(holdout, cutoff)?;
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(history_lock(&home, &member.slug, true, || {
+            nothing_yet(&member.slug)
+        })?)
+    };
     let projects = projects_path(projects, &home)?;
     let filters = Filters::compile(&member.filters)?;
     let mined = mine::mine(&member, &filters, &projects, &home, &split)?;
@@ -626,9 +657,7 @@ fn existing_review(
 ) -> Result<Vec<persona_builder_ingest::claudeai::ReviewRow>> {
     use persona_builder_ingest::{claudeai::read_review, private::read_private};
     let bytes = read_private(home, slug, review).map_err(|error| match error {
-        Error::Invalid(message) if message.ends_with("doesn't exist") => Error::Invalid(
-            "there's no review file yet: run persona-builder claudeai titles first".into(),
-        ),
+        Error::Invalid(message) if message.ends_with("doesn't exist") => no_review(),
         other => other,
     })?;
     read_review(review, &bytes)
@@ -648,6 +677,13 @@ fn claudeai_titles(
     validate_review_name(&review)?;
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(history_lock(&home, &member.slug, true, || {
+            nothing_yet(&member.slug)
+        })?)
+    };
     let filters = Filters::compile(&member.filters)?;
     let export = claudeai::read_export(&expand_home(export, &home))?;
     let existing = match existing_review(&home, &member.slug, &review) {
@@ -716,6 +752,7 @@ fn claudeai_mark(member_dir: PathBuf, args: MarkArgs) -> Result<()> {
         .transpose()?;
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
+    let _lock = history_lock(&home, &member.slug, false, no_review)?;
     let mut rows = existing_review(&home, &member.slug, &args.review)?;
     let changed = claudeai::mark(&mut rows, &selector, &args.mark);
     write_private(
@@ -747,6 +784,11 @@ fn claudeai_mine(
     let split = split_choice(holdout, cutoff)?;
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(history_lock(&home, &member.slug, false, no_review)?)
+    };
     let filters = Filters::compile(&member.filters)?;
     let export = claudeai::read_export(&expand_home(export, &home))?;
     let rows = existing_review(&home, &member.slug, &review)?;
@@ -788,6 +830,13 @@ fn merge(
     let split = split_choice(holdout, cutoff)?;
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(history_lock(&home, &member.slug, false, || {
+            nothing_yet(&member.slug)
+        })?)
+    };
     let filters = Filters::compile(&member.filters)?;
     if inputs.is_empty() {
         let names = list_private(&home, &member.slug)?;
@@ -865,6 +914,13 @@ fn split_corpus(
     }
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(history_lock(&home, &member.slug, false, || {
+            nothing_yet(&member.slug)
+        })?)
+    };
     let held = corpus_ops::split(
         &member,
         &corpus,
@@ -923,6 +979,7 @@ fn json_at(home: &std::path::Path, slug: &str, argument: &str) -> Result<Vec<u8>
 fn chunk(member_dir: PathBuf, corpus: String, out_dir: String, size: u64) -> Result<()> {
     use persona_builder_ingest::private::{private_folder, write_private_at};
     let (member, home) = member_and_home(&member_dir)?;
+    let _lock = history_lock(&home, &member.slug, false, || nothing_yet(&member.slug))?;
     let records = corpus_at(&home, &member.slug, &corpus)?;
     let size = usize::try_from(size).map_err(|_| Error::Invalid("--size is too large".into()))?;
     let chunks = persona_builder_steps::chunk::chunk(&corpus, &records, size)?;
@@ -981,6 +1038,7 @@ fn distil_in(member_dir: PathBuf, corpus: String, labels: String, out_dir: Strin
     };
     use persona_builder_steps::{book::book, distil, input::read_objects};
     let (member, home) = member_and_home(&member_dir)?;
+    let _lock = history_lock(&home, &member.slug, false, || nothing_yet(&member.slug))?;
     let book = book(&member)?;
     let records = corpus_at(&home, &member.slug, &corpus)?;
     let given = read_objects(&labels, &json_at(&home, &member.slug, &labels)?)?;
@@ -1088,6 +1146,7 @@ fn round(
     let out = out.unwrap_or_else(|| steps::default_out(&name));
     validate_name(&out)?;
     let (member, home) = member_and_home(&member_dir)?;
+    let _lock = history_lock(&home, &member.slug, false, || nothing_yet(&member.slug))?;
     let filters = Filters::compile(&member.filters)?;
     let asked = read_object(&questions, &json_at(&home, &member.slug, &questions)?)?;
     let answered = read_object(&answers, &json_at(&home, &member.slug, &answers)?)?;
@@ -1340,6 +1399,7 @@ fn interview_answer(
     };
     use persona_builder_steps::input::read_object;
     let (member, home) = member_and_home(&member_dir)?;
+    let _lock = history_lock(&home, &member.slug, false, || nothing_yet(&member.slug))?;
     let records = match read_private_optional(&home, &member.slug, &corpus)? {
         Some(bytes) => persona_builder_ingest::corpus::read_records(&corpus, &bytes)?,
         None => Vec::new(),
