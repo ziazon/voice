@@ -169,3 +169,26 @@ existing interview tests use.
    questions and no `decisions.jsonl`, `answer` uses the short form.
 
 Same Done-means: the touched crates' tests, clippy, fmt, the UI tests and typecheck. Do not commit.
+
+## Second fix-up pass (security review and Verifier, both low or should-fix)
+
+1. `bootstrap/install.sh`: line ~190 reserves host names a corpus must not take; add
+   `interview-short` to that `case` (with `interview`). In step 7's merge (`case "$(basename "$f")"`),
+   train `decisions-interview-short.jsonl` like `decisions-interview.jsonl`. If the Rust miner has its
+   own reserved host list (grep `builder/ingest/src` and `builder/cli/src` for where `interview` is
+   reserved), add `interview-short` there too. Test in whichever existing test covers that rule
+   (`tests/crew_install_test.sh` for the shell, red first).
+2. `interview::draft`: refuse a count of 0 (no kinds given) with `Error::Invalid(text::NOTHING_TO_ASK)`
+   before any call, so a race between the last check and the call can never spend on an empty
+   interview. Test: `draft` with `Form::Short` and empty weights makes no call (the fake Claude counts
+   calls, as the existing tests do).
+3. `report::report` (`builder/build/src/report.rs` ~line 97): with 150 or more answered questions, the
+   `Strengthen::Interview` item is added only for a kind the short interview can ask about, so never
+   for `other` (the interview's `weighted` drops `other`). Below 150, unchanged. Test: at 150 answered,
+   an `other` row with 2 examples gets no interview item (and `Report.vue`'s button then doesn't show,
+   since it keys off the items).
+4. `.ai/SECURITY.md`, the interview row: add a known limit: *the form follows the answered count, so
+   questions drafted (or answers saved) in one form are not shown once the count crosses 150; nothing
+   is overwritten or deleted.*
+
+Same Done-means as before; also run `bash tests/crew_install_test.sh` if you touch the shell. Do not commit.

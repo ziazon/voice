@@ -95,7 +95,7 @@ refused "--to is needed" --name Ari --principal Robin --role extra
 refused "clone your fork" --name Ari --principal Robin --repo-dir "$scratch/nowhere"
 
 # A Mac whose name a source's file would take mines under host-<name>, so withdraw never deletes it.
-for host in live claudeai; do
+for host in live interview interview-short claudeai; do
   run "$extra" "$host" --role extra --no-copy
   [ -f "$extra/.claude/state/ari/decisions-host-$host.jsonl" ] || fail "a Mac named $host did not mine under host-$host"
   rm "$extra/.claude/state/ari/decisions-host-$host.jsonl"
@@ -143,6 +143,29 @@ cp "$corpus" "$scratch/first.jsonl"
 run "$main" main --role main
 cmp -s "$corpus" "$scratch/first.jsonl" || fail "a rerun changed the merged corpus"
 check "$main/.claude/state/ari/claudeai-review.tsv" "^y	" "a rerun lost the review mark"
+
+# Both interview forms always train, even answers newer than the history cutoff.
+python3 -I - "$main/.claude/state/ari" <<'PYINTERVIEW'
+import json, sys
+from pathlib import Path
+state = Path(sys.argv[1])
+question = next(json.loads(line) for line in (state / "decisions.jsonl").read_text().splitlines()
+                if json.loads(line)["kind"] == "question")
+for form in ("interview", "interview-short"):
+    record = dict(question, id=f"question:{form}-01", project="interview",
+                  timestamp="2099-01-01T10:00:00Z", split="heldout")
+    (state / f"decisions-{form}.jsonl").write_text(json.dumps(record) + "\n")
+PYINTERVIEW
+run "$main" main --role main
+for form in interview interview-short; do
+  check "$scratch/out" "decisions-$form.jsonl (always training)" "$form was not merged as training"
+done
+python3 -I - "$main/.claude/state/ari/decisions.jsonl" <<'PYINTERVIEW'
+import json, sys
+records = {r["id"]: r for r in map(json.loads, open(sys.argv[1]))}
+for form in ("interview", "interview-short"):
+    assert records[f"question:{form}-01"]["split"] == "train"
+PYINTERVIEW
 
 # Robin adds two extra sources: sent mail from a Takeout mbox, and Ari's live log. Neither is read
 # until private.json gives it a consent date; the live answers always train, even the newest.

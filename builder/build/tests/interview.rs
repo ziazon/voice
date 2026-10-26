@@ -358,6 +358,26 @@ fn draft_makes_one_tool_less_call_with_fixed_instructions_and_shape() {
 }
 
 #[test]
+fn short_draft_with_no_kinds_makes_no_call() {
+    let home = Scratch::new();
+    let stub = Stub::new(&[ok_reply(&json!({"questions": []}))]);
+    let error = interview::draft(
+        interview::Form::Short,
+        &stub.claude(),
+        &session(&home.0, Cap::default()),
+        "sonnet",
+        &book(&member()).unwrap(),
+        &[],
+    )
+    .unwrap_err();
+    assert_eq!(stub.calls(), 0);
+    assert!(
+        matches!(error, persona_builder::error::Error::Invalid(ref message)
+        if message == text::NOTHING_TO_ASK)
+    );
+}
+
+#[test]
 fn draft_asks_once_more_when_the_first_draft_does_not_fit() {
     let home = Scratch::new();
     let bad = with_question(2, |q| q["header"] = json!(SENTINEL));

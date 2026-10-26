@@ -356,6 +356,9 @@ pub fn draft(
     weights: &[(String, Option<usize>)],
 ) -> Result<Map<String, Value>> {
     let count = form.count(weights);
+    if count == 0 {
+        return Err(invalid(text::NOTHING_TO_ASK));
+    }
     let schema = schema(count);
     let first = prompt(form, book, weights);
     let mut asked = first.clone();

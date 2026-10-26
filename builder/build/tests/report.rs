@@ -118,6 +118,24 @@ fn enough_history_uses_chats_and_time_without_an_interview() {
 }
 
 #[test]
+fn other_only_offers_the_interview_below_150_answers() {
+    let mut b = built();
+    b.tally = vec![("other".into(), row(2, 0))];
+    assert_eq!(
+        make(&b, 149).areas[0].strengthen,
+        [
+            Strengthen::Interview,
+            Strengthen::Claudeai,
+            Strengthen::Time
+        ]
+    );
+    assert_eq!(
+        make(&b, 150).areas[0].strengthen,
+        [Strengthen::Claudeai, Strengthen::Time]
+    );
+}
+
+#[test]
 fn at_150_answers_enough_examples_need_chats_and_time_only() {
     let mut b = built();
     b.tally = vec![("scope".into(), row(5, 0))];

@@ -94,7 +94,7 @@ pub fn report(book: &Book, built: &Built, answered: usize, day: &str) -> Report 
             };
             let mut strengthen = Vec::new();
             if level != Level::Strong {
-                if answered < interview::THIN_BELOW || examples < build::THIN {
+                if answered < interview::THIN_BELOW || (area != "other" && examples < build::THIN) {
                     strengthen.push(Strengthen::Interview);
                 }
                 if built.counts.claudeai == 0 {
