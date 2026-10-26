@@ -362,6 +362,7 @@ fn stop_after_last_call_saves_nothing_and_releases_registry() {
         STOPPED,
     );
     assert_eq!(h.snapshots(), before);
+    assert!(!h.state("report.json").exists());
     assert!(
         h.build(&builds, &mut |_| {}).is_ok(),
         "registry still holds the finished slug"
@@ -392,6 +393,7 @@ fn stop_early_reaches_build_while_version_check_sleeps() {
     });
     assert_eq!(h.calls(), 0);
     assert_eq!(h.snapshots(), before);
+    assert!(!h.state("report.json").exists());
 }
 #[test]
 fn stop_second_call_is_busy_then_reuses_first_kept_reply() {
@@ -420,6 +422,7 @@ fn stop_second_call_is_busy_then_reuses_first_kept_reply() {
         assert!(start.elapsed() < Duration::from_secs(10));
     });
     assert_eq!(h.snapshots(), before);
+    assert!(!h.state("report.json").exists());
     assert_eq!(h.calls(), 2);
     h.stub(|s| s);
     let mut progress = vec![];
@@ -511,6 +514,16 @@ fn answers_validate_every_boundary_and_round_trip() {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let h = Home::new(true);
     safe(&h, h.answers(vec![]), NO_QUESTIONS);
+    safe(
+        &h,
+        h.answers((0..21).map(|_| answer(1, &["A"], "")).collect()),
+        ANSWER_BAD,
+    );
+    safe(
+        &h,
+        h.answers(vec![answer(1, &["A", "B", "C", "D", "A"], "")]),
+        ANSWER_BAD,
+    );
     install_questions(&h);
     let cases = vec![
         (0..21).map(|_| answer(1, &["A"], "")).collect(),

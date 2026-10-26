@@ -98,7 +98,7 @@ defineExpose({ rebuild })
         <template v-if="!done.tested"> There weren't enough answers kept aside to test it yet, so it decides nothing on its own until it can be tested.</template>
       </div>
       <p v-if="done" class="text-secondary">Next, see how well it knows you.</p>
-      <button v-if="running" type="button" class="btn btn-outline-danger" :disabled="stopping" @click="stop">{{ stopping ? 'Stopping…' : 'Stop' }}</button>
+      <button v-if="running" type="button" class="btn btn-outline-danger" @click="stop">{{ stopping ? 'Stopping…' : 'Stop' }}</button>
       <button v-else type="button" class="btn btn-primary" @click="build()">{{ attempted ? 'Build again' : 'Build my assistant' }}</button>
     </div>
   </section>

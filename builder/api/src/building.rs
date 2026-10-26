@@ -342,6 +342,10 @@ pub fn draft_interview_in(
     can_draft(home, &request.slug, request.replace)?;
     let drafted = interview::draft(&claude, &session, claude::DEFAULT_MODEL, &book, &weights)
         .map_err(|e| call_failure(e, &session, DRAFT_FAILED))?;
+    if request.replace {
+        private::remove_private(home, &request.slug, interview::ANSWERS_FILE)
+            .map_err(|_| failure(ANSWERS_SAVE))?;
+    }
     private::write_private(
         home,
         &request.slug,
@@ -349,21 +353,19 @@ pub fn draft_interview_in(
         pretty(&Value::Object(drafted)).as_bytes(),
     )
     .map_err(|_| failure(ANSWERS_SAVE))?;
-    if request.replace {
-        private::remove_private(home, &request.slug, interview::ANSWERS_FILE)
-            .map_err(|_| failure(ANSWERS_SAVE))?;
-    }
     status(home, &member)
 }
 pub fn save_interview_answers_in(
     home: &Path,
     request: InterviewAnswersRequest,
 ) -> Result<InterviewStatus> {
-    let (member, _lock) = locked(home, &request.slug)?;
-    let questions = questions(home, &request.slug).ok_or_else(|| failure(NO_QUESTIONS))?;
-    if request.answers.len() > interview::COUNT {
+    if request.answers.len() > interview::COUNT
+        || request.answers.iter().any(|answer| answer.picks.len() > 4)
+    {
         return Err(failure(ANSWER_BAD));
     }
+    let (member, _lock) = locked(home, &request.slug)?;
+    let questions = questions(home, &request.slug).ok_or_else(|| failure(NO_QUESTIONS))?;
     let mut seen = HashSet::new();
     let mut kept = Map::new();
     for answer in request.answers {
