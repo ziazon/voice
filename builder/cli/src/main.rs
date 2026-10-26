@@ -1238,12 +1238,19 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     use persona_builder_agent::{claude, ledger::Session, text as spend_text};
     use persona_builder_build::{build, interview, report, run, text};
     let (member, home) = member_and_home(&member_dir)?;
-    let prepared = run::prepare(&member, &member_dir, &home, &args.corpus)?;
+    run::prepare(&member, &member_dir, &home, &args.corpus)?;
     let cap = cap_for(&home, &member.slug, args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
-    let session = Session::open(&home, &member.slug, cap)?;
+    let session =
+        Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
+            Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                nothing_yet(&member.slug)
+            }
+            error => error,
+        })?;
+    let prepared = run::prepare(&member, &member_dir, &home, &args.corpus)?;
     if prepared.answered < interview::THIN_BELOW {
         println!("{}", text::thin_history(prepared.answered));
     }
@@ -1296,17 +1303,22 @@ struct DraftArgs {
     call_cap_usd: Option<f64>,
     replace: bool,
 }
-fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
-    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
-    use persona_builder_build::{interview, report, text};
-    use persona_builder_ingest::{
-        corpus::read_records,
-        private::{read_private_optional, write_private},
-    };
-    use persona_builder_steps::{book::book, input::pretty, input::read_objects, labels::tally};
-    let (member, home) = member_and_home(&member_dir)?;
-    let book = book(&member)?;
-    let records = match read_private_optional(&home, &member.slug, &args.corpus)? {
+struct DraftPlan {
+    answered: usize,
+    form: persona_builder_build::interview::Form,
+    weights: Vec<(String, Option<usize>)>,
+    weighted: bool,
+}
+fn draft_plan(
+    home: &Path,
+    member: &persona_builder::member::Member,
+    book: &persona_builder_steps::book::Book,
+    args: &DraftArgs,
+) -> Result<DraftPlan> {
+    use persona_builder_build::{interview, report};
+    use persona_builder_ingest::{corpus::read_records, private::read_private_optional};
+    use persona_builder_steps::{input::read_objects, labels::tally};
+    let records = match read_private_optional(home, &member.slug, &args.corpus)? {
         Some(bytes) => read_records(&args.corpus, &bytes)?,
         None => Vec::new(),
     };
@@ -1314,17 +1326,17 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     let form = interview::Form::for_answered(answered);
     let rows = match &args.labels {
         Some(labels) => {
-            let given = read_objects(labels, &json_at(&home, &member.slug, labels)?)?;
+            let given = read_objects(labels, &json_at(home, &member.slug, labels)?)?;
             Some(tally(&args.corpus, &records, labels, &given)?)
         }
         None => None,
     };
     let (weights, weighted) = match rows {
-        Some(rows) => (interview::weights(&book, Some(&rows))?, true),
+        Some(rows) => (interview::weights(book, Some(&rows))?, true),
         None => {
-            let report = report::read(&home, &member.slug).ok().flatten();
+            let report = report::read(home, &member.slug).ok().flatten();
             (
-                interview::weights_from_report(&book, report.as_ref())?,
+                interview::weights_from_report(book, report.as_ref())?,
                 report.is_some(),
             )
         }
@@ -1334,6 +1346,28 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     } else {
         weights
     };
+    Ok(DraftPlan {
+        answered,
+        form,
+        weights,
+        weighted,
+    })
+}
+fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
+    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
+    use persona_builder_build::{interview, text};
+    use persona_builder_ingest::private::{read_private_optional, write_private};
+    use persona_builder_steps::{book::book, input::pretty};
+    let (member, home) = member_and_home(&member_dir)?;
+    let book = book(&member)?;
+    let existed = persona_builder::member::private_state_dir(&member, &home)
+        .is_some_and(|dir| dir.symlink_metadata().is_ok());
+    let DraftPlan {
+        answered,
+        form,
+        weights,
+        ..
+    } = draft_plan(&home, &member, &book, &args)?;
     if form == interview::Form::Short && weights.is_empty() {
         println!("{}", text::enough(answered));
         return Ok(());
@@ -1346,7 +1380,26 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
-    let session = Session::open(&home, &member.slug, cap)?;
+    let session = if existed {
+        Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
+            Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                nothing_yet(&member.slug)
+            }
+            error => error,
+        })?
+    } else {
+        Session::open(&home, &member.slug, cap)?
+    };
+    let DraftPlan {
+        answered,
+        form,
+        weights,
+        weighted,
+    } = draft_plan(&home, &member, &book, &args)?;
+    if form == interview::Form::Short && weights.is_empty() {
+        println!("{}", text::enough(answered));
+        return Ok(());
+    }
     // Again under the lock: another draft may have saved questions since the first look.
     if !args.replace && read_private_optional(&home, &member.slug, form.questions_file())?.is_some()
     {
@@ -1597,6 +1650,7 @@ fn keep_answer(member_dir: PathBuf, signal: String) -> Result<()> {
     let filters = Filters::compile(&member.filters)?;
     let (folder, name) = persona_builder_ingest::private::place(&signal)?;
     persona_builder_ingest::private::validate_json_name(name)?;
+    let _lock = history_lock_existing(&home, &member.slug, || nothing_yet(&member.slug))?;
     let input = persona_builder_ingest::private::read_private_at_max(
         &home,
         &member.slug,
@@ -1605,7 +1659,7 @@ fn keep_answer(member_dir: PathBuf, signal: String) -> Result<()> {
         64 * 1024,
     )?;
     let store = Store::open(&home, &member)?;
-    keep::keep(&store, &member, &filters, &input, &utc_now())?;
+    keep::keep_locked(&store, &member, &filters, &input, &utc_now())?;
     println!("{}", text::KEPT);
     println!("saved to ~/.claude/state/{}/growth/", member.slug);
     Ok(())

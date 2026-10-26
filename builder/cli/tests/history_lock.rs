@@ -2,6 +2,7 @@ use persona_builder::crew::{NewMember, new_member};
 use persona_builder_ingest::private::{self, lock_state, write_private};
 use std::{
     fs,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
@@ -75,7 +76,10 @@ impl Fixture {
         Command::new(env!("CARGO_BIN_EXE_persona-builder"))
             .env_clear()
             .env("HOME", &self.home)
-            .env("PATH", std::env::var_os("PATH").unwrap())
+            .env(
+                "PATH",
+                format!("{}:/usr/bin:/bin", self.home.join("bin").display()),
+            )
             .current_dir(&self.home)
             .args(command)
             .arg(&self.member)
@@ -230,4 +234,81 @@ fn mine_dry_run_ignores_busy_state_and_writes_nothing() {
     );
     assert!(files(&f.state()).is_empty());
     drop(lock);
+}
+
+impl Fixture {
+    fn claude(&self, auth: &str) {
+        let bin = self.home.join("bin");
+        fs::create_dir(&bin).unwrap();
+        let program = bin.join("claude");
+        fs::write(
+            &program,
+            format!(
+                r#"#!/bin/sh
+here="$(cd "$(dirname "$0")" && pwd -P)"
+case "$1" in
+    --version) echo '2.1.292 (Claude Code)';;
+    auth) {auth}; echo '{{"loggedIn":true}}';;
+    *) cat > "$here/stdin"; echo x >> "$here/calls"; cat "$here/reply";;
+esac
+"#
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(program, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+#[test]
+fn build_refuses_history_forgotten_during_claude_check() {
+    forgotten_during_check(&["build"]);
+}
+
+#[test]
+fn draft_refuses_history_forgotten_during_claude_check() {
+    forgotten_during_check(&["interview", "draft"]);
+}
+
+fn forgotten_during_check(command: &[&str]) {
+    let f = Fixture::new();
+    f.seed();
+    f.claude(r#"rm -rf "$HOME/.claude/state/wren""#);
+    let before = files(&f.member);
+    let output = f.run(command, &[]);
+    refused(&output, NOTHING_YET, command);
+    assert!(!f.state().exists(), "recreated forgotten state");
+    assert!(!f.home.join("bin/calls").exists(), "called Claude");
+    assert_eq!(files(&f.member), before, "changed member files");
+}
+
+#[test]
+fn keep_locks_before_reading_then_succeeds_after_unlock() {
+    let f = Fixture::new();
+    let lock = lock_state(&f.home, "wren").unwrap();
+    let command = &["keep"][..];
+    let args = &["--signal", "answer.json"][..];
+    refused(&f.run(command, args), private::BUSY, command);
+    drop(lock);
+    write_private(&f.home, "wren", "answer.json", br#"{"kind":"instruction","area":"scope","situation":"Choose the next lesson to prepare.","wanted":"Prepare the short lesson first."}"#).unwrap();
+    let output = f.run(command, args);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for name in ["signals.jsonl", "cases.jsonl"] {
+        let rows = fs::read_to_string(f.state().join("growth").join(name)).unwrap();
+        assert_eq!(rows.lines().count(), 1);
+    }
+}
+
+#[test]
+fn keep_never_creates_missing_state() {
+    let f = Fixture::new();
+    refused(
+        &f.run(&["keep"], &["--signal", "answer.json"]),
+        NOTHING_YET,
+        &["keep"],
+    );
+    assert!(!f.state().exists());
 }
