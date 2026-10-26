@@ -34,7 +34,7 @@ with an installer and a plain how-to, and the installer itself. Nothing in the a
   `<cargo target dir>/universal-apple-darwin/release/bundle/macos/…` with
   `--target universal-apple-darwin`. Read the target dir from
   `cargo metadata --format-version 1 --no-deps` (`target_directory`), never assume `target/`.
-- Mimi has `cc`, `lipo`, `codesign`, `ditto`, `xattr` and `/usr/libexec/PlistBuddy` in `/usr/bin`
+- The build Mac has `cc`, `lipo`, `codesign`, `ditto`, `xattr` and `/usr/libexec/PlistBuddy` in `/usr/bin`
   (and `/usr/libexec`), and only the `aarch64-apple-darwin` Rust target for macOS.
 
 ## Decisions (made, do not reopen)
@@ -165,7 +165,7 @@ other one" come from `sysctl -n hw.optional.arm64` as in the installer. Cases, o
 4. **Damaged:** append one byte to the signed executable → exit 1, stderr has `looks damaged`,
    nothing installed (and an earlier installed copy, if one is there, is left as it was).
 5. **No app:** an empty kit → exit 1, stderr has `isn't next to this installer`.
-6. **Symlinked app:** the kit's `Persona Builder.app` is a symlink to a real fake app → the step 5
+6. **Symlinked app:** the kit's `Persona Builder.app` is a symlink to a real fake app → the step 4
    message, nothing installed.
 7. **Bad argument:** `--open-now` → exit 2, stderr has `Usage:`.
 
@@ -199,3 +199,52 @@ test can't run as root); keep it as the third step so a review sees it.
 - `shellcheck` is clean on the three new scripts; `bash scripts/ci-local.sh` passes up to whatever
   your sandbox can't run (say which steps).
 - No real person, no fixed path, no audio anywhere. Report the files you changed and the commands you ran.
+
+## Fix-ups after review (V1, 2026-10-25)
+
+From the Verifier and the security review of the first pass. Same rules as above; do not commit.
+
+1. **The zip holds only the three items.** In `scripts/build-mac-app.sh`, zip with
+   `ditto -c -k --norsrc --noextattr --keepParent`, so no `._*` AppleDouble entries go in (a Terminal
+   `unzip` left them inside the bundle and broke its signature, and they made the SHA-256 depend on
+   the build Mac's attributes).
+2. **The build ships only committed sources.** Before `pnpm install`, refuse when
+   `git status --porcelain -- builder crew Cargo.toml Cargo.lock` prints anything (the app embeds
+   `crew/_template/` and the screens at compile time):
+   `build-mac-app: commit or set aside your changes under builder/, crew/ and the Cargo files first`.
+3. **The person checks the copy before running anything from it.** `builder/install/How to install.txt`
+   becomes exactly:
+
+```
+How to install Persona Builder on your Mac
+
+Persona Builder works with Claude Code, which you sign in to yourself. If you don't have it yet,
+the app tells you how to get it.
+
+1. Double-click the zip file you were sent. A folder called "Persona Builder" appears next to it.
+2. Open Terminal: press Command and Space, type Terminal, then press Return.
+3. Check that this is the copy you were sent. Type shasum -a 256 and a space, drag the zip file
+   into the Terminal window, then press Return. A long code appears. It must match the code you
+   were sent separately, letter for letter. If it doesn't, stop and ask for a new copy.
+4. Type bash and a space. Drag the file install.sh from the "Persona Builder" folder into the
+   Terminal window, then press Return.
+5. Persona Builder opens. Next time, you'll find it in the Applications folder inside your home
+   folder (in the Finder, choose Go, then Home).
+
+This copy isn't signed by Apple yet, so the installer tells your Mac it is safe to open. It asks
+for no password and changes nothing else on your Mac.
+
+To remove the app, drag it from that Applications folder to the Trash. Your assistant stays. To
+delete what the app made, use Forget in the app first.
+```
+
+4. **Say why the order matters.** In `builder/install/install.sh`, one comment line above the first
+   `codesign` check: `--strict` also refuses a symlink that leaves the bundle, which keeps
+   `xattr -dr` below inside the copy, so this check stays first. In `tests/mac_install_test.sh`, one
+   comment line above the damaged case: the two signature checks and the quarantine re-check are
+   belt and braces, so breaking only one of them does not fail this test.
+5. **`builder/app/README.md`:** the last paragraph says the build refuses uncommitted changes under
+   `builder/`, `crew/` and the Cargo files, and that the recipient compares the SHA-256 as step 3
+   of `How to install.txt` says.
+
+Done when `bash tests/mac_install_test.sh` and `shellcheck` on the three scripts pass.
