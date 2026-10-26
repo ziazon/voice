@@ -2,6 +2,63 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.7b: each screen's words checked against its mock (2026-10-26, lane: V2)
+
+- **What:** split from PB7.7 (the reviewed mocks). The screens take the mocks' words wherever the app
+  shows the same thing and the mock's sentence is true of what the app does. The changes:
+  - "answered questions" throughout, "messages you typed" and "kept back to test".
+  - The assistant's name in the Sources, Build, Report and Save headings (no pronouns: people type
+    their own, so the grammar can't be known).
+  - "Start the build", "Run the build again" and "Stop for now", with a help line about what stopping
+    keeps. The Build lede no longer points at "the limit below": it says the limit is set on Connect
+    Claude.
+  - "Agree and continue", "How your assistant refers to you", "Keep my answer", "Your answers so far",
+    "To strengthen it", "Open GitHub", "Save <name>".
+  - Help lines for Connect Claude (no password; Claude only for now), for approving or rejecting a
+    change, for the repo name (the rule `valid_repo_name` holds), and for turning it on.
+  - The build's stopped, failed and private messages in `builder/api/src/building.rs` say "run the
+    build again", like the button beside them.
+
+  Left as they are, on purpose: the permission text (pinned by its SHA-1, as the record of what each
+  person agreed to), the step titles down the left, the "Next: …" buttons, and everything a mock
+  shows that the app doesn't have (the "Before you start" facts, the kinds of work, the sources'
+  privacy counts, the report's word list). Brief: `plans/briefs/PB7.7b-screen-words.md`.
+- **Who wrote it:** Codex, in three passes: the brief, a count line it had half-changed, and the
+  review fixes. Claude wrote the brief, checked each mock sentence against the code before taking
+  it, and reviewed every diff.
+- **Commits:** `c39ffc5` (brief), `c083b4f` (screens and tests), `be207cf` (fixes from the reviews),
+  `d731bea` (fixes from the delta pass). The brief's first version named a real person; that fix is
+  folded into `c39ffc5`, so no commit carries the name (the checkout's push guard refused it).
+- **Verified:**
+  - Red first: the new tests run against the old screens gave 51 failures in 18 files. Then green:
+    260 screen tests, the type check, and the API's 190 tests.
+  - Mutations: three by the Verifier (stop help, privacy hint, repo-name hint), each red and put back
+    with `cmp`. Codex ran the review fixes red first.
+- **Reviews:**
+  - `/security-review` (sub-agent): three Lows, all fixed. The review hint had said "It's checked
+    before it's kept", but the filters catch private topics and secrets, not names. The turn-on line
+    had said turning off "removes exactly what was added", but a changed file is left where it is.
+    The brief named a real person.
+  - Verifier (Fable; the lane runs her on every PB7 slice): the code PASS, with every new sentence
+    traced to the code. Her must-fix was the same name. Her should-fix was the Rust build messages
+    still saying "building again" under the renamed button; that is fixed here too. The delta pass (Opus): PASS, with three mutations of
+    her own red (the stopped, failed and private messages). Two of her notes are fixed in `d731bea`:
+    turning off removes the whole block in the instructions even if it was edited, so the line now
+    says "except a file you've changed since"; and the daily-limit message says "Run the build again
+    tomorrow". Left: the "but not names" hint is true of the template's filters, and an assistant
+    whose own filters list names catches more than it says (harmless).
+- **Not verified:** no live walk of the screens (owed to the next attended walk). Still in old words, noted by the
+  Verifier and left as they are: "Drafted <date>" (the mock says "Change drafted"), and the Save
+  cards' headings "Use it in Claude Code" and "Use it in claude.ai" (the mock groups them under
+  "Turn <name> on").
+- **Skills Review:**
+  - ✅ plain-language: each sentence taken from the reviewed mocks, and only when true.
+  - ✅ tdd-skill: red first (51 failures), mutations red.
+  - ✅ security-and-hardening: two sentences that promised more than the code does, fixed.
+  - ⚠️ project-config: the brief said `node_modules` was installed, but a fresh worktree has none,
+    so Codex's first pass couldn't run the tests. Install with `pnpm -C builder/ui install
+    --frozen-lockfile` before dispatching.
+
 ## PB7.7a: the look, readable form fields, and "this computer" (2026-10-26, lane: V2)
 
 - **What:** split from PB7.7 (the reviewed mocks). `builder/ui/src/theme.css` sets the Navy & Amber
