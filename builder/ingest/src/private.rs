@@ -651,16 +651,24 @@ fn directory_errno() -> *mut libc::c_int {
 mod tests {
     use super::*;
 
-    struct Home(PathBuf);
+    struct Home(
+        PathBuf,
+        #[allow(dead_code)] std::sync::MutexGuard<'static, ()>,
+    );
 
     impl Home {
         fn new() -> Self {
-            let home = Self(std::env::temp_dir().join(format!(
+            let guard = crate::serial_test();
+            let path = std::env::temp_dir().join(format!(
                 "pb-state-lock-{}-{}-{}",
                 std::process::id(),
-                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
-            )));
+            ));
+            let home = Self(path, guard);
             fs::create_dir(&home.0).unwrap();
             drop(lock_state(&home.0, "wren").unwrap());
             home
@@ -740,6 +748,26 @@ mod tests {
             ));
             drop(lock);
         }
+    }
+
+    #[test]
+    fn a_started_child_keeps_no_lock_once_it_runs() {
+        let home = Home::new();
+        let lock = lock_state(&home.0, "wren").unwrap();
+        let mut child = std::process::Command::new("sleep")
+            .arg("2")
+            .spawn()
+            .unwrap();
+        // Give the child time to exec, which closes every descriptor opened with O_CLOEXEC.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        drop(lock);
+        let again = lock_existing_state(&home.0, "wren");
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(
+            again.is_ok(),
+            "a started child kept the state lock: {again:?}"
+        );
     }
 
     #[test]

@@ -726,6 +726,7 @@ mod tests {
 
     #[test]
     fn opening_a_fifo_returns_without_waiting_for_a_writer() {
+        let _serial = crate::serial_test();
         let path =
             std::env::temp_dir().join(format!("persona-builder-fifo-{}", std::process::id()));
         assert!(
@@ -763,6 +764,7 @@ mod tests {
     }
     #[test]
     fn every_worktree_suffix_matches_python() {
+        let _serial = crate::serial_test();
         if !common::parity_tools_available() {
             return;
         }
