@@ -2,6 +2,36 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8: the unsigned Mac app and its installer (2026-10-25, lane: V1)
+
+- **What:** `bash scripts/build-mac-app.sh` makes an ad-hoc signed `Persona Builder.app`
+  (`bundle.macOS.signingIdentity: "-"`, hardened runtime; PB-D3: no Apple signing until the public
+  release) and zips it with `builder/install/install.sh` and a plain `How to install.txt`, plus the
+  zip's SHA-256. The installer needs no password and no Homebrew: it checks the signature and the
+  chip, copies the app into `~/Applications`, clears the download quarantine on that copy only,
+  checks the signature again and opens it. `--universal` makes a copy for both chips (needs both Mac
+  Rust targets). Brief: `plans/briefs/PB8-mac-installer.md`.
+- **Decided at pickup (the plan didn't say):** `~/Applications`, not `/Applications` (no password);
+  the installer refuses a copy built for the other chip in plain words; the person compares the
+  SHA-256 in Terminal before running the installer (step 3 of the how-to), since the installer
+  travels in the zip and can't vouch for itself; the build refuses uncommitted changes under
+  `builder/`, `crew/` and the Cargo files, because the app embeds the template and the screens.
+- **Verified:** `tests/mac_install_test.sh` (seven cases on fake signed apps, a space in the path;
+  wired into `ci-local.sh`), red first for the config test; mutation checks by Codex (seven), V1
+  (one) and the Verifier (ten: each case live; the two signature checks and the quarantine re-check
+  overlap by design). Live: the real app built on an Apple-chip Mac (18.5 MiB, arm64,
+  `Signature=adhoc`), the zip unpacked both as the Finder does and with Terminal `unzip`, marked
+  as a download and installed into a scratch home: signature valid, no quarantine left, the
+  unpacked original untouched. `spctl` rejects it, as expected for an app Apple has not notarized:
+  with the quarantine cleared, Gatekeeper doesn't check it. `ci-local.sh` green.
+- **Reviews:** security review (sub-agent): one medium, the SHA-256 step missing from the how-to
+  and the SECURITY row overclaiming; fixed. Verifier (Fable): five of six claims proven, the sixth
+  partly (the zip's AppleDouble entries broke a Terminal `unzip`; fixed with `--norsrc
+  --noextattr`).
+- **Not verified:** the app opening on a person's Mac (a window; owed to the attended install),
+  Intel Macs (no Intel Rust target on the build Mac). Left as known: the binary carries the build
+  account's home path in panic locations (cargo registry paths; no project path).
+
 ## PB7.5: how well it knows you, and review, from the app (2026-10-25, lane: V1)
 
 - **What:** the app's last two empty steps. *How well it knows you* reads the last build's report
