@@ -145,3 +145,14 @@ three Rust messages that now disagree with the renamed build button. Fix all fiv
 
 Run `cargo test -p persona-builder-api -j 2` (offline, `CARGO_NET_OFFLINE=true`), `cargo fmt --check`,
 the screen tests and the type check. Do not commit.
+
+## Second follow-up, from the delta Verifier (made, do not reopen)
+
+1. **`screens/TurnOn.vue`**: the sentence's end `…except anything you've changed since.` → `…except a
+   file you've changed since.` (`install::off` removes the whole block in the instructions even if
+   it was edited, and keeps only changed files.) Update `TurnOn.test.ts`.
+2. **`builder/api/src/building.rs` `cap_reached`**: `Build again tomorrow to carry on.` → `Run the build
+   again tomorrow to carry on.` Update the three assertions (`builder/api/tests/building.rs`, twice,
+   and `builder/api/tests/review.rs`).
+
+Same commands as above. Do not commit.

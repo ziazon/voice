@@ -99,5 +99,5 @@ it('explains what turning on adds and turning off removes', () => {
   const wrapper = screen(TurnOn, fakeBackend(), { assistant: example })
   const paragraphs = wrapper.findAll('p')
   expect(paragraphs[1]!.text()).toContain(`Turning ${example.name} on adds a skill and a short block to your Claude Code instructions.`)
-  expect(paragraphs[1]!.text()).toContain("Turning it off removes what it added, except anything you've changed since.")
+  expect(paragraphs[1]!.text()).toContain("Turning it off removes what it added, except a file you've changed since.")
 })

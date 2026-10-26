@@ -516,7 +516,7 @@ fn apply_cap_is_a_safe_sentence() {
     safe(
         &h,
         h.apply(&id, &mut |_| {}),
-        "Today's spending limit for this assistant is reached: about $49.00 of $50.00, as Claude Code estimates it. Build again tomorrow to carry on.",
+        "Today's spending limit for this assistant is reached: about $49.00 of $50.00, as Claude Code estimates it. Run the build again tomorrow to carry on.",
     );
 }
 #[test]

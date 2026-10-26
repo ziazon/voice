@@ -51,7 +51,7 @@ const CORPUS: &str = "decisions.jsonl";
 const LETTERS: [&str; 4] = ["A", "B", "C", "D"];
 fn cap_reached(spent: f64, cap: f64) -> String {
     format!(
-        "Today's spending limit for this assistant is reached: about ${spent:.2} of ${cap:.2}, as Claude Code estimates it. Build again tomorrow to carry on."
+        "Today's spending limit for this assistant is reached: about ${spent:.2} of ${cap:.2}, as Claude Code estimates it. Run the build again tomorrow to carry on."
     )
 }
 

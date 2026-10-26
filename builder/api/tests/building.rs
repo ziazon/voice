@@ -569,7 +569,7 @@ fn cap_and_signed_out_errors_are_safe_sentences() {
     safe(
         &h,
         h.build(&Builds::new(), &mut |_| {}),
-        "Today's spending limit for this assistant is reached: about $49.00 of $50.00, as Claude Code estimates it. Build again tomorrow to carry on.",
+        "Today's spending limit for this assistant is reached: about $49.00 of $50.00, as Claude Code estimates it. Run the build again tomorrow to carry on.",
     );
     let h = Home::new(true);
     h.corpus(12, 32);
@@ -1026,7 +1026,7 @@ fn a_build_enforces_the_saved_daily_limit() {
     safe(
         &h,
         h.build(&Builds::new(), &mut |_| {}),
-        "Today's spending limit for this assistant is reached: about $0.50 of $1.00, as Claude Code estimates it. Build again tomorrow to carry on.",
+        "Today's spending limit for this assistant is reached: about $0.50 of $1.00, as Claude Code estimates it. Run the build again tomorrow to carry on.",
     );
     assert_eq!(h.calls(), 0);
     assert_eq!(h.snapshots(), before);
