@@ -2,6 +2,44 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.6b: turn it on, the claude.ai files, forget, from the app (2026-10-25, lane: V2)
+
+- **What:** the *Save* step's other three cards. *Use it in Claude Code*: whether this assistant,
+  another one, or none is on, with buttons to turn it on, update it, or turn off whichever is on
+  (one at a time; "this one" means the same slug **and** the same folder, so a same-named copy
+  turned on from elsewhere counts as another). *Use it in claude.ai*: the Project files made in
+  `~/.claude/state/<slug>/claude-ai/`, replaced whole under the state lock (the old files stay when
+  a make fails), listed by name only when they look like the pack's own files, shown in Finder,
+  with the three steps to add them to a Project. *Forget*: a preview of how many files go, a
+  confirmation that says what goes (the history, the working files, the permission, the saving
+  choice) and what stays (the assistant's folder, any copy on GitHub, Claude Code), and a delete
+  that carries the previewed count and is refused when the count under the lock differs. Eight
+  new commands, each in the parity table. `claude_home` (the `CLAUDE_CONFIG_DIR` rule) moved from
+  the CLI into the api; `pack::no_kinds_yet` and `private::BUSY` name two sentences the app
+  recognises. A listed assistant whose name fails `check_name` is no longer found. Brief:
+  `plans/briefs/PB7.6b-use-and-forget.md`.
+- **Who wrote it:** Codex, in two passes (the slice; the gate fix-ups). Claude briefed,
+  reviewed, ran the gates outside her sandbox, wrote SECURITY's row and this record, and
+  committed.
+- **Verified:** `ci-local.sh` green on `b612489` and `4bf8616`, and again on `0e0099f` after the
+  rebase onto PB7.3 (the command lists, parity table, backend and frame merged by keeping both
+  slices' entries; Rust, the socket tests included; the screen tests; the Python suites). Shas
+  below are from before that rebase: `b612489` is `ac17446`, `4bf8616` is `0e0099f`. Codex's mutation checks, each red and restored
+  by `cmp`: the folder comparison in this-or-other dropped, a stale off slug accepted, a changed
+  forget count accepted, every file in `claude-ai` listed, the forget lock skipped, the old
+  `claude-ai` removed before packing, a capability name dropped, Forget sending 0; then Forget
+  keyed by `resets` again, the name check dropped, the zero-count check dropped.
+  `/security-review` (sub-agent): no high or medium. Verifier (Fable) on `b612489`: 8 of 9 claims
+  proven; one must-fix (the frame remounted Forget right after a delete, so its "Deleted N files"
+  never showed) and two should-fixes (an unchecked assistant name in sentences; a folder gone
+  between preview and delete answered "there's more to forget"), all fixed in `4bf8616`.
+- **Not verified:** the app itself was not run (no screen control in a job run): the walk is
+  owed. A `~/.claude` that is itself a symlink makes the claude.ai files and Forget answer their
+  fixed failure (the private-folder walk refuses links): safe, but a usability gap, noted by the
+  security review. `on` and `off` take no lock against each other or the CLI (as the CLI's own
+  never did).
+- **Carried, not built (to be sliced before PB8):** the app-made `SKILL.md` names `python3 … crew_decisions.py`,
+  which the installed app doesn't ship (PB7.6's note from PB7.2).
 ## PB7.3: your history, Claude Code and claude.ai (2026-10-25, lane: V1)
 
 - **What:** the app's *Your history* step. After permission, the person sees which Claude Code
