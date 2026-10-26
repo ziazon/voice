@@ -58,7 +58,47 @@ trap 'rm -rf "$staging"' EXIT
 rm -rf "$staging"
 package="$staging/Persona Builder"
 mkdir -p "$package"
+
+if "$universal"; then
+  cli_binaries=()
+  for target in aarch64-apple-darwin x86_64-apple-darwin; do
+    CARGO_NET_OFFLINE=true cargo build --release --locked -p persona-builder-cli --target "$target"
+    binary="$target_dir/$target/release/persona-builder"
+    [ -f "$binary" ] || fail 'the persona-builder command was not built'
+    cli_binaries+=("$binary")
+  done
+  staging_cli="$staging/persona-builder"
+  lipo -create -output "$staging_cli" "${cli_binaries[@]}"
+else
+  CARGO_NET_OFFLINE=true cargo build --release --locked -p persona-builder-cli
+  staging_cli="$target_dir/release/persona-builder"
+fi
+[ -f "$staging_cli" ] || fail 'the persona-builder command was not built'
+
 ditto "$app" "$package/Persona Builder.app"
+staged_app="$package/Persona Builder.app"
+staged_cli="$staged_app/Contents/MacOS/persona-builder"
+cp "$staging_cli" "$staged_cli"
+chmod 755 "$staged_cli"
+codesign --force --sign - "$staged_cli"
+codesign --force --sign - --preserve-metadata=identifier,entitlements,requirements,flags,runtime "$staged_app"
+codesign --verify --deep --strict "$staged_app" >/dev/null 2>&1 || fail "signature check failed: $staged_app"
+
+executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$staged_app/Contents/Info.plist")
+architectures=$(lipo -archs "$staged_app/Contents/MacOS/$executable")
+cli_architectures=$(lipo -archs "$staged_cli") || fail 'the persona-builder command was built for other Macs than the app'
+read -r -a arch_list <<< "$architectures"
+read -r -a cli_arch_list <<< "$cli_architectures"
+for arch in "${arch_list[@]}"; do
+  compatible=false
+  for cli_arch in "${cli_arch_list[@]}"; do
+    if [ "$arch" = "$cli_arch" ]; then
+      compatible=true
+    fi
+  done
+  "$compatible" || fail 'the persona-builder command was built for other Macs than the app'
+done
+
 cp builder/install/install.sh "$package/install.sh"
 chmod 755 "$package/install.sh"
 cp 'builder/install/How to install.txt' "$package/How to install.txt"

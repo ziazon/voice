@@ -33,10 +33,13 @@ pub fn cli_word(path: &Path, home: &Path) -> Result<String> {
     let text = path
         .to_str()
         .ok_or_else(|| Error::Invalid(CLI_FOLDER.into()))?;
-    if text
-        .chars()
-        .any(|c| c.is_control() || matches!(c, '"' | '$' | '`' | '\\' | '!' | '{' | '}'))
-    {
+    if text.chars().any(|c| {
+        c.is_control()
+            || matches!(
+                c,
+                '"' | '$' | '`' | '\\' | '!' | '{' | '}' | '\u{2028}' | '\u{2029}'
+            )
+    }) {
         return Err(Error::Invalid(CLI_FOLDER.into()));
     }
     match path.strip_prefix(home) {
@@ -86,6 +89,7 @@ mod tests {
         let home = Scratch::new();
         for c in [
             '"', '$', '`', '\\', '!', '{', '}', '\0', '\n', '\r', '\t', '\u{7f}', '\u{85}',
+            '\u{2028}', '\u{2029}',
         ] {
             for path in [
                 home.path().join(format!("bad{c}/persona-builder")),

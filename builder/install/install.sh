@@ -48,6 +48,18 @@ for arch in "${arch_list[@]}"; do
 done
 "$compatible" || fail "This copy is made for $made_for Macs, and this Mac has $this_mac. Ask for a copy made for this Mac."
 
+cli="$source_app/Contents/MacOS/persona-builder"
+[ -f "$cli" ] && [ ! -L "$cli" ] && [ -x "$cli" ] || fail "$damaged"
+cli_architectures=$(lipo -archs "$cli" 2>/dev/null) || fail "$damaged"
+read -r -a cli_arch_list <<< "$cli_architectures"
+compatible=false
+for arch in "${cli_arch_list[@]}"; do
+  if [ "$arch" = "$mac_arch" ] || { [ "$mac_arch" = arm64 ] && [ "$arch" = arm64e ]; }; then
+    compatible=true
+  fi
+done
+"$compatible" || fail "$damaged"
+
 mkdir -p "$HOME/Applications"
 staging=$(mktemp -d "$HOME/Applications/.persona-builder-install.XXXXXX")
 trap 'rm -rf "$staging"' EXIT

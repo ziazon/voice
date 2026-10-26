@@ -32,6 +32,8 @@ fake_app() {  # path architecture
 </dict></plist>
 PLIST
   printf 'int main(void){return 0;}\n' | cc -arch "$2" -x c - -o "$1/Contents/MacOS/persona-builder-app"
+  printf 'int main(void){return 0;}\n' | cc -arch "$2" -x c - -o "$1/Contents/MacOS/persona-builder"
+  codesign -s - --force "$1/Contents/MacOS/persona-builder" >/dev/null 2>&1
   codesign -s - --force --deep "$1" >/dev/null 2>&1
 }
 
@@ -89,6 +91,26 @@ run --no-open
 check "$scratch/err" 'Ask for a copy made for this Mac' 'wrong-chip explanation missing'
 not_installed
 echo 'mac_install_test: wrong chip passed'
+
+# Re-sign each incomplete copy so the command check, not a broken signature, refuses it.
+kit missing-command "$arch"
+rm "$kit_dir/Persona Builder.app/Contents/MacOS/persona-builder"
+codesign -s - --force --deep "$kit_dir/Persona Builder.app" >/dev/null 2>&1
+run --no-open
+[ "$status" = 1 ] || fail 'missing command was not refused'
+check "$scratch/err" 'This copy of Persona Builder looks damaged. Ask for a new copy.' 'missing-command explanation missing'
+not_installed
+echo 'mac_install_test: missing command passed'
+
+kit symlinked-command "$arch"
+rm "$kit_dir/Persona Builder.app/Contents/MacOS/persona-builder"
+ln -s persona-builder-app "$kit_dir/Persona Builder.app/Contents/MacOS/persona-builder"
+codesign -s - --force --deep "$kit_dir/Persona Builder.app" >/dev/null 2>&1
+run --no-open
+[ "$status" = 1 ] || fail 'symlinked command was not refused'
+check "$scratch/err" 'This copy of Persona Builder looks damaged. Ask for a new copy.' 'symlinked-command explanation missing'
+not_installed
+echo 'mac_install_test: symlinked command passed'
 
 # The two signature checks and the quarantine re-check are belt and braces, so breaking only one of them does not fail this test.
 kit damaged "$arch"
