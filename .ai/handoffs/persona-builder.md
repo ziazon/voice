@@ -2,6 +2,72 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.4: build, stop, spend and the interview, from the app (2026-10-25, lane: V1)
+
+- **What:** the app's *Build* step. It shows today's spend against the daily limit, builds the
+  assistant on a worker thread with the build's plain lines arriving as they come (each with the
+  spend just then), and has a *Stop* that ends the running Claude Code call and writes nothing, so
+  the assistant stays as it was. When the history is thin (under 150 answered questions), an
+  interview card drafts twenty questions through Claude Code, shows them four at a time with the
+  answers kept as the person goes (`interview-answers.json`, the round-answers shape), keeps them as
+  `decisions-interview.jsonl`, then puts the history together and builds again. Seven new app
+  commands in `builder/api/src/building.rs` (38 in all, with PB7.6b's), each in the parity table.
+  The build stays mounted while the person looks at other steps, and *Your assistants* is disabled
+  while it runs. Brief: `plans/briefs/PB7.4-build-and-interview.md`.
+- **How the stop works:** a per-assistant flag (`Builds`, process-wide, registered before the
+  gate) reaches `claude.rs` through `Claude::with_stop`: a set flag refuses a call before it starts
+  (no ledger line, no child), and `child.rs` kills the running child's whole process group and
+  reaps it, the call counted on the ledger at its whole budget (outcome `stopped`). The flag is read
+  once more after the privacy check and before anything is saved. Steps already paid for stay in
+  `build/`, so building again carries on.
+- **Shared with the CLI:** the CLI's `build` body moved into `builder/build/src/run.rs`
+  (`prepare`, `check`, `save`), which the app calls too; the CLI's output is unchanged (its tests
+  pass as they were). `interview draft` without `--labels` now weights the questions from the last
+  report's areas, in the CLI and the app alike.
+- **Decided at pickup (the plan didn't say):** the app uses the default limit ($50 a day, $5 a
+  call) with no setting for it; changing it stays a CLI flag. No new crate or package
+  (`persona-builder-build` and `persona-builder-steps` are workspace crates the api now uses).
+- **Who wrote it:** Codex, in three passes (the slice; Claude's review fixes; the Verifier's
+  should-fixes). Claude briefed, reviewed, resolved the rebase onto PB7.6b, added one line (Forget
+  also unmounts a stale build card), wrote this record, ran the gates outside Codex's sandbox and
+  committed.
+- **Verified:** `ci-local.sh` green on `6f1c779` before the rebase (898 Rust tests, socket tests
+  included, plus the screens, Python suites, fmt, clippy and the build) and again on the rebased
+  head `6c1a0e6` (933 Rust tests, 173 screen tests) and on `9613f48` (935 and 174), and on the final head after PB7.3a (938 and 174). Codex's ten mutation checks, each red and restored by `cmp`: the flag check dropped from the
+  child's wait loop (a cut-off instead of a stop), a stopped call counted at $0, the flag read
+  before saving dropped (a late stop saved), the slug registered after the lock (an early stop
+  lost), the registry entry never removed, a pick past the last option accepted, the consent check
+  dropped, a command in `COMMANDS` only, *Build* enabled before permission, the build card mounted
+  with `v-if` (its lines lost on leaving the step). `/security-review` (sub-agent): nothing medium
+  or higher; of its lows, the checks on how many answers and picks now run before the lock. Verifier (Fable) on
+  `6f1c779`: pass with three should-fixes, all fixed in `e54258c` (26 lines, in files she saw): answers removed
+  before new questions are written, *Stop* can be pressed again (a stop sent before the build
+  registers is a no-op), and the stop tests now also prove `report.json` isn't written.
+- **Rebased on PB7.6b** (landed meanwhile; the brief, slice and fixes `d2906cc`, `6f1c779`, `e54258c`
+  are now `e8f7fe6`, `df6d03f`, `6c1a0e6`): 16 files conflicted, each resolved by hand, both slices
+  whole; `dto.rs`, `parity.rs` and `commands.rs` rebuilt as `main`'s file plus this slice's
+  additions, since their hunks shared closing lines. A line-by-line comparison of the patch before
+  and after showed only the expected list neighbours and the one added line.
+- **Repeat passes (Opus):** on the rebase: pass, nothing from either slice lost or doubled (all 60
+  changed files compared line by line), with two should-fixes about Forget racing a build, fixed in
+  `9613f48`: the build and the interview draft check permission again once they hold the state lock
+  (a Forget between the first check and the lock would otherwise let loaded history go to Claude),
+  and Forget also clears the frame's *building* state (the unmounted card's last event is dropped).
+  Each has a test seen red first. A last pass on `9613f48`: pass, nothing to fix (Forget and the build share one
+  non-blocking state lock, so whichever comes second is told it's busy).
+- **Rebased again, on PB7.3a** (V2's history writers checking permission under the state lock,
+  landed meanwhile): its `locked()` replaced the `lock()` helper this slice reused, so the two
+  interview writers (`save_interview_answers`, `keep_interview_answers`) now take `locked()`, which
+  checks permission again once the lock is held and refuses a state folder Forget removed. That
+  glue (four lines) was written by Claude in the conflict resolution. Final commits: the brief
+  `354a20e`, the slice `e5e3d47`, the fixes `53b7aaa` and `3b79964` (`9613f48` before this rebase).
+- **Not verified:** the screens in the running app, light and dark (owed walk); a real Claude Code
+  build and stop (the tests use a stub `claude`); closing the app mid-build (the process ends; the
+  call already sent is counted at its budget, as before).
+- **Left for later:** the report screen is PB7.5's. The Verifier noted that once today's spend is
+  within one call of the limit, any build failure reads as the limit reached (the next build would
+  be refused anyway).
+
 ## PB7.3a: history writers check permission under the state lock (2026-10-25, lane: V2)
 
 - **What:** a Verifier finding from PB7.6b's repeat pass. The six app history writers checked
