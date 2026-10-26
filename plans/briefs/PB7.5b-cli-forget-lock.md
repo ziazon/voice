@@ -38,8 +38,8 @@ deletes under the state lock.
 ## Tests, in `builder/cli/tests/forget.rs` (red first)
 
 Run the built binary as the existing test does, with `HOME` set to the scratch home. The state
-folders a test makes must pass the lock's own checks (make `~/.claude`, `~/.claude/state` and the
-state folder 0700, as the app makes them); the existing test may need the same so it keeps passing.
+folders a test makes are 0700, as the app makes them (the lock itself checks no mode; the Verifier
+showed the tests pass without it).
 
 1. **Busy:** take `persona_builder_ingest::private::lock_state(&home, "ari")` in the test (add
    `persona-builder-ingest` to the CLI's dev-dependencies if needed), run `forget <member> --yes`:

@@ -2,6 +2,28 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.5b: the command-line forget takes the state lock (2026-10-26, lane: V1)
+
+- **What:** `persona-builder forget <member> --yes` now previews first (keeping its refusals for a
+  `state_dir` outside `~/.claude/state/<slug>`, a link or a non-folder), then holds
+  `lock_existing_state` for the delete: it is refused as busy, with nothing deleted, while the app or
+  another command holds the lock, and it never creates the state folder (a folder gone by the time
+  of the lock prints the usual "Nothing to forget"). The preview takes no lock. Brief:
+  `plans/briefs/PB7.5b-cli-forget-lock.md`.
+- **Behaviour change, accepted:** when `~/.claude` itself is a link, the preview still counts the
+  files but `--yes` now refuses with the lock's "is a link or not a folder" sentence (before, it
+  deleted). That matches the app, whose history commands refuse a linked Claude folder too.
+- **Verified:** two new tests in `builder/cli/tests/forget.rs` (busy, then deleted once the lock is
+  dropped; a missing folder is never made), the busy one red first; mutation checks by Codex, V1
+  and the Verifier (four: dropping the lock fails the busy test; a creating lock fails the
+  missing-folder test unless it is behind the existence check, a race covered by reading the code,
+  not by a test). `ci-local.sh` green.
+- **Reviews:** security review (sub-agent): nothing medium or higher. Verifier (Fable): claims 1, 2
+  and 6 proven, 3 to 5 partly: the SECURITY row put the CLI under the app's confirmed-count rule
+  (fixed), the linked-`~/.claude` change above (recorded), and the CLI's own history commands take
+  no lock at all, so one running during a forget can write history back (pre-existing; filed as
+  PB7.5c, `hrXidQ59`, and noted as a known limit in the row).
+
 ## PB8: the unsigned Mac app and its installer (2026-10-25, lane: V1)
 
 - **What:** `bash scripts/build-mac-app.sh` makes an ad-hoc signed `Persona Builder.app`
