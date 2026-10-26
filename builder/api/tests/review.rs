@@ -623,7 +623,7 @@ fn apply_refuses_forgotten_state_between_check_and_open_without_calls() {
     safe(&h, h.apply(&id, &mut |_| {}), PERMISSION);
     assert_eq!(h.calls(), calls);
     assert_eq!(fs::read(h.dir().join("decisions.md")).unwrap(), before);
-    assert!(!h.state("growth").exists());
+    assert!(!h.path.join(".claude/state/wren").exists());
 }
 
 #[test]
@@ -635,5 +635,5 @@ fn draft_refuses_forgotten_state_between_check_and_open_without_calls() {
     h.stub(false,|s|s.replace("print(\"2.1.292 (Claude Code)\")",&format!("import shutil\n        shutil.rmtree({:?})\n        print(\"2.1.292 (Claude Code)\")",h.state("").to_str().unwrap())));
     safe(&h, h.draft(), PERMISSION);
     assert_eq!(h.calls(), 0);
-    assert!(!h.state("growth").exists());
+    assert!(!h.path.join(".claude/state/wren").exists());
 }
