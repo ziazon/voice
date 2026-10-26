@@ -366,3 +366,30 @@ and confirm with `cmp`; never `git checkout --`). List each with its red result:
 cannot bind in your sandbox, say so and confirm everything else passed), the generated types are
 committed-ready (no diff after `cargo test`), and the mutation list is reported. Don't commit;
 Claude reviews, commits and runs the app.
+
+## Fix-up pass: from Claude's review and the Verifier (decided, do not reopen)
+
+Each test-first: write the test, see it red on its assertion, then fix.
+
+1. **Forget's success message must survive** (must-fix). `PersonaBuilder.vue` keys `Forget` by
+   `forget-<slug>` only, without `resets` (it loads nothing on mount and resets its own state);
+   `Save`, `TurnOn` and `ClaudeAiFiles` keep `resets` in their key. §5's "keyed by its slug plus a
+   counter `resets`" now excludes `Forget`. Test in `PersonaBuilder.test.ts`: after "Delete these
+   files" resolves, the frame shows the forget answer's `message` in `.alert-success` and *Connect
+   Claude* says "Needs your permission first".
+2. **An assistant's name is checked before it enters a sentence** (should-fix). In
+   `assistants.rs`'s `listed`, after finding the entry, `crew::check_name("name",
+   &listed.member.name)`; a failure is `FIND`. Test in `tests/use_it.rs`: an assistant whose
+   `member.json` name is rewritten to hold a line break answers `FIND` from `turn_on_in`,
+   `make_claude_ai_files_in` and `forget_in`; every existing api test still passes.
+3. **A folder that went away is nothing to forget** (should-fix). In `forget_in`, after taking the
+   lock and counting again, a count of 0 answers `nothing_to_forget(name)` before the comparison
+   with the request, and removes the empty state folder the lock may have made with
+   `fs::remove_dir` (which only removes an empty folder; ignore its error). Test: preview N, delete
+   the state folder by hand, then `forget_in` with N answers `nothing_to_forget` and leaves no state
+   folder.
+
+Run `CARGO_NET_OFFLINE=true cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
+-- -D warnings`, `cargo test -p persona-builder-api --locked`, and `pnpm --offline -C builder/ui
+typecheck` and `test`. Mutation checks with `cp`/`cmp`: put `resets` back in Forget's key (red),
+drop the name check (red), drop the zero-count check (red). Don't commit.
