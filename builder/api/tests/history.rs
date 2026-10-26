@@ -232,6 +232,7 @@ fn code_read_dry_run_parity_progress_and_lock() {
         held_out: 0,
         messages: 0,
         private_left_out: 0,
+        unreadable: 0,
         first: None,
         last: None,
     };
@@ -252,6 +253,7 @@ fn code_read_dry_run_parity_progress_and_lock() {
             held_out: 1,
             messages: 1,
             private_left_out: 1,
+            unreadable: 0,
             first: Some("2026-01-02".into()),
             last: Some("2026-01-03".into())
         }
@@ -588,11 +590,12 @@ fn history_dtos_are_camel_case_and_requests_reject_unknown_fields() {
             held_out: 2,
             messages: 3,
             private_left_out: 4,
+            unreadable: 0,
             first: None,
             last: None
         })
         .unwrap(),
-        json!({"questions":1,"heldOut":2,"messages":3,"privateLeftOut":4,"first":null,"last":null})
+        json!({"questions":1,"heldOut":2,"messages":3,"privateLeftOut":4,"unreadable":0,"first":null,"last":null})
     );
     assert_eq!(
         serde_json::to_value(marks(&["one"], true, false)).unwrap(),
@@ -642,4 +645,43 @@ fn export_status_hides_ingest_paths() {
         error.message
     );
     assert_eq!(error.message, EXPORT_BAD);
+}
+
+#[test]
+fn code_read_takes_list_answers_and_skips_unreadable_records() {
+    use std::io::Write;
+    let h = Home::new(true);
+    code_history(&h, 1);
+    let mut session = fs::OpenOptions::new()
+        .append(true)
+        .open(h.path().join(".claude/projects/project-0000/session.jsonl"))
+        .unwrap();
+    for answer in [json!(["Small", "keep it tiny"]), json!(7)] {
+        writeln!(
+            session,
+            "{}",
+            json!({"type":"user", "timestamp":"2026-01-05T10:00:00.000Z",
+            "toolUseResult":{"questions":[{"question":"Which size?", "multiSelect":true,
+                "options":[{"label":"Small"},{"label":"Large"}]}],
+                "answers":{"Which size?":answer}}})
+        )
+        .unwrap();
+    }
+    let dry = read_claude_code_in(h.path(), read(true), &mut |_| {}).unwrap();
+    assert_eq!(dry.questions, 2);
+    assert_eq!(serde_json::to_value(&dry).unwrap()["unreadable"], 1);
+    assert!(!h.state("decisions-claude-code.jsonl").exists());
+    let saved = read_claude_code_in(h.path(), read(false), &mut |_| {}).unwrap();
+    assert_eq!(saved, dry);
+    let records = fs::read_to_string(h.state("decisions-claude-code.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    let question = records
+        .iter()
+        .find(|r| r["question"] == "Which size?")
+        .unwrap();
+    assert_eq!(question["picks"], json!(["Small"]));
+    assert_eq!(question["own_words"], "keep it tiny");
 }

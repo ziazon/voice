@@ -27,7 +27,10 @@ const countsLine = computed(() => {
   const answer = counts.value
   if (!answer) return ''
   const dates = answer.first ? `, from ${answer.first} to ${answer.last}` : ''
-  return `${saved.value ? 'Read' : 'Counted'} ${answer.questions.toLocaleString()} answered questions and ${answer.messages.toLocaleString()} messages you typed${dates}. ${answer.privateLeftOut.toLocaleString()} that looked private were left out. ${answer.heldOut.toLocaleString()} answered questions are kept back to test your assistant.`
+  const unreadable = answer.unreadable > 0
+    ? ` ${answer.unreadable.toLocaleString()} ${answer.unreadable === 1 ? "entry it couldn't read was" : "entries it couldn't read were"} left out.`
+    : ''
+  return `${saved.value ? 'Read' : 'Counted'} ${answer.questions.toLocaleString()} answered questions and ${answer.messages.toLocaleString()} messages you typed${dates}. ${answer.privateLeftOut.toLocaleString()} that looked private were left out.${unreadable} ${answer.heldOut.toLocaleString()} answered questions are kept back to test your assistant.`
 })
 onMounted(async () => {
   try {

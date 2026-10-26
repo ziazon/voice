@@ -245,6 +245,20 @@ def parse_answer(answer, labels, multi):
     return picks, re.sub(r"\s*,(\s*,)+\s*", ", ", rest).strip(" ,")
 
 
+def list_answer(answer, labels):
+    """Exact label picks in list order, and the remaining own words."""
+    picks, own_words = [], []
+    for item in answer:
+        if item in labels:
+            if item not in picks:
+                picks.append(item)
+        else:
+            text = item.strip()
+            if text:
+                own_words.append(text)
+    return picks, ", ".join(own_words)
+
+
 def outcome(picks, own_words, recommended):
     if own_words:
         return "own_words"
@@ -266,7 +280,8 @@ def questions_in(m, record, session, project):
                    for o in q.get("options", [])]
         labels = [o["label"] for o in options]
         multi = bool(q.get("multiSelect"))
-        picks, own_words = parse_answer(str(answer), labels, multi)
+        picks, own_words = (list_answer(answer, labels) if isinstance(answer, list)
+                            else parse_answer(str(answer), labels, multi))
         recommended = recommended_label(m, labels)
         notes = ((result.get("annotations") or {}).get(q["question"]) or {}).get("notes") or ""
         out.append({"id": record_id("question", session, record["timestamp"], q["question"]),

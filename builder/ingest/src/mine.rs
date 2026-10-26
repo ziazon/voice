@@ -33,6 +33,8 @@ pub struct Mined {
     pub excluded: usize,
     pub personal: usize,
     pub secret: usize,
+    /// Records of a shape Persona Builder can't read, left out whole.
+    pub unreadable: usize,
 }
 #[derive(Debug)]
 pub struct FolderRow {
@@ -238,6 +240,24 @@ impl Builder<'_> {
                 .to_owned(),
         )
     }
+    fn list_answer(&self, answer: &[Value], labels: &[String]) -> Result<(Vec<String>, String)> {
+        let mut picks = vec![];
+        let mut own_words = vec![];
+        for item in answer {
+            let item = self.string(item, "answer")?;
+            if labels.iter().any(|label| label == item) {
+                if !picks.iter().any(|pick| pick == item) {
+                    picks.push(item.to_owned());
+                }
+            } else {
+                let text = item.trim_matches(py_space);
+                if !text.is_empty() {
+                    own_words.push(text);
+                }
+            }
+        }
+        Ok((picks, own_words.join(", ")))
+    }
     fn questions_in(
         &self,
         r: &Map<String, Value>,
@@ -267,7 +287,6 @@ impl Builder<'_> {
             let Some(answer) = answers.get(question).filter(|v| !v.is_null()) else {
                 continue;
             };
-            let answer = self.string(answer, "answer")?;
             let options = match q.get("options") {
                 None => vec![],
                 Some(v) => v.as_array().ok_or_else(|| self.shape("options"))?.clone(),
@@ -285,7 +304,10 @@ impl Builder<'_> {
                 ])))
             }
             let multi = q.get("multiSelect").is_some_and(truthy);
-            let (picks, own) = self.parse_answer(answer, &labels, multi);
+            let (picks, own) = match answer {
+                Value::Array(items) => self.list_answer(items, &labels)?,
+                _ => self.parse_answer(self.string(answer, "answer")?, &labels, multi),
+            };
             let recommended = self.recommended_label(&labels);
             let mut notes = "";
             if let Some(annotations) = result.get("annotations").filter(|v| truthy(v)) {
@@ -610,7 +632,14 @@ pub fn mine_with_progress(
                     let Ok(r) = serde_json::from_str::<Value>(line) else {
                         continue;
                     };
-                    for record in b.harvest(&r, session, &project, &mut context)? {
+                    let records = match b.harvest(&r, session, &project, &mut context) {
+                        Ok(records) => records,
+                        Err(_) => {
+                            mined.unreadable += 1;
+                            continue;
+                        }
+                    };
+                    for record in records {
                         match privacy(filters, &Value::Object(record.clone()))? {
                             Some(Kind::Personal) => mined.personal += 1,
                             Some(Kind::Secret) => mined.secret += 1,
@@ -653,8 +682,13 @@ pub fn summary(m: &Mined) -> String {
         (Some(a), Some(b)) => format!("{} → {}", date(a), date(b)),
         _ => "none".into(),
     };
+    let skipped = if m.unreadable == 0 {
+        String::new()
+    } else {
+        format!("; skipped {} records of an unexpected shape", m.unreadable)
+    };
     format!(
-        "mined {} questions ({} held out) and {} messages, {}; held out from {}\ndropped {} excluded folders, {} personal records, {} secret records\n",
+        "mined {} questions ({} held out) and {} messages, {}; held out from {}\ndropped {} excluded folders, {} personal records, {} secret records{skipped}\n",
         m.questions,
         m.held,
         m.messages,

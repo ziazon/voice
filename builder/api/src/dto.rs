@@ -197,6 +197,7 @@ pub struct ReadCounts {
     pub held_out: u32,
     pub messages: u32,
     pub private_left_out: u32,
+    pub unreadable: u32,
     pub first: Option<String>,
     pub last: Option<String>,
 }

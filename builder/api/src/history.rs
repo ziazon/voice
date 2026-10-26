@@ -131,6 +131,7 @@ pub fn read_claude_code_in(
             held_out: 0,
             messages: 0,
             private_left_out: 0,
+            unreadable: 0,
             first: None,
             last: None,
         });
@@ -167,6 +168,7 @@ pub fn read_claude_code_in(
         held_out: count(mined.held),
         messages: count(mined.messages),
         private_left_out: count(mined.personal.saturating_add(mined.secret)),
+        unreadable: count(mined.unreadable),
         first: mined.records.first().map(date),
         last: mined.records.last().map(date),
     })

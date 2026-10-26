@@ -82,6 +82,30 @@ def ada_fixture(h):
 
 
 class ExampleMember(unittest.TestCase):
+    def test_mine_reads_a_list_answer(self):
+        h = Harness()
+        h.session("-Users-p-projects-app", "s1",
+                  ask("2026-09-01T10:00:00Z", "List 0?", ["A", "A longer", "B"],
+                      ["A longer", "B"], recommended=None, multi=True),
+                  ask("2026-09-01T10:02:00Z", "List 2?", ["A", "B"],
+                      ["A", "  own words, with a comma  "], recommended=None, multi=True),
+                  ask("2026-09-01T10:04:00Z", "List 4?", ["A", "B"],
+                      ["A (Recommended)"], recommended=0, multi=True),
+                  ask("2026-09-01T10:07:00Z", "List 7?", ["A", "B"],
+                      ["A", "   ", "A"], recommended=None, multi=True),
+                  ask("2026-09-01T10:08:00Z", "List 8?", ["A", "B"],
+                      ["A", "first own", "B", " second own "], recommended=None, multi=True))
+        out = h.crew(h.member(ADA), "mine", "--projects", str(h.projects), "--out", "d.jsonl")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        records = [json.loads(line) for line in h.read("d.jsonl").splitlines()]
+        self.assertEqual([(r["picks"], r["own_words"], r["outcome"]) for r in records], [
+            (["A longer", "B"], "", "no_rec"),
+            (["A"], "own words, with a comma", "own_words"),
+            (["A (Recommended)"], "", "took_rec"),
+            (["A"], "", "no_rec"),
+            (["A", "B"], "first own, second own", "own_words"),
+        ])
+
     def test_mine_split_score_and_search(self):
         h = Harness()
         ada_fixture(h)

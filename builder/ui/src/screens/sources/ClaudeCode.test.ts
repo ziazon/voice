@@ -9,7 +9,7 @@ const folders = { found: true, folders: [
   { project: 'project-one', conversations: 1200, read: true },
   { project: 'project-two', conversations: 3, read: false },
 ] }
-const counts: ReadCounts = { questions: 1200, heldOut: 180, messages: 3500, privateLeftOut: 7, first: '2026-01-01', last: '2026-10-01' }
+const counts: ReadCounts = { questions: 1200, heldOut: 180, messages: 3500, privateLeftOut: 7, unreadable: 0, first: '2026-01-01', last: '2026-10-01' }
 const counted = `Counted ${(1200).toLocaleString()} answered questions and ${(3500).toLocaleString()} messages you typed, from 2026-01-01 to 2026-10-01. 7 that looked private were left out. 180 answered questions are kept back to test your assistant.`
 
 it('announces loading before the folders arrive', () => {
@@ -97,4 +97,24 @@ it('shows the folder fallback on an unexpected rejection', async () => {
 it('names the history card clearly', () => {
   const wrapper = screen(ClaudeCode, fakeBackend(), { slug: 'example' })
   expect(wrapper.get('h3').text()).toBe('Claude Code history')
+})
+
+it.each([
+  [3, "3 entries it couldn't read were left out."],
+  [1, "1 entry it couldn't read was left out."],
+  [0, ''],
+])("says how many entries it couldn't read (%i)", async (unreadable, sentence) => {
+  const wrapper = screen(ClaudeCode, fakeBackend({
+    claudeCodeFolders: vi.fn().mockResolvedValue(folders),
+    readClaudeCode: vi.fn().mockResolvedValue({ ...counts, unreadable }),
+  }), { slug: 'example' })
+  await flushPromises()
+  await button(wrapper, 'Count first').trigger('click')
+  await flushPromises()
+  if (unreadable) {
+    expect(wrapper.text()).toContain(`7 that looked private were left out. ${sentence} 180 answered questions`)
+  } else {
+    expect(wrapper.text()).toContain(counted)
+    expect(wrapper.text()).not.toContain("it couldn't read")
+  }
 })

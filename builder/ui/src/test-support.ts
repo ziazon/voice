@@ -46,7 +46,7 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     saveChoose: vi.fn().mockResolvedValue({ message: 'Your choice is kept.' }),
     savePush: vi.fn().mockResolvedValue({ message: 'Your copy is saved.' }),
     claudeCodeFolders: vi.fn().mockResolvedValue({ found: false, folders: [] }),
-    readClaudeCode: vi.fn().mockResolvedValue({ questions: 0, heldOut: 0, messages: 0, privateLeftOut: 0, first: null, last: null }),
+    readClaudeCode: vi.fn().mockResolvedValue({ questions: 0, heldOut: 0, messages: 0, privateLeftOut: 0, unreadable: 0, first: null, last: null }),
     chooseClaudeaiExport: vi.fn().mockResolvedValue(null),
     claudeaiExportStatus: vi.fn().mockResolvedValue(null),
     listClaudeaiChats: vi.fn().mockResolvedValue({ chats: [], mine: 0, notMine: 0, unmarked: 0 }),

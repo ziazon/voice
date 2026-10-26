@@ -125,6 +125,7 @@ fn all_accepted_fixtures_match_python_bytes_and_summary() {
         "five_questions",
         "another_member",
         "multi_select",
+        "list_answers",
         "single_select",
         "notes",
         "tolerant_questions",
@@ -158,7 +159,7 @@ fn all_accepted_fixtures_match_python_bytes_and_summary() {
     }
 }
 #[test]
-fn malformed_records_error_without_record_text() {
+fn malformed_records_are_skipped_and_counted() {
     if !parity_tools_available() {
         return;
     }
@@ -177,41 +178,39 @@ fn malformed_records_error_without_record_text() {
         fs::write(&c, serde_json::to_vec(&config(false)).unwrap()).unwrap();
         let m = read_member(&c).unwrap();
         let f = Filters::compile(&m.filters).unwrap();
-        let error = mine(
+        let mined = mine(
             &m,
             &f,
             &p,
             std::path::Path::new("/Users/p"),
             &Split::Holdout(0.15),
         )
-        .unwrap_err()
-        .to_string();
+        .unwrap();
+        assert_eq!(mined.unreadable, 1);
+        assert!(!to_jsonl(&mined.records).contains("private record sentinel"));
         assert!(
-            error.ends_with(&format!(
-                "a transcript record has an unexpected shape ({key})"
-            )),
-            "{error}"
+            summary(&mined)
+                .lines()
+                .nth(1)
+                .unwrap()
+                .ends_with("; skipped 1 records of an unexpected shape")
         );
-        assert!(error.contains("s1.jsonl:1:"));
-        assert!(!error.contains("private record sentinel"));
-        if key != "answer" {
-            let out = s.0.join("not-written.jsonl");
-            let py = Command::new("python3")
-                .arg("-I")
-                .arg(repo().join("scripts/crew_decisions.py"))
-                .arg("--member")
-                .arg(&c)
-                .arg("mine")
-                .arg("--projects")
-                .arg(p)
-                .arg("--out")
-                .arg(&out)
-                .output()
-                .unwrap();
-            assert_eq!(py.status.code(), Some(1));
-            if key != "timestamp" {
-                assert!(!out.exists());
-            }
+        let out = s.0.join("not-written.jsonl");
+        let py = Command::new("python3")
+            .arg("-I")
+            .arg(repo().join("scripts/crew_decisions.py"))
+            .arg("--member")
+            .arg(&c)
+            .arg("mine")
+            .arg("--projects")
+            .arg(p)
+            .arg("--out")
+            .arg(&out)
+            .output()
+            .unwrap();
+        assert_eq!(py.status.code(), Some(1), "{key}");
+        if key != "timestamp" {
+            assert!(!out.exists(), "{key}");
         }
     }
 }
@@ -232,17 +231,17 @@ fn empty_options_object_is_an_explicit_accepted_difference() {
     fs::write(&c, serde_json::to_vec(&config(false)).unwrap()).unwrap();
     let m = read_member(&c).unwrap();
     let f = Filters::compile(&m.filters).unwrap();
-    let error = mine(
+    let mined = mine(
         &m,
         &f,
         &projects,
         std::path::Path::new("/Users/p"),
         &Split::Holdout(0.15),
     )
-    .unwrap_err()
-    .to_string();
-    assert!(error.ends_with("(options)"));
-    assert!(!error.contains("private record sentinel"));
+    .unwrap();
+    assert_eq!(mined.unreadable, 1);
+    assert!(mined.records.is_empty());
+    assert!(summary(&mined).contains("; skipped 1 records of an unexpected shape"));
     let output = s.0.join("python.jsonl");
     let py = Command::new("python3")
         .arg("-I")

@@ -194,7 +194,7 @@ fn excluded_folders_are_not_listed_by_mine() {
 }
 
 #[test]
-fn answers_shape_is_checked_before_question_text() {
+fn answers_shape_is_skipped_before_question_text() {
     let s = Scratch::new("answers-shape");
     let app = s.0.join("app");
     fs::create_dir(&app).unwrap();
@@ -208,8 +208,12 @@ fn answers_shape_is_checked_before_question_text() {
             "toolUseResult": {"questions": questions, "answers": []}
         });
         fs::write(&path, record.to_string()).unwrap();
-        let error = run(&s.0, &s.0, &Split::Holdout(0.15)).unwrap_err();
-        assert!(error.to_string().contains("(answers)"), "{error}");
+        let mined = run(&s.0, &s.0, &Split::Holdout(0.15)).unwrap();
+        assert!(mined.records.is_empty());
+        assert!(
+            persona_builder_ingest::mine::summary(&mined)
+                .contains("; skipped 1 records of an unexpected shape")
+        );
     }
     fs::write(
         &path,
@@ -221,4 +225,115 @@ fn answers_shape_is_checked_before_question_text() {
     )
     .unwrap();
     assert!(run(&s.0, &s.0, &Split::Holdout(0.15)).is_ok());
+}
+
+#[test]
+fn a_list_answer_is_the_picks_it_names() {
+    let s = Scratch::new("list-answers");
+    let p = s.0.join("projects");
+    common::checked(
+        std::process::Command::new("python3")
+            .arg("-I")
+            .arg(repo().join("tests/crew_mine_fixtures.py"))
+            .arg("list_answers")
+            .arg(&p),
+    );
+    let mined = run(&p, &s.0, &Split::Holdout(0.15)).unwrap();
+    assert_eq!(mined.unreadable, 0);
+    assert_eq!(mined.records.len(), 9);
+    for (i, (picks, own)) in [
+        (serde_json::json!(["A longer", "B"]), ""),
+        (serde_json::json!(["B", "A"]), ""),
+        (serde_json::json!(["A"]), "own words, with a comma"),
+        (serde_json::json!(["Yes, keep it"]), ""),
+        (serde_json::json!(["A (Recommended)"]), ""),
+        (serde_json::json!(["A"]), ""),
+        (serde_json::json!([]), ""),
+        (serde_json::json!(["A"]), ""),
+        (serde_json::json!(["A", "B"]), "first own, second own"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(mined.records[i]["question"], format!("List {i}?"));
+        assert_eq!(mined.records[i]["picks"], picks);
+        assert_eq!(mined.records[i]["own_words"], own);
+    }
+    assert_eq!(mined.records[4]["outcome"], "took_rec");
+}
+
+fn question_answer(answer: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"type":"user", "timestamp":"2026-09-01T10:01:00Z",
+        "toolUseResult":{"questions":[{"question":"Scope?", "options":[{"label":"A"}]}],
+            "answers":{"Scope?":answer}}})
+}
+fn typed_message(text: &str, when: &str) -> serde_json::Value {
+    serde_json::json!({"type":"user", "timestamp":when,
+        "origin":{"kind":"human"}, "message":{"content":text}})
+}
+fn session_records(s: &Scratch, records: &[serde_json::Value]) {
+    fs::create_dir(s.0.join("app")).unwrap();
+    fs::write(
+        s.0.join("app/s.jsonl"),
+        records.iter().map(|r| format!("{r}\n")).collect::<String>(),
+    )
+    .unwrap();
+}
+#[test]
+fn records_of_an_unexpected_shape_are_skipped_and_counted() {
+    use serde_json::json;
+    let s = Scratch::new("skipped-records");
+    let mut bad_options = question_answer(json!("A"));
+    bad_options["toolUseResult"]["questions"][0]["options"] = json!({"a":1});
+    let mut two_questions = question_answer(json!("A"));
+    two_questions["toolUseResult"]["questions"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"question":"Second?", "options":[{"label":"A"}]}));
+    two_questions["toolUseResult"]["answers"]["Second?"] = json!(7);
+    session_records(
+        &s,
+        &[
+            typed_message("first kept", "2026-09-01T10:00:00Z"),
+            question_answer(json!(7)),
+            question_answer(json!(["A", 7])),
+            bad_options,
+            json!([1, 2]),
+            two_questions,
+            typed_message("last kept", "2026-09-01T10:02:00Z"),
+        ],
+    );
+    let mined = run(&s.0, &s.0, &Split::Holdout(0.15)).unwrap();
+    assert_eq!(mined.unreadable, 5);
+    assert_eq!(
+        mined
+            .records
+            .iter()
+            .map(|r| (&r["kind"], &r["text"]))
+            .collect::<Vec<_>>(),
+        vec![
+            (&json!("message"), &json!("first kept")),
+            (&json!("message"), &json!("last kept"))
+        ]
+    );
+    assert!(
+        persona_builder_ingest::mine::summary(&mined)
+            .ends_with("0 secret records; skipped 5 records of an unexpected shape\n")
+    );
+}
+#[test]
+fn a_skipped_record_keeps_the_reply_before_it_as_context() {
+    let s = Scratch::new("skipped-context");
+    session_records(
+        &s,
+        &[
+            serde_json::json!({"type":"assistant", "message":{"content":"the reply"}}),
+            question_answer(serde_json::json!(7)),
+            typed_message("kept message", "2026-09-01T10:02:00Z"),
+        ],
+    );
+    let mined = run(&s.0, &s.0, &Split::Holdout(0.15)).unwrap();
+    assert_eq!(mined.unreadable, 1);
+    assert_eq!(mined.records.len(), 1);
+    assert_eq!(mined.records[0]["context"], "the reply");
 }

@@ -59,6 +59,22 @@ def build(case, h):
             for i, (labels, answer) in enumerate([
                 (['A', 'A longer', 'B'], 'A longer, B'), (['A', 'B'], 'A, own words, B'),
                 (['A', 'B'], 'A,,, , B'), (['', 'A'], 'A, own words')])])
+    elif case == 'list_answers':
+        rows = [
+            (['A', 'A longer', 'B'], ['A longer', 'B'], None, True),
+            (['A', 'B'], ['B', 'A'], None, True),
+            (['A', 'B'], ['A', '  own words, with a comma  '], None, True),
+            (['Yes, keep it', 'No'], ['Yes, keep it'], None, True),
+            (['A', 'B'], ['A (Recommended)'], 0, True),
+            (['A', 'B'], ['A'], None, False),
+            (['A', 'B'], [], None, True),
+            (['A', 'B'], ['A', '   ', 'A'], None, True),
+            (['A', 'B'], ['A', 'first own', 'B', ' second own '], None, True),
+        ]
+        h.session(FOLDER, 's1', *[
+            ask(f'2026-09-01T10:0{i}:00Z', f'List {i}?', labels, answer,
+                recommended=recommended, multi=multi)
+            for i, (labels, answer, recommended, multi) in enumerate(rows)])
     elif case == 'single_select':
         h.session(FOLDER, 's1', ask(WHEN, 'Pick?', ['A', 'B'], 'A', recommended=None),
                   ask(WHEN, 'Own?', ['A', 'B'], ' \x1c own words \x1c ', recommended=None))
@@ -137,7 +153,7 @@ def build(case, h):
         elif case in ('error_options', 'error_answer'):
             r = ask(WHEN, 'private record sentinel', ['A'], 'A', recommended=None)
             if case == 'error_options': r['toolUseResult']['questions'][0]['options'] = {'a': 1}
-            else: r['toolUseResult']['answers']['private record sentinel'] = ['A']
+            else: r['toolUseResult']['answers']['private record sentinel'] = ['A', 7]
         else: raise ValueError('unknown error case')
         h.session(FOLDER, 's1', r)
     elif case == 'private_overlay':
