@@ -18,7 +18,7 @@ it('reads on mount, shows loading, and offers Build when there is no report', as
   expect(backend.showReport).toHaveBeenCalledWith({ slug: 'example' })
   call.resolve({ report: null, unreadable: false, growth: null }); await flushPromises()
   expect(wrapper.find('[role="status"]').exists()).toBe(false)
-  expect(wrapper.get('h2').text()).toBe('How well it knows you')
+  expect(wrapper.get('h2').text()).toBe(`How well ${assistant.name} knows you`)
   expect(wrapper.text()).toContain("There's no report yet. Build your assistant first.")
   await button(wrapper, 'Go to Build').trigger('click')
   expect(wrapper.emitted('build')).toEqual([[]])
@@ -39,7 +39,7 @@ it('shows Thin history, the honest untested line, and the interview button', asy
   expect(wrapper.text()).toContain("Only 12 questions were kept back to test your assistant, fewer than 30, so there's too little to measure yet. Until it can be tested, it decides nothing on its own.")
   expect(wrapper.text()).toContain('The interview fills out a thin history.')
   expect(wrapper.text()).toContain('No kinds of decision yet.')
-  await button(wrapper, 'Go to the interview').trigger('click')
+  await button(wrapper, 'Answer twenty questions about your work').trigger('click')
   expect(wrapper.emitted('build')).toEqual([[]])
 })
 it('shows the tested result, counts Strong areas and renders all badge, example and help lines', async () => {
@@ -49,16 +49,16 @@ it('shows the tested result, counts Strong areas and renders all badge, example 
     { area: 'Choosing', level: 'thin', examples: 1, help: ['interview', 'claudeai'] },
     { area: '<script>private</script>', level: 'thin', examples: 3, help: ['time'] },
   ] } }); await flushPromises()
-  expect(wrapper.text()).toContain('It passed the test on 1 of 4 kinds of decision, and got 900 of 1,000 test questions right.')
+  expect(wrapper.text()).toContain(`${assistant.name} passed the test on 1 of 4 kinds of decision, and got 900 of 1,000 test questions right.`)
   expect(wrapper.text()).not.toContain('Only 1,000 questions')
-  expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(['Kind of decision', 'How well', 'What would help'])
+  expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(['Kind of decision', 'How well', 'To strengthen it'])
   const rows = wrapper.findAll('tbody tr')
   expect(rows[0]!.get('.badge').classes()).toContain('bg-green-lt')
   expect(rows[0]!.text()).toContain('Strong')
-  expect(rows[0]!.text()).toContain('Nothing needed')
+  expect(rows[0]!.text()).toContain('Passed the test')
   expect(rows[1]!.get('.badge').classes()).toContain('bg-yellow-lt')
   expect(rows[1]!.text()).toContain('Getting there')
-  expect(rows[1]!.text()).toContain('Keep using Claude: it learns from every answer')
+  expect(rows[1]!.text()).toContain('Keep using Claude, since it learns from every answer')
   expect(rows[2]!.get('.badge').classes()).toContain('bg-secondary-lt')
   expect(rows[2]!.text()).toContain('Thin')
   expect(rows[2]!.text()).toContain('1 example so far')
@@ -70,7 +70,7 @@ it('shows the tested result, counts Strong areas and renders all badge, example 
   await button(wrapper, 'Next: review what it learns').trigger('click')
   expect(wrapper.emitted('next')).toEqual([[]])
 })
-it.each([{ answered: 149, label: 'Answer the interview' }, { answered: 150, label: 'Answer a few questions about it' }])('offers the interview help for $answered answers', async ({ answered, label }) => {
+it.each([{ answered: 149, label: 'Answer twenty questions about your work' }, { answered: 150, label: 'Answer a few questions about it' }])('offers the interview help for $answered answers', async ({ answered, label }) => {
   const { wrapper } = shown({ report: { ...report, answered, areas: [{ area: 'Scope', level: 'thin', examples: 3, help: ['interview'] }] } }); await flushPromises()
   expect(wrapper.get('tbody li').text()).toBe(label)
   if (answered < report.thinBelow) expect(wrapper.text()).not.toContain('Answer a few questions')
@@ -85,12 +85,12 @@ it('opens Build from the short interview button when a long history has a thin k
 it('explains an untested report with enough history without offering the interview', async () => {
   const { wrapper } = shown({ report: { ...report, overall: 'strong', answered: 1500 } }); await flushPromises()
   expect(wrapper.text()).toContain("There's enough history to learn from, but too little to test yet.")
-  expect(wrapper.text()).not.toContain('Go to the interview')
+  expect(wrapper.text()).not.toContain('Answer twenty questions about your work')
   expect(wrapper.text()).not.toContain('Answer a few questions')
 })
 it.each([{ kept: 1, word: 'change' }, { kept: 2000, word: 'changes' }])('shows growth with $word', async ({ kept, word }) => {
   const { wrapper } = shown({ growth: { kept, undone: 3, passing: 1000, of: 1200 } }); await flushPromises()
-  expect(wrapper.text()).toContain(`Since the build: ${kept === 1 ? '1' : '2,000'} ${word} kept and 3 undone. Your assistant passes 1,000 of 1,200 tests from your answers.`)
+  expect(wrapper.text()).toContain(`Since the build: ${kept === 1 ? '1' : '2,000'} ${word} kept and 3 undone. 1,000 of the 1,200 tests made from your answers pass.`)
 })
 it.each([{ message: 'Could not read it.' }, new Error('private')])('shows safe failures', async failure => {
   const backend = fakeBackend({ showReport: vi.fn().mockRejectedValue(failure) })

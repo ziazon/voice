@@ -27,7 +27,7 @@ const countsLine = computed(() => {
   const answer = counts.value
   if (!answer) return ''
   const dates = answer.first ? `, from ${answer.first} to ${answer.last}` : ''
-  return `${saved.value ? 'Read' : 'Counted'} ${answer.questions.toLocaleString()} answers to Claude's questions and ${answer.messages.toLocaleString()} other messages${dates}. ${answer.privateLeftOut.toLocaleString()} that looked private were left out. ${answer.heldOut.toLocaleString()} answers are kept aside to test your assistant with.`
+  return `${saved.value ? 'Read' : 'Counted'} ${answer.questions.toLocaleString()} answered questions and ${answer.messages.toLocaleString()} messages you typed${dates}. ${answer.privateLeftOut.toLocaleString()} that looked private were left out. ${answer.heldOut.toLocaleString()} answered questions are kept back to test your assistant.`
 })
 onMounted(async () => {
   try {
@@ -56,7 +56,7 @@ async function read(dryRun: boolean) {
 <template>
   <section class="card">
     <div class="card-body">
-      <h3 class="card-title">Claude Code</h3>
+      <h3 class="card-title">Claude Code history</h3>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Looking at your Claude Code history…</span></div>
       <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
       <template v-if="folders">

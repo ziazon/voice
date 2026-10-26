@@ -126,10 +126,13 @@ async function test() {
           <ReadProgress v-if="testing" :progress="null" label="Testing" />
           <button type="button" class="btn btn-primary" :disabled="busy" @click="test">{{ testing ? 'Testing the change…' : 'Test it' }}</button>
         </template>
-        <div v-else class="d-flex gap-2">
-          <button type="button" class="btn btn-primary" :disabled="busy" @click="answer(true)">Approve</button>
-          <button type="button" class="btn btn-secondary" :disabled="busy" @click="answer(false)">Reject</button>
-        </div>
+        <template v-else>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary" :disabled="busy" @click="answer(true)">Approve</button>
+            <button type="button" class="btn btn-secondary" :disabled="busy" @click="answer(false)">Reject</button>
+          </div>
+          <p class="text-secondary mt-2 mb-0">Approve: your assistant changes only after the change is tested on all your answers and nothing gets worse. Reject: nothing changes, and your answers stay saved for the next refresh.</p>
+        </template>
       </template>
       <div v-if="lines.length" class="overflow-auto" style="max-height: 16rem">
         <ul class="list-unstyled" aria-live="polite"><li v-for="(line, index) in lines" :key="index">{{ line }}</li></ul>

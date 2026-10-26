@@ -6,7 +6,7 @@ import type { Spend } from '../../types/generated/Spend'
 import type { BuildDone } from '../../types/generated/BuildDone'
 import ReadProgress from '../sources/ReadProgress.vue'
 
-const props = defineProps<{ slug: string }>()
+const props = defineProps<{ slug: string, name: string }>()
 const emit = defineEmits<{ running: [boolean], finished: [], report: [] }>()
 const backend = useBackend()
 const spend = ref<Spend | null>(null)
@@ -17,6 +17,7 @@ const lines = ref<string[]>([])
 const done = ref<BuildDone | null>(null)
 const error = ref('')
 const info = ref(false)
+const STOPPED = 'Stopped. Your assistant is as it was before this build. What was already finished is kept, so running the build again carries on from there.'
 onMounted(async () => {
   try {
     const initial = await backend.spendToday({ slug: props.slug })
@@ -45,7 +46,7 @@ async function build(mergeFirst = false) {
       }
       if (stopping.value) {
         info.value = true
-        error.value = 'Stopped. Your assistant is as it was before this build. What was already finished is kept, so building again carries on from there.'
+        error.value = STOPPED
         return
       }
     }
@@ -58,8 +59,8 @@ async function build(mergeFirst = false) {
   } catch (failure) {
     info.value = stopping.value
     error.value = failureMessage(failure, stopping.value
-      ? 'Stopped. Your assistant is as it was before this build. What was already finished is kept, so building again carries on from there.'
-      : 'The build stopped before it finished, so your assistant is as it was. What it already finished is kept: build again to carry on.')
+      ? STOPPED
+      : 'The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.')
   } finally {
     running.value = false
     stopping.value = false
@@ -72,7 +73,7 @@ async function stop() {
     await backend.stopBuild({ slug: props.slug })
   } catch (failure) {
     info.value = true
-    error.value = failureMessage(failure, 'Stopped. Your assistant is as it was before this build. What was already finished is kept, so building again carries on from there.')
+    error.value = failureMessage(failure, STOPPED)
   }
 }
 async function rebuild() {
@@ -94,12 +95,13 @@ defineExpose({ rebuild })
         </ul>
       </div>
       <div v-if="done" class="alert alert-success" role="alert">
-        Done. Your assistant is built from {{ done.answered.toLocaleString() }} answers to Claude's questions.
-        <template v-if="!done.tested"> There weren't enough answers kept aside to test it yet, so it decides nothing on its own until it can be tested.</template>
+        Done. Your assistant is built from {{ done.answered.toLocaleString() }} answered questions.
+        <template v-if="!done.tested"> There weren't enough questions kept back to test it yet, so it decides nothing on its own until it can be tested.</template>
       </div>
-      <button v-if="done" type="button" class="btn btn-secondary" @click="emit('report')">See how well it knows you</button>
-      <button v-if="running" type="button" class="btn btn-outline-danger" @click="stop">{{ stopping ? 'Stopping…' : 'Stop' }}</button>
-      <button v-else type="button" class="btn btn-primary" @click="build()">{{ attempted ? 'Build again' : 'Build my assistant' }}</button>
+      <button v-if="done" type="button" class="btn btn-secondary" @click="emit('report')">See how well {{ name }} knows you</button>
+      <p v-if="running" class="text-secondary">Stopping keeps everything finished so far. Next time it carries on from here.</p>
+      <button v-if="running" type="button" class="btn btn-outline-danger" @click="stop">{{ stopping ? 'Stopping…' : 'Stop for now' }}</button>
+      <button v-else type="button" class="btn btn-primary" @click="build()">{{ attempted ? 'Run the build again' : 'Start the build' }}</button>
     </div>
   </section>
 </template>

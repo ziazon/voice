@@ -12,3 +12,8 @@ it('shows totals and every area count', () => {
   expect(wrapper.get('p').text()).toBe('1,000 waiting for a refresh, 4 in use, 2 retired.')
   expect(wrapper.findAll('li').map(item => item.text())).toEqual(['Work: 999 waiting for a refresh, 3 in use, 2 retired.', 'Craft: 1 waiting for a refresh, 1 in use, 0 retired.'])
 })
+
+it('titles the answers collected so far', () => {
+  const wrapper = screen(Tests, fakeBackend(), { status })
+  expect(wrapper.get('h3').text()).toBe('Your answers so far')
+})

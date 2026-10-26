@@ -97,18 +97,18 @@ function pick(n: number, letter: string, multi: boolean, checked: boolean) {
       </div>
       <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
       <template v-if="status">
-        <p v-if="status.answered >= status.thinBelow && !status.thinKinds.length && !status.questions.length">Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions, enough to build from.</p>
+        <p v-if="status.answered >= status.thinBelow && !status.thinKinds.length && !status.questions.length">Your history holds {{ status.answered.toLocaleString() }} answered questions, enough to build from.</p>
         <template v-else>
-          <p v-if="status.answered >= status.thinBelow && !status.thinKinds.length">Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions, enough to build from. These questions are on kinds of decision that had few examples.</p>
-          <p v-else-if="status.answered >= status.thinBelow">Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions, enough to build from, but a few kinds of decision have fewer than five examples so far: {{ status.thinKinds.join(', ') }}. A few questions on each fills them out.</p>
-          <p v-else>Your history holds {{ status.answered.toLocaleString() }} answers to Claude's questions. About {{ status.thinBelow.toLocaleString() }} helps your assistant know you well. Answering twenty questions fills it out.</p>
+          <p v-if="status.answered >= status.thinBelow && !status.thinKinds.length">Your history holds {{ status.answered.toLocaleString() }} answered questions, enough to build from. These questions are on kinds of decision that had few examples.</p>
+          <p v-else-if="status.answered >= status.thinBelow">Your history holds {{ status.answered.toLocaleString() }} answered questions, enough to build from, but a few kinds of decision have fewer than five examples so far: {{ status.thinKinds.join(', ') }}. A few questions on each fills them out.</p>
+          <p v-else>Your history holds {{ status.answered.toLocaleString() }} answered questions. It takes about {{ status.thinBelow.toLocaleString() }} to know you well, so Persona Builder asks you twenty questions about your work to fill it out.</p>
           <ReadProgress v-if="drafting" :progress="null" label="Drafting" />
           <template v-if="!status.questions.length">
             <button type="button" class="btn btn-primary" :disabled="busy" @click="draft(false)">{{ drafting ? 'Drafting the questions…' : 'Draft the questions' }}</button>
             <p class="text-secondary mt-2">Claude drafts them from your areas of work, through your own Claude Code. It uses a little of your Claude plan.</p>
           </template>
           <template v-else>
-            <p>Questions {{ (page * 4 + 1).toLocaleString() }}–{{ Math.min(page * 4 + 4, status.questions.length).toLocaleString() }} of {{ status.questions.length.toLocaleString() }}</p>
+            <p>Questions {{ (page * 4 + 1).toLocaleString() }} to {{ Math.min(page * 4 + 4, status.questions.length).toLocaleString() }} of {{ status.questions.length.toLocaleString() }}</p>
             <fieldset v-for="question in questions" :key="question.n" class="mb-4" :disabled="busy">
               <legend class="h4">
                 <small class="d-block text-secondary">{{ question.kind }}</small>

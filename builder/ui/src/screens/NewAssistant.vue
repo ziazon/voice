@@ -46,12 +46,12 @@ async function make() {
           <div id="assistant-name-help" class="form-hint">Pick any name. You'll call it by this name.</div>
         </div>
         <div class="mb-3">
-          <label for="assistant-pronouns" class="form-label">Its pronouns</label>
+          <label for="assistant-pronouns" class="form-label">Your assistant's pronouns</label>
           <select id="assistant-pronouns" v-model="pronouns" class="form-select">
             <option>they/them</option><option>she/her</option><option>he/him</option><option value="other">Other…</option>
           </select>
           <template v-if="pronouns === 'other'">
-            <label for="assistant-pronouns-other" class="form-label mt-2">Its pronouns</label>
+            <label for="assistant-pronouns-other" class="form-label mt-2">Your assistant's pronouns</label>
             <input id="assistant-pronouns-other" v-model="otherPronouns" type="text" class="form-control" required>
           </template>
         </div>
@@ -61,12 +61,12 @@ async function make() {
           <div id="principal-name-help" class="form-hint">Your assistant learns how you decide, from your own history.</div>
         </div>
         <div class="mb-4">
-          <label for="principal-pronouns" class="form-label">Your pronouns</label>
+          <label for="principal-pronouns" class="form-label">How your assistant refers to you</label>
           <select id="principal-pronouns" v-model="principalPronouns" class="form-select">
             <option>they/them</option><option>she/her</option><option>he/him</option><option value="other">Other…</option>
           </select>
           <template v-if="principalPronouns === 'other'">
-            <label for="principal-pronouns-other" class="form-label mt-2">Your pronouns</label>
+            <label for="principal-pronouns-other" class="form-label mt-2">How your assistant refers to you</label>
             <input id="principal-pronouns-other" v-model="otherPrincipalPronouns" type="text" class="form-control" required>
           </template>
         </div>

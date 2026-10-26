@@ -79,7 +79,7 @@ async function read() {
 <template>
   <section class="card">
     <div class="card-body">
-      <h3 class="card-title">claude.ai (if you use it)</h3>
+      <h3 class="card-title">claude.ai chats</h3>
       <p>If you also chat on claude.ai, you can add those chats.</p>
       <p>On claude.ai, open Settings, then Privacy, and choose Export data. claude.ai emails you a link that works for 24 hours. Download the file, then choose it here.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Checking your download…</span></div>

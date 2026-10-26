@@ -130,3 +130,20 @@ it('keeps save disabled for unchanged amounts without decimal places', async () 
   expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
   expect(backend.setSpendingLimit).not.toHaveBeenCalled()
 })
+
+it('explains the account, daily use and provider choice while checking and after loading', async () => {
+  const check = deferred<{ ready: boolean; message: string; note: null }>()
+  const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockReturnValue(check.promise) }), { assistant })
+  const card = wrapper.findAll('.card')[0]!
+  expect(card.text()).toContain('Persona Builder works through your own Claude Code, signed in to your own Claude account.')
+  expect(card.text()).toContain('It checks that now, and you set how much it may use in a day.')
+  const explanation = "Persona Builder never asks for your Claude password: you sign in to Claude Code yourself. Claude is the only choice for now. Other AI providers come later."
+  expect(card.get('p.text-secondary.mt-3.mb-0').text()).toBe(explanation)
+  expect(card.text()).toContain('Persona Builder never asks for your Claude password: you sign in to Claude Code yourself.')
+  expect(card.text()).toContain('Claude is the only choice for now.')
+  expect(card.text()).toContain('Other AI providers come later.')
+  expect(wrapper.findAll('.card')[1]!.text()).not.toContain(explanation)
+  check.resolve({ ready: true, message: 'Ready.', note: null })
+  await flushPromises()
+  expect(card.get('p.text-secondary.mt-3.mb-0').text()).toBe(explanation)
+})

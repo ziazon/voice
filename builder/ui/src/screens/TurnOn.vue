@@ -57,6 +57,7 @@ async function turnOff() {
     <div class="card-body p-5">
       <h2 class="mb-3">Use it in Claude Code</h2>
       <p>Turn {{ assistant.name }} on, and Claude Code asks {{ assistant.name }} before it asks you a question. One assistant can be on at a time.</p>
+      <p>Turning {{ assistant.name }} on adds it as a skill, plus one line in your Claude Code instructions. Turning it off removes exactly what was added.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Checking Claude Code…</span></div>
       <template v-else-if="loadError">
         <div class="alert alert-warning" role="alert">{{ loadError }}</div>

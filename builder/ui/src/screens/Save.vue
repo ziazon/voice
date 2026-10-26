@@ -104,8 +104,8 @@ async function signedIn(answer: Said) {
 <template>
   <section class="card">
     <div class="card-body p-5">
-      <h2 class="mb-3">Keep a copy</h2>
-      <p>Persona Builder can keep a copy of {{ assistant.name }} somewhere safe, so you don't lose it if something happens to this computer.</p>
+      <h2 class="mb-3">Keep {{ assistant.name }} safe</h2>
+      <p>Choose where {{ assistant.name }} is kept. A private GitHub repo is a backup only you can see; or keep it on this computer only.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Looking for places to keep {{ assistant.name }}…</span></div>
       <template v-else-if="loadError">
         <div class="alert alert-warning" role="alert">{{ loadError }}</div>
@@ -126,12 +126,13 @@ async function signedIn(answer: Said) {
         </template>
         <div v-if="kind === 'github'" class="mb-4">
           <label for="save-repo-name" class="form-label">Name for the new private repo</label>
-          <input id="save-repo-name" v-model="name" type="text" class="form-control" :disabled="keeping || saving || signingOut">
+          <input id="save-repo-name" v-model="name" type="text" class="form-control" aria-describedby="save-repo-name-help" :disabled="keeping || saving || signingOut">
+          <div id="save-repo-name-help" class="form-hint">Letters, numbers, dots, dashes and underscores, up to 100 characters.</div>
         </div>
         <GithubSignIn v-if="needsSignIn" @signed-in="signedIn" />
         <div class="btn-list mb-4">
           <button type="button" class="btn btn-primary" :disabled="keeping || saving || signingOut || needsSignIn || needsName" @click="keep">{{ keeping ? 'Keeping it…' : 'Keep this choice' }}</button>
-          <button v-if="options.chosen" type="button" class="btn btn-outline-primary" :disabled="saving || keeping || signingOut" @click="save">{{ saving ? 'Saving…' : 'Save now' }}</button>
+          <button v-if="options.chosen" type="button" class="btn btn-outline-primary" :disabled="saving || keeping || signingOut" @click="save">{{ saving ? 'Saving…' : `Save ${assistant.name}` }}</button>
         </div>
         <template v-if="options.signedIn">
           <p class="text-secondary">You're signed in to GitHub on this computer.</p>

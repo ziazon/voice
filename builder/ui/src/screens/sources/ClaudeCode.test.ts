@@ -10,7 +10,7 @@ const folders = { found: true, folders: [
   { project: 'project-two', conversations: 3, read: false },
 ] }
 const counts: ReadCounts = { questions: 1200, heldOut: 180, messages: 3500, privateLeftOut: 7, first: '2026-01-01', last: '2026-10-01' }
-const counted = `Counted ${(1200).toLocaleString()} answers to Claude's questions and ${(3500).toLocaleString()} other messages, from 2026-01-01 to 2026-10-01. 7 that looked private were left out. 180 answers are kept aside to test your assistant with.`
+const counted = `Counted ${(1200).toLocaleString()} answered questions and ${(3500).toLocaleString()} messages you typed, from 2026-01-01 to 2026-10-01. 7 that looked private were left out. 180 answered questions are kept back to test your assistant.`
 
 it('announces loading before the folders arrive', () => {
   const backend = fakeBackend({ claudeCodeFolders: vi.fn().mockReturnValue(new Promise(() => {})) })
@@ -74,7 +74,7 @@ it('omits the date range when no first date is available', async () => {
   await flushPromises()
   await button(wrapper, 'Count first').trigger('click')
   await flushPromises()
-  expect(wrapper.text()).toContain(`${(3500).toLocaleString()} other messages. 7 that looked private`)
+  expect(wrapper.text()).toContain(`${(3500).toLocaleString()} messages you typed. 7 that looked private`)
   expect(wrapper.text()).not.toContain('from null')
 })
 it.each([
@@ -92,4 +92,9 @@ it('shows the folder fallback on an unexpected rejection', async () => {
   const wrapper = screen(ClaudeCode, fakeBackend({ claudeCodeFolders: vi.fn().mockRejectedValue(new Error('private detail')) }), { slug: 'example' })
   await flushPromises()
   expect(wrapper.get('.alert').text()).toBe("Persona Builder couldn't look through your Claude Code history. Close it and open it again.")
+})
+
+it('names the history card clearly', () => {
+  const wrapper = screen(ClaudeCode, fakeBackend(), { slug: 'example' })
+  expect(wrapper.get('h3').text()).toBe('Claude Code history')
 })

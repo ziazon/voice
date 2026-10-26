@@ -7,7 +7,7 @@ defineProps<{ status: ReviewStatus }>()
 <template>
   <section class="card">
     <div class="card-body">
-      <h3 class="card-title">Tests from your answers</h3>
+      <h3 class="card-title">Your answers so far</h3>
       <p v-if="status.tests.waiting === 0 && status.tests.inUse === 0 && status.tests.retired === 0">You haven't given your assistant any answers to learn from yet.</p>
       <template v-else>
         <p>{{ status.tests.waiting.toLocaleString() }} waiting for a refresh, {{ status.tests.inUse.toLocaleString() }} in use, {{ status.tests.retired.toLocaleString() }} retired.</p>

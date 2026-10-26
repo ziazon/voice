@@ -41,3 +41,13 @@ it.each([
   await button(wrapper, 'Back').trigger('click')
   expect(wrapper.emitted('cancel')).toHaveLength(1)
 })
+
+it('labels both the standard and custom pronouns clearly', async () => {
+  const wrapper = screen(NewAssistant)
+  expect(wrapper.get('label[for="assistant-pronouns"]').text()).toBe("Your assistant's pronouns")
+  expect(wrapper.get('label[for="principal-pronouns"]').text()).toBe('How your assistant refers to you')
+  await wrapper.get('#assistant-pronouns').setValue('other')
+  await wrapper.get('#principal-pronouns').setValue('other')
+  expect(wrapper.get('label[for="assistant-pronouns-other"]').text()).toBe("Your assistant's pronouns")
+  expect(wrapper.get('label[for="principal-pronouns-other"]').text()).toBe('How your assistant refers to you')
+})

@@ -50,7 +50,7 @@ async function agree() {
           <p class="text-secondary">You agreed on {{ assistant.consent.agreedOn }}.</p>
           <button type="button" class="btn btn-primary" @click="emit('next')">Next: connect Claude</button>
         </template>
-        <button v-else type="button" class="btn btn-primary" :disabled="saving" @click="agree">{{ saving ? 'Saving…' : 'I agree' }}</button>
+        <button v-else type="button" class="btn btn-primary" :disabled="saving" @click="agree">{{ saving ? 'Saving…' : 'Agree and continue' }}</button>
       </template>
       <div v-if="error" class="alert alert-danger mt-3" role="alert">{{ error }}</div>
     </div>

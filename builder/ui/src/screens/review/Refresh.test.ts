@@ -142,3 +142,15 @@ it('clears previous test progress as soon as a new draft starts', async () => {
   await wrapper.setProps({ status }); await button(wrapper, 'Draft a change').trigger('click')
   expect(wrapper.find('ul[aria-live="polite"]').exists()).toBe(false)
 })
+
+it('explains approval and rejection only while awaiting a decision', async () => {
+  const wrapper = screen(Refresh, fakeBackend(), { slug: 'example', status: { ...status, change } })
+  const help = wrapper.get('p.text-secondary.mt-2.mb-0')
+  expect(help.text()).toContain('Approve: your assistant changes only after the change is tested on all your answers and nothing gets worse.')
+  expect(help.text()).toContain('Reject: nothing changes, and your answers stay saved for the next refresh.')
+  expect(help.element.previousElementSibling).toBe(button(wrapper, 'Approve').element.parentElement)
+  await wrapper.setProps({ status: { ...status, change: { ...change, approved: true } } })
+  expect(wrapper.find('p.text-secondary.mt-2.mb-0').exists()).toBe(false)
+  await wrapper.setProps({ status })
+  expect(wrapper.find('p.text-secondary.mt-2.mb-0').exists()).toBe(false)
+})

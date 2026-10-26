@@ -94,3 +94,10 @@ it('uses the safe off fallback and reloads', async () => {
   expect(wrapper.find('.alert-warning').text()).toBe("Persona Builder couldn't turn the assistant off. Close it and open it again, then try again.")
   expect(backend.claudeCodeStatus).toHaveBeenCalledTimes(2)
 })
+
+it('explains what turning on adds and turning off removes', () => {
+  const wrapper = screen(TurnOn, fakeBackend(), { assistant: example })
+  const paragraphs = wrapper.findAll('p')
+  expect(paragraphs[1]!.text()).toContain(`Turning ${example.name} on adds it as a skill, plus one line in your Claude Code instructions.`)
+  expect(paragraphs[1]!.text()).toContain('Turning it off removes exactly what was added.')
+})

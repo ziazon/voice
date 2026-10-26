@@ -10,7 +10,7 @@ const emit = defineEmits<{ next: [] }>()
 
 <template>
   <section>
-    <h2 class="mb-3">Your history</h2>
+    <h2 class="mb-3">What {{ assistant.name }} learns from</h2>
     <p>Your assistant learns from what you've written to Claude. Persona Builder reads it on this computer and keeps it here.</p>
     <div class="d-flex flex-column gap-4">
       <ClaudeCode :slug="assistant.slug" />

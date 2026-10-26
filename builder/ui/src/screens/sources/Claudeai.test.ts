@@ -95,3 +95,8 @@ it('clears the previous export and chats when a replacement cannot be read', asy
   expect(wrapper.findAll('button').map(item => item.text())).not.toContain('List the chats')
   expect(wrapper.findAll('button').map(item => item.text())).not.toContain('Read the chats marked yours')
 })
+
+it('names the history card clearly', () => {
+  const wrapper = screen(Claudeai, fakeBackend(), { slug: 'example' })
+  expect(wrapper.get('h3').text()).toBe('claude.ai chats')
+})

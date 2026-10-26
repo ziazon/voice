@@ -60,14 +60,15 @@ async function keep() {
               <textarea :id="`${slug}-review-situation`" v-model="situation" class="form-control" rows="2" maxlength="2000" />
             </div>
             <div class="mb-3">
-              <label :for="`${slug}-review-wanted`" class="form-label">What you'd want</label>
+              <label :for="`${slug}-review-wanted`" class="form-label">What you'd have done</label>
               <textarea :id="`${slug}-review-wanted`" v-model="wanted" class="form-control" rows="2" maxlength="2000" />
             </div>
             <div class="mb-3">
               <label :for="`${slug}-review-said`" class="form-label">What your assistant said, if it got this wrong (optional)</label>
               <textarea :id="`${slug}-review-said`" v-model="assistantSaid" class="form-control" rows="2" maxlength="2000" />
             </div>
-            <button type="submit" class="btn btn-primary" :disabled="busy || !ready">Keep this answer</button>
+            <p class="form-hint">Leave out anything private, such as someone's name. It's checked before it's kept.</p>
+            <button type="submit" class="btn btn-primary" :disabled="busy || !ready">Keep my answer</button>
           </fieldset>
         </form>
       </template>

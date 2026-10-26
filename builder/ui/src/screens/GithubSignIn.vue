@@ -69,7 +69,7 @@ onBeforeUnmount(() => {
     <template v-if="code">
       <p>Go to github.com/login/device and enter this code:</p>
       <p data-code class="font-monospace fs-1">{{ code }}</p>
-      <button type="button" class="btn btn-outline-secondary mb-3" @click="openPage">Open GitHub's page</button>
+      <button type="button" class="btn btn-outline-secondary mb-3" @click="openPage">Open GitHub</button>
       <div v-if="linkError" class="alert alert-warning small" role="alert">{{ linkError }}</div>
       <div class="d-flex align-items-center gap-2 mb-3" role="status">
         <span class="spinner-border spinner-border-sm" aria-hidden="true" />

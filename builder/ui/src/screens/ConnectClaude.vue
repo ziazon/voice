@@ -86,7 +86,7 @@ onMounted(loadLimit)
   <section class="card">
     <div class="card-body p-5">
       <h2 class="mb-3">Connect Claude</h2>
-      <p>Persona Builder works through your own Claude Code, signed in to your own Claude account. It never asks for your Claude password.</p>
+      <p>Persona Builder works through your own Claude Code, signed in to your own Claude account. It checks that now, and you set how much it may use in a day.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Checking Claude Code…</span></div>
       <template v-else-if="status">
         <div class="alert" :class="status.ready ? 'alert-success' : 'alert-warning'" role="alert">{{ status.message }}</div>
@@ -94,6 +94,7 @@ onMounted(loadLimit)
         <button v-if="status.ready" type="button" class="btn btn-primary" @click="emit('next')">Next: your history</button>
         <button v-if="!status.ready" type="button" class="btn btn-primary" @click="check">Check again</button>
       </template>
+      <p class="text-secondary mt-3 mb-0">Persona Builder never asks for your Claude password: you sign in to Claude Code yourself. Claude is the only choice for now. Other AI providers come later.</p>
     </div>
   </section>
   <section class="card mt-3">
