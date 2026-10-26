@@ -2,6 +2,39 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.7d: stop for the day when Claude Code says the plan is nearly used up (2026-10-26, lane: V1)
+
+- **What:** V-Q8's answer (option 1): dollars only for the limit (PB7.7c), plus a guard from
+  the plan. Each call now reads Claude Code's stream (`--output-format stream-json --verbose`) in
+  place of the single JSON reply, because only the stream carries a `rate_limit_event`. The worst
+  plan status a call reports (`allowed_warning` or `rejected`) goes on its ledger line as `plan`.
+  Any such line today refuses every later call for that assistant until the next local day, with a
+  fixed sentence the screens show (`text::PLAN_STOPPED`). A rejected plan explains a failed call
+  (outcome `plan-limit`). A ledger `plan` value other than those two reads as a damaged ledger, so
+  nothing spends. The percentage choice from the mock isn't built. Brief:
+  `plans/briefs/PB7.7d-plan-guard.md`.
+- **Sources:** the Agent SDK's `RateLimitEvent` (Python docs) and the headless docs' stream-json
+  section, read 2026-10-26; the event's exact form (`type: "rate_limit_event"`, `rate_limit_info`
+  with `status`) was read from Claude Code 2.1.292's own code.
+- **Who built it:** Codex, from the brief, plus two follow-ups: a single ledger read in `start`,
+  and a test the Verifier asked for. The brief's private `plan_stopped_today` was folded into
+  `today()`.
+- **Verified:** red first (all ten plan tests, the argv test and the api test failed for the stated
+  reasons), then green; mutation checks, each caught: no `--verbose`, `start` ignoring the stop,
+  `allowed` counted as stopping, first result instead of last, any ledger `plan` value accepted,
+  the rejected rewrite limited to `error`. Security review: no findings. Verifier (Fable): PASS. One
+  should-fix (a rejected plan with no result line, or no answer) is covered by
+  `a_rejected_plan_explains_any_failed_reply`. `bash scripts/ci-local.sh` is the land's gate (`direct-to-main.sh land`).
+- **Not verified:** a live signed-in call. From this job run Claude Code isn't signed in, so the
+  stream's shape is proven by stubs and by Claude Code's code, not on the wire. If the live result
+  line lacked `structured_output`, every call would end `no-output` and fail (fail closed: counted
+  at Claude Code's cost, or at its budget when none is given). Owed as a walk.
+- **Expected behaviour (not bugs):** a rejected plan with a signed-out reply shows *not signed in*
+  now and the plan sentence on the next call. When both limits are reached, the screens show the
+  dollar sentence. The stop is per assistant.
+- **Known limits:** in `.ai/SECURITY.md`. Claude Code reports only on a change, at a level it
+  doesn't document. A stopped or cut-off call leaves no output.
+
 ## PB7.7b: each screen's words checked against its mock (2026-10-26, lane: V2)
 
 - **What:** split from PB7.7 (the reviewed mocks). The screens take the mocks' words wherever the app
