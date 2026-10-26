@@ -20,6 +20,7 @@ if [ ! -d "$source_app" ] || [ -L "$source_app" ]; then
   fail "Persona Builder.app isn't next to this installer. Unzip the file you were sent again and run install.sh from the folder it makes."
 fi
 damaged='This copy of Persona Builder looks damaged. Ask for a new copy.'
+# --strict also refuses a symlink that leaves the bundle, which keeps xattr -dr below inside the copy, so this check stays first.
 codesign --verify --deep --strict "$source_app" >/dev/null 2>&1 || fail "$damaged"
 
 executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$source_app/Contents/Info.plist" 2>/dev/null) || fail "$damaged"

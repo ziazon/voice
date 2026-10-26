@@ -38,6 +38,9 @@ else
 fi
 
 version=$(python3 -I -c 'import json; print(json.load(open("builder/app/tauri.conf.json"))["version"])')
+if [ -n "$(git status --porcelain -- builder crew Cargo.toml Cargo.lock)" ]; then
+  fail 'commit or set aside your changes under builder/, crew/ and the Cargo files first'
+fi
 pnpm -C builder/ui install --frozen-lockfile
 pnpm -C builder/ui tauri "${build_args[@]}"
 target_dir=$(CARGO_NET_OFFLINE=true cargo metadata --format-version 1 --no-deps | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
@@ -58,7 +61,7 @@ chmod 755 "$package/install.sh"
 cp 'builder/install/How to install.txt' "$package/How to install.txt"
 zip="$repo/dist/$name.zip"
 rm -f "$zip"
-ditto -c -k --keepParent "$package" "$zip"
+ditto -c -k --norsrc --noextattr --keepParent "$package" "$zip"
 cd "$repo/dist"
 shasum -a 256 "$name.zip" > "$name.zip.sha256"
 echo "$zip"

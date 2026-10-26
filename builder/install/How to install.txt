@@ -5,9 +5,12 @@ the app tells you how to get it.
 
 1. Double-click the zip file you were sent. A folder called "Persona Builder" appears next to it.
 2. Open Terminal: press Command and Space, type Terminal, then press Return.
-3. Type bash and a space. Drag the file install.sh from the "Persona Builder" folder into the
+3. Check that this is the copy you were sent. Type shasum -a 256 and a space, drag the zip file
+   into the Terminal window, then press Return. A long code appears. It must match the code you
+   were sent separately, letter for letter. If it doesn't, stop and ask for a new copy.
+4. Type bash and a space. Drag the file install.sh from the "Persona Builder" folder into the
    Terminal window, then press Return.
-4. Persona Builder opens. Next time, you'll find it in the Applications folder inside your home
+5. Persona Builder opens. Next time, you'll find it in the Applications folder inside your home
    folder (in the Finder, choose Go, then Home).
 
 This copy isn't signed by Apple yet, so the installer tells your Mac it is safe to open. It asks

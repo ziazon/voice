@@ -90,6 +90,7 @@ check "$scratch/err" 'Ask for a copy made for this Mac' 'wrong-chip explanation 
 not_installed
 echo 'mac_install_test: wrong chip passed'
 
+# The two signature checks and the quarantine re-check are belt and braces, so breaking only one of them does not fail this test.
 kit damaged "$arch"
 printf x >> "$kit_dir/Persona Builder.app/Contents/MacOS/persona-builder-app"
 run --no-open
