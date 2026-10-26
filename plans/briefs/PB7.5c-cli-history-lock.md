@@ -109,3 +109,37 @@ Then `cargo test -p persona-builder-cli -j 2`, `cargo clippy -p persona-builder-
 All ten commands take the lock as decided; the new tests and every existing test green;
 `.ai/SECURITY.md` updated as decision 7 says; a short list back of files changed, tests added, the
 three mutation results and the gate output's last lines.
+
+## Fix-up pass (after the security review and the Verifier, 2026-10-26)
+
+Both passed with no must-fix. Make exactly these changes, test-first where a test is named; do not
+commit.
+
+1. **No empty state folder after a failed `mine` or `claudeai titles`.** In `fn mine`, move
+   `projects_path(...)` and `Filters::compile(...)` above the lock; in `fn claudeai_titles`, move
+   `Filters::compile(...)` and `claudeai::read_export(...)` above the lock. Neither reads the state
+   folder. Red first: a test in `history_lock.rs` that runs `mine --projects <a missing folder>` and
+   `claudeai titles --export <a missing file>` on a fresh home, expects exit 1, and asserts
+   `~/.claude/state/wren` does not exist.
+2. **Prove the claudeai commands lock before they read.** In the busy test, for `claudeai titles`,
+   `claudeai mark` and `claudeai mine`, seed a `claudeai-review.tsv` that `read_review` refuses
+   (e.g. one line of junk) before taking the lock, and still expect exactly the `BUSY` sentence (a
+   read before the lock would give the parse error instead). Keep the second, unlocked run's
+   success check for the other seven, and for the three claudeai ones re-seed the good review before
+   the unlocked run. Mutation: move `claudeai_titles`'s lock below `existing_review`; this test
+   must go red. Restore with `cmp`.
+3. **Two helpers, not one with a dead argument.** Replace `history_lock(home, slug, create,
+   missing)` with `fn history_lock_new(home: &Path, slug: &str) -> Result<StateLock>` (creating:
+   `lock_state`) and `fn history_lock_existing(home: &Path, slug: &str, missing: impl FnOnce() ->
+   Error) -> Result<StateLock>` (non-creating, maps `NotFound` to `missing()`). `mine` and
+   `claudeai titles` use the first; the eight the second.
+4. **A comment** above `mine_dry_run_ignores_busy_state_and_writes_nothing`: the test's own lock
+   makes the folder, so "creates nothing" is pinned by `mine.rs`'s
+   `dry_run_prints_summary_without_creating_state`; this test pins only that a dry run is not
+   refused while the lock is held.
+5. **`.ai/SECURITY.md`, the forget row:** replace the sentence added by this slice with:
+   `The CLI's history commands (`mine`, `claudeai titles\|mark\|mine`, `merge`, `split`, `chunk`, `distil-in`, `round`, `interview answer`) hold the same lock while they read and write, so a forget is refused as busy until they finish, or they find nothing (of these, only `mine` and `claudeai titles` may make the state folder; a dry run takes no lock and writes nothing). Known limit (PB7.5d): the CLI's `build`, `interview draft` and `keep` read history before they take the creating lock, so a forget in between can leave a recreated state folder holding files made from it.`
+
+Then `cargo test -p persona-builder-cli -j 2`, `cargo clippy -p persona-builder-cli --all-targets
+-j 2 -- -D warnings`, `cargo fmt --all --check`. Report the mutation result for item 2 and the red
+result for item 1.
