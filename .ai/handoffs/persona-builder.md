@@ -29,14 +29,16 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **The red gate, and its fix:** the first land's `ci-local.sh` failed on
   `lock_with_nothing_between_still_locks` (busy just after a lock was dropped): the ingest lib tests
   failed about two runs in three at the default thread count (earlier runs used two threads, which
-  hid it). The cause is a test race, not a product bug: a lib test that starts a child holds a copy
-  of every open descriptor until the child execs, another test's lock included. The state lock's
+  hid it). The cause is a test race, not a product bug: a child started by one lib test holds a copy
+  of every open descriptor until it execs, another test's lock included. The state lock's
   folder is opened close-on-exec, so a started child (Claude Code, in the app) lets go of the lock
   once it runs: proven by a probe, kept as `a_started_child_keeps_no_lock_once_it_runs`, which goes
   red with `O_CLOEXEC` removed. The ingest lib tests that lock or start a child now take one shared
   test mutex (`serial_test`), as the `grow` and `api` tests already do: 0 of 40 runs failed at the
   default thread count (and 0 of 20 in Claude's own check), against 34 of 40 with a fresh mutex per
-  call.
+  call. `/security-review` (sub-agent) on this delta: no findings; a delta Verifier (Opus): PASS,
+  two wording nits (this line, fixed; the new test's comment says its 200 ms wait lets the child
+  exec, though `spawn` likely returns after the exec already: harmless, left).
 - **Not verified, left:** no live proof in the app: the race needs a forget inside two system
   calls, which only the test seam reaches. Rebased onto PB7.5b, whose command-line forget holds
   `lock_existing_state` and so now gets the same check (by reading the code, a folder replaced between the open and the
