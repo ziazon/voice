@@ -11,7 +11,8 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
     let answer_flag = format!("{}-answer", member.principal_slug);
     // clap keeps argument names for the life of the command; these member-specific names
     // belong to this invocation, rather than being static flags on the outer parser.
-    let mut command = Command::new("persona-builder record");
+    let mut command = Command::new("persona-builder record")
+        .about("Keep one decision the assistant made, or your answer to one it handed back.");
     for name in [
         "work", "kind", "category", "tier", "question", "pick", "rule", "answer",
     ] {
@@ -22,6 +23,7 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
         };
         let mut arg = Arg::new(name)
             .long(flag.to_owned())
+            .allow_hyphen_values(true)
             .required(!matches!(name, "rule" | "answer"));
         if name == "kind" {
             arg = arg.value_parser(["decided", "escalated"]);

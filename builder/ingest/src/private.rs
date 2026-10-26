@@ -769,6 +769,7 @@ mod tests {
         fs::remove_dir(&path).unwrap();
         let target = home.0.join("target.jsonl");
         fs::write(&target, b"untouched").unwrap();
+        fs::set_permissions(&target, Permissions::from_mode(0o600)).unwrap();
         std::os::unix::fs::symlink(&target, &path).unwrap();
         assert!(append_private(&home.0, "wren", "live.jsonl", b"line\n").is_err());
         assert_eq!(fs::read(target).unwrap(), b"untouched");

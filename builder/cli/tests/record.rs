@@ -99,10 +99,16 @@ fn records_match_python_bytes_with_and_without_optional_fields() {
         eprintln!("skipped: python3 not found");
         return;
     }
-    for optional in [false, true] {
+    for (optional, work, question) in [
+        (false, "kit", "Garder le café \"petit\"?"),
+        (true, "kit", "Garder le café \"petit\"?"),
+        (false, "- fix login", "-5 or 5?"),
+    ] {
         let f = Fixture::new();
         f.seed();
         let mut arguments = args();
+        arguments[1] = work;
+        arguments[9] = question;
         if optional {
             arguments.extend([
                 "--rule",
@@ -115,7 +121,7 @@ fn records_match_python_bytes_with_and_without_optional_fields() {
         success(&out);
         assert_eq!(
             text(&out.stdout),
-            "recorded a decided scope decision (high) for kit\n"
+            format!("recorded a decided scope decision (high) for {work}\n")
         );
         let python_log = f.home.join("python.jsonl");
         let python = Command::new("python3")
@@ -153,6 +159,30 @@ fn records_match_python_bytes_with_and_without_optional_fields() {
     }
 }
 #[test]
+fn help_shows_member_flags_without_writing() {
+    let f = Fixture::new();
+    f.seed();
+    for help in ["--help", "-h"] {
+        let out = f.run(&[help]);
+        success(&out);
+        let stdout = text(&out.stdout);
+        for expected in [
+            "--ari-pick",
+            "--robin-answer",
+            "Keep one decision the assistant made, or your answer to one it handed back.",
+            "--work",
+            "--kind",
+            "--category",
+            "--tier",
+            "--question",
+            "--rule",
+        ] {
+            assert!(stdout.contains(expected), "missing {expected}: {stdout}");
+        }
+        assert!(!f.log().exists());
+    }
+}
+#[test]
 fn appends_without_replacing_existing_lines() {
     let f = Fixture::new();
     f.seed();
@@ -179,6 +209,7 @@ fn unsafe_log_targets_are_refused_unchanged() {
         f.seed();
         let target = f.home.join("target");
         fs::write(&target, b"untouched").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
         match kind {
             "symlink" => symlink(&target, f.log()).unwrap(),
             "directory" => fs::create_dir(f.log()).unwrap(),
@@ -199,7 +230,14 @@ fn unsafe_log_targets_are_refused_unchanged() {
 }
 #[test]
 fn member_flags_and_choices_are_usage_errors_without_writing() {
-    for change in ["kind", "tier", "missing-pick", "other-pick", "log"] {
+    for change in [
+        "kind",
+        "tier",
+        "missing-pick",
+        "other-pick",
+        "log",
+        "unknown",
+    ] {
         let f = Fixture::new();
         f.seed();
         let mut arguments = args();
@@ -210,6 +248,7 @@ fn member_flags_and_choices_are_usage_errors_without_writing() {
                 arguments.truncate(10);
             }
             "other-pick" => arguments[10] = "--robin-pick",
+            "unknown" => arguments.extend(["--nope", "x"]),
             _ => arguments.extend(["--log", "elsewhere.jsonl"]),
         }
         let out = f.run(&arguments);

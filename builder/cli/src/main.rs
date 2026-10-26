@@ -190,6 +190,7 @@ enum Command {
         json: bool,
     },
     /// Keep one decision the assistant made, or your answer to one it handed back.
+    #[command(disable_help_flag = true)]
     Record {
         member_dir: PathBuf,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
