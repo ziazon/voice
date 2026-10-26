@@ -2,6 +2,36 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.5a: app commands that spend open the ledger only on an existing state folder (2026-10-26, lane: V2)
+
+- **What:** a finding from PB7.5's Verifier pass and security review (inherited from PB7.4). The
+  app's one ledger opener (`building::open`: build, the interview draft, the refresh draft and
+  test) opened the spending ledger with a lock that creates the state folder, so a forget landing
+  between the permission check and that open recreated an empty state folder (no data written, no
+  call made). It now uses a new `Session::open_existing`, on the non-creating state lock; the CLI
+  keeps today's open. The state lock itself now checks after `flock` that it holds the folder at
+  the path (device and inode): a folder forgotten or replaced between the open and the lock
+  answers the permission sentence (non-creating) or "busy" (creating). That closes the item
+  PB7.3a left. PB7.5's two refresh forget tests now check no state folder is left. No new
+  sentence. Brief: `plans/briefs/PB7.5a-ledger-on-an-existing-state-folder.md`.
+- **Who wrote it:** Codex, in four passes (the slice; the lock identity fix-up; the rebase onto
+  PB7.5; one more test). Her sandbox refuses commits and socket tests, so Claude committed, ran
+  the gates and wrote this record.
+- **Verified:** red first in each pass, then green, with a mutation check per claim (cp backup,
+  restored by `cmp`): five across the first three passes, as the brief lists them, and in the last
+  the re-open after `flock` made creating, which turns the new
+  `creating_lock_refuses_a_folder_forgotten_before_the_lock` red on the folder still existing.
+  `ci-local.sh` green on `29c773a` before the rebases onto PB8 and PB7.5b, and on the rebased head
+  in the land (it never lands on red). `/security-review` (sub-agent) on the branch twice and on
+  the last test: nothing medium or higher. Verifier (Fable): PASS, two should-fixes, both fixed;
+  repeat (Opus): PASS, one should-fix (the last test), fixed; a delta pass (Opus) after the
+  rebase onto PB8: the code unchanged by it and the new test closing that should-fix, both proven.
+- **Not verified, left:** no live proof in the app: the race needs a forget inside two system
+  calls, which only the test seam reaches. Rebased onto PB7.5b, whose command-line forget holds
+  `lock_existing_state` and so now gets the same check (by reading the code, a folder replaced between the open and the
+  lock prints "Nothing to forget"); its tests ran green on the rebased head, no new test for that
+  pairing. The CLI's own history commands still take no lock (PB7.5c).
+
 ## PB7.8: a short interview for the thin kinds only (2026-10-26, lane: V1)
 
 - **What:** from V-Q7 (answered with option 1). With 150 or more answered questions, `interview draft`
