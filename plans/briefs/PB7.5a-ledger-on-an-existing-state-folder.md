@@ -215,3 +215,73 @@ mutation (cp backup, `cmp -s` restore, never `git checkout --`), see the new tes
 `builder: PB7.5a a forgotten folder stays forgotten under the creating lock`. Run from `builder/`
 with `CARGO_BUILD_JOBS=2`: `cargo fmt --all -- --check`,
 `cargo test -p persona-builder-ingest --lib -- --test-threads=2`.
+
+## Third fix-up pass (the land's gate went red on a test race)
+
+`ci-local.sh` failed on `private::tests::lock_with_nothing_between_still_locks`: the creating lock
+answered busy just after the non-creating one was dropped. The ingest lib tests fail about two runs
+in three at the default thread count, and never with only the `private::` tests or only the others.
+The cause is a test race, not a product bug: a lib test that starts a child process (`mine::tests`
+runs `mkfifo` and `python3`) can briefly hold a copy of every open descriptor between the start and
+the exec, another test's state lock included. The state lock's folder descriptor is opened
+`O_CLOEXEC`, so the child lets go of it at exec; Claude proved that with a probe (lock, start
+`sleep 2`, drop, lock again: free) and a mutation (the same probe busy with `O_CLOEXEC` removed from
+`DIRECTORY_FLAGS`). `builder/grow/tests/refresh.rs` (`SUBPROCESS_TEST`) and
+`builder/api/tests/building.rs` (`CASES`) already serialise their tests for the same reason.
+
+Decisions (made, do not reopen):
+
+1. In `builder/ingest/src/lib.rs`, add one test-only helper after the `pub mod` lines:
+
+   ```rust
+   /// Lib tests that hold a state lock or start a child process run one at a time: a child started
+   /// by another test thread holds a copy of every open descriptor until it execs, a lock included.
+   #[cfg(test)]
+   pub(crate) fn serial_test() -> std::sync::MutexGuard<'static, ()> {
+       static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+       SERIAL.lock().unwrap_or_else(|poison| poison.into_inner())
+   }
+   ```
+
+2. In `builder/ingest/src/private.rs`'s `mod tests`, `Home` holds the guard for its whole life:
+   `struct Home(PathBuf, std::sync::MutexGuard<'static, ()>);`. `Home::new` takes
+   `crate::serial_test()` first, before it creates the folder or takes the first lock, and builds
+   `Self(path, guard)`. `home.0` stays the path everywhere; the `Drop` impl is unchanged (it runs
+   before the guard is released).
+3. In `builder/ingest/src/mine.rs`'s `mod tests`, both tests take
+   `let _serial = crate::serial_test();` as their first line (in
+   `every_worktree_suffix_matches_python`, before the `parity_tools_available` early return).
+4. Keep the probe as a test of the product's own promise (the app starts Claude Code while it holds
+   the lock), in `private.rs`'s `mod tests`, after `lock_with_nothing_between_still_locks`:
+
+   ```rust
+   #[test]
+   fn a_started_child_keeps_no_lock_once_it_runs() {
+       let home = Home::new();
+       let lock = lock_state(&home.0, "wren").unwrap();
+       let mut child = std::process::Command::new("sleep").arg("2").spawn().unwrap();
+       // Give the child time to exec, which closes every descriptor opened with O_CLOEXEC.
+       std::thread::sleep(std::time::Duration::from_millis(200));
+       drop(lock);
+       let again = lock_existing_state(&home.0, "wren");
+       child.kill().unwrap();
+       child.wait().unwrap();
+       assert!(again.is_ok(), "a started child kept the state lock: {again:?}");
+   }
+   ```
+
+No product code change; no other file. Proofs, each with a cp backup and a `cmp -s` restore (never
+`git checkout --`):
+
+- Red for the new test: remove `libc::O_CLOEXEC` from `DIRECTORY_FLAGS` in `private.rs`; the new
+  test fails on its assertion; restore; it passes.
+- The race is gone: from `builder/`, with `CARGO_BUILD_JOBS=2`, run
+  `cargo test -p persona-builder-ingest --lib` (the default thread count, no `--test-threads`) 40
+  times in a loop and count failures: 0 of 40. Then make `serial_test` return a guard on a fresh
+  local `Mutex` each call (`Box::leak(Box::new(std::sync::Mutex::new(()))).lock().unwrap()`), run
+  the same loop 40 times and see failures again; restore.
+- `cargo fmt --all -- --check` and
+  `cargo clippy -p persona-builder-ingest --all-targets -- -D warnings`.
+
+Commit on top (never amend): `builder: PB7.5a the ingest lib tests that lock or start a child run
+one at a time`. If your sandbox refuses the commit, leave the change staged and say so.
