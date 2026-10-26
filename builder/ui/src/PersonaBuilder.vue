@@ -120,7 +120,7 @@ function home() {
               <Forget :key="`forget-${assistant.slug}`" :assistant="assistant" @forgotten="forgotten" />
             </template>
             <Build v-if="buildOpened && assistant" v-show="view === 'build'" :key="assistant.slug" :assistant="assistant" @running="buildRunning = $event" @report="goToStep('report')" />
-            <Review v-if="reviewOpened && assistant" v-show="view === 'review'" :key="assistant.slug" :assistant="assistant" @running="reviewRunning = $event" />
+            <Review v-if="reviewOpened && assistant" v-show="view === 'review'" :active="view === 'review'" :key="assistant.slug" :assistant="assistant" @running="reviewRunning = $event" />
           </main>
         </div>
       </div>

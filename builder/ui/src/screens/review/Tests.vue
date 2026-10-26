@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { ReviewStatus } from '../../types/generated/ReviewStatus'
 
-defineProps<{ slug: string, status: ReviewStatus }>()
-defineEmits<{ changed: [ReviewStatus] }>()
+defineProps<{ status: ReviewStatus }>()
 </script>
 
 <template>

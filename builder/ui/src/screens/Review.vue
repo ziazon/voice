@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useBackend } from '../backend'
 import { failureMessage } from '../failure'
 import type { Assistant } from '../types/generated/Assistant'
@@ -8,13 +8,19 @@ import TeachIt from './review/TeachIt.vue'
 import Tests from './review/Tests.vue'
 import Refresh from './review/Refresh.vue'
 
-const props = defineProps<{ assistant: Assistant }>()
+const props = defineProps<{ assistant: Assistant, active: boolean }>()
 const emit = defineEmits<{ running: [boolean] }>()
 const backend = useBackend()
 const status = ref<ReviewStatus | null>(null)
 const loading = ref(true)
 const error = ref('')
-onMounted(async () => {
+const running = ref(false)
+function setRunning(value: boolean) {
+  running.value = value
+  emit('running', value)
+}
+async function reload() {
+  error.value = ''
   try {
     status.value = await backend.reviewStatus({ slug: props.assistant.slug })
   } catch (failure) {
@@ -22,6 +28,10 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+onMounted(reload)
+watch(() => props.active, (active, wasActive) => {
+  if (active && !wasActive && !loading.value && !running.value) void reload()
 })
 </script>
 
@@ -35,8 +45,8 @@ onMounted(async () => {
     <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
     <div v-if="status" class="d-flex flex-column gap-4">
       <TeachIt :slug="assistant.slug" :status="status" @changed="status = $event" />
-      <Tests :slug="assistant.slug" :status="status" @changed="status = $event" />
-      <Refresh :slug="assistant.slug" :status="status" @changed="status = $event" @running="emit('running', $event)" />
+      <Tests :status="status" />
+      <Refresh :slug="assistant.slug" :status="status" @changed="status = $event" @running="setRunning" />
     </div>
   </section>
 </template>

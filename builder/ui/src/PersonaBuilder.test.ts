@@ -231,3 +231,18 @@ it('keeps review test lines across steps and blocks choosing another assistant u
   expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeUndefined()
   expect(wrapper.text()).not.toContain('Wait for the test to finish to choose another assistant.')
 })
+
+it('reloads review status after going to Build and back', async () => {
+  const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed: true, agreedOn: '2026-10-25' } }]) })
+  const wrapper = screen(PersonaBuilder, backend); await flushPromises()
+  await button(wrapper, 'Open').trigger('click'); await flushPromises()
+  await button(wrapper, 'Review').trigger('click'); await flushPromises()
+  expect(wrapper.text()).toContain('Build your assistant first.')
+  expect(backend.reviewStatus).toHaveBeenCalledTimes(1)
+  await button(wrapper, 'Build').trigger('click'); await flushPromises()
+  vi.mocked(backend.reviewStatus).mockResolvedValue({ built: true, areas: [], tests: { waiting: 1, inUse: 0, retired: 0 }, byArea: [], change: null })
+  await button(wrapper, 'Review').trigger('click'); await flushPromises()
+  expect(backend.reviewStatus).toHaveBeenCalledTimes(2)
+  expect(wrapper.text()).not.toContain('Build your assistant first.')
+  expect(button(wrapper, 'Draft a change').attributes('disabled')).toBeUndefined()
+})
