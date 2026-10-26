@@ -1640,7 +1640,22 @@ fn places(claude_home: Option<PathBuf>) -> Result<Places> {
 fn forget(member_dir: PathBuf, yes: bool) -> Result<()> {
     let home = places(None)?.home;
     let member = read_member(&member_dir.join("member.json"))?;
-    let forgotten = persona_builder::forget::forget(&member_dir, &home, yes)?;
+    let mut forgotten = persona_builder::forget::forget(&member_dir, &home, false)?;
+    if yes && forgotten.existed {
+        let _lock = match persona_builder_ingest::private::lock_existing_state(&home, &member.slug)
+        {
+            Ok(lock) => lock,
+            Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+                println!(
+                    "Nothing to forget: {} is not there.",
+                    forgotten.path.display()
+                );
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        };
+        forgotten = persona_builder::forget::forget(&member_dir, &home, true)?;
+    }
     if !forgotten.existed {
         println!(
             "Nothing to forget: {} is not there.",

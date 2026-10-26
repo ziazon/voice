@@ -1,6 +1,8 @@
 use persona_builder::crew::{NewMember, new_member};
+use persona_builder_ingest::private::{self, lock_state};
 use std::{
     fs,
+    os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
@@ -25,9 +27,7 @@ impl Drop for Scratch {
     }
 }
 
-#[test]
-fn forget_prints_exact_preview_delete_and_missing_text() {
-    let scratch = Scratch::new();
+fn fixture(scratch: &Scratch) -> (PathBuf, PathBuf, PathBuf) {
     let member = scratch.0.join("ari");
     new_member(
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
@@ -45,8 +45,22 @@ fn forget_prints_exact_preview_delete_and_missing_text() {
     let home = scratch.0.join("home");
     let state = home.join(".claude/state/ari");
     fs::create_dir_all(state.join("drafts")).unwrap();
+    for folder in [
+        home.join(".claude"),
+        home.join(".claude/state"),
+        state.clone(),
+    ] {
+        fs::set_permissions(folder, fs::Permissions::from_mode(0o700)).unwrap();
+    }
     fs::write(state.join("history.json"), "invented history").unwrap();
     fs::write(state.join("drafts/notes.md"), "invented draft").unwrap();
+    (member, home, state)
+}
+
+#[test]
+fn forget_prints_exact_preview_delete_and_missing_text() {
+    let scratch = Scratch::new();
+    let (member, home, state) = fixture(&scratch);
     for (yes, expected) in [
         (
             false,
@@ -106,4 +120,67 @@ fn forget_prints_exact_preview_delete_and_missing_text() {
         assert!(member.join("member.json").is_file());
         assert!(member.join("SKILL.md").is_file());
     }
+}
+
+#[test]
+fn forget_refuses_busy_state_then_deletes_after_unlock() {
+    let scratch = Scratch::new();
+    let (member, home, state) = fixture(&scratch);
+    let lock = lock_state(&home, "ari").unwrap();
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+            .env("HOME", &home)
+            .env("CLAUDE_CONFIG_DIR", scratch.0.join("other-claude"))
+            .arg("forget")
+            .arg(&member)
+            .arg("--yes")
+            .output()
+            .unwrap()
+    };
+    let output = run();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains(private::BUSY));
+    assert_eq!(
+        fs::read_to_string(state.join("history.json")).unwrap(),
+        "invented history"
+    );
+    assert_eq!(
+        fs::read_to_string(state.join("drafts/notes.md")).unwrap(),
+        "invented draft"
+    );
+    drop(lock);
+    let output = run();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!state.exists());
+}
+
+#[test]
+fn forget_missing_state_never_creates_it() {
+    let scratch = Scratch::new();
+    let (member, home, state) = fixture(&scratch);
+    fs::remove_dir_all(home.join(".claude")).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        .env("HOME", &home)
+        .env("CLAUDE_CONFIG_DIR", scratch.0.join("other-claude"))
+        .arg("forget")
+        .arg(&member)
+        .arg("--yes")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("Nothing to forget: {} is not there.\n", state.display())
+    );
+    assert!(output.stderr.is_empty());
+    assert!(!state.exists());
+    assert!(!home.join(".claude").exists());
 }
