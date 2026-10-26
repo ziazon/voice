@@ -2,6 +2,30 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.3a: history writers check permission under the state lock (2026-10-25, lane: V2)
+
+- **What:** a Verifier finding from PB7.6b's repeat pass. The six app history writers checked
+  permission, then took the state lock, which recreates the state folder; a forget in that gap let
+  a writer recreate the folder and write history with no permission on record. Now each writer
+  goes through one helper, `locked()`, that checks permission, takes a new non-creating lock
+  (`private::lock_existing_state`: a missing folder answers the permission sentence), and checks
+  permission again while holding it. `lock_state` and its other callers are unchanged. No new
+  sentence. Brief: `plans/briefs/PB7.3a-permission-under-the-lock.md`.
+- **Who wrote it:** Codex. Claude briefed, reviewed, ran the full gate outside her sandbox (the
+  sandbox can't open local sockets, so seven existing wire tests can't run there), and committed.
+- **Verified:** red first (both race tests failed on `unwrap_err` of `Ok`), then green; three new
+  unit tests in `history.rs` drive a real forget, and a withdrawn permission, through a seam
+  between the check and the lock. Mutation checks, each red on its own assertion and restored by
+  `cmp`: the creating lock swapped back in (the folder is recreated), and the re-check under the
+  lock removed. `bash scripts/ci-local.sh` green on `860d23a`. `/security-review` (sub-agent): no
+  high or medium. Verifier (Fable): all seven claims proven, no must-fix or should-fix.
+- **Not verified, left:** the lock guards the folder that was open, not the path: if the folder
+  were deleted and permission given again inside the two system calls between opening and
+  locking it, a writer could write unguarded into the new folder. The Verifier judged it
+  unreachable from the app (a forget while the lock is held answers "busy"); a cheap hardening,
+  comparing the locked folder with the path after locking, was not built. The command-line
+  writers take no permission or lock (unchanged, a separate route).
+
 ## PB7.6b: turn it on, the claude.ai files, forget, from the app (2026-10-25, lane: V2)
 
 - **What:** the *Save* step's other three cards. *Use it in Claude Code*: whether this assistant,
