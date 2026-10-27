@@ -2,6 +2,36 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB2.7: the state lock never reads busy just because another thread started a program (2026-10-26, lane: V1)
+
+- **What:** filed by V1 after `pack_clears_leftover_and_busy_refuses` failed a records-only land on
+  `main`'s code. A child another thread starts shares the state lock's open file description from
+  fork until exec (`O_CLOEXEC` closes it only at exec), so a lock taken again in that window read
+  busy ("already working on this assistant in another window") with nothing working.
+  `lock_state_folder_after` now tries a refused (`EWOULDBLOCK`) lock again on the same descriptor
+  for up to 300 ms, 2 ms apart, before it answers busy; the folder-identity check after it is
+  unchanged. Every caller (CLI, API, grow, agent) goes through it. The comment in
+  `builder/agent/tests/lock.rs` now gives the cause of the 2026-10-25 flake that moved its test
+  there. Brief: `plans/briefs/PB2.7-lock-beside-a-spawn.md`.
+- **Who built it:** Codex, from the brief in one pass.
+- **Verified:** cause first, on `28fa5ea`: a scratch program's 20,000 lock-and-drops read busy 0
+  times alone and 1,402 and 1,487 times beside a thread running `true` in a loop; `use_it` failed 4
+  of 30 parallel runs, 0 of 30 single-threaded. Red: the new test read busy 873 of 2,000 times
+  before the fix (Codex); green after. Mutation: grace set to 0, caught (93 of 2,000; V1). `use_it`
+  30 of 30 (Codex) and 10 of 10 (V1) in parallel; ingest and agent suites, clippy, fmt green.
+- **Security review:** no high or medium. One low, already a known limit (`.ai/SECURITY.md`, the
+  spending row): a run reads the limit just before it takes the lock, and a run that meets a save
+  now waits it out (up to 300 ms) instead of being refused, so it may run at the limit it read just
+  before that save. The row now says so; re-reading the limit under the lock is left for later.
+- **Verifier (Fable):** PASS, no must-fix. Her own probe confirmed the cause on both of Rust's macOS
+  spawn paths (posix_spawn and fork); the longest window she produced was 77 ms against the 300 ms
+  grace, at 2 to 3 times the cores' load. She weighed `fcntl` locks (per process, so a second lock
+  in one process would pass) and an in-memory registry (no help across processes) and found the
+  bounded retry the right call. Her should-fix, a comment on what a failure of the spawn test
+  means, is in `e14b522`. Note: a lock that's really held now answers busy after 300 ms.
+- **Landed:** `7ad91f6`, `f8c5628`, `e14b522`; `ci-local.sh` green at the land.
+- **Not verified:** the app's own threads under a real build (the unit test drives the same function).
+
 ## PB7.9a: 0 means no limit, and *Save the limit* is greyed out only when a value is invalid (2026-10-26, lane: V1)
 
 - **What:** split from PB7.9 (an attended app review, F1 and F2). 0 in either field of the
