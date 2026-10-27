@@ -2,6 +2,37 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.3: the record and look-up texts can't run as shell code (2026-10-26, lane: V1)
+
+- **What:** an assistant's `SKILL.md` used to have Claude write each question, pick and answer
+  as a double-quoted shell word, so `$(…)` or backticks in one ran when Claude ran the command.
+  `similar` and `record` now take `--stdin`, in the app's `persona-builder` and the guided build's
+  `scripts/crew_decisions.py` alike: one JSON object (at most 64 KiB, strict UTF-8, only the known
+  keys, no key twice, text values; `rule` and `answer` may be null). Anything else is a usage
+  error and nothing is written. The template and the guided build's backtest brief pass the
+  texts through a quoted heredoc (`<<'END_OF_TEXT'`), which the shell does not expand and valid
+  JSON cannot end early. The flags stay for people typing the commands. Brief:
+  `plans/briefs/PB8.3-stdin-texts.md`.
+- **Who built it:** Codex, from the brief in one pass plus the Verifier's should-fixes.
+- **Verified:** red first, then green. Tests run the made `SKILL.md`'s own blocks through
+  `/bin/sh` (Rust and the guided build's Python) with a text holding `$(touch …)`, backticks,
+  `${HOME}`, quotes, a backslash and a line `END_OF_TEXT`: nothing runs and every text is kept
+  exactly. Mutation checks, each caught: the heredoc delimiter unquoted (both end-to-end tests),
+  Python taking a repeated key, Python taking a lone surrogate, Rust taking an unknown key. Live:
+  the built command under zsh in a scratch home kept the texts and created nothing. Targeted
+  cargo tests, `tests/crew_decisions_test.py` and `tests/crew_install_test.sh` passed. Security
+  review: no high or medium findings. Verifier (Fable): PASS; her probe ran 84 inputs against both
+  programs with no difference, under sh, bash and zsh; four should-fixes, all fixed (a Rust
+  lone-surrogate test, `similar`'s usage line naming `persona-builder`, the security paragraph's
+  first sentence, and the template saying a real line break is refused).
+- **Not verified:** the full `ci-local.sh` (it runs at the land). An assistant made before this
+  keeps its old `SKILL.md`; make it again.
+- **Known limit:** the safety rests on Claude writing valid JSON. A text with a real line break
+  and a line `END_OF_TEXT` would end the heredoc early, which is why the template says a line
+  break is written `\n` and the commands refuse a real one.
+- **Left:** `scripts/crew_personas.py similar` (the persona panel briefs) still takes its query
+  on the command line.
+
 ## PB8.1: the installed app ships the look-up and record commands (2026-10-26, lane: V1)
 
 - **What:** an assistant the app makes now has a `SKILL.md` whose look-up (`similar`) and record
