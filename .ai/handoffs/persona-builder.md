@@ -2,6 +2,46 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.9b: *Sign in to Claude*, in Persona Builder's own Claude Code profile folder (2026-10-27, lane: V1)
+
+- **What:** split from PB7.9 (an attended app review, F3; the person chose a profile folder of the
+  app's own). Every `claude` Persona Builder starts, the app's and the CLI's (the check, each call,
+  the sign-in), runs with `CLAUDE_CONFIG_DIR` set on that child to
+  `~/Library/Application Support/Persona Builder/claude-code` (0700, its parent too; a looser mode
+  tightened, a link or file refused), so its runs never load the person's own `~/.claude` setup.
+  The one finder (`find_in`, now given the home) attaches it, so no route can miss it. *Connect
+  Claude* offers *Sign in to Claude* when Claude Code runs but isn't signed in: it runs
+  `claude auth login --claudeai` with no terminal, waits (Cancel, leaving the screen, 10 minutes or
+  quitting stops it), then checks again. The signed-out message names the `claude` it checked
+  ("Claude Code 2.1.292 at /opt/homebrew/bin/claude isn't signed in for Persona Builder yet…", home
+  shown as `~`). The CLI gains `persona-builder claude sign-in` (the terminal inherited). Amends
+  PB-D9: Persona Builder starts Claude Code's login; the person still signs in on Claude's page, and
+  it never reads, sets or passes a credential. Brief: `plans/briefs/PB7.9b-sign-in-to-claude.md`.
+- **Checked at pickup** (the spec's open point): Claude Code 2.1.292's login, run with stdin from
+  `/dev/null`, no terminal and a throwaway profile, opens its page with `open` from `PATH`, whose
+  redirect is a localhost callback, and waits without exiting at end of input: it completes
+  without a terminal. Its paste-the-code fallback needs one, so only the CLI offers it.
+- **Who built it:** Codex, from the brief in one pass, plus two review fix-ups (the new DTO field
+  moved last; no markdown in the plain-text install note) and the Verifier's should-fix.
+- **Verified:** red first for each new test (Codex's report: agent profile, status and sign-in
+  tests, the API sign-in slot, the CLI, the lockdown list, the screen); six mutations caught (the
+  profile variable dropped, the already-signed-in short-circuit, the busy check, offering sign-in
+  for a `claude` that doesn't run, the unmount cancel, the 0700 tightening). Live, by V1: the built
+  CLI's `claude check` against the real Claude Code 2.1.292 with a throwaway home gave the new
+  sentence and made both folders 0700. `ci-local.sh` green on `333beb0`.
+- **Security review:** no high or medium. One low, kept as a known limit: the home is masked in
+  the shown path only when the path is spelled under `$HOME`.
+- **Verifier (Fable):** PASS, no must-fix. Should-fix done: a cancel that lands during the check
+  before the login now never starts it (test `cancel_during_status_never_starts_login`, red then
+  green). Not taken: an ownership check on the profile folder (every foreign-owned case she traced
+  fails safe). Noted limits, also in `.ai/SECURITY.md`: a force-quit leaves the login waiting for
+  its callback; a cancel from a screen being left could, within milliseconds, stop a sign-in the
+  re-opened screen starts.
+- **Not verified:** a real sign-in end to end (needs the person at the browser), that the profile's
+  login is kept apart from `~/.claude`'s in the Keychain, and the screen in the running app: owed
+  as a walk. The VO2 rename moves the app's name: the profile folder's name changes with it, so a
+  renamed app asks for one more sign-in unless VO2 moves the folder.
+
 ## PB2.7: the state lock never reads busy just because another thread started a program (2026-10-26, lane: V1)
 
 - **What:** filed by V1 after `pack_clears_leftover_and_busy_refuses` failed a records-only land on
