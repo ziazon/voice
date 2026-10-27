@@ -45,3 +45,25 @@
   --tblr-bg-forms: #111B2E;
   --tblr-bg-forms-disabled: #172238;
 }
+
+/* Tabler colours alert text with the variant colour, too faint on its own tint. Set readable
+   text (WCAG AA 4.5:1), checked by theme.test.ts. */
+[data-bs-theme='light'] .alert-warning:not(.alert-important) {
+  --tblr-alert-color: #7A4D00;
+}
+
+[data-bs-theme='light'] .alert-success:not(.alert-important) {
+  --tblr-alert-color: #1D6B2C;
+}
+
+[data-bs-theme='light'] .alert-info:not(.alert-important) {
+  --tblr-alert-color: #1F5C99;
+}
+
+[data-bs-theme='light'] .alert-danger:not(.alert-important) {
+  --tblr-alert-color: #A82525;
+}
+
+[data-bs-theme='dark'] .alert-danger:not(.alert-important) {
+  --tblr-alert-color: #F28B82;
+}
