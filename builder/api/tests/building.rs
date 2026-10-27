@@ -966,7 +966,7 @@ fn long_history_without_thin_kinds_spends_nothing() {
 }
 
 const LIMIT_DAMAGED: &str = "Persona Builder can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
-const LIMIT_BAD: &str = "The daily limit must be at least $0.01 and at most $1,000. The most one step may use must be at least $0.01 and no more than the daily limit. Both are in whole cents, like 2.50.";
+const LIMIT_BAD: &str = "Each amount is 0 for no limit, or from $0.01 to $1,000 in whole cents, like 2.50. When both are set, the most one step may use can't be more than the daily limit.";
 fn limit_request(daily_usd: f64, call_usd: f64) -> SpendingLimitRequest {
     SpendingLimitRequest {
         slug: "wren".into(),
@@ -1041,7 +1041,7 @@ fn invalid_spending_limits_write_nothing_even_while_busy() {
         persona_builder_agent::ledger::Cap::default(),
     )
     .unwrap();
-    for (day, call) in [(0.0, 0.0), (2000.0, 5.0), (10.0, 20.0), (f64::NAN, 5.0)] {
+    for (day, call) in [(0.001, 0.0), (1000.01, 5.0), (10.0, 20.0), (f64::NAN, 5.0)] {
         safe(
             &h,
             set_spending_limit_in(&h.path, limit_request(day, call)),
@@ -1112,4 +1112,24 @@ fn a_build_stops_for_the_day_when_claude_code_says_the_plan_is_nearly_used() {
         .collect();
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0]["plan"], "allowed_warning");
+}
+
+#[test]
+fn zero_spending_limits_save_load_and_reach_todays_spend() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    let result = set_spending_limit_in(&h.path, limit_request(0.0, 0.0));
+    assert!(result.is_ok(), "zero limits should save: {result:?}");
+    let saved = result.unwrap();
+    assert_eq!(
+        saved,
+        SpendingLimit {
+            daily_usd: 0.0,
+            call_usd: 0.0
+        }
+    );
+    assert_eq!(spending_limit_in(&h.path, slug()).unwrap(), saved);
+    let spend = spend_today_in(&h.path, slug()).unwrap();
+    assert_eq!(spend.daily_cap_usd, 0.0);
+    assert_eq!(spend.spent_usd, 0.0);
 }

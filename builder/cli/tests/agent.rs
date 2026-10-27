@@ -165,7 +165,11 @@ fn spend_reports_today_against_the_cap() {
     );
 
     let out = f.run(&["spend", &member, "--daily-cap-usd", "0"]);
-    assert_eq!(out.status.code(), Some(1));
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "Today, about $3.20, with no daily limit, as Claude Code estimates it.\n"
+    );
 
     let held = Session::open(&f.home, "wren", Cap::default()).unwrap();
     let out = f.run(&["spend", &member]);
@@ -231,13 +235,12 @@ fn invalid_limit_set_writes_nothing() {
         "set",
         f.member.to_str().unwrap(),
         "--daily-usd",
-        "0",
+        "1000.01",
         "--step-usd",
         "0",
     ]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
-    assert!(text(&out.stderr).contains("the daily limit must be at least $0.01"));
-    assert!(text(&out.stderr).contains("no more than the daily limit, both in whole cents"));
+    assert!(text(&out.stderr).contains("Each amount is 0 for no limit, or from $0.01 to $1,000 in whole cents, like 2.50. When both are set, the most one step may use can't be more than the daily limit."));
     assert!(!f.state().exists());
 }
 
@@ -281,6 +284,106 @@ fn explicit_call_cap_above_the_day_is_refused() {
         "20",
     ]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
-    assert!(text(&out.stderr).contains("no more than the daily limit"));
+    assert!(
+        text(&out.stderr).contains("the most one step may use can't be more than the daily limit")
+    );
     assert!(!f.state().exists());
+}
+
+#[test]
+fn no_limit_is_saved_shown_and_used_by_spend() {
+    let f = Fixture::new();
+    let member = f.member.to_str().unwrap();
+    drop(Session::open(&f.home, "wren", Cap::default()).unwrap());
+    let out = f.run(&[
+        "limit",
+        "set",
+        member,
+        "--daily-usd",
+        "0",
+        "--step-usd",
+        "0",
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let expected = "No limit: Persona Builder doesn't stop for the day or for one step.\n";
+    assert_eq!(text(&out.stdout), expected);
+    let out = f.run(&["limit", "show", member]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(text(&out.stdout), expected);
+    let out = f.run(&["spend", member]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "Today, about $0.00, with no daily limit, as Claude Code estimates it.\n"
+    );
+}
+
+#[test]
+fn no_daily_override_preserves_the_saved_step() {
+    daily_override_budget("50", "5", "0", "5.00");
+}
+
+#[test]
+fn daily_override_preserves_a_saved_unlimited_step() {
+    daily_override_budget("50", "0", "20", "20.00");
+}
+
+fn daily_override_budget(saved_day: &str, saved_step: &str, daily: &str, expected_budget: &str) {
+    use serde_json::json;
+    let f = Fixture::new();
+    let member = f.member.to_str().unwrap();
+    drop(Session::open(&f.home, "wren", Cap::default()).unwrap());
+    let out = f.run(&[
+        "limit",
+        "set",
+        member,
+        "--daily-usd",
+        saved_day,
+        "--step-usd",
+        saved_step,
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let kinds = ["scope", "sequencing", "methods", "verification", "go-no-go"];
+    let questions: Vec<_> = (1..=20)
+        .map(|n| {
+            json!({
+                "n": n, "header": kinds[(n - 1) % kinds.len()],
+                "question": format!("Situation {n}: what first?"), "multiSelect": false,
+                "recommended": "A", "options": [
+                    {"label": "Cut it", "description": "Less work"},
+                    {"label": "Keep it", "description": "More work"}
+                ]
+            })
+        })
+        .collect();
+    fs::write(
+        f.bin.join("reply"),
+        json!({
+            "type": "result", "subtype": "success", "is_error": false,
+            "result": "", "total_cost_usd": 0.02,
+            "structured_output": {"questions": questions}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    f.stub(
+        r#"here="$(cd "$(dirname "$0")" && pwd -P)"
+case "$1" in
+    --version) echo '2.1.292 (Claude Code)';;
+    auth) echo '{"loggedIn":true}';;
+    *) printf '%s\n' "$@" > "$here/argv"; cat > "$here/stdin"; cat "$here/reply";;
+esac"#,
+    );
+    let out = f.run(&["interview", "draft", member, "--daily-cap-usd", daily]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let argv = fs::read_to_string(f.bin.join("argv")).unwrap();
+    let args: Vec<_> = argv.lines().collect();
+    let at = args
+        .iter()
+        .position(|arg| *arg == "--max-budget-usd")
+        .expect("the saved step or remaining daily limit must bound the call");
+    assert_eq!(args[at + 1], expected_budget);
+    let saved = Cap::load(&f.home, "wren").unwrap();
+    assert_eq!(saved.daily_usd(), saved_day.parse::<f64>().unwrap());
+    assert_eq!(saved.call_usd(), saved_step.parse::<f64>().unwrap());
 }

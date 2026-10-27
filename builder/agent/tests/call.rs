@@ -488,3 +488,53 @@ fn a_prompt_that_starts_like_a_command_is_refused() {
         .call(&session, &call("records\n/model opus", &schema))
         .unwrap();
 }
+
+#[test]
+fn optional_budgets_change_only_the_budget_arguments() {
+    use persona_builder_agent::ledger::{Cap, Session};
+    for (daily, step, spent, budget) in [
+        (0.0, 0.0, 0.0, None),
+        (20.0, 0.0, 0.0, Some("20.00")),
+        (20.0, 0.0, 12.344, Some("7.65")),
+        (0.0, 5.0, 1500.0, Some("5.00")),
+    ] {
+        let home = Scratch::new("optional-budget");
+        seed_ledger(&home.0, &[spent_line(&local_day(fixed_time()), spent)]);
+        let stub = Stub::replying(&ok_reply(&json!({})), 0);
+        let cap = Cap::new(daily, step).expect("zero means no limit");
+        let session = Session::open_with_clock(&home.0, "wren", cap, fixed_clock()).unwrap();
+        let schema = schema();
+        stub.claude()
+            .call(&session, &call("records", &schema))
+            .unwrap();
+        let mut expected = expected_argv(&schema);
+        expected.truncate(expected.len() - 2);
+        if let Some(budget) = budget {
+            expected.extend(["--max-budget-usd".into(), budget.into()]);
+        }
+        assert_eq!(stub.argv(0).unwrap(), expected);
+    }
+}
+
+#[test]
+fn an_unlimited_call_without_a_cost_records_unknown_and_the_ledger_reads_it() {
+    use persona_builder_agent::ledger::{Cap, Session};
+    let home = Scratch::new("unknown-cost");
+    let stub = Stub::replying(&reply_with(json!({"total_cost_usd": null})), 0);
+    let cap = Cap::new(0.0, 0.0).expect("zero means no limit");
+    let session = Session::open_with_clock(&home.0, "wren", cap, fixed_clock()).unwrap();
+    let schema = schema();
+    stub.claude()
+        .call(&session, &call("records", &schema))
+        .unwrap();
+    let lines = ledger_lines(&home.0);
+    assert_eq!(lines[0]["cost_usd"], 0.0);
+    assert_eq!(lines[0]["cost_from"], "unknown");
+    assert_eq!(session.spent_today().unwrap(), 0.0);
+    // The reader accepts arbitrary cost_from and every finite, nonnegative cost.
+    let mut line = lines[0].clone();
+    line["cost_from"] = json!("future-source");
+    line["cost_usd"] = json!(1234.56789);
+    seed_ledger(&home.0, &[line.to_string()]);
+    assert_eq!(session.spent_today().unwrap(), 1234.56789);
+}

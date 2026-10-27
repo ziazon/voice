@@ -112,3 +112,9 @@ it('explains what stopping keeps only while the build is running', async () => {
   await flushPromises()
   expect(wrapper.text()).not.toContain(help)
 })
+
+it('shows spending without a daily limit', async () => {
+  const wrapper = screen(BuildRun, fakeBackend({ spendToday: vi.fn().mockResolvedValue({ spentUsd: 3, dailyCapUsd: 0 }) }), { slug: 'example', name: assistant.name })
+  await flushPromises()
+  expect(wrapper.text()).toContain('Today, about $3.00, with no daily limit, as Claude Code estimates it.')
+})

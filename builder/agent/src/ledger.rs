@@ -25,7 +25,7 @@ pub const LIMIT: &str = "limit.json";
 
 const LEDGER: &str = "runs.jsonl";
 const WORK_FOLDER: &str = "agent";
-/// The largest cap Persona Builder accepts, in estimated US dollars a day.
+/// The largest typed daily or step limit, in estimated US dollars.
 const MOST_USD: f64 = 1000.0;
 /// The smallest step budget: Claude Code is given it to the cent.
 const LEAST_USD: f64 = 0.01;
@@ -45,28 +45,62 @@ struct Saved {
     call_usd: f64,
 }
 
+/// The daily limit is reached: no call may start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reached;
+
 impl Cap {
     pub const DEFAULT_DAILY_USD: f64 = 50.0;
     pub const DEFAULT_CALL_USD: f64 = 5.0;
 
-    /// Both finite whole cents, and 0.01 <= `call_usd` <= `daily_usd` <= 1000: Claude Code gets each budget in cents.
+    /// Finite whole cents: each amount is 0 for no limit, or 0.01 through 1000.
+    /// When both are set, the step limit cannot exceed the daily limit.
     pub fn new(daily_usd: f64, call_usd: f64) -> Result<Cap> {
-        if !(daily_usd.is_finite()
-            && call_usd.is_finite()
-            && call_usd >= LEAST_USD
-            && call_usd <= daily_usd
-            && daily_usd <= MOST_USD
-            && ((daily_usd * 100.0).round() - daily_usd * 100.0).abs() <= 1e-6
-            && ((call_usd * 100.0).round() - call_usd * 100.0).abs() <= 1e-6)
+        let valid = |amount: f64| {
+            amount.is_finite()
+                && (amount == 0.0 || (LEAST_USD..=MOST_USD).contains(&amount))
+                && ((amount * 100.0).round() - amount * 100.0).abs() <= 1e-6
+        };
+        if !valid(daily_usd)
+            || !valid(call_usd)
+            || (daily_usd > 0.0 && call_usd > 0.0 && call_usd > daily_usd)
         {
-            return Err(Error::Invalid(format!(
-                "the daily limit must be at least $0.01 and at most ${MOST_USD:.0}, and each step's limit at least $0.01 and no more than the daily limit, both in whole cents"
-            )));
+            return Err(Error::Invalid("Each amount is 0 for no limit, or from $0.01 to $1,000 in whole cents, like 2.50. When both are set, the most one step may use can't be more than the daily limit.".into()));
         }
         Ok(Cap {
-            daily_usd,
-            call_usd,
+            daily_usd: if daily_usd == 0.0 { 0.0 } else { daily_usd },
+            call_usd: if call_usd == 0.0 { 0.0 } else { call_usd },
         })
+    }
+    pub fn daily_limit(&self) -> Option<f64> {
+        (self.daily_usd > 0.0).then_some(self.daily_usd)
+    }
+    pub fn call_limit(&self) -> Option<f64> {
+        (self.call_usd > 0.0).then_some(self.call_usd)
+    }
+    /// The next call's budget, with calls still running counted at their budget.
+    /// `Ok(Some(usd))` is passed as `--max-budget-usd`; `Ok(None)` passes no budget;
+    /// `Err(Reached)` means the daily limit is reached.
+    pub fn budget_for(&self, spent_usd: f64) -> std::result::Result<Option<f64>, Reached> {
+        match (self.daily_limit(), self.call_limit()) {
+            (Some(daily), Some(call)) => {
+                if spent_usd + call > daily + 1e-9 {
+                    Err(Reached)
+                } else {
+                    Ok(Some(call))
+                }
+            }
+            (None, Some(call)) => Ok(Some(call)),
+            (Some(daily), None) => {
+                let left = ((daily - spent_usd) * 100.0 + 1e-6).floor() / 100.0;
+                if left < LEAST_USD {
+                    Err(Reached)
+                } else {
+                    Ok(Some(left))
+                }
+            }
+            (None, None) => Ok(None),
+        }
     }
     /// Read a saved limit without creating any state. Damaged values stop spending.
     pub fn load(home: &Path, slug: &str) -> Result<Cap> {
@@ -136,11 +170,11 @@ pub(crate) struct Line<'a> {
 /// [`Session::discard`] replaces or removes its line. Dropped without either, the line stays.
 pub(crate) struct Started {
     id: String,
-    budget: f64,
+    budget: Option<f64>,
 }
 
 impl Started {
-    pub(crate) fn budget(&self) -> f64 {
+    pub(crate) fn budget(&self) -> Option<f64> {
         self.budget
     }
 }
@@ -218,10 +252,10 @@ impl Session {
         if stopped {
             return Err(Error::Invalid(text::PLAN_STOPPED.into()));
         }
-        let budget = self.cap.call_usd;
-        if spent + budget > self.cap.daily_usd + 1e-9 {
-            return Err(Error::Invalid(text::cap_reached(spent, self.cap.daily_usd)));
-        }
+        let budget = self
+            .cap
+            .budget_for(spent)
+            .map_err(|Reached| Error::Invalid(text::cap_reached(spent, self.cap.daily_usd)))?;
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -239,7 +273,7 @@ impl Session {
             plan: None,
             seconds: 0.0,
             usage: Usage::default(),
-            cost_usd: budget,
+            cost_usd: budget.unwrap_or(0.0),
             cost_from: "budget",
         };
         let mut lines = self.ledger_lines()?;

@@ -279,10 +279,10 @@ enum Command {
         corpus: String,
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
         daily_cap_usd: Option<f64>,
-        /// The most one call may spend, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $5).
+        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
         #[arg(long)]
         call_cap_usd: Option<f64>,
     },
@@ -296,7 +296,7 @@ enum Command {
     /// Show what building this assistant has spent today.
     Spend {
         member_dir: PathBuf,
-        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
         daily_cap_usd: Option<f64>,
     },
@@ -306,11 +306,13 @@ enum Command {
 enum LimitCommand {
     /// Show the daily limit saved for this assistant.
     Show { member_dir: PathBuf },
-    /// Set the daily limit and the most one step may use.
+    /// Set the daily limit and the most one step may use; 0 for no limit in either field.
     Set {
         member_dir: PathBuf,
+        /// The daily limit in US dollars; 0 for no limit.
         #[arg(long)]
         daily_usd: f64,
+        /// The most one step may use in US dollars; 0 for no limit.
         #[arg(long)]
         step_usd: f64,
     },
@@ -324,10 +326,10 @@ enum RefreshCommand {
         /// The Claude model to draft with.
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
         daily_cap_usd: Option<f64>,
-        /// The most one call may spend, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $5).
+        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
         #[arg(long)]
         call_cap_usd: Option<f64>,
     },
@@ -340,10 +342,10 @@ enum RefreshCommand {
         /// The Claude model to test with.
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
         daily_cap_usd: Option<f64>,
-        /// The most one call may spend, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $5).
+        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
         #[arg(long)]
         call_cap_usd: Option<f64>,
     },
@@ -382,10 +384,10 @@ enum InterviewCommand {
         labels: Option<String>,
         #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
         daily_cap_usd: Option<f64>,
-        /// The most one call may spend, in US dollars as Claude Code estimates them (default: the limit set for this assistant, else $5).
+        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
         #[arg(long)]
         call_cap_usd: Option<f64>,
         /// Draft new questions in place of the ones waiting for your answers.
@@ -1230,7 +1232,14 @@ fn cap_for(
     use persona_builder_agent::ledger::Cap;
     let saved = Cap::load(home, slug)?;
     let daily = daily.unwrap_or(saved.daily_usd());
-    let call = call.unwrap_or_else(|| saved.call_usd().min(daily));
+    let call = call.unwrap_or_else(|| {
+        let step = saved.call_usd();
+        if daily > 0.0 && step > 0.0 {
+            step.min(daily)
+        } else {
+            step
+        }
+    });
     Cap::new(daily, call)
 }
 fn limit_show(member_dir: PathBuf) -> Result<()> {

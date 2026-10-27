@@ -34,16 +34,16 @@ it('shows the safe bridge rejection and retry', async () => {
   expect(wrapper.find('a').exists()).toBe(false)
 })
 
-it('loads the dollar limits even when Claude Code is not ready, and enables save only after an edit', async () => {
+it('loads the dollar limits even when Claude Code is not ready, and saves unchanged defaults', async () => {
   const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ready: false, message: 'Not ready.', note: null }), spendingLimit: vi.fn().mockResolvedValue({ dailyUsd: 50, callUsd: 5 }) })
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
   expect(backend.spendingLimit).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug })
   expect(wrapper.get<HTMLInputElement>('#limit-day').element.value).toBe('50.00')
   expect(wrapper.get<HTMLInputElement>('#limit-step').element.value).toBe('5.00')
-  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
-  await wrapper.get('#limit-day').setValue('20')
   expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeUndefined()
+  await button(wrapper, 'Save the limit').trigger('click')
+  expect(backend.setSpendingLimit).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug, dailyUsd: 50, callUsd: 5 })
 })
 it('saves dollars and shows the answered amounts', async () => {
   const backend = fakeBackend({ setSpendingLimit: vi.fn().mockResolvedValue({ dailyUsd: 20, callUsd: 2.5 }) })
@@ -57,15 +57,17 @@ it('saves dollars and shows the answered amounts', async () => {
   expect(wrapper.get('[role="status"]').text()).toBe('Saved. Persona Builder stops for the day at about $20.00, and one step may use at most $2.50.')
   expect(wrapper.get<HTMLInputElement>('#limit-day').element.value).toBe('20.00')
   expect(wrapper.get<HTMLInputElement>('#limit-step').element.value).toBe('2.50')
-  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeUndefined()
 })
 it.each(['abc', '1e2', '1.234', '-1', '.50', '$$20'])('rejects an invalid dollar amount %s before sending', async amount => {
   const backend = fakeBackend()
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
   await wrapper.get('#limit-day').setValue(amount)
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('#limit-day').attributes('aria-invalid')).toBe('true')
+  expect(wrapper.get('#limit-day-problem').text()).toBe('Enter an amount like 50.00, or 0 for no limit.')
   await button(wrapper, 'Save the limit').trigger('click')
-  expect(wrapper.get('.alert-danger').text()).toBe('Enter an amount in dollars, like 50.00.')
   expect(backend.setSpendingLimit).not.toHaveBeenCalled()
 })
 it('accepts surrounding whitespace and one leading dollar sign', async () => {
@@ -116,18 +118,19 @@ it('rejects a 310-digit dollar amount before sending', async () => {
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
   await wrapper.get('#limit-day').setValue('9'.repeat(310))
-  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeUndefined()
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('#limit-day').attributes('aria-invalid')).toBe('true')
+  expect(wrapper.get('#limit-day-problem').text()).toBe('Enter an amount like 50.00, or 0 for no limit.')
   await button(wrapper, 'Save the limit').trigger('click')
-  expect(wrapper.get('.alert-danger').text()).toBe('Enter an amount in dollars, like 50.00.')
   expect(backend.setSpendingLimit).not.toHaveBeenCalled()
 })
-it('keeps save disabled for unchanged amounts without decimal places', async () => {
+it('keeps save enabled for unchanged amounts without decimal places', async () => {
   const backend = fakeBackend()
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
   await wrapper.get('#limit-day').setValue('50')
   await wrapper.get('#limit-step').setValue('5')
-  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeUndefined()
   expect(backend.setSpendingLimit).not.toHaveBeenCalled()
 })
 
@@ -146,4 +149,59 @@ it('explains the account, daily use and provider choice while checking and after
   check.resolve({ ready: true, message: 'Ready.', note: null })
   await flushPromises()
   expect(card.get('p.text-secondary.mt-3.mb-0').text()).toBe(explanation)
+})
+
+it('validates the step as typed and clears its reason when fixed', async () => {
+  const backend = fakeBackend()
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  await wrapper.get('#limit-step').setValue('abc')
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('#limit-step').attributes('aria-invalid')).toBe('true')
+  expect(wrapper.get('#limit-step').classes()).toContain('is-invalid')
+  expect(wrapper.get('#limit-step').attributes('aria-describedby')).toBe('limit-step-problem')
+  expect(wrapper.get('#limit-step-problem').text()).toBe('Enter an amount like 50.00, or 0 for no limit.')
+  await wrapper.get('#limit-step').setValue('5')
+  expect(wrapper.get('#limit-step-problem').text()).toBe('')
+  expect(wrapper.get('#limit-step').attributes('aria-invalid')).toBe('false')
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeUndefined()
+})
+it.each([
+  ['0', '2000', 'limit-step', 'One step can use at most $1,000. Enter 0 for no limit.'],
+  ['2000', '5', 'limit-day', 'The daily limit can be at most $1,000. Enter 0 for no limit.'],
+  ['10000', '5', 'limit-day', 'The daily limit can be at most $1,000. Enter 0 for no limit.'],
+  ['10', '20', 'limit-step', "One step can't use more than the daily limit."],
+])('validates day %s and step %s without a save', async (day, step, field, reason) => {
+  const backend = fakeBackend()
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  await wrapper.get('#limit-day').setValue(day)
+  await wrapper.get('#limit-step').setValue(step)
+  expect(wrapper.find(`#${field}-problem`).exists()).toBe(true)
+  expect(wrapper.get(`#${field}-problem`).text()).toBe(reason)
+  expect(wrapper.get(`#${field}`).attributes('aria-invalid')).toBe('true')
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeDefined()
+  expect(backend.setSpendingLimit).not.toHaveBeenCalled()
+})
+it.each([
+  [0, 0, "Saved. There's no limit."],
+  [0, 5, "Saved. There's no daily limit, and one step may use at most $5.00."],
+  [50, 0, 'Saved. Persona Builder stops for the day at about $50.00, with no separate limit for one step.'],
+])('saves daily %s and step %s with the no-limit message', async (dailyUsd, callUsd, message) => {
+  const backend = fakeBackend({ setSpendingLimit: vi.fn().mockResolvedValue({ dailyUsd, callUsd }) })
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  await wrapper.get('#limit-day').setValue(String(dailyUsd))
+  await wrapper.get('#limit-step').setValue(String(callUsd))
+  expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeUndefined()
+  await button(wrapper, 'Save the limit').trigger('click')
+  await flushPromises()
+  expect(backend.setSpendingLimit).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug, dailyUsd, callUsd })
+  expect(wrapper.get('[role="status"]').text()).toBe(message)
+})
+
+it('explains that either field can have no limit', async () => {
+  const wrapper = screen(ConnectClaude, fakeBackend(), { assistant })
+  await flushPromises()
+  expect(wrapper.text()).toContain('Enter 0 in either box for no limit.')
 })

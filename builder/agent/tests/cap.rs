@@ -34,8 +34,6 @@ fn caps_must_be_sensible() {
     Cap::new(0.07, 0.07).unwrap();
     Cap::new(999.99, 0.01).unwrap();
     for (daily, call) in [
-        (0.0, 0.0),
-        (10.0, 0.0),
         (10.0, -1.0),
         (10.0, 0.004),
         (10.0, 0.025),
@@ -237,6 +235,119 @@ fn damaged_saved_limits_stop_spending() {
             Cap::load(&home.0, "wren").unwrap_err().to_string(),
             text::limit_damaged(&state(&home.0).join(LIMIT)),
             "{bad}"
+        );
+    }
+}
+
+#[test]
+fn unlimited_caps_round_trip_and_normalize_negative_zero() {
+    for (daily, call) in [
+        (0.0, 0.0),
+        (0.0, 5.0),
+        (50.0, 0.0),
+        (0.0, 1000.0),
+        (1000.0, 0.0),
+        (-0.0, 0.0),
+    ] {
+        let home = Scratch::new("limit-none");
+        let cap = Cap::new(daily, call).expect("zero means no limit");
+        let _lock = persona_builder_ingest::private::lock_state(&home.0, "wren").unwrap();
+        cap.save(&home.0, "wren").unwrap();
+        let loaded = Cap::load(&home.0, "wren").unwrap();
+        assert_eq!((loaded.daily_usd(), loaded.call_usd()), (daily, call));
+        assert!(!loaded.daily_usd().is_sign_negative());
+        assert!(
+            !fs::read_to_string(state(&home.0).join(LIMIT))
+                .unwrap()
+                .contains("-0.0")
+        );
+    }
+}
+
+#[test]
+fn zero_does_not_remove_the_other_amounts_validation() {
+    for (daily, call) in [
+        (0.0, 1000.01),
+        (1000.01, 0.0),
+        (-0.01, 0.0),
+        (0.0, -0.01),
+        (10.0, 20.0),
+        (0.0, 0.001),
+        (f64::NAN, 0.0),
+        (0.0, f64::NAN),
+        (f64::INFINITY, 0.0),
+        (0.0, f64::INFINITY),
+        (f64::NEG_INFINITY, 0.0),
+        (0.0, f64::NEG_INFINITY),
+    ] {
+        assert!(Cap::new(daily, call).is_err(), "{daily}, {call}");
+    }
+}
+
+#[test]
+fn limits_and_spend_describe_each_combination() {
+    for (daily, step, expected) in [
+        (
+            50.0,
+            5.0,
+            "Daily limit: about $50.00 a day, and at most $5.00 for one step, as Claude Code estimates it.",
+        ),
+        (
+            0.0,
+            5.0,
+            "No daily limit, and at most $5.00 for one step, as Claude Code estimates it.",
+        ),
+        (
+            50.0,
+            0.0,
+            "Daily limit: about $50.00 a day, and no separate limit for one step, as Claude Code estimates it.",
+        ),
+        (
+            0.0,
+            0.0,
+            "No limit: Persona Builder doesn't stop for the day or for one step.",
+        ),
+    ] {
+        assert_eq!(text::limit(Cap::new(daily, step).unwrap()), expected);
+    }
+    assert_eq!(
+        text::spend(3.2, 0.0),
+        "Today, about $3.20, with no daily limit, as Claude Code estimates it."
+    );
+}
+
+#[test]
+fn next_budget_obeys_each_optional_limit_and_rounds_down() {
+    use persona_builder_agent::ledger::Reached;
+    for (daily, step, spent, expected) in [
+        (20.0, 5.0, 0.0, Ok(Some(5.0))),
+        (20.0, 5.0, 15.0, Ok(Some(5.0))),
+        (20.0, 5.0, 15.0000000005, Ok(Some(5.0))),
+        (20.0, 5.0, 15.01, Err(Reached)),
+        (20.0, 5.0, 20.0, Err(Reached)),
+        (0.0, 5.0, 1500.0, Ok(Some(5.0))),
+        (20.0, 0.0, 0.0, Ok(Some(20.0))),
+        (20.0, 0.0, 12.344, Ok(Some(7.65))),
+        (20.0, 0.0, 19.99, Ok(Some(0.01))),
+        (20.0, 0.0, 19.995, Err(Reached)),
+        (20.0, 0.0, 20.0, Err(Reached)),
+        (20.0, 0.0, 21.0, Err(Reached)),
+        (0.0, 0.0, 0.0, Ok(None)),
+        (0.0, 0.0, 1500.0, Ok(None)),
+    ] {
+        let cap = Cap::new(daily, step).unwrap();
+        assert_eq!(
+            cap.daily_limit(),
+            if daily == 0.0 { None } else { Some(daily) }
+        );
+        assert_eq!(
+            cap.call_limit(),
+            if step == 0.0 { None } else { Some(step) }
+        );
+        assert_eq!(
+            cap.budget_for(spent),
+            expected,
+            "daily={daily}, step={step}, spent={spent}"
         );
     }
 }

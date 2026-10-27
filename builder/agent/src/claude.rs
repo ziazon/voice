@@ -414,7 +414,6 @@ impl Claude {
         let started = session.start(AGENT_ID, call.step, call.model)?;
         let schema = call.schema.to_string();
         let budget = started.budget();
-        let budget_arg = format!("{budget:.2}");
         let mut command = self.command(&folder);
         command.args([
             "-p",
@@ -438,9 +437,10 @@ impl Claude {
             r#"{"mcpServers":{}}"#,
             "--permission-mode",
             "dontAsk",
-            "--max-budget-usd",
-            &budget_arg,
         ]);
+        if let Some(budget) = budget {
+            command.args(["--max-budget-usd", &format!("{budget:.2}")]);
+        }
         let begun = Instant::now();
         let ran = child::run(
             &mut command,
@@ -457,8 +457,11 @@ impl Claude {
         };
         let (cost_usd, cost_from) = match judged.cost {
             Some(cost) => (cost, "claude"),
-            // Money may have been spent: count the whole budget, so the cap never under-counts.
-            None => (budget, "budget"),
+            // Without a reported cost, count the budget when one was set.
+            None => match budget {
+                Some(budget) => (budget, "budget"),
+                None => (0.0, "unknown"),
+            },
         };
         let line = Line {
             agent: AGENT_ID,

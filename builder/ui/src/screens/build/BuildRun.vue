@@ -86,7 +86,7 @@ defineExpose({ rebuild })
   <section class="card">
     <div class="card-body">
       <h3 class="card-title">Build</h3>
-      <p v-if="spend">Today, about ${{ spend.spentUsd.toFixed(2) }} of the ${{ spend.dailyCapUsd.toFixed(2) }} daily limit, as Claude Code estimates it.</p>
+      <p v-if="spend">Today, about ${{ spend.spentUsd.toFixed(2) }}<template v-if="spend.dailyCapUsd === 0">, with no daily limit</template><template v-else> of the ${{ spend.dailyCapUsd.toFixed(2) }} daily limit</template>, as Claude Code estimates it.</p>
       <div v-if="error" class="alert" :class="info ? 'alert-info' : 'alert-danger'" role="alert">{{ error }}</div>
       <ReadProgress v-if="running" :progress="null" label="Building" />
       <div v-if="lines.length" class="overflow-auto" style="max-height: 16rem">

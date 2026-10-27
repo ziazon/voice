@@ -30,7 +30,13 @@ pub fn cap_reached(spent: f64, cap: f64) -> String {
     )
 }
 pub fn spend(spent: f64, cap: f64) -> String {
-    format!("Today, about ${spent:.2} of the ${cap:.2} daily limit, as Claude Code estimates it.")
+    if cap == 0.0 {
+        format!("Today, about ${spent:.2}, with no daily limit, as Claude Code estimates it.")
+    } else {
+        format!(
+            "Today, about ${spent:.2} of the ${cap:.2} daily limit, as Claude Code estimates it."
+        )
+    }
 }
 pub fn cut_off(minutes: u64) -> String {
     let unit = if minutes == 1 { "minute" } else { "minutes" };
@@ -48,11 +54,20 @@ pub fn limit_damaged(path: &Path) -> String {
     )
 }
 pub fn limit(cap: crate::ledger::Cap) -> String {
-    format!(
-        "Daily limit: about ${:.2} a day, and at most ${:.2} for one step, as Claude Code estimates it.",
-        cap.daily_usd(),
-        cap.call_usd()
-    )
+    match (cap.daily_limit(), cap.call_limit()) {
+        (Some(daily), Some(call)) => format!(
+            "Daily limit: about ${daily:.2} a day, and at most ${call:.2} for one step, as Claude Code estimates it."
+        ),
+        (None, Some(call)) => format!(
+            "No daily limit, and at most ${call:.2} for one step, as Claude Code estimates it."
+        ),
+        (Some(daily), None) => format!(
+            "Daily limit: about ${daily:.2} a day, and no separate limit for one step, as Claude Code estimates it."
+        ),
+        (None, None) => {
+            "No limit: Persona Builder doesn't stop for the day or for one step.".into()
+        }
+    }
 }
 
 pub const NO_STATE_FOR_LIMIT: &str = "This assistant has no private folder yet, so there's nowhere to keep its limit. Run `persona-builder consent agree` first.";

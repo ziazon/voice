@@ -331,6 +331,7 @@ pub struct ForgetRequest {
 #[ts(export)]
 pub struct Spend {
     pub spent_usd: f64,
+    /// 0 means no daily limit.
     pub daily_cap_usd: f64,
 }
 
@@ -338,7 +339,9 @@ pub struct Spend {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct SpendingLimit {
+    /// 0 means no daily limit.
     pub daily_usd: f64,
+    /// 0 means no limit for one step.
     pub call_usd: f64,
 }
 
@@ -347,7 +350,9 @@ pub struct SpendingLimit {
 #[ts(export)]
 pub struct SpendingLimitRequest {
     pub slug: String,
+    /// 0 means no daily limit.
     pub daily_usd: f64,
+    /// 0 means no limit for one step.
     pub call_usd: f64,
 }
 

@@ -154,3 +154,10 @@ it('explains approval and rejection only while awaiting a decision', async () =>
   await wrapper.setProps({ status })
   expect(wrapper.find('p.text-secondary.mt-2.mb-0').exists()).toBe(false)
 })
+
+it('shows spending without a daily limit', async () => {
+  const wrapper = screen(Refresh, fakeBackend({ draftRefresh: vi.fn().mockResolvedValue({ change: null, spend: { spentUsd: 3, dailyCapUsd: 0 } }) }), { slug: 'example', status })
+  await button(wrapper, 'Draft a change').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).toContain('Today, about $3.00, with no daily limit, as Claude Code estimates it.')
+})

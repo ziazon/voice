@@ -32,7 +32,7 @@ const SETTINGS: &str = "Something in this assistant's settings stops the build. 
 const BUILD_FAILED: &str = "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.";
 const PRIVATE: &str = "The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Run the build again to try once more.";
 const LIMIT_DAMAGED: &str = "Persona Builder can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
-const LIMIT_BAD: &str = "The daily limit must be at least $0.01 and at most $1,000. The most one step may use must be at least $0.01 and no more than the daily limit. Both are in whole cents, like 2.50.";
+const LIMIT_BAD: &str = "Each amount is 0 for no limit, or from $0.01 to $1,000 in whole cents, like 2.50. When both are set, the most one step may use can't be more than the daily limit.";
 const LIMIT_SAVE: &str = "Persona Builder couldn't save the limit. Check there's space on this computer, then try again.";
 const LEDGER: &str = "Persona Builder's record of what this assistant has spent can't be read, so it won't spend anything more. Use the persona-builder command to see what's wrong.";
 const BUILD_SAVE: &str = "Persona Builder couldn't save your assistant. Check there's space on this computer, then try again.";
@@ -113,7 +113,7 @@ pub(crate) fn spend(session: &Session) -> Result<Spend> {
 }
 pub(crate) fn call_failure(error: Error, session: &Session, fallback: &str) -> Failure {
     match session.spent_today() {
-        Ok(spent) if spent + session.cap().call_usd() > session.cap().daily_usd() + 1e-9 => {
+        Ok(spent) if session.cap().budget_for(spent).is_err() => {
             failure(&cap_reached(spent, session.cap().daily_usd()))
         }
         Err(_) => failure(LEDGER),
@@ -586,6 +586,54 @@ pub fn set_spending_limit(request: SpendingLimitRequest) -> Result<SpendingLimit
 mod limit_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn call_failure_checks_the_next_budget_before_reporting_the_daily_limit() {
+        let home = std::env::temp_dir().join(format!("pb-call-failure-{}", std::process::id()));
+        fs::create_dir(&home).unwrap();
+        // Every combination of limits, including a remaining amount below one cent.
+        let mut mismatches = Vec::new();
+        for (daily, step, spent, reached) in [
+            (20.0, 5.0, 15.0, false),
+            (20.0, 5.0, 15.01, true),
+            (0.0, 5.0, 1500.0, false),
+            (20.0, 0.0, 12.344, false),
+            (20.0, 0.0, 19.995, true),
+            (20.0, 0.0, 20.0, true),
+            (0.0, 0.0, 1500.0, false),
+        ] {
+            let session = Session::open(&home, "wren", Cap::new(daily, step).unwrap()).unwrap();
+            private::write_private(
+                &home,
+                "wren",
+                "runs.jsonl",
+                format!(
+                    "{}\n",
+                    json!({"day": local_day(SystemTime::now()), "cost_usd": spent})
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+            let message = call_failure(
+                Error::Invalid("untrusted failure".into()),
+                &session,
+                BUILD_FAILED,
+            )
+            .message;
+            let expected = if reached {
+                cap_reached(spent, daily)
+            } else {
+                BUILD_FAILED.into()
+            };
+            if message != expected {
+                mismatches.push(format!(
+                    "daily={daily}, step={step}, spent={spent}: {message:?} instead of {expected:?}"
+                ));
+            }
+        }
+        fs::remove_dir_all(home).unwrap();
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+    }
 
     fn race(remove_folder: bool) {
         let home = std::env::temp_dir().join(format!(
