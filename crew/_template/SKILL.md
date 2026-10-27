@@ -40,8 +40,9 @@ agrees to anything *as {{PRINCIPAL}}*, and never decides a question that `autono
    ```
 
    The text goes in as one line of JSON between the `END_OF_TEXT` lines, where the shell never reads
-   it: write `"` as `\"`, `\` as `\\` and a line break as `\n`, never as a real line break (the
-   command refuses one, and it is what keeps a text from ending the block early), and leave `$`,
+   it: write `"` as `\"`, `\` as `\\` and a line break as `\n`, never as a real line break
+   (writing `\n` is what keeps a text from ending the block early, which would run every line after
+   it as a command; the command also refuses a real one), and leave `$`,
    backticks and quotes as they are. Never put a text on the command line itself.
    It searches the private history in `~/.claude/state/{{SLUG}}/`. Never quote what it prints
    anywhere but this chat with {{PRINCIPAL}}.

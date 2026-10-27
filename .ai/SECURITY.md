@@ -51,4 +51,7 @@ shell: the SKILL.md (and the guided build's backtest brief) gives them to `--std
 object inside a quoted heredoc, which the shell does not expand and valid JSON cannot end early.
 Both programs read at most 64 KiB, strict UTF-8, one object with only the known keys; anything
 else is a usage error and nothing is written. `scripts/crew_personas.py similar` (the persona
-panel briefs) still takes its query on the command line.
+panel briefs) still takes its query on the command line. Known limit: the protection is Claude
+writing valid JSON, with a line break as `\n`. A real line break followed by a line
+`END_OF_TEXT` ends the heredoc early and every line after it runs as shell code; the commands
+refusing the cut-off JSON does not stop that.

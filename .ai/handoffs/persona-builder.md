@@ -24,12 +24,16 @@ One record per slice, newest first. Paraphrase only; no real person.
   review: no high or medium findings. Verifier (Fable): PASS; her probe ran 84 inputs against both
   programs with no difference, under sh, bash and zsh; four should-fixes, all fixed (a Rust
   lone-surrogate test, `similar`'s usage line naming `persona-builder`, the security paragraph's
-  first sentence, and the template saying a real line break is refused).
+  first sentence, and the template saying a real line break is refused). Repeat Verifier (Opus
+  5.5) on the fixes and this record: PASS, no must-fix; her two should-fixes, to state the limit
+  below in full here and in `.ai/SECURITY.md`, both taken (the template's wording with them).
 - **Not verified:** the full `ci-local.sh` (it runs at the land). An assistant made before this
   keeps its old `SKILL.md`; make it again.
 - **Known limit:** the safety rests on Claude writing valid JSON. A text with a real line break
-  and a line `END_OF_TEXT` would end the heredoc early, which is why the template says a line
-  break is written `\n` and the commands refuse a real one.
+  and a line `END_OF_TEXT` would end the heredoc early, and every line after it would then run
+  as shell code (the repeat Verifier ran `touch` that way under sh, bash and zsh). The commands
+  refusing the cut-off JSON does not stop those lines; writing a line break as `\n`, as the
+  template says, is the protection.
 - **Left:** `scripts/crew_personas.py similar` (the persona panel briefs) still takes its query
   on the command line.
 
