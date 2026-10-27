@@ -15,7 +15,18 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Verified:** red first (Codex's report: the new test failed on its Downloads assertion before
   the change). Mutation by V1: with the home root put back, the new test fails at the Downloads
   assertion. The test also covers a sibling folder named `ApplicationsOld`, which must not pass.
-  Codex's sandbox could not run the whole `ci-local.sh` (no loopback sockets, no npm); V1 ran it.
+  Codex's sandbox could not run the whole `ci-local.sh` (no loopback sockets, no npm); V1 ran it
+  on `e6e5d88`'s tree: all passed. Live, by V1, on a release build of the CLI with a throwaway
+  home: a copy in `<home>/Downloads/PB/` refused with the install sentence and made no folder; the
+  control, a copy in `<home>/Applications/PB/`, made the assistant and wrote
+  `"$HOME/Applications/PB/persona-builder"` into its `SKILL.md`.
+- **Not verified:** the app screen showing the sentence (a release app build, owed with the PB8
+  walk); the guard test is macOS-only (Linux's `/tmp` is refused for another reason).
+- **Security review:** no high or medium. One low: a `~/Applications` that is a symlink to a folder
+  outside home now makes that folder the root (planting it needs write access to home already).
+- **Verifier (Fable):** PASS, no must-fix. Should-fixes done: the brief no longer says the owner
+  chose it (V-Q9 was answered for them); this record names the commit CI ran on. Noted limits:
+  the symlinked `~/Applications` case above, and PB8.2's limits, unchanged.
 
 ## PB7.7e: alert banners reach readable contrast in both themes (2026-10-27, lane: V2)
 

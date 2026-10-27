@@ -7,7 +7,8 @@ decision. PB8.2 made a release build refuse a path that will not last (`lasting`
 unzipped app in `~/Downloads/Persona Builder/` passes: someone who skips `install.sh`, makes an
 assistant from there and then deletes the download leaves a `SKILL.md` pointing at nothing. This
 slice narrows that root from the home folder to the `Applications` folder inside it, keeping
-`/Applications`. The owner chose this over writing the case down as a known limit.
+`/Applications`. This was chosen (V-Q9, answered for the owner, who can overrule it) over writing
+the case down as a known limit.
 
 Read first: `AGENTS.md`, `.ai/PROJECT.md`, `.ai/SECURITY.md`, `CONTRIBUTING.md`. Skills:
 `~/.codex/skills/tdd-skill/SKILL.md`, `~/.codex/skills/code-quality/SKILL.md`,
