@@ -2,6 +2,40 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.9a: 0 means no limit, and *Save the limit* is greyed out only when a value is invalid (2026-10-26, lane: V1)
+
+- **What:** split from PB7.9 (an attended app review, F1 and F2). 0 in either field of the
+  daily limit means no limit, allowed past the $1,000 cap that bounds a typed amount; "step ≤
+  daily" applies only when both are set. With no step limit but a daily one, each call is given
+  what is left of the day (rounded down to whole cents) as `--max-budget-usd`; with no limit at
+  all no budget is passed, and a call that reports no cost is counted at $0 (`cost_from:
+  unknown`). One `Cap::budget_for` decides for the ledger and the API's "limit reached" message.
+  Connect Claude checks both amounts as they are typed, by the backend's rules, shows the reason
+  beside the field (`is-invalid`, `aria-invalid`, `aria-describedby`), and enables *Save the
+  limit* whenever both are valid, the unchanged defaults included. The spend line on Build and
+  Refresh says when there is no daily limit; the CLI's flags say "0 for no limit". Brief:
+  `plans/briefs/PB7.9a-no-limit-and-save.md`.
+- **Decision taken at pickup:** the card said a step with no limit "omits `--max-budget-usd`".
+  With a daily limit set, that would let one call run past the day, against the screen's promise,
+  so such a call is given the rest of the day instead; the flag is left out only when neither is
+  set. The maintainer may overrule it.
+- **Who built it:** Codex, from the brief in one pass.
+- **Verified:** red first for every group (Codex's report lists each failure seen), then green.
+  Mutations, each caught: no remaining-day branch, always passing the budget, `unchangedLimit` back
+  on the button, dropping "both above 0" on step ≤ daily (Codex); dropping the screen's `daily > 0`
+  guard (V1). V1 re-ran the agent crate's tests, the CLI's limit tests (they drive the built binary)
+  and the whole UI suite (271). Full `ci-local.sh` passed at the land. Security review: no high;
+  one medium, plausible (below). Verifier (Fable): PASS, no must-fix; a 200,000-pair float probe
+  found the overshoot never above 1e-9 and every budget whole cents.
+- **Known limit (security review, documented, not fixed):** with a daily limit and no step limit,
+  the day's last call can be given as little as $0.01. Claude Code's help doesn't say whether
+  `--max-budget-usd` stops a call before its first turn is billed, so that call may take the day
+  over by what it costs; every later call is then refused. The screen's help line and
+  `.ai/SECURITY.md` say so. A floor on the last budget would be a new product rule, left to the maintainer.
+  In that mode a killed or cut-off call is counted at the whole rest of the day.
+- **Not verified:** a live Claude call (it would spend real usage) and the screen's look in both
+  themes, owed to the next attended walk.
+
 ## PB8.3: the record and look-up texts can't run as shell code (2026-10-26, lane: V1)
 
 - **What:** an assistant's `SKILL.md` used to have Claude write each question, pick and answer
