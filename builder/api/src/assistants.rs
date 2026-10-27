@@ -13,7 +13,11 @@ use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::Command,
-    time::SystemTime,
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant, SystemTime},
 };
 
 type Result<T> = std::result::Result<T, dto::Failure>;
@@ -196,33 +200,48 @@ pub fn show_assistant_folder(request: dto::SlugRequest) -> Result<()> {
         Command::new(program).args(args).status().map(|_| ())
     })
 }
+fn ready_status(status: claude::Status) -> dto::ClaudeStatus {
+    dto::ClaudeStatus {
+        ready: true,
+        message: text::ready(&status.version),
+        note: status.api_key_set.then(|| text::API_KEY_SET.into()),
+        can_sign_in: false,
+    }
+}
+fn unavailable_status(error: Error) -> dto::ClaudeStatus {
+    dto::ClaudeStatus {
+        ready: false,
+        message: claude_message(error),
+        note: None,
+        can_sign_in: false,
+    }
+}
 pub fn claude_check_in(
     home: &Path,
     path: Option<&OsStr>,
     fallbacks: &[PathBuf],
 ) -> Result<dto::ClaudeStatus> {
-    Ok(
-        match claude::find_in(path, fallbacks).and_then(|claude| claude.check(home)) {
-            Ok(ready) => dto::ClaudeStatus {
-                ready: true,
-                message: text::ready(&ready.version),
-                note: ready.api_key_set.then(|| text::API_KEY_SET.into()),
-            },
-            Err(error) => dto::ClaudeStatus {
-                ready: false,
-                message: claude_message(error),
-                note: None,
-            },
+    let claude = match claude::find_in(home, path, fallbacks) {
+        Ok(claude) => claude,
+        Err(error) => return Ok(unavailable_status(error)),
+    };
+    Ok(match claude.status(home) {
+        Ok(status) if status.signed_in => ready_status(status),
+        Ok(status) => dto::ClaudeStatus {
+            ready: false,
+            message: text::signed_out_at(
+                &status.version,
+                &text::shown_program(claude.program(), home),
+            ),
+            note: None,
+            can_sign_in: true,
         },
-    )
+        Err(error) => unavailable_status(error),
+    })
 }
 pub fn claude_check() -> Result<dto::ClaudeStatus> {
     let Ok(home) = home(text::FAILED) else {
-        return Ok(dto::ClaudeStatus {
-            ready: false,
-            message: text::FAILED.into(),
-            note: None,
-        });
+        return Ok(unavailable_status(Error::Invalid(text::FAILED.into())));
     };
     claude_check_in(
         &home,
@@ -254,6 +273,10 @@ pub(crate) fn claude_message(error: Error) -> String {
                 text::DOES_NOT_RUN,
                 text::SIGNED_OUT,
                 text::PLAN_STOPPED,
+                text::SIGN_IN_FAILED,
+                text::SIGN_IN_TIMED_OUT,
+                text::SIGN_IN_STOPPED,
+                text::PROFILE_FAILED,
             ]
             .contains(&message.as_str()) =>
         {
@@ -274,5 +297,121 @@ mod tests {
             opener_args(dir),
             ("/usr/bin/open", vec![OsString::from("-R"), dir.into()])
         );
+    }
+}
+
+/// The single Claude sign-in currently waiting for the browser.
+#[derive(Default)]
+pub struct ClaudeSignIns {
+    state: Mutex<Option<Arc<AtomicBool>>>,
+}
+impl ClaudeSignIns {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+pub const SIGN_IN_BUSY: &str =
+    "Persona Builder is already waiting for you to sign in on Claude's page in your browser.";
+pub fn claude_sign_ins() -> &'static ClaudeSignIns {
+    static SIGN_INS: OnceLock<ClaudeSignIns> = OnceLock::new();
+    SIGN_INS.get_or_init(ClaudeSignIns::new)
+}
+/// Releases the slot on every return, including an unwinding panic.
+struct ClaudeSignInGuard<'a>(&'a ClaudeSignIns);
+impl Drop for ClaudeSignInGuard<'_> {
+    fn drop(&mut self) {
+        *self.0.state.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    }
+}
+pub fn claude_sign_in_in(
+    home: &Path,
+    path: Option<&OsStr>,
+    fallbacks: &[PathBuf],
+    sign_ins: &ClaudeSignIns,
+) -> Result<dto::ClaudeStatus> {
+    let flag = {
+        let mut state = sign_ins.state.lock().unwrap_or_else(|p| p.into_inner());
+        if state.is_some() {
+            return Err(failure(SIGN_IN_BUSY));
+        }
+        let flag = Arc::new(AtomicBool::new(false));
+        *state = Some(Arc::clone(&flag));
+        flag
+    };
+    let _guard = ClaudeSignInGuard(sign_ins);
+    let claude = match claude::find_in(home, path, fallbacks) {
+        Ok(claude) => claude,
+        Err(error) => return Ok(unavailable_status(error)),
+    };
+    match claude.status(home) {
+        Ok(status) if status.signed_in => return Ok(ready_status(status)),
+        Err(error) => return Ok(unavailable_status(error)),
+        _ => {}
+    }
+    let result = claude.sign_in(home, &flag);
+    if let Err(Error::Invalid(message)) = &result
+        && message == text::SIGN_IN_STOPPED
+    {
+        return Ok(dto::ClaudeStatus {
+            ready: false,
+            message: message.clone(),
+            note: None,
+            can_sign_in: true,
+        });
+    }
+    if let Ok(status) = claude.status(home)
+        && status.signed_in
+    {
+        return Ok(ready_status(status));
+    }
+    Ok(dto::ClaudeStatus {
+        ready: false,
+        message: result
+            .err()
+            .map(claude_message)
+            .unwrap_or_else(|| text::SIGN_IN_FAILED.into()),
+        note: None,
+        can_sign_in: true,
+    })
+}
+pub fn claude_sign_in_cancel_in(sign_ins: &ClaudeSignIns) -> Result<()> {
+    if let Some(flag) = sign_ins
+        .state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+    {
+        flag.store(true, Ordering::SeqCst);
+    }
+    Ok(())
+}
+pub fn claude_sign_in() -> Result<dto::ClaudeStatus> {
+    let Ok(home) = home(text::FAILED) else {
+        return Ok(unavailable_status(Error::Invalid(text::FAILED.into())));
+    };
+    claude_sign_in_in(
+        &home,
+        std::env::var_os("PATH").as_deref(),
+        &claude::fallbacks(&home),
+        claude_sign_ins(),
+    )
+}
+pub fn claude_sign_in_cancel() -> Result<()> {
+    claude_sign_in_cancel_in(claude_sign_ins())
+}
+pub fn claude_sign_in_shutdown(wait: Duration) {
+    let sign_ins = claude_sign_ins();
+    let _ = claude_sign_in_cancel_in(sign_ins);
+    let started = Instant::now();
+    while sign_ins
+        .state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .is_some()
+    {
+        if started.elapsed() >= wait {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
     }
 }

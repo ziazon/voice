@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-sign-in-cancel"
+description = "Enables the claude_sign_in_cancel command without any pre-configured scope."
+commands.allow = ["claude_sign_in_cancel"]
+
+[[permission]]
+identifier = "deny-claude-sign-in-cancel"
+description = "Denies the claude_sign_in_cancel command without any pre-configured scope."
+commands.deny = ["claude_sign_in_cancel"]

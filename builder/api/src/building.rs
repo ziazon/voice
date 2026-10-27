@@ -145,7 +145,7 @@ pub fn build_assistant_in(
         return Err(failure(NOTHING_YET));
     }
     let prepared = run::prepare(&member, &dir, home, CORPUS).map_err(|_| failure(SETTINGS))?;
-    let claude = claude::find_in(path, fallbacks)
+    let claude = claude::find_in(home, path, fallbacks)
         .map_err(|e| failure(&claude_message(e)))?
         .with_stop(Arc::clone(&running.stop));
     claude
@@ -371,7 +371,7 @@ pub fn draft_interview_in(
     let member = readable(home, &request.slug)?;
     can_draft(home, &member, request.replace)?;
     let book = book(&member).map_err(|_| failure(SETTINGS))?;
-    let claude = claude::find_in(path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
+    let claude = claude::find_in(home, path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;

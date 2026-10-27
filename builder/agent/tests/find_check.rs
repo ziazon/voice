@@ -40,18 +40,24 @@ fn finds_claude_in_path_order_then_the_usual_places() {
     fs::create_dir_all(&b).unwrap();
     executable(&b.join("claude"));
     executable(&a.join("claude"));
-    let found = find_in(Some(&path_of(&[&a, &b])), &[]).unwrap();
+    let found = find_in(&scratch.0, Some(&path_of(&[&a, &b])), &[]).unwrap();
     assert_eq!(found.program(), a.join("claude"));
 
     let fallback = scratch.0.join("fallback-claude");
     executable(&fallback);
     let found = find_in(
+        &scratch.0,
         Some(&path_of(&[&scratch.0.join("missing")])),
         std::slice::from_ref(&fallback),
     )
     .unwrap();
     assert_eq!(found.program(), fallback);
-    let found = find_in(None, &[scratch.0.join("nope"), fallback.clone()]).unwrap();
+    let found = find_in(
+        &scratch.0,
+        None,
+        &[scratch.0.join("nope"), fallback.clone()],
+    )
+    .unwrap();
     assert_eq!(found.program(), fallback);
 }
 
@@ -66,7 +72,7 @@ fn skips_relative_and_empty_path_entries_and_odd_files() {
     fs::create_dir_all(scratch.0.join("rel")).unwrap();
     executable(&scratch.0.join("rel/claude"));
     let raw = OsString::from(format!("{}::", relative.display()));
-    let error = find_in(Some(&raw), &[]).unwrap_err();
+    let error = find_in(&scratch.0, Some(&raw), &[]).unwrap_err();
     assert_eq!(error.to_string(), text::NOT_INSTALLED);
 
     let plain = scratch.0.join("plain");
@@ -74,14 +80,14 @@ fn skips_relative_and_empty_path_entries_and_odd_files() {
     fs::write(plain.join("claude"), "not executable").unwrap();
     let folder = scratch.0.join("folder");
     fs::create_dir_all(folder.join("claude")).unwrap();
-    let error = find_in(Some(&path_of(&[&plain, &folder])), &[]).unwrap_err();
+    let error = find_in(&scratch.0, Some(&path_of(&[&plain, &folder])), &[]).unwrap_err();
     assert_eq!(error.to_string(), text::NOT_INSTALLED);
 
     let linked = scratch.0.join("linked");
     fs::create_dir_all(&linked).unwrap();
     executable(&scratch.0.join("real-claude"));
     symlink(scratch.0.join("real-claude"), linked.join("claude")).unwrap();
-    let found = find_in(Some(&path_of(&[&linked])), &[]).unwrap();
+    let found = find_in(&scratch.0, Some(&path_of(&[&linked])), &[]).unwrap();
     assert_eq!(found.program(), linked.join("claude"));
 }
 

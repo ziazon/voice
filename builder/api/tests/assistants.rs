@@ -220,7 +220,8 @@ fn claude_status_uses_only_safe_messages() {
         ClaudeStatus {
             ready: false,
             message: text::NOT_INSTALLED.into(),
-            note: None
+            note: None,
+            can_sign_in: false,
         }
     );
     let bin = h.join("bin");
@@ -228,13 +229,15 @@ fn claude_status_uses_only_safe_messages() {
     let program = bin.join("claude");
     for (auth, expected) in [
         ("true", text::ready("2.1.292")),
-        ("false", text::SIGNED_OUT.into()),
+        ("false", "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Persona Builder yet. Persona Builder keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account.".into()),
     ] {
         fs::write(&program,format!("#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.292 (Claude Code)'; else echo '{{\"loggedIn\":{auth}}}'; fi\n")).unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
         let status = claude_check_in(h, Some(bin.as_os_str()), &[]).unwrap();
         assert_eq!(status.ready, auth == "true");
         assert_eq!(status.message, expected);
+        assert_eq!(status.can_sign_in, auth == "false");
+        assert!(!status.message.contains(h.to_str().unwrap()));
         if status.ready {
             assert_eq!(
                 status.note,
@@ -246,9 +249,12 @@ fn claude_status_uses_only_safe_messages() {
     }
     fs::write(&program, "#!/bin/sh\necho private-detail\n").unwrap();
     assert_eq!(
-        claude_check_in(h, None, &[program]).unwrap().message,
+        claude_check_in(h, None, std::slice::from_ref(&program))
+            .unwrap()
+            .message,
         text::DOES_NOT_RUN
     );
+    assert!(!claude_check_in(h, None, &[program]).unwrap().can_sign_in);
 }
 #[test]
 fn dto_json_and_wording_match_contract() {
@@ -346,6 +352,7 @@ fn missing_home_claude_check_returns_a_status() {
                 ready: false,
                 message: text::FAILED.into(),
                 note: None,
+                can_sign_in: false,
             }
         );
         return;

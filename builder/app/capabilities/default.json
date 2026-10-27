@@ -11,6 +11,8 @@
     "allow-consent-text",
     "allow-agree-consent",
     "allow-claude-check",
+    "allow-claude-sign-in",
+    "allow-claude-sign-in-cancel",
     "allow-save-options",
     "allow-open-link",
     "allow-github-sign-in-start",

@@ -20,6 +20,8 @@ it.each([
   ['listAssistants', 'list_assistants'],
   ['consentText', 'consent_text'],
   ['claudeCheck', 'claude_check'],
+  ['claudeSignIn', 'claude_sign_in'],
+  ['claudeSignInCancel', 'claude_sign_in_cancel'],
   ['githubSignInStart', 'github_sign_in_start'],
   ['githubSignInFinish', 'github_sign_in_finish'],
   ['githubSignInCancel', 'github_sign_in_cancel'],

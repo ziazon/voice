@@ -1133,3 +1133,23 @@ fn zero_spending_limits_save_load_and_reach_todays_spend() {
     assert_eq!(spend.daily_cap_usd, 0.0);
     assert_eq!(spend.spent_usd, 0.0);
 }
+
+#[test]
+fn drafted_model_call_uses_the_apps_own_claude_profile() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    interview_stub(&h);
+    let source = fs::read_to_string(h.bin.join("claude")).unwrap();
+    h.program(&source.replace("prompt = sys.stdin.read()", "prompt = sys.stdin.read()\n    with open(os.path.join(HERE, 'profile'), 'w') as f:\n        f.write(os.environ.get('CLAUDE_CONFIG_DIR', 'unset'))"));
+    assert!(h.draft(false).is_ok());
+    #[cfg(target_os = "macos")]
+    let expected = h
+        .path
+        .join("Library/Application Support/Persona Builder/claude-code");
+    #[cfg(not(target_os = "macos"))]
+    let expected = h.path.join(".local/share/persona-builder/claude-code");
+    assert_eq!(
+        fs::read_to_string(h.bin.join("profile")).unwrap(),
+        expected.to_str().unwrap()
+    );
+}

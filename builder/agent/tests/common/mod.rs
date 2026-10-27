@@ -46,6 +46,7 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 n=$(ls "$here" | grep -c '^argv')
 for a in "$@"; do printf '%s\n' "$a"; done > "$here/argv$n"
 pwd -P > "$here/cwd"
+printf '%s %s %s\n' "$1" "${CLAUDE_CONFIG_DIR:-}" "${CLAUDECODE+set}" | sed 's/ $/ unset/' >> "$here/profiles"
 cat > "$here/stdin"
 if [ -n "${CLAUDECODE+x}" ]; then echo set; else echo unset; fi > "$here/claudecode"
 if [ -n "${CLAUDE_CODE_ENTRYPOINT+x}" ]; then echo set; else echo unset; fi > "$here/entrypoint"

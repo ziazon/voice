@@ -72,6 +72,8 @@ export interface Backend {
   consentText(): Promise<ConsentText>
   agreeConsent(request: SlugRequest): Promise<Consent>
   claudeCheck(): Promise<ClaudeStatus>
+  claudeSignIn(): Promise<ClaudeStatus>
+  claudeSignInCancel(): Promise<void>
   saveOptions(request: SlugRequest): Promise<SaveOptions>
   openLink(request: LinkRequest): Promise<void>
   githubSignInStart(): Promise<SignInCode>

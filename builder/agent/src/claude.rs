@@ -1,5 +1,5 @@
 //! The person's own Claude Code (PB-D9): finding it, checking it is signed in, and one tool-less
-//! call. Persona Builder never logs in for anyone and never reads, sets or passes a token.
+//! call. Persona Builder starts Claude Code's login but never reads, sets or passes a token.
 //!
 //! Sources, read 2026-10-24: `https://code.claude.com/docs/en/headless` (the JSON reply, its
 //! `structured_output`, the 10 MB stdin cap, and that without `--bare` a `-p` run loads the working
@@ -17,7 +17,8 @@ use persona_builder::error::{Error, Result};
 use serde_json::Value;
 use std::{
     ffi::OsStr,
-    os::unix::fs::PermissionsExt,
+    fs,
+    os::unix::fs::{DirBuilderExt, PermissionsExt},
     path::{Path, PathBuf},
     process::Command,
     sync::{
@@ -76,6 +77,7 @@ pub struct Ready {
 #[derive(Debug)]
 pub struct Claude {
     program: PathBuf,
+    profile: Option<PathBuf>,
     timeout: Duration,
     stop: Option<Arc<AtomicBool>>,
 }
@@ -92,22 +94,26 @@ pub fn fallbacks(home: &Path) -> Vec<PathBuf> {
 
 /// Claude Code on `PATH`, else in the usual places.
 pub fn find(path: Option<&OsStr>, home: &Path) -> Result<Claude> {
-    find_in(path, &fallbacks(home))
+    find_in(home, path, &fallbacks(home))
 }
 
 /// The first `claude` in the absolute folders of `path`, then in `fallbacks`. Relative and empty
 /// `PATH` entries are skipped, so a `.` in PATH never runs a `claude` from the current folder.
-pub fn find_in(path: Option<&OsStr>, fallbacks: &[PathBuf]) -> Result<Claude> {
+pub fn find_in(home: &Path, path: Option<&OsStr>, fallbacks: &[PathBuf]) -> Result<Claude> {
     let on_path = path
         .into_iter()
         .flat_map(std::env::split_paths)
         .filter(|folder| folder.is_absolute())
         .map(|folder| folder.join("claude"));
-    on_path
+    let program = on_path
         .chain(fallbacks.iter().cloned())
         .find(|candidate| runnable(candidate))
-        .map(Claude::at)
-        .ok_or_else(|| Error::Invalid(text::NOT_INSTALLED.into()))
+        .ok_or_else(|| Error::Invalid(text::NOT_INSTALLED.into()))?;
+    let profile = ensure_profile(home)?;
+    Ok(Claude {
+        profile: Some(profile),
+        ..Claude::at(program)
+    })
 }
 
 /// A regular file with an execute bit, links followed (the installers' launchers are links).
@@ -304,10 +310,84 @@ fn judge(ran: Ran, timeout: Duration) -> Option<Judged> {
     })
 }
 
+/// Persona Builder's own Claude Code profile (`CLAUDE_CONFIG_DIR`): its sign-in and settings,
+/// apart from the person's own `~/.claude`.
+pub fn profile_folder(home: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    let folder = "Library/Application Support/Persona Builder/claude-code";
+    #[cfg(not(target_os = "macos"))]
+    let folder = ".local/share/persona-builder/claude-code";
+    home.join(folder)
+}
+
+fn ensure_profile(home: &Path) -> Result<PathBuf> {
+    let folder = profile_folder(home);
+    let app = folder.parent().expect("profile has an app folder");
+    let prepare = || -> std::io::Result<()> {
+        fs::create_dir_all(app.parent().expect("app has a parent"))?;
+        for path in [app, folder.as_path()] {
+            match fs::symlink_metadata(path) {
+                Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+                    if metadata.permissions().mode() & 0o077 != 0 {
+                        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+                    }
+                }
+                Ok(_) => return Err(std::io::Error::other("not a directory")),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    fs::DirBuilder::new().mode(0o700).create(path)?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    };
+    prepare().map_err(|_| invalid(text::PROFILE_FAILED))?;
+    Ok(folder)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Status {
+    pub version: String,
+    pub signed_in: bool,
+    /// `ANTHROPIC_API_KEY` is set (its value is never shown or kept).
+    pub api_key_set: bool,
+}
+
+/// How long Persona Builder waits for the person to finish signing in.
+pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
 impl Claude {
+    pub fn profile(&self) -> Option<&Path> {
+        self.profile.as_deref()
+    }
+    /// `claude auth login --claudeai`, with the profile and no session markers, in `cwd`.
+    pub fn sign_in_command(&self, cwd: &Path) -> Command {
+        let mut command = self.command(cwd);
+        command.args(["auth", "login", "--claudeai"]);
+        command
+    }
+    /// Wait for Claude Code's login with empty stdin and bounded, discarded output.
+    pub fn sign_in(&self, home: &Path, stop: &AtomicBool) -> Result<()> {
+        let mut command = self.sign_in_command(home);
+        match child::run(
+            &mut command,
+            None,
+            SIGN_IN_TIMEOUT.min(self.timeout),
+            CHECK_CAP,
+            Some(stop),
+        ) {
+            Ran::Finished { status, .. } if status.success() => Ok(()),
+            Ran::Finished { .. } => Err(invalid(text::SIGN_IN_FAILED)),
+            Ran::CutOff => Err(invalid(text::SIGN_IN_TIMED_OUT)),
+            Ran::Stopped => Err(invalid(text::SIGN_IN_STOPPED)),
+            Ran::NotStarted => Err(invalid(text::DOES_NOT_RUN)),
+        }
+    }
+
     pub fn at(program: PathBuf) -> Claude {
         Claude {
             program,
+            profile: None,
             timeout: DEFAULT_TIMEOUT,
             stop: None,
         }
@@ -325,10 +405,13 @@ impl Claude {
         &self.program
     }
 
-    /// `claude` in `cwd`, with the person's own environment minus the session markers.
+    /// `claude` in `cwd`, with this profile and the session markers removed.
     fn command(&self, cwd: &Path) -> Command {
         let mut command = Command::new(&self.program);
         command.current_dir(cwd);
+        if let Some(profile) = &self.profile {
+            command.env("CLAUDE_CONFIG_DIR", profile);
+        }
         for marker in SESSION_MARKERS {
             command.env_remove(marker);
         }
@@ -350,9 +433,9 @@ impl Claude {
         }
     }
 
-    /// Claude Code runs and is signed in. Only `loggedIn` is read from the status: the object can
+    /// Check the version and sign-in. Only `loggedIn` is read from the status: the object can
     /// carry an email address, which is never kept or shown.
-    pub fn check(&self, home: &Path) -> Result<Ready> {
+    pub fn status(&self, home: &Path) -> Result<Status> {
         let stdout = self
             .ask(home, &["--version"])
             .ok_or_else(|| invalid(text::DOES_NOT_RUN))?;
@@ -366,12 +449,22 @@ impl Claude {
             .ask(home, &["auth", "status", "--json"])
             .and_then(|stdout| serde_json::from_slice::<Value>(&stdout).ok())
             .and_then(|status| status.get("loggedIn").and_then(Value::as_bool));
-        if logged_in != Some(true) {
+        Ok(Status {
+            version,
+            signed_in: logged_in == Some(true),
+            api_key_set: std::env::var_os("ANTHROPIC_API_KEY").is_some_and(|key| !key.is_empty()),
+        })
+    }
+
+    /// Claude Code runs and is signed in for this profile.
+    pub fn check(&self, home: &Path) -> Result<Ready> {
+        let status = self.status(home)?;
+        if !status.signed_in {
             return Err(invalid(text::SIGNED_OUT));
         }
         Ok(Ready {
-            version,
-            api_key_set: std::env::var_os("ANTHROPIC_API_KEY").is_some_and(|key| !key.is_empty()),
+            version: status.version,
+            api_key_set: status.api_key_set,
         })
     }
 

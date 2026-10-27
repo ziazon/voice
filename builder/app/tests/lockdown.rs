@@ -51,6 +51,8 @@ fn lockdown_1_command_lists_agree_in_order() {
             "consent_text",
             "agree_consent",
             "claude_check",
+            "claude_sign_in",
+            "claude_sign_in_cancel",
             "save_options",
             "open_link",
             "github_sign_in_start",
@@ -193,4 +195,12 @@ fn lockdown_4_no_external_tauri_plugins() {
     for line in source("Cargo.toml").lines() {
         assert!(!is_plugin_line(line), "{line}");
     }
+}
+
+#[test]
+fn app_exit_stops_a_pending_claude_sign_in() {
+    let main = source("src/main.rs");
+    assert!(main.contains(".build(tauri::generate_context!())"));
+    assert!(main.contains("tauri::RunEvent::Exit"));
+    assert!(main.contains("persona_builder_api::claude_sign_in_shutdown(Duration::from_secs(1))"));
 }

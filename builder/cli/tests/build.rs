@@ -208,7 +208,7 @@ fn build_spends_nothing_and_writes_nothing_when_claude_code_is_signed_out() {
     let out = fixture.run(&["build", &fixture.member()]);
     assert!(!out.status.success());
     assert!(
-        text(&out.stderr).contains("Claude Code isn't signed in."),
+        text(&out.stderr).contains(persona_builder_agent::text::SIGNED_OUT),
         "{}",
         text(&out.stderr)
     );

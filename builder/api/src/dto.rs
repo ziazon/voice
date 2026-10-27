@@ -84,6 +84,8 @@ pub struct ClaudeStatus {
     pub ready: bool,
     pub message: String,
     pub note: Option<String>,
+    /// Claude Code is here and runs but isn't signed in, so the screen offers Sign in to Claude.
+    pub can_sign_in: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

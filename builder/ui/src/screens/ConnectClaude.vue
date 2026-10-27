@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useBackend } from '../backend'
 import { failureMessage } from '../failure'
 import type { Assistant } from '../types/generated/Assistant'
@@ -11,6 +11,7 @@ const emit = defineEmits<{ next: [] }>()
 const backend = useBackend()
 const status = ref<ClaudeStatus>()
 const loading = ref(true)
+const signingIn = ref(false)
 async function check() {
   loading.value = true
   status.value = undefined
@@ -21,11 +22,35 @@ async function check() {
       ready: false,
       message: failureMessage(failure, "Persona Builder couldn't check Claude Code. Close it and open it again."),
       note: null,
+      canSignIn: false,
     }
   } finally {
     loading.value = false
   }
 }
+async function signIn() {
+  signingIn.value = true
+  try {
+    status.value = await backend.claudeSignIn()
+  } catch (failure) {
+    status.value = {
+      ready: false,
+      message: failureMessage(failure, "Persona Builder couldn't start signing in to Claude. Close it and open it again."),
+      note: null,
+      canSignIn: true,
+    }
+  } finally {
+    signingIn.value = false
+  }
+}
+async function cancelSignIn() {
+  try {
+    await backend.claudeSignInCancel()
+  } catch {
+    // The pending sign-in still ends even if cancelling fails.
+  }
+}
+onUnmounted(() => { if (signingIn.value) void cancelSignIn() })
 const limit = ref<SpendingLimit>()
 const day = ref('')
 const step = ref('')
@@ -103,13 +128,20 @@ onMounted(loadLimit)
       <h2 class="mb-3">Connect Claude</h2>
       <p>Persona Builder works through your own Claude Code, signed in to your own Claude account. It checks that now, and you set how much it may use in a day.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Checking Claude Code…</span></div>
+      <template v-else-if="signingIn">
+        <div class="mb-3" role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Finish signing in on the Claude page that opened in your browser. Persona Builder carries on when you're done.</div>
+        <button type="button" class="btn btn-outline-secondary" @click="cancelSignIn">Cancel</button>
+      </template>
       <template v-else-if="status">
         <div class="alert" :class="status.ready ? 'alert-success' : 'alert-warning'" role="alert">{{ status.message }}</div>
         <p v-if="status.ready && status.note" class="text-secondary">{{ status.note }}</p>
         <button v-if="status.ready" type="button" class="btn btn-primary" @click="emit('next')">Next: your history</button>
-        <button v-if="!status.ready" type="button" class="btn btn-primary" @click="check">Check again</button>
+        <template v-if="!status.ready">
+          <button v-if="status.canSignIn" type="button" class="btn btn-primary" @click="signIn">Sign in to Claude</button>
+          <button type="button" :class="status.canSignIn ? 'btn btn-outline-secondary ms-2' : 'btn btn-primary'" @click="check">Check again</button>
+        </template>
       </template>
-      <p class="text-secondary mt-3 mb-0">Persona Builder never asks for your Claude password: you sign in to Claude Code yourself. Claude is the only choice for now. Other AI providers come later.</p>
+      <p class="text-secondary mt-3 mb-0">Persona Builder never sees your Claude password: you sign in on Claude's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later.</p>
     </div>
   </section>
   <section class="card mt-3">

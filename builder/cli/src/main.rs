@@ -423,6 +423,8 @@ enum ConsentCommand {
 enum ClaudeCommand {
     /// Check that Claude Code is installed and signed in.
     Check,
+    /// Sign in to Claude Code in Persona Builder's own profile folder, on Claude's page in your browser.
+    SignIn,
 }
 
 #[derive(Subcommand)]
@@ -1216,9 +1218,42 @@ fn claude_check() -> Result<()> {
     use persona_builder_agent::{claude, text};
     let home = home()?;
     let path = std::env::var_os("PATH");
-    let ready = claude::find(path.as_deref(), &home)?.check(&home)?;
+    let claude = claude::find(path.as_deref(), &home)?;
+    let ready = claude.status(&home)?;
+    if !ready.signed_in {
+        return Err(Error::Invalid(format!(
+            "{} {}",
+            text::signed_out_at(
+                &ready.version,
+                &text::shown_program(claude.program(), &home)
+            ),
+            text::SIGN_IN_CLI,
+        )));
+    }
     println!("{}", text::ready(&ready.version));
     if ready.api_key_set {
+        println!("{}", text::API_KEY_SET);
+    }
+    Ok(())
+}
+fn claude_sign_in() -> Result<()> {
+    use persona_builder_agent::{claude, text};
+    let home = home()?;
+    let path = std::env::var_os("PATH");
+    let claude = claude::find(path.as_deref(), &home)?;
+    let mut status = claude.status(&home)?;
+    if !status.signed_in {
+        println!("{}", text::SIGN_IN_WAITING);
+        let _ = claude.sign_in_command(&home).status();
+        status = claude
+            .status(&home)
+            .map_err(|_| Error::Invalid(text::SIGN_IN_FAILED.into()))?;
+        if !status.signed_in {
+            return Err(Error::Invalid(text::SIGN_IN_FAILED.into()));
+        }
+    }
+    println!("{}", text::ready(&status.version));
+    if status.api_key_set {
         println!("{}", text::API_KEY_SET);
     }
     Ok(())
@@ -2159,9 +2194,10 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             SaveCommand::Push { path } => save_push(path),
         },
         Some(Command::Agents) => agents(),
-        Some(Command::Claude {
-            command: ClaudeCommand::Check,
-        }) => claude_check(),
+        Some(Command::Claude { command }) => match command {
+            ClaudeCommand::Check => claude_check(),
+            ClaudeCommand::SignIn => claude_sign_in(),
+        },
         Some(Command::Interview { command }) => match command {
             InterviewCommand::Draft {
                 member_dir,

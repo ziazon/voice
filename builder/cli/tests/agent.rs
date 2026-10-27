@@ -122,8 +122,71 @@ fn claude_check_says_ready_or_what_to_do() {
         text(&out.stderr),
         format!(
             "persona-builder: {}\n",
-            persona_builder_agent::text::SIGNED_OUT
+            "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Persona Builder yet. Persona Builder keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account. Run persona-builder claude sign-in to sign in."
         )
+    );
+}
+
+#[test]
+fn claude_sign_in_skips_login_when_already_signed_in() {
+    let f = Fixture::new();
+    f.stub(
+        r#"here="$(dirname "$0")"
+case "$1 $2" in
+    '--version ') echo '2.1.292 (Claude Code)';;
+    'auth status') echo '{"loggedIn":true}';;
+    'auth login') touch "$here/login";;
+esac"#,
+    );
+    let out = f.run(&["claude", "sign-in"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "Claude Code 2.1.292 is installed and signed in.\n"
+    );
+    assert!(!f.bin.join("login").exists());
+}
+
+#[test]
+fn claude_sign_in_uses_its_profile_then_checks_the_result() {
+    let f = Fixture::new();
+    f.stub(r#"here="$(dirname "$0")"
+case "$1 $2" in
+    '--version ') echo '2.1.292 (Claude Code)';;
+    'auth status') if [ -f "$here/login" ]; then echo '{"loggedIn":true}'; else echo '{"loggedIn":false}'; fi;;
+    'auth login') printf '%s\n' "$@" > "$here/login"; printf '%s' "$CLAUDE_CONFIG_DIR" > "$here/profile";;
+esac"#);
+    let out = f.run(&["claude", "sign-in"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        fs::read_to_string(f.bin.join("login")).unwrap(),
+        "auth\nlogin\n--claudeai\n"
+    );
+    #[cfg(target_os = "macos")]
+    let profile = f
+        .home
+        .join("Library/Application Support/Persona Builder/claude-code");
+    #[cfg(not(target_os = "macos"))]
+    let profile = f.home.join(".local/share/persona-builder/claude-code");
+    assert_eq!(
+        fs::read_to_string(f.bin.join("profile")).unwrap(),
+        profile.to_str().unwrap()
+    );
+    assert_eq!(
+        text(&out.stdout),
+        "Finish signing in on the Claude page that opened in your browser. Persona Builder carries on when you're done.\nClaude Code 2.1.292 is installed and signed in.\n"
+    );
+}
+
+#[test]
+fn claude_sign_in_fails_when_login_does_not_sign_in() {
+    let f = Fixture::new();
+    f.stub(r#"case "$1" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{"loggedIn":false}';; esac"#);
+    let out = f.run(&["claude", "sign-in"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stderr),
+        "persona-builder: Claude Code didn't finish signing in. Try again. If no Claude page opened in your browser, check that this computer has a default browser.\n"
     );
 }
 

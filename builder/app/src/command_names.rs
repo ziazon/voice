@@ -7,6 +7,8 @@ pub const COMMANDS: &[&str] = &[
     "consent_text",
     "agree_consent",
     "claude_check",
+    "claude_sign_in",
+    "claude_sign_in_cancel",
     "save_options",
     "open_link",
     "github_sign_in_start",

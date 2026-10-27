@@ -250,7 +250,7 @@ pub fn draft_refresh_in(
 ) -> Result<RefreshDrafted> {
     let member = readable(home, &request.slug)?;
     let filters = Filters::compile(&member.filters).map_err(|_| failure(REVIEW_SETTINGS))?;
-    let claude = claude::find_in(path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
+    let claude = claude::find_in(home, path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
@@ -331,7 +331,7 @@ pub fn apply_refresh_in(
 ) -> Result<RefreshApplied> {
     let member = readable(home, &request.slug)?;
     let filters = Filters::compile(&member.filters).map_err(|_| failure(REVIEW_SETTINGS))?;
-    let claude = claude::find_in(path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
+    let claude = claude::find_in(home, path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;

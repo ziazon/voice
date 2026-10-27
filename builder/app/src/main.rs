@@ -1,8 +1,10 @@
 mod commands;
 mod navigation;
 
+use std::time::Duration;
+
 fn main() {
-    if let Err(error) = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("nav-guard")
                 .on_navigation(|_, url| navigation::is_allowed_navigation(url, tauri::is_dev()))
@@ -16,6 +18,8 @@ fn main() {
             commands::consent_text,
             commands::agree_consent,
             commands::claude_check,
+            commands::claude_sign_in,
+            commands::claude_sign_in_cancel,
             commands::save_options,
             commands::open_link,
             commands::github_sign_in_start,
@@ -56,9 +60,16 @@ fn main() {
             commands::answer_refresh,
             commands::apply_refresh,
         ])
-        .run(tauri::generate_context!())
-    {
-        eprintln!("Persona Builder couldn't start: {error}");
-        std::process::exit(1);
+        .build(tauri::generate_context!());
+    match app {
+        Ok(app) => app.run(|_, event| {
+            if let tauri::RunEvent::Exit = event {
+                persona_builder_api::claude_sign_in_shutdown(Duration::from_secs(1));
+            }
+        }),
+        Err(error) => {
+            eprintln!("Persona Builder couldn't start: {error}");
+            std::process::exit(1);
+        }
     }
 }

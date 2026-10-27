@@ -43,6 +43,17 @@ pub fn claude_check()
 }
 
 #[tauri::command(async)]
+pub fn claude_sign_in()
+-> Result<persona_builder_api::dto::ClaudeStatus, persona_builder_api::dto::Failure> {
+    persona_builder_api::claude_sign_in()
+}
+
+#[tauri::command(async)]
+pub fn claude_sign_in_cancel() -> Result<(), persona_builder_api::dto::Failure> {
+    persona_builder_api::claude_sign_in_cancel()
+}
+
+#[tauri::command(async)]
 pub fn save_options(
     request: persona_builder_api::dto::SlugRequest,
 ) -> Result<persona_builder_api::dto::SaveOptions, persona_builder_api::dto::Failure> {
