@@ -136,7 +136,7 @@ onMounted(loadLimit)
             </div>
           </div>
         </div>
-        <p class="mt-3">Enter 0 in either box for no limit.</p>
+        <p class="mt-3">Enter 0 in either box for no limit. With no limit for one step, the day's last step may go a little over.</p>
         <p class="mt-3">If the build reaches the limit, it carries on tomorrow. Persona Builder checks the limit before every step, so it stops before it goes over.</p>
         <button type="button" class="btn btn-primary" :disabled="loadingLimit || savingLimit || !!dayProblem || !!stepProblem" @click="saveLimit">Save the limit</button>
         <p v-if="savedMessage" class="mt-3 mb-0" role="status">{{ savedMessage }}</p>
