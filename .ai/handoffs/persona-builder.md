@@ -2,6 +2,31 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB2.6: a multi-select answer stored as a list, and records it can't read (2026-10-26, lane: V2)
+
+- **What:** Claude Code now writes a multi-select answer as a list of strings, each an option's exact
+  label or the person's own words. Both readers (`builder/ingest/src/mine.rs`, `scripts/crew_decisions.py`)
+  take each element that equals a label as a pick (in the list's order, once) and the rest, stripped,
+  as own words joined with ", ". A string answer reads as before. Brief: `plans/briefs/PB2.6-list-answers.md`.
+- **Decided at pickup (the card left it open):** the app's reader skips a record of an unexpected
+  shape and counts it (`Mined.unreadable`) instead of stopping the whole read. Folder and file safety
+  checks (links, FIFOs, non-files) still stop it. The CLI summary adds "; skipped N records of an
+  unexpected shape" only when N > 0; *Your history* adds "N entries it couldn't read were left out."
+  only then. Python still stops on such a record (the reference script; an accepted difference the
+  parity tests state). Why: one odd record in thousands of conversations shouldn't block a build,
+  and skipping only ever leaves things out.
+- **Shape evidence:** counted on a real history by shape only (no text read or kept): 128 list
+  answers, all on multi-select questions, every element a string; 361 elements equal a label, 27 don't
+  (at most one per list), 20 contain a comma.
+- **Who built it:** Codex, from the brief, plus two review follow-ups: no copy of the carried reply per
+  record, and two test rows (two own-word elements; Python's own dedupe check).
+- **Verified:** red first (each new test failed for its stated reason, the screen's two included);
+  mutation checks, each caught: the ", " joiner (both readers), dedupe (both), stripping (both), the
+  skip count, the list path, the summary suffix, the screen's plural and its only-when-above-zero.
+  Security review: no findings.
+- **Not verified yet:** the Verifier's pass and `bash scripts/ci-local.sh` (the land's gate), both
+  left for the land; a live read of a real history with this build (a debug-build dry run was still
+  running when the run ended).
 ## PB7.9b: *Sign in to Claude*, in Persona Builder's own Claude Code profile folder (2026-10-27, lane: V1)
 
 - **What:** split from PB7.9 (an attended app review, F3; the person chose a profile folder of the
