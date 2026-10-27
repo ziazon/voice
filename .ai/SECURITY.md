@@ -45,7 +45,14 @@ which talks to GitHub alone. Reporting: `SECURITY.md`.
 
 `persona-builder record` writes only into an existing state folder, so it never undoes Forget's
 removal. It appends to a regular owner-only file under `flock` and has no `--log`. The SKILL.md's
-command is one double-quoted path the app checks for shell characters before writing it.
+command is one double-quoted path the app checks for shell characters before writing it. A
+release build writes it only from a place that lasts: the canonical path must be under the home
+folder or `/Applications`, not under `/Volumes` or an `AppTranslocation` folder, and the command and
+every folder above it must be owned by the person or root and not writable by others; anything else
+is refused with a sentence that says to install with `install.sh` (`builder/core/src/cli_command.rs`
+tests). Known limits: a development build skips the rule (it runs from its own build folder); a
+folder writable by its group (as `/Applications` is, for admins) is allowed; the rule is checked
+when the assistant is made, not each time the command runs.
 
 The texts an assistant's SKILL.md records or looks up never pass through the
 shell: the SKILL.md (and the guided build's backtest brief) gives them to `--stdin` as one JSON

@@ -2,6 +2,39 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.2: the shipped command's path is only written from a lasting place (2026-10-27, lane: V1)
+
+- **What:** filed from PB8.1's security review and Verifier. Making an assistant writes the path of
+  the `persona-builder` command the app ships into its `SKILL.md`; a release build now refuses that
+  (`CLI_PLACE`: "Persona Builder needs to be installed before it can make an assistant. Install
+  it with install.sh, as "How to install.txt" shows …") unless the canonical path is under the home folder or `/Applications`, not under
+  `/Volumes` or an `AppTranslocation` folder, and the command and every folder above it are owned
+  by the person or root with no write for others (group write allowed: `/Applications` is
+  `root:admin 0775`). One entry point, `shipped_cli_word(home)`, used by the app's and the CLI's
+  *new assistant*. A development build skips the rule: every integration test runs with a scratch
+  home while the test build lives in `target/`, and `tauri dev` runs from the clone. The template's
+  `decisions.md` names the skill's look-up (§2) instead of `crew_decisions.py similar`; its other
+  two mentions of the script (the `generated_by` line, the tally placeholder) are the guided build's
+  counting steps and stay. Brief: `plans/briefs/PB8.2-lasting-place.md`.
+- **Who built it:** Codex, from the brief, plus a one-line correction where the brief's own test was
+  too broad (it banned every mention of the script in `decisions.md`; now only the look-up).
+- **Verified:** red first for each of the eight new unit tests (Codex's report); four mutations
+  caught by V1 (the others-write bit, the passing-disk check, the roots check, the debug-only
+  switch). Live, by V1, on a release build of the CLI with a throwaway home: a copy outside home
+  and `/Applications` refused with the sentence and made nothing; a copy on a mounted disk image
+  (`/Volumes/…`) refused the same way; the control, a copy under the home's `Applications`, made the
+  assistant and wrote `"$HOME/Applications/PB/persona-builder"`. `ci-local.sh` green on `5c76a65`.
+- **Not verified:** the owner check has no test (a folder owned by someone else needs root to
+  make; a mutation of it survives); Gatekeeper translocation itself (the component check is
+  unit-tested); the app screen showing the sentence (a release app build, owed with the PB8 walk).
+- **Security review:** no high or medium.
+- **Verifier (Fable):** PASS, no must-fix. Should-fix done: the sentence now matches
+  `How to install.txt`. Should-fix parked as V-Q9 (card PB8.4): the unzipped app
+  in `~/Downloads` still passes (the card names "the home folder"); narrowing the roots to
+  `~/Applications` and `/Applications` changes the card's rule, so it is the maintainer's. Noted limits: a disk
+  image or share mounted at a folder under home passes; a launch through
+  `/System/Volumes/Data/…` is refused though it would last; ACL write grants are not checked.
+
 ## PB2.6: a multi-select answer stored as a list, and records it can't read (2026-10-26, lane: V2)
 
 - **What:** Claude Code now writes a multi-select answer as a list of strings, each an option's exact
