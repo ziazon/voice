@@ -2,6 +2,28 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB7.7e: alert banners reach readable contrast in both themes (2026-10-27, lane: V2)
+
+- **What:** Tabler 1.6.1 colours an alert's text with its variant colour, on a tint of that same
+  colour. Computed from Tabler's own rules (`.alert`'s two `color-mix(in oklab, …)` formulas), the
+  light theme's warning is 2.02:1 (background `#FFF8F0`; the walk measured `#FFF8EF`), success 2.56,
+  info 2.83 and danger 4.21; the dark theme's danger is 3.15. `theme.css` now sets the text colour of
+  each failing alert (light warning `#7A4D00`, success `#1D6B2C`, info `#1F5C99`, danger `#A82525`;
+  dark danger `#F28B82`), leaving the tinted backgrounds and `.alert-important` alone. Brief:
+  `plans/briefs/PB7.7e-alert-contrast.md`.
+- **Decided at pickup:** the card said dark was fine, but computing it showed dark danger at 3.15:1,
+  so it is fixed too. The other three dark alerts pass (5.17, 4.69, 6.52) and are unchanged. The
+  card also asked only to check success and danger; info failed as well, so it is fixed too.
+- **The check:** `theme.test.ts` reads Tabler's CSS, checks the alert formulas are still Tabler's (so an
+  upgrade that changes them fails), computes each alert's background in OKLab from the theme's
+  surface, and expects 4.5:1 for all four variants in both themes, naming the theme, variant and
+  ratio on failure.
+- **Who built it:** Codex, from the brief, plus one review follow-up (no log line in the test).
+- **Verified:** red first (`light warning 2.02`); UI tests (284), typecheck and build green; mutation
+  checks, each caught: warning back to Tabler's amber (`light warning 2.02`), dark danger rule removed
+  (`dark danger 3.15`). Security review: no findings. Verifier: not required by the spec. `bash scripts/ci-local.sh` runs at the land.
+- **Not verified:** the look in the running app (owed under `## Walks owed`).
+
 ## PB8.2: the shipped command's path is only written from a lasting place (2026-10-27, lane: V1)
 
 - **What:** filed from PB8.1's security review and Verifier. Making an assistant writes the path of
