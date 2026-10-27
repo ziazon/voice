@@ -15,7 +15,7 @@ messages {{PRINCIPAL}} typed, and (when the history was thin) the calibration in
 - **Rules win.** Where a line here and something {{PRINCIPAL}} has stated as a rule disagree, the
   rule wins and this file is stale.
 - **Paraphrase only.** Precedents name a date and a project, never {{PRINCIPAL}}'s words. The raw
-  answers are searchable with `crew_decisions.py similar` and stay in `~/.claude/state/{{SLUG}}/`.
+  answers are searchable with the skill's look-up (§2) and stay in `~/.claude/state/{{SLUG}}/`.
 - **Counts are the tally's**, over the training split; never an agent's estimate.
 
 ## Calibration (the blind backtest)

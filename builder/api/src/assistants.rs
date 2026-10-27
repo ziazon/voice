@@ -3,7 +3,7 @@ use crate::dto;
 use persona_builder::consent::Record;
 use persona_builder::{
     assistants,
-    cli_command::{CLI_FOLDER, cli_word, shipped_cli},
+    cli_command::{CLI_FOLDER, CLI_PLACE, shipped_cli_word},
     consent, crew,
     error::Error,
 };
@@ -139,12 +139,12 @@ pub fn new_assistant_in(home: &Path, request: dto::NewAssistantRequest) -> Resul
         principal: &request.principal,
         principal_pronouns: &request.principal_pronouns,
     };
-    let cli = shipped_cli()
-        .and_then(|path| cli_word(&path, home))
-        .map_err(|error| match error {
-            Error::Invalid(message) if message == CLI_FOLDER => failure(CLI_FOLDER),
-            _ => failure(MAKE),
-        })?;
+    let cli = shipped_cli_word(home).map_err(|error| match error {
+        Error::Invalid(message) if message == CLI_FOLDER || message == CLI_PLACE => {
+            failure(&message)
+        }
+        _ => failure(MAKE),
+    })?;
     let listed =
         assistants::make(home, &new, &local_day(SystemTime::now()), &cli).map_err(|error| {
             match error {

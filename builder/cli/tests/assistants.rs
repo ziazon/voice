@@ -71,6 +71,11 @@ fn new_list_and_agree_use_the_claude_folders_and_final_wording() {
         !skill.contains("crew_decisions.py"),
         "app-made assistant names Python"
     );
+    let decisions = fs::read_to_string(home.0.join(".claude/crew/wren/decisions.md")).unwrap();
+    assert!(
+        !decisions.contains("crew_decisions.py similar"),
+        "app-made decisions.md names the Python look-up"
+    );
     assert!(skill.contains(&format!(
         "{word} similar ~/.claude/crew/wren --stdin <<'END_OF_TEXT'"
     )));

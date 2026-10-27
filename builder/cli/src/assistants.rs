@@ -1,6 +1,6 @@
 use persona_builder::{
     assistants::{self, New},
-    cli_command::{cli_word, shipped_cli},
+    cli_command::shipped_cli_word,
     consent,
     error::{Error, Result},
 };
@@ -12,7 +12,7 @@ fn today() -> String {
 
 pub fn make(name: &str, pronouns: &str, principal: &str, principal_pronouns: &str) -> Result<()> {
     let home = super::home()?;
-    let cli = cli_word(&shipped_cli()?, &home)?;
+    let cli = shipped_cli_word(&home)?;
     let listed = assistants::make(
         &home,
         &New {
