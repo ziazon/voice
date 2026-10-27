@@ -62,7 +62,10 @@ pub fn shipped_cli_word(home: &Path) -> Result<String> {
 
 fn word_from(path: &Path, home: &Path, lasting_only: bool) -> Result<String> {
     if lasting_only {
-        lasting(path, &[home, Path::new("/Applications")])?;
+        lasting(
+            path,
+            &[&home.join("Applications"), Path::new("/Applications")],
+        )?;
     }
     cli_word(path, home)
 }
@@ -213,6 +216,36 @@ mod tests {
         let applications = root.path().join("Applications");
         fs::set_permissions(&applications, fs::Permissions::from_mode(0o775)).unwrap();
         assert!(lasting(&command, &[root.path()]).is_ok());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_the_applications_folder_in_home_is_lasting() {
+        let home = Scratch::new();
+        let command = command_at(
+            home.path(),
+            "Applications/Persona Builder.app/Contents/MacOS/persona-builder",
+        );
+        assert_eq!(
+            word_from(&command, home.path(), true).unwrap(),
+            cli_word(&command, home.path()).unwrap()
+        );
+        let download = command_at(
+            home.path(),
+            "Downloads/Persona Builder/Persona Builder.app/Contents/MacOS/persona-builder",
+        );
+        assert!(matches!(
+            word_from(&download, home.path(), true),
+            Err(Error::Invalid(message)) if message == CLI_PLACE
+        ));
+        let applications_old = command_at(
+            home.path(),
+            "ApplicationsOld/Persona Builder.app/Contents/MacOS/persona-builder",
+        );
+        assert!(matches!(
+            word_from(&applications_old, home.path(), true),
+            Err(Error::Invalid(message)) if message == CLI_PLACE
+        ));
     }
 
     #[test]
