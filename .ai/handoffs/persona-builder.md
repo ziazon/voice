@@ -12,9 +12,12 @@ One record per slice, newest first. Paraphrase only; no real person.
   shape and counts it (`Mined.unreadable`) instead of stopping the whole read. Folder and file safety
   checks (links, FIFOs, non-files) still stop it. The CLI summary adds "; skipped N records of an
   unexpected shape" only when N > 0; *Your history* adds "N entries it couldn't read were left out."
-  only then. Python still stops on such a record (the reference script; an accepted difference the
-  parity tests state). Why: one odd record in thousands of conversations shouldn't block a build,
-  and skipping only ever leaves things out.
+  only then. Python, the reference script, doesn't skip: it stops on most such records (a list
+  holding a non-string, a non-object question), but an answer that is a number, `true` or an object
+  it writes as own words (`7` reads as own words `7`); Rust skips both kinds. Accepted differences,
+  older than this slice (Rust used to stop on all of them). Why: one odd record in thousands of
+  conversations shouldn't block a build, and skipping only ever leaves things out. The skip matches
+  the shape error alone (`unreadable` in `mine.rs`); any other error from a record still stops.
 - **Shape evidence:** counted on a real history by shape only (no text read or kept): 128 list
   answers, all on multi-select questions, every element a string; 361 elements equal a label, 27 don't
   (at most one per list), 20 contain a comma.
@@ -24,9 +27,13 @@ One record per slice, newest first. Paraphrase only; no real person.
   mutation checks, each caught: the ", " joiner (both readers), dedupe (both), stripping (both), the
   skip count, the list path, the summary suffix, the screen's plural and its only-when-above-zero.
   Security review: no findings.
-- **Not verified yet:** the Verifier's pass and `bash scripts/ci-local.sh` (the land's gate), both
-  left for the land; a live read of a real history with this build (a debug-build dry run was still
-  running when the run ended).
+- **Verifier (Fable):** PASS, no must-fix, two should-fixes, both taken: the skip now matches only the
+  shape error (`unreadable`, a unit test pins `Io`, `Exists` and other `Invalid` as stopping; Codex,
+  from the brief's follow-up section; red seen as a compile failure), and the Python sentence above
+  is corrected (checked by calling `parse_answer` on `7`, `True` and an object).
+- **Not verified yet:** the follow-up's green and `bash scripts/ci-local.sh` (the land's gate): the
+  machine's load gate held before either could run; a live read of a real history with this build.
+
 ## PB7.9b: *Sign in to Claude*, in Persona Builder's own Claude Code profile folder (2026-10-27, lane: V1)
 
 - **What:** split from PB7.9 (an attended app review, F3; the person chose a profile folder of the
