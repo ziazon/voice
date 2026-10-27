@@ -921,6 +921,7 @@ mod tests {
         }
         stop.store(true, Ordering::Relaxed);
         children.join().unwrap();
+        // Failure means child fork-to-exec outlasted INHERITED_LOCK_GRACE; raise the bound, keep the test.
         assert_eq!(failures, 0, "{failures} of the 2,000 locks read busy");
     }
 
