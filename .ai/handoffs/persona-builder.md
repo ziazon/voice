@@ -2,6 +2,21 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.4: the lasting place is the two Applications folders only (2026-10-27, lane: V1)
+
+- **What:** filed from PB8.2's Verifier; V-Q9 answered option 1 (narrow the roots). A release
+  build now writes the shipped command's path into a `SKILL.md` only from under `~/Applications`
+  (where `install.sh` puts it) or `/Applications`; before, anywhere under the home folder passed,
+  so an unzipped copy in `~/Downloads` made an assistant that broke once the download was deleted.
+  One line in `word_from` (`builder/core/src/cli_command.rs`); `.ai/SECURITY.md` says the same.
+  The refusal sentence (`CLI_PLACE`) already names the Applications folder in the home folder, so
+  it is unchanged. Brief: `plans/briefs/PB8.4-applications-folders-only.md`.
+- **Who built it:** Codex, from the brief, with no corrections.
+- **Verified:** red first (Codex's report: the new test failed on its Downloads assertion before
+  the change). Mutation by V1: with the home root put back, the new test fails at the Downloads
+  assertion. The test also covers a sibling folder named `ApplicationsOld`, which must not pass.
+  Codex's sandbox could not run the whole `ci-local.sh` (no loopback sockets, no npm); V1 ran it.
+
 ## PB7.7e: alert banners reach readable contrast in both themes (2026-10-27, lane: V2)
 
 - **What:** Tabler 1.6.1 colours an alert's text with its variant colour, on a tint of that same
