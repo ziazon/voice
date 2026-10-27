@@ -1,5 +1,5 @@
-//! Alone in its own test binary: beside the cap tests, which spawn children on other threads, the lock
-//! sometimes still looked held just after the session dropped it (about half of parallel runs).
+//! A child started on another thread shares the lock until it execs;
+//! the state lock now waits that out (PB2.7).
 mod common;
 
 use common::*;

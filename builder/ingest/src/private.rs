@@ -13,10 +13,13 @@ use std::{
     },
     path::{Component, Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 pub const BUSY: &str = "Persona Builder is already working on this assistant in another window. Wait for it to finish, then try again";
+
+/// How long a refused lock is tried again: a child another thread is starting shares the lock until it execs.
+const INHERITED_LOCK_GRACE: Duration = Duration::from_millis(300);
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 const DIRECTORY_FLAGS: libc::c_int =
@@ -460,6 +463,7 @@ pub struct StateLock(#[allow(dead_code)] OwnedFd);
 
 /// Lock the member's state folder (created 0700 when missing), or refuse when another build holds it.
 /// `flock` locks belong to the open file description, so a second lock in the same process conflicts too.
+/// A refused lock is tried again for a moment, so a child another thread is starting doesn't make it look held.
 pub fn lock_state(home: &Path, slug: &str) -> Result<StateLock> {
     lock_state_folder(home, slug, true)
 }
@@ -481,13 +485,20 @@ fn lock_state_folder_after(
 ) -> Result<StateLock> {
     let (directory, path) = state_directory(home, slug, create)?;
     between();
-    // SAFETY: directory is a live descriptor owned by this function.
-    if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
+    let started = Instant::now();
+    loop {
+        // SAFETY: directory is a live descriptor owned by this function.
+        if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            break;
+        }
         let source = std::io::Error::last_os_error();
-        if source.raw_os_error() == Some(libc::EWOULDBLOCK) {
+        if source.raw_os_error() != Some(libc::EWOULDBLOCK) {
+            return Err(io(&path, source));
+        }
+        if started.elapsed() >= INHERITED_LOCK_GRACE {
             return Err(Error::Invalid(BUSY.into()));
         }
-        return Err(io(&path, source));
+        std::thread::sleep(Duration::from_millis(2));
     }
     // The lock must hold the folder at the path, not one a forget removed between the open and the lock.
     let same_folder = match state_directory(home, slug, false) {
@@ -889,6 +900,43 @@ mod tests {
             ));
             drop(lock);
         }
+    }
+
+    #[test]
+    fn a_lock_dropped_beside_a_starting_child_never_reads_busy() {
+        let home = Home::new();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let child_stop = stop.clone();
+        let children = std::thread::spawn(move || {
+            while !child_stop.load(Ordering::Relaxed) {
+                std::process::Command::new("true").status().unwrap();
+            }
+        });
+        let mut failures = 0;
+        for _ in 0..2_000 {
+            match lock_state(&home.0, "wren") {
+                Ok(lock) => drop(lock),
+                Err(_) => failures += 1,
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        children.join().unwrap();
+        assert_eq!(failures, 0, "{failures} of the 2,000 locks read busy");
+    }
+
+    #[test]
+    fn a_held_lock_still_reads_busy_after_the_grace() {
+        let home = Home::new();
+        let _lock = lock_state(&home.0, "wren").unwrap();
+        let started = Instant::now();
+        let result = lock_existing_state(&home.0, "wren");
+        let elapsed = started.elapsed();
+        assert!(matches!(result, Err(Error::Invalid(text)) if text == BUSY));
+        assert!(elapsed >= INHERITED_LOCK_GRACE, "refused after {elapsed:?}");
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "refused after {elapsed:?}"
+        );
     }
 
     #[test]
