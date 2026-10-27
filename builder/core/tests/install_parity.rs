@@ -207,7 +207,12 @@ fn nested_similar_placeholder_matches_installer_order() {
 #[test]
 fn template_names_the_decision_commands_through_placeholders() {
     let skill = fs::read_to_string(repo().join("crew/_template/SKILL.md")).unwrap();
-    assert!(skill.contains("   {{SIMILAR}} --query \"<the question and its options>\""));
-    assert_eq!(skill.matches("  {{RECORD}} \\").count(), 2);
+    assert!(skill.contains("   {{SIMILAR}} --stdin <<'END_OF_TEXT'"));
+    assert_eq!(
+        skill
+            .matches("  {{RECORD}} --stdin <<'END_OF_TEXT'")
+            .count(),
+        2
+    );
     assert!(!skill.contains("crew_decisions.py"));
 }

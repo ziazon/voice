@@ -71,8 +71,12 @@ fn new_list_and_agree_use_the_claude_folders_and_final_wording() {
         !skill.contains("crew_decisions.py"),
         "app-made assistant names Python"
     );
-    assert!(skill.contains(&format!("{word} similar ~/.claude/crew/wren --query")));
-    assert!(skill.contains(&format!("{word} record ~/.claude/crew/wren {}", '\\')));
+    assert!(skill.contains(&format!(
+        "{word} similar ~/.claude/crew/wren --stdin <<'END_OF_TEXT'"
+    )));
+    assert!(skill.contains(&format!(
+        "{word} record ~/.claude/crew/wren --stdin <<'END_OF_TEXT'"
+    )));
     let member =
         persona_builder::member::read_member(&home.0.join(".claude/crew/wren/member.json"))
             .unwrap();
@@ -192,17 +196,56 @@ fn skill_commands_run_similar_and_record_against_private_state() {
     )
     .unwrap();
     let binary = format!("\"{}\"", env!("CARGO_BIN_EXE_persona-builder"));
-    let similar = skill
-        .lines()
-        .find(|line| line.trim_start().starts_with(&format!("{word} similar ")))
-        .expect("SKILL.md names the shipped similar command");
     let state = home.0.join(".claude/state/ari");
     persona_builder_ingest::private::write_private(&home.0, "ari", "decisions.jsonl",
         b"{\"kind\":\"message\",\"split\":\"train\",\"timestamp\":\"2026-10-25T00:00:00Z\",\"project\":\"garden\",\"text\":\"Choose durable garden benches before adding decorative flower pots outdoors.\"}\n").unwrap();
-    let run = |script: &str| {
+    let cwd = home.0.join("empty");
+    fs::create_dir(&cwd).unwrap();
+    let hostile = "$(touch pwned-dollar) `touch pwned-tick` ${HOME} \"double\" 'single' back\\slash café\nEND_OF_TEXT\nend";
+    let query = format!("durable garden benches {hostile}");
+    let escaped = |text: &str| {
+        let json = serde_json::to_string(text).unwrap();
+        json[1..json.len() - 1].to_owned()
+    };
+    let blocks: Vec<_> = skill
+        .split("```bash\n")
+        .skip(1)
+        .map(|part| part.split("```").next().unwrap())
+        .filter(|block| block.contains("--stdin"))
+        .collect();
+    assert_eq!(blocks.len(), 3, "similar and both record blocks use stdin");
+    for block in blocks {
+        let indent = block
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.len() - line.trim_start().len())
+            .min()
+            .unwrap();
+        let script = block
+            .lines()
+            .map(|line| &line[indent.min(line.len())..])
+            .collect::<Vec<_>>()
+            .join("\n")
+            .replacen(&word, &binary, 1)
+            .replace("<the question and its options>", &escaped(&query));
+        let script = [
+            "<what you are working on>",
+            "<work>",
+            "<c>",
+            "<q>",
+            "<pick>",
+            "<rules>",
+            "<their answer>",
+        ]
+        .iter()
+        .fold(script, |script, placeholder| {
+            script.replace(placeholder, &escaped(hostile))
+        })
+        .replace("<t>", "medium");
         let output = Command::new("/bin/sh")
-            .args(["-c", script])
+            .args(["-c", &script])
             .env("HOME", &home.0)
+            .current_dir(&cwd)
             .output()
             .unwrap();
         assert!(
@@ -210,36 +253,36 @@ fn skill_commands_run_similar_and_record_against_private_state() {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        String::from_utf8(output.stdout).unwrap()
-    };
-    assert!(
-        run(&similar
-            .replacen(&word, &binary, 1)
-            .replace("<the question and its options>", "durable garden benches"))
-        .contains("Choose durable garden benches")
-    );
-    let mut lines = skill.lines();
-    let record = lines
-        .find(|line| line.trim_start().starts_with(&format!("{word} record ")))
-        .expect("SKILL.md names the shipped record command");
-    let command = format!(
-        "{record}\n{}\n{}",
-        lines.next().unwrap(),
-        lines.next().unwrap()
-    )
-    .replacen(&word, &binary, 1)
-    .replace("<what you are working on>", "garden")
-    .replace("<c>", "design")
-    .replace("<q>", "Choose durable garden benches?")
-    .replace("<pick>", "durable benches");
-    assert_eq!(
-        run(&command),
-        "recorded a decided design decision (high) for garden\n"
-    );
-    let record: serde_json::Value =
-        serde_json::from_slice(&fs::read(state.join("live.jsonl")).unwrap()).unwrap();
-    assert_eq!(record["question"], "Choose durable garden benches?");
-    assert_eq!(record["ari_pick"], "durable benches");
-    assert_eq!(record["rule"], serde_json::Value::Null);
-    assert_eq!(record["robin_answer"], serde_json::Value::Null);
+        if script.contains(" similar ") {
+            assert!(
+                String::from_utf8(output.stdout)
+                    .unwrap()
+                    .contains("Choose durable garden benches")
+            );
+        }
+        for folder in [&cwd, &home.0] {
+            for name in ["pwned-dollar", "pwned-tick"] {
+                assert!(!folder.join(name).exists());
+            }
+        }
+    }
+    let log = fs::read_to_string(state.join("live.jsonl")).unwrap();
+    let records: Vec<serde_json::Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(records.len(), 2);
+    for record in &records {
+        for key in ["work", "question", "category", "ari_pick"] {
+            assert_eq!(record[key], hostile);
+        }
+    }
+    assert_eq!(records[0]["kind"], "decided");
+    assert_eq!(records[0]["tier"], "high");
+    assert!(records[0]["rule"].is_null());
+    assert!(records[0]["robin_answer"].is_null());
+    assert_eq!(records[1]["kind"], "escalated");
+    assert_eq!(records[1]["tier"], "medium");
+    assert_eq!(records[1]["rule"], hostile);
+    assert_eq!(records[1]["robin_answer"], hostile);
 }

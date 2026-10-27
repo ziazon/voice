@@ -46,6 +46,14 @@ An app-made assistant's SKILL.md runs the `persona-builder` shipped inside the a
 build keeps `scripts/crew_decisions.py`. The template names both through `{{SIMILAR}}` and
 `{{RECORD}}`. An assistant made before this keeps its old SKILL.md; make it again to get the new one.
 
+## 2026-10-26: texts go to the decision commands on stdin (PB8.3)
+
+The SKILL.md's look-up and record commands take their texts as one JSON object on stdin
+(`--stdin`, a quoted heredoc), never as shell words, in the app's `persona-builder` and the
+guided build's Python alike; the flags stay for people typing the commands. JSON over one field
+per line because a text can hold line breaks and a line that matches the heredoc's end. An
+assistant made before this keeps its old SKILL.md; make it again to get the new one.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.

@@ -8,8 +8,15 @@ ONLY:
 - ~/.claude/state/{{SLUG}}/build/decisions-draft.md (how {{PRINCIPAL}} decides, per category)
 - {{REPO}}/crew/{{SLUG}}/SKILL.md §2 (how to answer one question)
 - your batch file, ~/.claude/state/{{SLUG}}/build/backtest/q<N>.jsonl
-- the precedent search, run EXACTLY as:
-  `python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json similar --corpus ~/.claude/state/{{SLUG}}/decisions.jsonl --query "<question and options>"`
+- the precedent search, run EXACTLY as (the question goes in as one line of JSON, where the shell
+  never reads it: `"` as `\"`, `\` as `\\`, a line break as `\n`):
+
+  ```bash
+  python3 -I {{REPO}}/scripts/crew_decisions.py --member {{REPO}}/crew/{{SLUG}}/member.json similar --corpus ~/.claude/state/{{SLUG}}/decisions.jsonl --stdin <<'END_OF_TEXT'
+  {"query": "<question and options>"}
+  END_OF_TEXT
+  ```
+
   (it searches the training split only, so it never shows a held-out answer)
 
 Never open any other file under ~/.claude/state/{{SLUG}}/ or ~/.claude/projects/. Never write to

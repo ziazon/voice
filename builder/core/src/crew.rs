@@ -371,8 +371,8 @@ mod tests {
                 new_member(&repo().join("crew/_template"), &target, &new).unwrap();
             }
             let skill = fs::read_to_string(target.join("SKILL.md")).unwrap();
-            assert!(skill.contains("   \"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\" similar ~/projects/voice/crew/ari --query"));
-            assert_eq!(skill.matches("  \"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\" record ~/projects/voice/crew/ari \\").count(), 2);
+            assert!(skill.contains("   \"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\" similar ~/projects/voice/crew/ari --stdin <<'END_OF_TEXT'"));
+            assert_eq!(skill.matches("  \"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\" record ~/projects/voice/crew/ari --stdin <<'END_OF_TEXT'").count(), 2);
             assert!(!skill.contains("{{"));
             assert!(!skill.contains("crew_decisions.py"));
         }

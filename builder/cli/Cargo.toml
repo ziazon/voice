@@ -19,4 +19,5 @@ persona-builder-agent = { path = "../agent" }
 persona-builder-steps = { path = "../steps" }
 persona-builder-build = { path = "../build" }
 persona-builder-grow = { path = "../grow" }
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

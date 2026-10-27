@@ -34,9 +34,14 @@ agrees to anything *as {{PRINCIPAL}}*, and never decides a question that `autono
 2. **Precedents.** Find {{PRINCIPAL}}'s own past answers to questions like it:
 
    ```bash
-   {{SIMILAR}} --query "<the question and its options>"
+   {{SIMILAR}} --stdin <<'END_OF_TEXT'
+   {"query": "<the question and its options>"}
+   END_OF_TEXT
    ```
 
+   The text goes in as one line of JSON between the `END_OF_TEXT` lines, where the shell never reads
+   it: write `"` as `\"`, `\` as `\\` and a line break as `\n`, and leave `$`, backticks and quotes
+   as they are. Never put a text on the command line itself.
    It searches the private history in `~/.claude/state/{{SLUG}}/`. Never quote what it prints
    anywhere but this chat with {{PRINCIPAL}}.
 3. **Pick.** Choose what {{PRINCIPAL}} would choose. Weigh, in this order: a rule {{PRINCIPAL}} has
@@ -72,9 +77,9 @@ Run every drafted question through §2. Then:
   and record it:
 
   ```bash
-  {{RECORD}} \
-    --work "<what you are working on>" --kind decided --category <c> --tier high \
-    --question "<q>" --{{SLUG}}-pick "<pick>"
+  {{RECORD}} --stdin <<'END_OF_TEXT'
+  {"work": "<what you are working on>", "kind": "decided", "category": "<c>", "tier": "high", "question": "<q>", "pick": "<pick>"}
+  END_OF_TEXT
   ```
 
 - **Escalated:** ask {{PRINCIPAL}} as usual with {{NAME}}'s lean in it. When {{NAME}}'s pick and your
@@ -83,11 +88,12 @@ Run every drafted question through §2. Then:
   what trains {{NAME}}:
 
   ```bash
-  {{RECORD}} \
-    --work "<work>" --kind escalated --category <c> --tier <t> --rule <rules> \
-    --question "<q>" --{{SLUG}}-pick "<pick>" --{{PRINCIPAL_SLUG}}-answer "<their answer>"
+  {{RECORD}} --stdin <<'END_OF_TEXT'
+  {"work": "<work>", "kind": "escalated", "category": "<c>", "tier": "<t>", "rule": "<rules>", "question": "<q>", "pick": "<pick>", "answer": "<their answer>"}
+  END_OF_TEXT
   ```
 
+- Write the texts as in §2 step 2: JSON on one line between the `END_OF_TEXT` lines, never on the command line.
 - Say it in one line above the question: "{{NAME}} decided 2 of 5; 3 need you."
 
 ## 4. When the work is done: the review report

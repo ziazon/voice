@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use persona_builder::{
     error::{Error, Result},
     install::{self, FileState, Places},
@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 
 mod assistants;
 mod record;
+mod stdin_json;
 
 /// The `persona-builder` command: a thin layer over the core library.
 #[derive(Parser)]
@@ -182,8 +183,10 @@ enum Command {
         member_dir: PathBuf,
         #[arg(long, default_value = "decisions.jsonl")]
         corpus: String,
+        #[arg(long, required_unless_present = "stdin", conflicts_with = "stdin")]
+        query: Option<String>,
         #[arg(long)]
-        query: String,
+        stdin: bool,
         #[arg(long, default_value_t = 6)]
         k: usize,
         #[arg(long)]
@@ -1084,8 +1087,28 @@ fn score(
     );
     Ok(())
 }
-fn similar(member_dir: PathBuf, corpus: String, query: String, k: usize, json: bool) -> Result<()> {
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SimilarInput {
+    query: String,
+}
+
+fn similar(
+    member_dir: PathBuf,
+    corpus: String,
+    query: Option<String>,
+    stdin: bool,
+    k: usize,
+    json: bool,
+) -> Result<()> {
     use persona_builder_steps::similar as steps;
+    let query = if stdin {
+        let cli = Cli::command();
+        let command = cli.find_subcommand("similar").expect("similar command");
+        stdin_json::read::<SimilarInput>(command).query
+    } else {
+        query.expect("clap requires --query without --stdin")
+    };
     let (member, home) = member_and_home(&member_dir)?;
     let records = corpus_at(&home, &member.slug, &corpus)?;
     let hits = steps::similar(&member, &corpus, &records, &query, k)?;
@@ -2002,9 +2025,10 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             member_dir,
             corpus,
             query,
+            stdin,
             k,
             json,
-        }) => similar(member_dir, corpus, query, k, json),
+        }) => similar(member_dir, corpus, query, stdin, k, json),
         Some(Command::Record { member_dir, args }) => record::run(member_dir, args),
         Some(Command::Round {
             member_dir,

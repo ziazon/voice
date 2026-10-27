@@ -373,4 +373,78 @@ no_history_result=$?
 set -e
 [ "$no_history_failures" = 0 ] || fail "$no_history_failures no-history installer cases failed"
 
+# Run the made assistant's actual shell blocks with text the shell must never expand.
+python3 -I - "$main" "$scratch" <<'PYSRC'
+import json
+import os
+import re
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
+home, scratch = map(Path, sys.argv[1:])
+member = home / "projects/voice/crew/ari"
+state = home / ".claude/state/ari"
+hostile = ('$(touch pwned-dollar) `touch pwned-tick` ${HOME} "double" '
+           "'single' back\\slash café\nEND_OF_TEXT\nkept as text")
+precedent = "Which section first? (keep four gr)"
+query = precedent + " " + hostile
+texts = {
+    "<the question and its options>": query,
+    "<question and options>": query,
+    "<what you are working on>": "decided work " + hostile,
+    "<work>": "escalated work " + hostile,
+    "<q>": "question " + hostile,
+    "<pick>": "pick " + hostile,
+    "<c>": "category " + hostile,
+    "<rules>": "rule " + hostile,
+    "<their answer>": "answer " + hostile,
+    "<t>": "medium",
+}
+
+def stdin_blocks(path):
+    return [textwrap.dedent(block) for block in
+            re.findall(r"```bash\n(.*?)```", path.read_text(), re.DOTALL)
+            if "--stdin" in block]
+
+def run(block, cwd):
+    for placeholder, text in texts.items():
+        block = block.replace(placeholder, json.dumps(text, ensure_ascii=False)[1:-1])
+    result = subprocess.run(["/bin/sh", "-c", block], cwd=cwd,
+                            env=dict(os.environ, HOME=str(home)),
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    for folder in (cwd, home):
+        for marker in ("pwned-dollar", "pwned-tick"):
+            assert not (folder / marker).exists(), (folder, marker)
+    return result.stdout
+
+blocks = stdin_blocks(member / "SKILL.md")
+assert len(blocks) == 3, "SKILL.md must have similar and both record blocks on stdin"
+cwd = scratch / "skill-command-cwd"
+cwd.mkdir()
+assert precedent in run(blocks[0], cwd)
+log = state / "live.jsonl"
+before = len(log.read_text().splitlines()) if log.exists() else 0
+for block in blocks[1:]:
+    run(block, cwd)
+records = [json.loads(line) for line in log.read_text().splitlines()][before:]
+assert len(records) == 2, records
+for row, kind in zip(records, ("decided", "escalated")):
+    assert row["kind"] == kind, row
+    assert row["question"] == texts["<q>"], row
+    assert row["category"] == texts["<c>"], row
+    assert row["ari_pick"] == texts["<pick>"], row
+    assert row["work"] == texts["<what you are working on>" if kind == "decided" else "<work>"], row
+    assert row["rule"] == (None if kind == "decided" else texts["<rules>"]), row
+    assert row["robin_answer"] == (None if kind == "decided" else texts["<their answer>"]), row
+
+blocks = stdin_blocks(member / "briefs/backtest-brief.md")
+assert len(blocks) == 1, "the backtest precedent search must use stdin"
+cwd = scratch / "backtest-command-cwd"
+cwd.mkdir()
+assert precedent in run(blocks[0], cwd)
+PYSRC
+
 echo "crew_install_test: all passed"

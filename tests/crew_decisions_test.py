@@ -130,6 +130,103 @@ class ExampleMember(unittest.TestCase):
         self.assertEqual(list(line.values()), ["plan.md", "escalated", "scope", "low", "Q?", "A", "below-high", "B"])
 
 
+HOSTILE = "$(touch pwned-dollar) `touch pwned-tick` ${HOME} \"double\" 'single' back\\slash café\nEND_OF_TEXT\ntext"
+
+
+class StdinTexts(unittest.TestCase):
+    def setUp(self):
+        self.h = Harness()
+        self.addCleanup(self.h.dir.cleanup)
+        self.member = self.h.member(ARI)
+        self.values = {"work": HOSTILE, "kind": "escalated", "category": HOSTILE, "tier": "low",
+                       "question": HOSTILE, "pick": HOSTILE}
+
+    def stdin(self, command, payload, *flags):
+        data = payload if isinstance(payload, bytes) else payload.encode("utf-8")
+        return subprocess.run([sys.executable, str(CREW), "--member", self.member, command, *flags],
+                              input=data, capture_output=True, cwd=self.h.root, timeout=60)
+
+    def test_record_stdin_matches_flags_and_keeps_optional_nulls(self):
+        for optional in ({}, {"rule": None, "answer": None}, {"rule": HOSTILE, "answer": HOSTILE}):
+            with self.subTest(optional=optional):
+                values = {**self.values, **optional}
+                proc = self.stdin("record", json.dumps(values, ensure_ascii=False), "--log", "stdin.jsonl", "--stdin")
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                flags = ["--log", "flags.jsonl"]
+                for key, value in values.items():
+                    if value is not None:
+                        flag = {"pick": "ari-pick", "answer": "robin-answer"}.get(key, key)
+                        flags.extend(["--" + flag, value])
+                flagged = self.h.crew(self.member, "record", *flags)
+                self.assertEqual(flagged.returncode, 0, flagged.stderr)
+                self.assertEqual(proc.stdout.decode(), flagged.stdout)
+                actual = json.loads(self.h.read("stdin.jsonl").splitlines()[-1])
+                expected = json.loads(self.h.read("flags.jsonl").splitlines()[-1])
+                actual.pop("timestamp")
+                expected.pop("timestamp")
+                self.assertEqual(actual, expected)
+                self.assertEqual(list(actual), ["work", "kind", "category", "tier", "question", "ari_pick",
+                                                "rule", "robin_answer"])
+                self.assertEqual(actual["question"], HOSTILE)
+
+    def test_similar_stdin_matches_query_with_both_output_forms(self):
+        ada_fixture(self.h)
+        member = self.h.member(ADA)
+        mined = self.h.crew(member, "mine", "--projects", str(self.h.projects), "--out", "d.jsonl")
+        self.assertEqual(mined.returncode, 0, mined.stderr)
+        self.member = member
+        query = "review queue " + HOSTILE
+        for fmt in ([], ["--json"]):
+            proc = self.stdin("similar", " \n" + json.dumps({"query": query}) + "\n ",
+                              "--corpus", "d.jsonl", "--stdin", *fmt)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            flagged = self.h.crew(member, "similar", "--corpus", "d.jsonl", "--query", query, *fmt)
+            self.assertEqual(flagged.returncode, 0, flagged.stderr)
+            self.assertEqual(proc.stdout.decode(), flagged.stdout)
+            self.assertIn("review queue", flagged.stdout)
+
+    def test_stdin_refusals_are_usage_errors_before_reading_or_writing(self):
+        for command, good in (("record", self.values), ("similar", {"query": HOSTILE})):
+            key = "pick" if command == "record" else "query"
+            cases = [(b"not json", "JSON object"), (b"[]", "JSON object"),
+                     (json.dumps({**good, "unknown": "x"}).encode(), "unknown"),
+                     ((json.dumps(good)[:-1] + ', "' + key + '": "again"}').encode(), key),
+                     (json.dumps({k: v for k, v in good.items() if k != key}).encode(), key),
+                     (json.dumps({**good, key: 7}).encode(), key),
+                     (b" " * 65537, "64 KiB"), (b"\xff", "UTF-8"),
+                     (json.dumps({**good, key: "\ud800"}).encode(), "JSON object")]
+            if command == "record":
+                cases += [(json.dumps({**good, "rule": 7}).encode(), "rule"),
+                          (json.dumps({**good, "answer": 7}).encode(), "answer"),
+                          (json.dumps({**good, "kind": "maybe"}).encode(), "kind"),
+                          (json.dumps({**good, "tier": "top"}).encode(), "tier")]
+            for payload, problem in cases:
+                with self.subTest(command=command, problem=problem, payload=payload[:80]):
+                    flags = ["--log", "live.jsonl"] if command == "record" else ["--corpus", "absent.jsonl"]
+                    proc = self.stdin(command, payload, *flags, "--stdin")
+                    self.assertEqual(proc.returncode, 2, proc.stderr)
+                    self.assertIn(problem, proc.stderr.decode())
+                    self.assertIn(command + ": error:", proc.stderr.decode())
+                    self.assertEqual(proc.stdout, b"")
+                    self.assertFalse((self.h.root / "live.jsonl").exists())
+
+    def test_stdin_and_flags_are_either_or_and_flags_still_name_every_missing_argument(self):
+        for flag in ("--work", "--kind", "--category", "--tier", "--question", "--ari-pick", "--rule", "--robin-answer"):
+            value = {"--kind": "decided", "--tier": "high"}.get(flag, "text")
+            proc = self.stdin("record", json.dumps(self.values), "--stdin", flag, value)
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertIn(b"give the texts either on stdin (--stdin) or as flags, not both", proc.stderr)
+        proc = self.stdin("record", b"")
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertIn(b"the following arguments are required: --work, --kind, --category, --tier, --question, --ari-pick",
+                      proc.stderr)
+        proc = self.stdin("similar", '{"query": "text"}', "--stdin", "--query", "text")
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        proc = self.stdin("similar", b"")
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertIn(b"--query", proc.stderr)
+
+
 class AnotherMember(unittest.TestCase):
     def setUp(self):
         self.h = Harness()

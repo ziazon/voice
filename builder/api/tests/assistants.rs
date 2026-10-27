@@ -57,8 +57,12 @@ fn new_list_and_private_consent_round_trip() {
         !skill.contains("crew_decisions.py"),
         "app-made assistant names Python"
     );
-    assert!(skill.contains(&format!("{word} similar ~/.claude/crew/ari --query")));
-    assert!(skill.contains(&format!("{word} record ~/.claude/crew/ari {}", '\\')));
+    assert!(skill.contains(&format!(
+        "{word} similar ~/.claude/crew/ari --stdin <<'END_OF_TEXT'"
+    )));
+    assert!(skill.contains(&format!(
+        "{word} record ~/.claude/crew/ari --stdin <<'END_OF_TEXT'"
+    )));
 
     assert!(!made.consent.agreed);
     assert_eq!(list_assistants_in(h).unwrap(), vec![made]);

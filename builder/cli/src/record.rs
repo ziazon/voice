@@ -1,9 +1,23 @@
 //! Keep live decisions in the assistant's existing private state folder.
-use clap::{Arg, Command};
+use clap::{Arg, ArgAction, Command};
 use persona_builder::error::{Error, Result};
 use persona_builder_ingest::{mine::to_jsonl, private::append_private};
+use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::path::PathBuf;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecordInput {
+    work: String,
+    kind: String,
+    category: String,
+    tier: String,
+    question: String,
+    pick: String,
+    rule: Option<String>,
+    answer: Option<String>,
+}
 
 pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
     if member_dir == std::path::Path::new("--help") || member_dir == std::path::Path::new("-h") {
@@ -28,6 +42,7 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
         .unwrap_or_else(|error| error.exit());
     let mut values: Vec<_> = command
         .get_arguments()
+        .filter(|arg| arg.get_id() != "stdin")
         .filter_map(|arg| {
             matches
                 .index_of(arg.get_id().as_str())
@@ -56,43 +71,64 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
                 .exit();
         }
     }
+    let input = if matches.get_flag("stdin") {
+        let input: RecordInput = crate::stdin_json::read(&command);
+        for (valid, message) in [
+            (
+                ["decided", "escalated"].contains(&input.kind.as_str()),
+                "kind must be decided or escalated",
+            ),
+            (
+                ["high", "medium", "low"].contains(&input.tier.as_str()),
+                "tier must be high, medium or low",
+            ),
+        ] {
+            if !valid {
+                command
+                    .clone()
+                    .error(clap::error::ErrorKind::ValueValidation, message)
+                    .exit();
+            }
+        }
+        input
+    } else {
+        let required = |name: &str| {
+            matches
+                .get_one::<String>(name)
+                .expect("required argument")
+                .clone()
+        };
+        RecordInput {
+            work: required("work"),
+            kind: required("kind"),
+            category: required("category"),
+            tier: required("tier"),
+            question: required("question"),
+            pick: required("pick"),
+            rule: matches.get_one::<String>("rule").cloned(),
+            answer: matches.get_one::<String>("answer").cloned(),
+        }
+    };
     let mut row = Map::new();
     row.insert(
         "timestamp".into(),
         Value::String(persona_builder_grow::store::utc_now()),
     );
-    for name in ["work", "kind", "category", "tier", "question"] {
-        row.insert(
-            name.into(),
-            Value::String(
-                matches
-                    .get_one::<String>(name)
-                    .expect("required argument")
-                    .clone(),
-            ),
-        );
-    }
-    row.insert(
-        member.pick_field(),
-        Value::String(
-            matches
-                .get_one::<String>("pick")
-                .expect("required argument")
-                .clone(),
-        ),
-    );
-    for (key, name) in [
-        ("rule".to_owned(), "rule"),
-        (member.answer_field(), "answer"),
+    for (name, value) in [
+        ("work", &input.work),
+        ("kind", &input.kind),
+        ("category", &input.category),
+        ("tier", &input.tier),
+        ("question", &input.question),
     ] {
-        row.insert(
-            key,
-            matches
-                .get_one::<String>(name)
-                .cloned()
-                .map(Value::String)
-                .unwrap_or(Value::Null),
-        );
+        row.insert(name.into(), Value::String(value.clone()));
+    }
+    row.insert(member.pick_field(), Value::String(input.pick));
+    for (key, value) in [
+        ("rule".to_owned(), input.rule),
+        (member.answer_field(), input.answer),
+    ] {
+        row.insert(key, value.map(Value::String).unwrap_or(Value::Null));
     }
     let line = to_jsonl(&[row]);
     if line.len() > 64 * 1024 {
@@ -109,18 +145,7 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
     })?;
     println!(
         "recorded a {} {} decision ({}) for {}",
-        matches
-            .get_one::<String>("kind")
-            .expect("required argument"),
-        matches
-            .get_one::<String>("category")
-            .expect("required argument"),
-        matches
-            .get_one::<String>("tier")
-            .expect("required argument"),
-        matches
-            .get_one::<String>("work")
-            .expect("required argument")
+        input.kind, input.category, input.tier, input.work
     );
     Ok(())
 }
@@ -147,7 +172,13 @@ fn option_like_value(value: &str) -> bool {
 fn record_command(pick_flag: &str, answer_flag: &str) -> Command {
     // Member-specific names belong to this invocation of the command.
     let mut command = Command::new("persona-builder record")
-        .about("Keep one decision the assistant made, or your answer to one it handed back.");
+        .about("Keep one decision the assistant made, or your answer to one it handed back.")
+        .arg(
+            Arg::new("stdin")
+                .long("stdin")
+                .action(ArgAction::SetTrue)
+                .help("Read the texts as one JSON object from stdin"),
+        );
     for name in [
         "work", "kind", "category", "tier", "question", "pick", "rule", "answer",
     ] {
@@ -159,7 +190,10 @@ fn record_command(pick_flag: &str, answer_flag: &str) -> Command {
         let mut arg = Arg::new(name)
             .long(flag.to_owned())
             .allow_hyphen_values(true)
-            .required(!matches!(name, "rule" | "answer"));
+            .conflicts_with("stdin");
+        if !matches!(name, "rule" | "answer") {
+            arg = arg.required_unless_present("stdin");
+        }
         if name == "kind" {
             arg = arg.value_parser(["decided", "escalated"]);
         }

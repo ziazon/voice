@@ -2820,6 +2820,7 @@ dependencies = [
  "persona-builder-ingest",
  "persona-builder-save",
  "persona-builder-steps",
+ "serde",
  "serde_json",
 ]
 

@@ -4,9 +4,10 @@ use persona_builder_ingest::{mine::to_jsonl, private};
 use serde_json::{Value, json};
 use std::{
     fs,
+    io::Write,
     os::unix::fs::{PermissionsExt, symlink},
     path::PathBuf,
-    process::{Command, Output},
+    process::{Command, Output, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
 };
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -59,6 +60,21 @@ impl Fixture {
     fn log(&self) -> PathBuf {
         self.state().join("live.jsonl")
     }
+    fn stdin(&self, args: &[&str], input: &[u8]) -> Output {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+            .env("HOME", &self.home)
+            .arg("record")
+            .arg(&self.member)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        // A usage error can close stdin before it has been written.
+        let _ = child.stdin.take().unwrap().write_all(input);
+        child.wait_with_output().unwrap()
+    }
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -86,6 +102,189 @@ fn args() -> Vec<&'static str> {
 }
 fn success(out: &Output) {
     assert!(out.status.success(), "{}", text(&out.stderr));
+}
+
+const HOSTILE: &str = "$(touch pwned-dollar) `touch pwned-tick` ${HOME} \"double\" 'single' back\\slash café\nEND_OF_TEXT\nend";
+
+fn stdin_row() -> Value {
+    json!({"work": HOSTILE, "kind": "decided", "category": HOSTILE,
+        "tier": "high", "question": HOSTILE, "pick": HOSTILE})
+}
+
+fn without_timestamp(line: &str) -> String {
+    let row: Value = serde_json::from_str(line).unwrap();
+    line.replace(row["timestamp"].as_str().unwrap(), "TIMESTAMP")
+}
+
+#[test]
+fn stdin_records_match_flags_and_python_bytes() {
+    if Command::new("python3").arg("--version").output().is_err() {
+        assert_ne!(
+            std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref(),
+            Ok("1"),
+            "python3 required for parity"
+        );
+        eprintln!("skipped: python3 not found");
+        return;
+    }
+    for optional in [false, true] {
+        let f = Fixture::new();
+        f.seed();
+        let mut input = stdin_row();
+        let mut flags = vec![
+            "--work",
+            HOSTILE,
+            "--kind",
+            "decided",
+            "--category",
+            HOSTILE,
+            "--tier",
+            "high",
+            "--question",
+            HOSTILE,
+            "--ari-pick",
+            HOSTILE,
+        ];
+        if optional {
+            input["rule"] = json!(HOSTILE);
+            input["answer"] = json!(HOSTILE);
+            flags.extend(["--rule", HOSTILE, "--robin-answer", HOSTILE]);
+        }
+        let stdin = f.stdin(&["--stdin"], input.to_string().as_bytes());
+        success(&stdin);
+        let first = fs::read_to_string(f.log()).unwrap();
+        let flag = f.run(&flags);
+        success(&flag);
+        assert_eq!(stdin.stdout, flag.stdout);
+        let both = fs::read_to_string(f.log()).unwrap();
+        assert_eq!(
+            without_timestamp(&first),
+            without_timestamp(&format!("{}\n", both.lines().nth(1).unwrap()))
+        );
+        let python_log = f.home.join("python-stdin.jsonl");
+        let mut child = Command::new("python3")
+            .arg("-I")
+            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/crew_decisions.py"))
+            .arg("--member")
+            .arg(f.member.join("member.json"))
+            .arg("record")
+            .arg("--log")
+            .arg(&python_log)
+            .arg("--stdin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let _ = child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.to_string().as_bytes());
+        let python = child.wait_with_output().unwrap();
+        success(&python);
+        assert_eq!(stdin.stdout, python.stdout);
+        assert_eq!(
+            without_timestamp(&first),
+            without_timestamp(&fs::read_to_string(python_log).unwrap())
+        );
+        let row: Value = serde_json::from_str(&first).unwrap();
+        for key in ["work", "question", "category", "ari_pick"] {
+            assert_eq!(row[key], HOSTILE);
+        }
+        assert_eq!(
+            row["rule"],
+            if optional {
+                json!(HOSTILE)
+            } else {
+                Value::Null
+            }
+        );
+        assert_eq!(
+            row["robin_answer"],
+            if optional {
+                json!(HOSTILE)
+            } else {
+                Value::Null
+            }
+        );
+    }
+}
+
+#[test]
+fn stdin_record_refusals_are_usage_errors_and_do_not_write() {
+    let valid = stdin_row();
+    let mut cases: Vec<(Vec<&str>, Vec<u8>, &str)> = vec![
+        (
+            vec!["--stdin", "--work", "kit"],
+            valid.to_string().into_bytes(),
+            "--work",
+        ),
+        (vec![], vec![], "required"),
+        (vec!["--stdin"], b"not JSON".to_vec(), "one JSON object"),
+        (vec!["--stdin"], b"[]".to_vec(), "one JSON object"),
+        (vec!["--stdin"], vec![b'x'; 65537], "at most 64 KiB"),
+        (vec!["--stdin"], vec![0xff], "UTF-8"),
+        (
+            vec!["--stdin"],
+            b"{\"pick\":\"one\",\"pick\":\"two\"}".to_vec(),
+            "pick",
+        ),
+    ];
+    for (key, value) in [
+        ("extra", json!("bad")),
+        ("pick", json!(42)),
+        ("rule", json!(42)),
+        ("answer", json!(42)),
+        ("kind", json!("maybe")),
+        ("tier", json!("top")),
+    ] {
+        let mut row = valid.clone();
+        row[key] = value;
+        cases.push((vec!["--stdin"], row.to_string().into_bytes(), key));
+    }
+    let mut missing = valid.clone();
+    missing.as_object_mut().unwrap().remove("pick");
+    cases.push((vec!["--stdin"], missing.to_string().into_bytes(), "pick"));
+    for existing in [false, true] {
+        for (flags, input, problem) in &cases {
+            let f = Fixture::new();
+            f.seed();
+            if existing {
+                private::write_private(&f.home, "ari", "live.jsonl", b"existing\n").unwrap();
+            }
+            let out = f.stdin(flags, input);
+            assert_eq!(
+                out.status.code(),
+                Some(2),
+                "{problem}: {}",
+                text(&out.stderr)
+            );
+            assert!(
+                text(&out.stderr).contains(problem),
+                "{problem}: {}",
+                text(&out.stderr)
+            );
+            if existing {
+                assert_eq!(fs::read(f.log()).unwrap(), b"existing\n");
+            } else {
+                assert!(!f.log().exists());
+            }
+        }
+    }
+}
+
+#[test]
+fn stdin_record_accepts_null_optional_fields() {
+    let f = Fixture::new();
+    f.seed();
+    let mut input = stdin_row();
+    input["rule"] = Value::Null;
+    input["answer"] = Value::Null;
+    success(&f.stdin(&["--stdin"], input.to_string().as_bytes()));
+    let row: Value = serde_json::from_slice(&fs::read(f.log()).unwrap()).unwrap();
+    assert!(row["rule"].is_null());
+    assert!(row["robin_answer"].is_null());
 }
 
 #[test]

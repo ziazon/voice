@@ -39,11 +39,12 @@ principal's pronouns, and the privacy filters (excluded folders, personal topics
   score --answers a.jsonl --labels labels.json --predictions p.json [--json]
       Accuracy per confidence tier and per category, against the baseline of always taking
       the recommended option. Every held-out question needs a prediction.
-  similar [--corpus decisions.jsonl] --query TEXT [--k 6] [--json]
+  similar [--corpus decisions.jsonl] (--query TEXT | --stdin) [--k 6] [--json]
       Past answers closest to a new question (shared rare words), training split only, so
       a backtest never sees the answers it is scored on.
-  record [--log live.jsonl] --work PATH --kind decided|escalated --category C --tier high|medium|low
-         --question Q --<member>-pick P [--rule R] [--<principal>-answer A]
+  record [--log live.jsonl] (--work PATH --kind decided|escalated --category C --tier high|medium|low
+         --question Q --<member>-pick P [--rule R] [--<principal>-answer A] | --stdin)
+      --stdin reads the texts as one JSON object, so the shell never reads them.
       Appends one live decision: what the member decided alone, or escalated with their lean.
   pending [--projects DIR] [--queues DIR] [--seen FILE] [--since-hours 24] [--exclude ID]
       One JSON line per question waiting on the principal that it has not printed before: an
@@ -632,8 +633,48 @@ def precedent(m, r):
             "notes": r["notes"][:400], "outcome": r["outcome"]}
 
 
+def stdin_object(usage_error, required, optional=()):
+    """Read bounded UTF-8 JSON, refusing ambiguous keys and non-text values before use."""
+    raw = sys.stdin.buffer.read(65537)
+    if len(raw) > 65536:
+        usage_error("--stdin takes at most 64 KiB")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        usage_error("--stdin needs UTF-8 text")
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate key {key!r}")
+            result[key] = value
+        return result
+
+    try:
+        values = json.loads(text, object_pairs_hook=unique_object)
+        if not isinstance(values, dict):
+            raise ValueError("expected an object")
+        for key, value in values.items():
+            key.encode("utf-8")
+            if key not in required and key not in optional:
+                raise ValueError(f"unknown key {key!r}")
+            if value is None and key in optional:
+                continue
+            if not isinstance(value, str):
+                raise ValueError(f"{key} must be a string" + (" or null" if key in optional else ""))
+            value.encode("utf-8")
+        for key in required:
+            if key not in values:
+                raise ValueError(f"missing required key {key!r}")
+    except (ValueError, UnicodeEncodeError, RecursionError) as exc:
+        usage_error(f"--stdin needs one JSON object: {exc}")
+    return values
+
+
 def cmd_similar(m, args):
-    hits = similar(m, read_jsonl(args.corpus or m.state("decisions.jsonl")), args.query, args.k)
+    query = stdin_object(args.usage_error, ("query",))["query"] if args.stdin else args.query
+    hits = similar(m, read_jsonl(args.corpus or m.state("decisions.jsonl")), query, args.k)
     if args.json:
         print(json.dumps(hits, indent=2, ensure_ascii=False))
         return 0
@@ -648,13 +689,30 @@ def cmd_similar(m, args):
 
 
 def cmd_record(m, args):
-    line = {"timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "work": args.work,
-            "kind": args.kind, "category": args.category, "tier": args.tier, "question": args.question,
-            m.pick_field: args.member_pick, "rule": args.rule, m.answer_field: args.principal_answer}
+    if args.stdin:
+        text_dests = [dest for dest, _ in args.record_required] + ["rule", "principal_answer"]
+        if any(getattr(args, dest) is not None for dest in text_dests):
+            args.usage_error("give the texts either on stdin (--stdin) or as flags, not both")
+        values = stdin_object(args.usage_error, ("work", "kind", "category", "tier", "question", "pick"),
+                              ("rule", "answer"))
+        if values["kind"] not in ("decided", "escalated"):
+            args.usage_error("kind must be decided or escalated")
+        if values["tier"] not in TIERS:
+            args.usage_error("tier must be high, medium or low")
+    else:
+        missing = [flag for dest, flag in args.record_required if getattr(args, dest) is None]
+        if missing:
+            args.usage_error("the following arguments are required: " + ", ".join(missing))
+        values = {"work": args.work, "kind": args.kind, "category": args.category, "tier": args.tier,
+                  "question": args.question, "pick": args.member_pick, "rule": args.rule,
+                  "answer": args.principal_answer}
+    line = {"timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "work": values["work"],
+            "kind": values["kind"], "category": values["category"], "tier": values["tier"], "question": values["question"],
+            m.pick_field: values["pick"], "rule": values.get("rule"), m.answer_field: values.get("answer")}
     log = Path(args.log or m.state("live.jsonl")).expanduser()
     previous = log.read_text() if log.exists() else ""
     private_write(log, previous + json.dumps(line, ensure_ascii=False) + "\n")
-    print(f"recorded a {args.kind} {args.category} decision ({args.tier}) for {args.work}")
+    print(f"recorded a {values['kind']} {values['category']} decision ({values['tier']}) for {values['work']}")
     return 0
 
 
@@ -2053,19 +2111,26 @@ def parser_for(m, description):
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("similar")
     p.add_argument("--corpus", help="default: <state_dir>/decisions.jsonl")
-    p.add_argument("--query", required=True)
+    texts = p.add_mutually_exclusive_group(required=True)
+    texts.add_argument("--query")
+    texts.add_argument("--stdin", action="store_true", help='read {"query": …} as JSON from stdin')
+    p.set_defaults(usage_error=p.error)
     p.add_argument("--k", type=int, default=6)
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("record")
     p.add_argument("--log", help="default: <state_dir>/live.jsonl")
-    p.add_argument("--work", required=True)
-    p.add_argument("--kind", required=True, choices=("decided", "escalated"))
-    p.add_argument("--category", required=True)
-    p.add_argument("--tier", required=True, choices=TIERS)
-    p.add_argument("--question", required=True)
-    p.add_argument(f"--{m.slug}-pick" if m else "--member-pick", dest="member_pick", required=True)
+    required = [("work", "--work"), ("kind", "--kind"), ("category", "--category"), ("tier", "--tier"),
+                ("question", "--question"), ("member_pick", f"--{m.slug}-pick" if m else "--member-pick")]
+    p.add_argument("--work", required=False)
+    p.add_argument("--kind", required=False, choices=("decided", "escalated"))
+    p.add_argument("--category", required=False)
+    p.add_argument("--tier", required=False, choices=TIERS)
+    p.add_argument("--question", required=False)
+    p.add_argument(required[-1][1], dest="member_pick", required=False)
     p.add_argument("--rule")
     p.add_argument(f"--{m.principal_slug}-answer" if m else "--principal-answer", dest="principal_answer")
+    p.add_argument("--stdin", action="store_true", help="read the texts as one JSON object from stdin")
+    p.set_defaults(usage_error=p.error, record_required=required)
     p = sub.add_parser("pending")
     p.add_argument("--projects", default="~/.claude/projects")
     p.add_argument("--queues", help="default: the member config's queues, if any")
