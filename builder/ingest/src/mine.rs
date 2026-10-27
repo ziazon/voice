@@ -18,6 +18,7 @@ use std::{
 };
 
 pub const DEFAULT_HOLDOUT: f64 = 0.15;
+const UNEXPECTED_SHAPE: &str = "a transcript record has an unexpected shape";
 
 pub enum Split {
     Holdout(f64),
@@ -54,6 +55,10 @@ fn link(path: &Path) -> Error {
         "{} is a link: Persona Builder doesn't follow links in your Claude Code history. Move it away and try again",
         path.display()
     ))
+}
+// Only shape errors may be skipped; other failures must stop mining.
+fn unreadable(error: &Error) -> bool {
+    matches!(error, Error::Invalid(m) if m.contains(UNEXPECTED_SHAPE))
 }
 fn name(path: &Path) -> Result<String> {
     path.file_name()
@@ -169,7 +174,7 @@ struct Builder<'a> {
 impl Builder<'_> {
     fn shape(&self, key: &str) -> Error {
         Error::Invalid(format!(
-            "{}:{}: a transcript record has an unexpected shape ({key})",
+            "{}:{}: {UNEXPECTED_SHAPE} ({key})",
             self.path.display(),
             self.line
         ))
@@ -634,10 +639,11 @@ pub fn mine_with_progress(
                     };
                     let records = match b.harvest(&r, session, &project, &mut context) {
                         Ok(records) => records,
-                        Err(_) => {
+                        Err(e) if unreadable(&e) => {
                             mined.unreadable += 1;
                             continue;
                         }
+                        Err(e) => return Err(e),
                     };
                     for record in records {
                         match privacy(filters, &Value::Object(record.clone()))? {
@@ -757,6 +763,19 @@ mod test_common;
 mod tests {
     use super::test_common::{self as common, repo};
     use super::*;
+
+    #[test]
+    fn only_a_shape_error_counts_as_an_unreadable_record() {
+        assert!(unreadable(&Error::Invalid(format!(
+            "x:1: {UNEXPECTED_SHAPE} (message)"
+        ))));
+        assert!(!unreadable(&Error::Invalid("x is not a file".into())));
+        assert!(!unreadable(&Error::Io {
+            path: "x".into(),
+            source: std::io::Error::other("boom"),
+        }));
+        assert!(!unreadable(&Error::Exists("x".into())));
+    }
 
     #[test]
     fn opening_a_fifo_returns_without_waiting_for_a_writer() {

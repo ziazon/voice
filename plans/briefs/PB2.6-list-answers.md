@@ -159,3 +159,33 @@ Add `"list_answers"` to `all_accepted_fixtures_match_python_bytes_and_summary`'s
   `-D warnings`, `PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked`, the generated-types diff
   check, and the screens' typecheck, tests and build).
 - Report each red you saw before the change and why it failed.
+
+## Follow-up: skip only a record of an unexpected shape (the Verifier's should-fix)
+
+Today `mine_with_progress` turns any `Err` from `Builder::harvest` into a counted skip
+(`Err(_) => { mined.unreadable += 1; continue; }`). Every error `harvest` returns today comes from
+`Builder::shape`, so this is safe now, but nothing keeps it so: a check added inside `harvest` later
+(an I/O error, a safety refusal) would quietly become a skip. Make the skip match the shape error only.
+
+In `builder/ingest/src/mine.rs`:
+
+1. Add `const UNEXPECTED_SHAPE: &str = "a transcript record has an unexpected shape";` and use it in
+   `Builder::shape`'s message (the text it writes stays byte for byte the same:
+   `"{path}:{line}: a transcript record has an unexpected shape ({key})"`).
+2. Add a private `fn unreadable(error: &Error) -> bool`: true only for `Error::Invalid(m)` whose `m`
+   contains `UNEXPECTED_SHAPE`; false for every other `Invalid`, every `Io` and every `Exists`.
+3. At the skip site: `Err(e) if unreadable(&e) => { mined.unreadable += 1; continue; }` and
+   `Err(e) => return Err(e)`. Nothing else changes.
+
+Test first, in the `#[cfg(test)] mod tests` at the bottom of `mine.rs`: one test,
+`only_a_shape_error_counts_as_an_unreadable_record`, asserting `unreadable` is true for an error made
+by `Builder::shape` (build a `Builder` the way the module's code does, or format the same message with
+the constant) and false for `Error::Invalid("x is not a file".into())`,
+`Error::Io { path: "x".into(), source: std::io::Error::other("boom") }` and `Error::Exists("x".into())`.
+See it fail first (the function doesn't exist, so it fails to compile; that counts as red), then make it
+pass. The existing `mine_rules` and `history` skip tests must stay green unchanged.
+
+Skills: `~/.codex/skills/tdd-skill/SKILL.md`, `~/.codex/skills/code-quality/SKILL.md`. Match the
+module's style; no new dependency; no comments beyond one line on `unreadable` saying why it is
+narrow. Run `cargo fmt`, `cargo clippy -p persona-builder-ingest --all-targets -- -D warnings` and
+`cargo test -p persona-builder-ingest -- --test-threads=2` (the machine is loaded). Do not commit.
