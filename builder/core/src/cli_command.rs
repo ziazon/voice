@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 pub const CLI_FOLDER: &str = "Persona Builder can't be used from a folder whose name has \" $ ` \\ ! { or } in it. Move Persona Builder to the Applications folder in your home folder, then try again.";
 
-pub const CLI_PLACE: &str = "Persona Builder needs to be installed before it can make an assistant. Run install.sh from the folder you unzipped, then open Persona Builder from the Applications folder in your home folder.";
+pub const CLI_PLACE: &str = "Persona Builder needs to be installed before it can make an assistant. Install it with install.sh, as \"How to install.txt\" shows (both are in the Persona Builder folder you were sent), then open it from the Applications folder in your home folder.";
 
 /// The `persona-builder` command that ships with this program: this program itself when it is
 /// that command, else the `persona-builder` beside it (the app's `Contents/MacOS`).
