@@ -227,6 +227,11 @@ fn stdin_record_refusals_are_usage_errors_and_do_not_write() {
         (vec!["--stdin"], vec![0xff], "UTF-8"),
         (
             vec!["--stdin"],
+            br#"{"work":"kit","kind":"decided","category":"scope","tier":"high","question":"Keep it small?","pick":"\ud800"}"#.to_vec(),
+            "pick",
+        ),
+        (
+            vec!["--stdin"],
             b"{\"pick\":\"one\",\"pick\":\"two\"}".to_vec(),
             "pick",
         ),

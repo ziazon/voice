@@ -46,7 +46,7 @@ which talks to GitHub alone. Reporting: `SECURITY.md`.
 removal. It appends to a regular owner-only file under `flock` and has no `--log`. The SKILL.md's
 command is one double-quoted path the app checks for shell characters before writing it.
 
-The texts an assistant records or looks up never pass through the
+The texts an assistant's SKILL.md records or looks up never pass through the
 shell: the SKILL.md (and the guided build's backtest brief) gives them to `--stdin` as one JSON
 object inside a quoted heredoc, which the shell does not expand and valid JSON cannot end early.
 Both programs read at most 64 KiB, strict UTF-8, one object with only the known keys; anything

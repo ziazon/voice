@@ -149,6 +149,7 @@ fn invalid_stdin_is_a_usage_error_before_searching() {
         (b"{}".to_vec(), "query"),
         (br#"{"query":"x"} {}"#.to_vec(), "one JSON object"),
         (br#"{"query":4}"#.to_vec(), "query"),
+        (br#"{"query":"\ud800"}"#.to_vec(), "query"),
         (vec![b'x'; 65537], "at most 64 KiB"),
         (vec![0xff], "UTF-8"),
     ] {
@@ -161,7 +162,10 @@ fn invalid_stdin_is_a_usage_error_before_searching() {
         );
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert!(stderr.contains(problem), "missing {problem}: {stderr}");
-        assert!(stderr.contains("similar"), "{stderr}");
+        assert!(
+            stderr.contains("Usage: persona-builder similar"),
+            "{stderr}"
+        );
         assert!(out.stdout.is_empty());
     }
     for args in [vec![], vec!["--stdin", "--query", "x"]] {

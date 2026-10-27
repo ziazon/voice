@@ -1104,8 +1104,12 @@ fn similar(
     use persona_builder_steps::similar as steps;
     let query = if stdin {
         let cli = Cli::command();
-        let command = cli.find_subcommand("similar").expect("similar command");
-        stdin_json::read::<SimilarInput>(command).query
+        let command = cli
+            .find_subcommand("similar")
+            .expect("similar command")
+            .clone()
+            .bin_name("persona-builder similar");
+        stdin_json::read::<SimilarInput>(&command).query
     } else {
         query.expect("clap requires --query without --stdin")
     };
