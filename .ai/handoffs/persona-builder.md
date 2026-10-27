@@ -31,8 +31,16 @@ One record per slice, newest first. Paraphrase only; no real person.
   shape error (`unreadable`, a unit test pins `Io`, `Exists` and other `Invalid` as stopping; Codex,
   from the brief's follow-up section; red seen as a compile failure), and the Python sentence above
   is corrected (checked by calling `parse_answer` on `7`, `True` and an object).
-- **Not verified yet:** the follow-up's green and `bash scripts/ci-local.sh` (the land's gate): the
-  machine's load gate held before either could run; a live read of a real history with this build.
+- **Mutation of the narrowed skip:** `unreadable` forced to always true fails
+  `only_a_shape_error_counts_as_an_unreadable_record`; restored and checked with `cmp`.
+- **Repeat Verifier (Opus 5.5, after the rebase onto PB8.3):** PASS, no must-fix. `git range-diff`
+  shows the brief and both code commits identical; only the record's neighbour changed. Targeted
+  `cargo test` and `clippy -D warnings` on the ingest crate and `tests/crew_decisions_test.py` passed.
+  Her one should-fix, kept as a known limit: when an assistant record is skipped, the next message
+  is paired with the reply before it (that one record's context only; before this slice the whole
+  read stopped instead).
+- **Not verified:** a live read of a real history with this build. `bash scripts/ci-local.sh` runs at
+  the land.
 
 ## PB7.9b: *Sign in to Claude*, in Persona Builder's own Claude Code profile folder (2026-10-27, lane: V1)
 
