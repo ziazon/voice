@@ -133,6 +133,52 @@ fn busy_cancel_and_retry_never_check_status_after_cancel() {
     claude_sign_in_cancel_in(&state).unwrap();
 }
 #[test]
+fn cancel_during_status_never_starts_login() {
+    let stub = Stub::new("exit 0");
+    fs::write(
+        stub.0.join("claude"),
+        r#"#!/bin/sh
+here="$(cd "$(dirname "$0")" && pwd -P)"
+case "$1 $2" in
+'--version ') echo '2.1.292 (Claude Code)';;
+'auth status')
+    touch "$here/status-started"
+    sleep 1
+    touch "$here/status-finished"
+    echo '{"loggedIn":false}';;
+'auth login') echo login >> "$here/calls"; sleep 1;;
+esac
+"#,
+    )
+    .unwrap();
+    let state = ClaudeSignIns::new();
+    thread::scope(|scope| {
+        let pending = scope.spawn(|| stub.sign_in(&state));
+        let begun = Instant::now();
+        while !stub.0.join("status-started").exists() && begun.elapsed() < Duration::from_secs(3) {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            stub.0.join("status-started").exists(),
+            "status did not start"
+        );
+        assert!(!stub.0.join("status-finished").exists());
+        claude_sign_in_cancel_in(&state).unwrap();
+        // A spawned login can be killed before its shell writes `calls`. Removing the
+        // program makes even that attempted spawn observable as DOES_NOT_RUN.
+        fs::remove_file(stub.0.join("claude")).unwrap();
+        let answer = pending.join().unwrap();
+        assert_eq!(answer.message, text::SIGN_IN_STOPPED);
+        assert!(!answer.ready);
+        assert_eq!(answer.note, None);
+        assert!(answer.can_sign_in);
+    });
+    assert!(
+        !stub.0.join("calls").exists(),
+        "auth login ran after cancel"
+    );
+}
+#[test]
 fn unavailable_or_broken_program_does_not_offer_or_run_login() {
     let stub = Stub::new("exit 1");
     let state = ClaudeSignIns::new();

@@ -323,6 +323,14 @@ impl Drop for ClaudeSignInGuard<'_> {
         *self.0.state.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
 }
+fn stopped_sign_in_status() -> dto::ClaudeStatus {
+    dto::ClaudeStatus {
+        ready: false,
+        message: text::SIGN_IN_STOPPED.into(),
+        note: None,
+        can_sign_in: true,
+    }
+}
 pub fn claude_sign_in_in(
     home: &Path,
     path: Option<&OsStr>,
@@ -348,16 +356,14 @@ pub fn claude_sign_in_in(
         Err(error) => return Ok(unavailable_status(error)),
         _ => {}
     }
+    if flag.load(Ordering::SeqCst) {
+        return Ok(stopped_sign_in_status());
+    }
     let result = claude.sign_in(home, &flag);
     if let Err(Error::Invalid(message)) = &result
         && message == text::SIGN_IN_STOPPED
     {
-        return Ok(dto::ClaudeStatus {
-            ready: false,
-            message: message.clone(),
-            note: None,
-            can_sign_in: true,
-        });
+        return Ok(stopped_sign_in_status());
     }
     if let Ok(status) = claude.status(home)
         && status.signed_in
