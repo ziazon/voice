@@ -1056,6 +1056,174 @@
    "expect": {
     "block": {
      "agree_with": null,
+     "draft": "plan",
+     "draft_id": "a.r2",
+     "items": [],
+     "objections": "",
+     "position": "propose",
+     "ratings": {}
+    }
+   },
+   "input": {
+    "author": "a",
+    "crew": [
+     "a",
+     "b"
+    ],
+    "kind": "text",
+    "known_drafts": [
+     "b.r1"
+    ],
+    "n": null,
+    "post": "```deliberation\nposition: propose\u001f\ndraft: plan\n```",
+    "round": 2
+   },
+   "name": "position_with_trailing_unit_separator"
+  },
+  {
+   "expect": {
+    "block": {
+     "agree_with": null,
+     "draft": "plan",
+     "draft_id": "a.r2",
+     "items": [],
+     "objections": "",
+     "position": "propose",
+     "ratings": {}
+    }
+   },
+   "input": {
+    "author": "a",
+    "crew": [
+     "a",
+     "b"
+    ],
+    "kind": "text",
+    "known_drafts": [
+     "b.r1"
+    ],
+    "n": null,
+    "post": "```deliberation\n\u001cposition: propose\ndraft: plan\n```",
+    "round": 2
+   },
+   "name": "key_with_leading_file_separator"
+  },
+  {
+   "expect": {
+    "block": {
+     "agree_with": null,
+     "draft": "plan",
+     "draft_id": "a.r2",
+     "items": [],
+     "objections": "",
+     "position": "propose",
+     "ratings": {}
+    }
+   },
+   "input": {
+    "author": "a",
+    "crew": [
+     "a",
+     "b"
+    ],
+    "kind": "text",
+    "known_drafts": [
+     "b.r1"
+    ],
+    "n": null,
+    "post": "```deliberation\nposition: propose\ndraft: \u001d plan \u001e\n```",
+    "round": 2
+   },
+   "name": "value_with_group_separators"
+  },
+  {
+   "expect": {
+    "block": {
+     "agree_with": null,
+     "draft": "plan",
+     "draft_id": "a.r2",
+     "items": [],
+     "objections": "",
+     "position": "propose",
+     "ratings": {}
+    }
+   },
+   "input": {
+    "author": "a",
+    "crew": [
+     "a",
+     "b"
+    ],
+    "kind": "text",
+    "known_drafts": [
+     "b.r1"
+    ],
+    "n": null,
+    "post": "```deliberation\nposition: propose\n\u001e\u001f\ndraft: plan\n```",
+    "round": 2
+   },
+   "name": "line_of_only_record_separators"
+  },
+  {
+   "expect": {
+    "block": {
+     "agree_with": null,
+     "draft": "plan",
+     "draft_id": "a.r2",
+     "items": [],
+     "objections": "",
+     "position": "propose",
+     "ratings": {}
+    }
+   },
+   "input": {
+    "author": "a",
+    "crew": [
+     "a",
+     "b"
+    ],
+    "kind": "text",
+    "known_drafts": [
+     "b.r1"
+    ],
+    "n": null,
+    "post": "```deliberation\nposition: propose\ndraft: \"plan\"\u001f\n```",
+    "round": 2
+   },
+   "name": "json_value_then_unit_separator"
+  },
+  {
+   "expect": {
+    "block": {
+     "agree_with": null,
+     "draft": "a         \t                     z",
+     "draft_id": "a.r2",
+     "items": [],
+     "objections": "",
+     "position": "propose",
+     "ratings": {}
+    }
+   },
+   "input": {
+    "author": "a",
+    "crew": [
+     "a",
+     "b"
+    ],
+    "kind": "text",
+    "known_drafts": [
+     "b.r1"
+    ],
+    "n": null,
+    "post": "```deliberation\nposition: propose\ndraft: \"a\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001fz\"\n```",
+    "round": 2
+   },
+   "name": "raw_every_control_in_json_string"
+  },
+  {
+   "expect": {
+    "block": {
+     "agree_with": null,
      "draft": null,
      "draft_id": null,
      "items": [
@@ -5501,6 +5669,215 @@
     [],
     [
      "path"
+    ]
+   ],
+   [
+    "secret️",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "secret‍",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "secret́",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "secretְ",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "secretः",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "secret‿",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "Ⓐsecret",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "İstanbul",
+    [
+     "istanbul"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "ıstanbul",
+    [
+     "istanbul"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "secret²",
+    [
+     "secret"
+    ],
+    []
+   ],
+   [
+    "secret_x",
+    [
+     "secret"
+    ],
+    []
+   ],
+   [
+    "x́secret",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "a@x́.y",
+    [],
+    []
+   ],
+   [
+    "a@x.ýz",
+    [],
+    [
+     "email"
+    ]
+   ],
+   [
+    "\u001c/tmp/x/",
+    [],
+    [
+     "path"
+    ]
+   ],
+   [
+    "\u001f~/a/b",
+    [],
+    [
+     "path"
+    ]
+   ],
+   [
+    "été@école.fr",
+    [],
+    [
+     "email"
+    ]
+   ],
+   [
+    "ñ@x.io",
+    [],
+    []
+   ],
+   [
+    "/áb/",
+    [],
+    []
+   ],
+   [
+    " /été/x",
+    [],
+    [
+     "path"
+    ]
+   ],
+   [
+    "+c++ rocks",
+    [
+     "c++"
+    ],
+    []
+   ],
+   [
+    "xc++y",
+    [
+     "c++"
+    ],
+    []
+   ],
+   [
+    "(a.b)",
+    [
+     "(a.b)"
+    ],
+    []
+   ],
+   [
+    "x(a.b)y",
+    [
+     "(a.b)"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "SECRET",
+    [
+     "secret"
+    ],
+    [
+     "term"
+    ]
+   ],
+   [
+    "se​cret",
+    [
+     "secret"
+    ],
+    []
+   ],
+   [
+    "Kelvin",
+    [
+     "kelvin"
+    ],
+    [
+     "term"
     ]
    ]
   ],

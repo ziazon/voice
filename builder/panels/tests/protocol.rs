@@ -70,6 +70,15 @@ fn leaks_return_only_sorted_categories() {
 }
 
 #[test]
+fn leak_term_over_a_thousand_characters_fails_closed() {
+    assert_eq!(leak_findings("plain words", &["q".repeat(1001)]), ["term"]);
+    assert_eq!(
+        leak_findings("plain words", &["q".repeat(1000)]),
+        Vec::<&str>::new()
+    );
+}
+
+#[test]
 fn roundtrip_is_json_and_reopen_resets_only_stop_state() {
     let mut state = ok(DeliberationState::new(
         Kind::Text,

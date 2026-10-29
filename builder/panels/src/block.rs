@@ -1,4 +1,4 @@
-use crate::{clean, match_key};
+use crate::{clean, match_key, text::py_strip};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -166,9 +166,9 @@ static JSON_NUMBER: LazyLock<Result<Regex, regex::Error>> =
 
 fn fields(body: &str) -> Option<BTreeMap<String, Value>> {
     let mut fields = BTreeMap::new();
-    for line in body.split('\n').filter(|s| !s.trim().is_empty()) {
+    for line in body.split('\n').filter(|s| !py_strip(s).is_empty()) {
         let (key, value) = line.split_once(':')?;
-        let (key, value) = (key.trim(), value.trim());
+        let (key, value) = (py_strip(key), py_strip(value));
         if ![
             "position",
             "items",
@@ -186,13 +186,13 @@ fn fields(body: &str) -> Option<BTreeMap<String, Value>> {
             let normalized = normalize_json(value);
             let mut stream = serde_json::Deserializer::from_str(&normalized).into_iter::<Value>();
             let parsed = stream.next()?.ok()?;
-            let rest = normalized.get(stream.byte_offset()..)?.trim();
+            let rest = py_strip(normalized.get(stream.byte_offset()..)?);
             if !rest.is_empty() && !rest.starts_with('#') {
                 return None;
             }
             parsed
         } else {
-            let value = value.split_once(" #").map_or(value, |(v, _)| v).trim();
+            let value = py_strip(value.split_once(" #").map_or(value, |(v, _)| v));
             if ["NaN", "Infinity", "-Infinity"].contains(&value) {
                 Value::Null
             } else {
