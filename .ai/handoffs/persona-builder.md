@@ -2,6 +2,47 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO10.1: the panel protocol as a Rust crate (2026-10-29, lane: V1)
+
+- **What:** VO10 split into VO10.1 (this crate), VO10.2 (the one-Mac panel runner) and VO10.3
+  (Panels on the app's screen). `builder/panels` (`voice-panels`) ports the reference deliberation
+  protocol (Python, reference commit `a7f31d72`) with no I/O: the last-block parser, distances,
+  rounds with holdouts and stopping, groups, dissent, the result and its markdown, the time box,
+  the leak guard and fences. Its state, round report and result read and write the reference's
+  JSON. Named for the coming rename, so it needs no rename later. No new dependency (`regex`,
+  `serde`, `serde_json` were already in the workspace). Brief:
+  `plans/briefs/VO10.1-protocol-crate.md`.
+- **Who built it:** Codex, in separate dispatches: the tests against a pinned API with placeholder
+  bodies (A), then the implementation with the tests frozen (B), then review fix-ups (C, D, E, F).
+  The tests' hashes were checked unchanged after every implementation dispatch.
+- **Tests:** the 66 portable vectors, copied byte for byte (SHA-256 checked against the source),
+  under the reference test's rule; `reference_probes.json`, 49 parse edge cases plus cleaning,
+  casefolding, leak-guard, fence and markdown vectors and 12 panels, all produced by running the
+  Python reference; the reference's unit tests, ported; hostile-input tests (100,000 backticks,
+  50,000 fence lines, 10,000 unclosed openings, 500-deep JSON, every control character).
+- **Found in review and fixed:** an unquoted overflowing number (`draft: 1e400`) was kept as text
+  where Python refuses it; a process-wide term-regex cache that grew without bound (now built per
+  call); an unquoted `-0` rewrite that a mutation check showed could never change a verdict
+  (removed). A differential run then showed the markdown's `D:` line differing in the last digit:
+  Python 3.12 and later add floats with compensated (Neumaier) summation, so the crate now does
+  too (`src/sum.rs`); with a plain sum swapped into the reference, the two matched byte for byte.
+  serde_json's default float parser can be one ulp off, so the crate turns on `float_roundtrip`;
+  Cargo features unify, so every workspace crate's serde_json now parses floats exactly.
+- **Verified:** red first for every dispatch (A: 15 protocol tests plus the fixture and probe
+  suites failing on assertions; C: the three overflow probes; E: all 12 panels). Mutations by V1,
+  each a real test failure (exit 101) after a green baseline: the deadlock count, the holdout
+  weight floor, the one-third group link, the overflow rule, the casefold table, `\r` cleaning,
+  the fence length, Python's float format, raw control escaping, the compensated sum's final step
+  and `float_roundtrip`; one survivor became the dead-code removal above. Differential, by V1,
+  outside the repo: 20,000 random cases (panels, time boxes, hostile posts) through both the
+  Python 3.12 reference and this crate, 0 mismatches, the markdown compared byte for byte.
+- **Not verified:** Python 3.10 and 3.11 sum floats plainly, so their last digits can differ from
+  this crate's (within the reference's 1e-9 rule); the casefold table is Python 3.12's (Unicode
+  15.0), so letters added in later Unicode versions fold by Rust's own lowercase; `statistics.mean`
+  is exact in Python and a compensated sum divided by the count here (used only by the zero-weight
+  fallback and the time-box projection), which can differ in the last digit. No tag yet: one
+  waits on VO16's versioning, and until then the land commit is the pin.
+
 ## PB8.4: the lasting place is the two Applications folders only (2026-10-27, lane: V1)
 
 - **What:** filed from PB8.2's Verifier; V-Q9 answered option 1 (narrow the roots). A release
