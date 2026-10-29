@@ -42,6 +42,28 @@ One record per slice, newest first. Paraphrase only; no real person.
   is exact in Python and a compensated sum divided by the count here (used only by the zero-weight
   fallback and the time-box projection), which can differ in the last digit. No tag yet: one
   waits on VO16's versioning, and until then the land commit is the pin.
+- **Security review:** no high. Medium, fixed by narrowing the claim: `.ai/SECURITY.md` said
+  `clean` strips invisible characters, but tag characters (U+E0000–E007F), the soft hyphen and
+  variation selectors pass, exactly as in the reference; the row now says so. Lows, left for
+  VO10.2 to close because they need a runner-side rule rather than a parity change: the leak guard
+  misses `file://` and `C:\` paths, spaced or `localhost` emails and terms split by a zero-width
+  space; a member name is written outside any fence in the markdown's `Members:` line, so names
+  should be limited to a fence label's characters; a hand-edited state with huge weights makes `D`
+  NaN, which saves as `null` and cannot be read back, so states should reject weights that are not
+  finite or are outside 0 to 1.
+- **Verifier (Fable):** FAIL, one must-fix, fixed (dispatch G): the leak guard used the `regex`
+  crate's `\w`, `\b` and `\s`, which differ from Python's, so a term followed by a variation
+  selector, a joiner or a combining mark was missed (fail-open). It now uses Python's classes, and
+  a hand-written term match follows Python's case-insensitive rule (simple lowercase plus Python's
+  extra-case table, so `İstanbul` and `ıstanbul` match `istanbul`). A term over 1,000 characters
+  counts as found without a search (a deliberate difference that fails closed). Should-fixes done:
+  field lines are stripped as Python strips them (U+001C–U+001F too), and a raw-control probe now
+  exercises the JSON escaping path. After the fix: 48,000 random leak-guard cases and 6,000 random
+  panels, time boxes and posts against the reference, 0 mismatches. Recorded as limits, not
+  changed: a JSON lone surrogate (`"\ud800"`) is refused, since a Rust string cannot hold one,
+  where Python keeps it; a hand-built state is read more strictly than the reference (a round
+  number at `u32::MAX`, draft ids such as `b.r1_0` or with non-ASCII digits, a block missing
+  `objections` or with a float rating are refused); a non-finite projection or `D` saves as `null`.
 
 ## PB8.4: the lasting place is the two Applications folders only (2026-10-27, lane: V1)
 
