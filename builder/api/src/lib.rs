@@ -29,3 +29,6 @@ pub use building::*;
 
 pub mod review;
 pub use review::*;
+
+pub mod panels;
+pub use panels::*;

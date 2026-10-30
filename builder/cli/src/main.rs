@@ -18,6 +18,7 @@ use persona_builder_steps::input::RecordList as Records;
 use std::path::{Path, PathBuf};
 
 mod assistants;
+mod panel;
 mod record;
 mod stdin_json;
 
@@ -35,6 +36,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Ask a panel of your assistants
+    Panel {
+        #[command(subcommand)]
+        command: panel::PanelCommand,
+    },
     /// Make a new assistant in your Claude folder
     New {
         name: String,
@@ -2009,6 +2015,7 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
 
 fn run(cli: Cli) -> Result<std::process::ExitCode> {
     let result = match cli.command {
+        Some(Command::Panel { command }) => return panel::run(command),
         Some(Command::New {
             name,
             principal,

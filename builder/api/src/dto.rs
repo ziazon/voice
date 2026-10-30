@@ -605,3 +605,122 @@ pub struct RefreshApplied {
     pub reason: String,
     pub spend: Spend,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct ConvenePanelRequest {
+    pub question: String,
+    pub background: String,
+    pub kind: String,
+    pub seats: Vec<String>,
+    pub time_box: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct ResumePanelRequest {
+    pub id: String,
+    pub steer: Option<String>,
+    pub time_box: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct PanelIdRequest {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelProgress {
+    pub id: String,
+    pub round: u32,
+    pub line: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelRan {
+    pub id: String,
+    pub status: String,
+    pub outcome: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelSummary {
+    pub id: String,
+    pub question: String,
+    pub status: String,
+    pub round: u32,
+    pub outcome: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelDetail {
+    pub summary: PanelSummary,
+    pub kind: String,
+    pub seats: Vec<String>,
+    pub time_box: Option<String>,
+    pub asked: bool,
+    pub rounds: Vec<PanelRound>,
+    pub result: Option<PanelResultView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelRound {
+    pub round: u32,
+    pub d: f64,
+    pub withheld: Vec<PanelWithheld>,
+    pub failed: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelWithheld {
+    pub seat: String,
+    pub findings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelResultView {
+    pub outcome: String,
+    pub answer_text: Option<String>,
+    pub answer_items: Vec<String>,
+    pub groups: Vec<PanelGroup>,
+    pub dissent: Vec<PanelDissent>,
+    pub markdown: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelGroup {
+    pub members: Vec<String>,
+    pub weight: f64,
+    pub answer_text: Option<String>,
+    pub answer_items: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PanelDissent {
+    pub seat: String,
+    pub holdout: bool,
+    pub objections: String,
+}
