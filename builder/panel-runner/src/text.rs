@@ -74,6 +74,7 @@ pub fn input_findings(categories: &[&str]) -> String {
     format!("{INPUT_PREFIX}{}", categories.join(", "))
 }
 pub fn assistant_problem(name: &str, reason: &str) -> String {
+    let name = voice_panels::clean(name, 64);
     format!("{name}: {reason}")
 }
 pub fn round_started(round: u32) -> String {

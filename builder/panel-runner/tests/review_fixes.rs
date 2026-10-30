@@ -370,3 +370,119 @@ fn decoded_block_values_check_forwarded_forms() {
         }
     }
 }
+
+#[test]
+fn reopened_result_is_scrubbed_before_fencing() {
+    let home = Home::new();
+    let id = home.start(&Script::new(post("A modest trial.")));
+    fs::write(
+        home.room(&id).join("result.md"),
+        "Earlier\u{e0041}\u{ad}\u{fe0f} proposal.",
+    )
+    .unwrap();
+    let turns = Script::new(post("A modest trial."));
+    resume(
+        &home.0,
+        &Resume {
+            id,
+            steer: Some("Try a smaller trial.".into()),
+            time_box: None,
+        },
+        &|_, _| true,
+        &turns,
+        &FakeClock,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    )
+    .unwrap();
+    let prompts = turns.prompts.lock().unwrap();
+    assert!(!prompts.is_empty());
+    for prompt in prompts.iter() {
+        let section = prompt.split_once("where you left off\n").unwrap().1;
+        let section = section.split_once("\n```").unwrap().0;
+        assert!(section.contains("Earlier"));
+        for hidden in ['\u{e0041}', '\u{ad}', '\u{fe0f}'] {
+            assert!(
+                !section.contains(hidden),
+                "reopened result retained {hidden:?}"
+            );
+        }
+        assert!(section.contains("Earlier proposal."));
+    }
+}
+
+fn text_finding_is_withheld(value: &str, category: &str) {
+    assert_eq!(voice_panel_runner::guard::text_findings(value), [category]);
+    withheld(value, category, value);
+}
+
+#[test]
+fn fullwidth_at_localhost_is_withheld() {
+    text_finding_is_withheld("me＠localhost", "email");
+}
+
+#[test]
+fn single_segment_home_path_is_withheld() {
+    text_finding_is_withheld("~/notes.txt", "path");
+}
+
+#[test]
+fn bare_home_prefix_at_boundary_is_withheld() {
+    for value in ["~/", "see:~/", "x,~/", "(~/", " ~/", "é,~/"] {
+        text_finding_is_withheld(value, "path");
+    }
+}
+
+#[test]
+fn comma_user_home_path_is_withheld() {
+    text_finding_is_withheld("x,~rowan/y", "path");
+}
+
+#[test]
+fn colon_user_home_path_is_withheld() {
+    text_finding_is_withheld("see:~rowan/x", "path");
+}
+
+#[test]
+fn ordinary_prose_and_bare_spelled_words_are_not_flagged() {
+    for value in [
+        "meet at noon",
+        "look at the dot plot",
+        "a, b: c",
+        "rowan at example dot org",
+    ] {
+        assert!(voice_panel_runner::guard::text_findings(value).is_empty());
+    }
+}
+
+#[test]
+fn unknown_long_seat_has_a_short_error() {
+    let home = Home::new();
+    let bin = home.0.join("bin");
+    fs::create_dir(&bin).unwrap();
+    let program = bin.join("claude");
+    fs::write(
+        &program,
+        "#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '2.1.292\\n'; exit 0; fi\nprintf '{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(program, fs::Permissions::from_mode(0o755)).unwrap();
+    let seat = "q".repeat(500);
+    let error = voice_panel_runner::turns::ClaudeTurns::new(
+        &home.0,
+        Some(bin.as_os_str()),
+        &[],
+        std::slice::from_ref(&seat),
+    )
+    .err()
+    .expect("unknown seat must be refused");
+    assert!(
+        !error.contains(&seat),
+        "error echoed the entire unknown seat"
+    );
+    assert!(error.chars().count() <= 160, "seat error is too long");
+    assert!(
+        error.starts_with(&"q".repeat(64)),
+        "must reach the seat error"
+    );
+}

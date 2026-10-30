@@ -46,12 +46,11 @@ fn load_checked(
     }
     let mut seats = Vec::new();
     for name in names {
-        let problem = |reason| text::assistant_problem(&voice_panels::clean(name, 64), reason);
+        let problem = |reason| text::assistant_problem(name, reason);
         let folder = assistant_dir(home, name).map_err(|_| problem(text::NO_ASSISTANT))?;
         let member =
             read_member(&folder.join("member.json")).map_err(|_| problem(text::NO_ASSISTANT))?;
-        let problem =
-            |reason| text::assistant_problem(&voice_panels::clean(&member.name, 64), reason);
+        let problem = |reason| text::assistant_problem(&member.name, reason);
         if member.slug != *name {
             return Err(problem(text::NO_ASSISTANT));
         }

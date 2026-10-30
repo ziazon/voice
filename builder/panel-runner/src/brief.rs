@@ -39,7 +39,7 @@ pub fn make_brief(
     }
     section(&mut parts, text::DECISIONS, decisions);
     if let Some(previous) = &convene.where_left_off {
-        section(&mut parts, text::WHERE_LEFT_OFF, previous);
+        section(&mut parts, text::WHERE_LEFT_OFF, &scrub(previous));
     }
     if let Some(categories) = withheld
         .get(seat)

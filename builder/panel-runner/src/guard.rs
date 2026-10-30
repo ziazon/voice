@@ -22,17 +22,18 @@ const INVISIBLE: &[(u32, u32)] = &[
     (0xe0000, 0xe007f),
     (0xe0100, 0xe01ef),
 ];
-static PATHS: LazyLock<[Result<Regex, regex::Error>; 4]> = LazyLock::new(|| {
+static PATHS: LazyLock<[Result<Regex, regex::Error>; 5]> = LazyLock::new(|| {
     [
         Regex::new(r"(?i)\bfile:/"),
         Regex::new(r"(?:^|[^\w])[A-Za-z]:[\\/]"),
         Regex::new(r"\\\\[\w.$-]+\\"),
-        Regex::new(r#"(?:^|[\s(\["'`=])~[\w.-]+/"#),
+        Regex::new(r"(?:^|[^\w~])~/"),
+        Regex::new(r"(?:^|[^\w~])~[\w.-]+/"),
     ]
 });
 static EMAILS: LazyLock<[Result<Regex, regex::Error>; 2]> = LazyLock::new(|| {
     [
-        Regex::new(r"[\w.+-]+@[\w-]+"),
+        Regex::new(r"[\w.+-]+[@＠][\w-]+"),
         Regex::new(
             r"(?i)[\w.+-]+\s*(?:@|＠|\(at\)|\[at\])\s*[\w-]+(?:\s*(?:\.|\(dot\)|\[dot\])\s*[a-z]{2,})+",
         ),
