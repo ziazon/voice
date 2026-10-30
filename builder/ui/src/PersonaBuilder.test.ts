@@ -287,8 +287,11 @@ it('blocks leaving Panels while running and enables Your assistants after it end
 })
 
 it('keeps step buttons absent on Panels and ignores opening an assistant while a panel runs', async () => {
-  const wrapper = screen(PersonaBuilder)
+  const wrapper = screen(PersonaBuilder, fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) }))
   await flushPromises()
+  await button(wrapper, 'Open').trigger('click'); await flushPromises()
+  expect(wrapper.findAll('aside button')).toHaveLength(7)
+  await button(wrapper, 'Your assistants').trigger('click'); await flushPromises()
   await button(wrapper, 'Ask a panel').trigger('click'); await flushPromises()
   wrapper.getComponent(Panels).vm.$emit('running', true); await flushPromises()
   expect(wrapper.findAll('aside button')).toHaveLength(0)

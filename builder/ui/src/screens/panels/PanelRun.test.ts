@@ -307,3 +307,32 @@ it('carries on a paused panel after its time answer was already saved', async ()
   await action(wrapper, 'Carry on').trigger('click'); await flushPromises()
   expect(backend.resumePanel).toHaveBeenCalledExactlyOnceWith({ id, steer: null, timeBox: null }, expect.any(Function))
 })
+
+it.each(['Stop for now', 'Carry on'])('explains a saved panel still running after stop and clears the notice when %s starts', async next => {
+  const pending = deferred<never>()
+  const backend = fakeBackend({
+    panel: vi.fn().mockResolvedValue(detail('running')),
+    stopPanel: vi.fn().mockResolvedValueOnce(undefined).mockReturnValueOnce(pending.promise),
+    resumePanel: vi.fn().mockReturnValue(pending.promise),
+  })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  expect(wrapper.find('.alert-info').exists()).toBe(false)
+  await action(wrapper, 'Stop for now').trigger('click'); await flushPromises()
+  expect(backend.stopPanel).toHaveBeenCalledExactlyOnceWith({ id })
+  expect(backend.panel).toHaveBeenCalledTimes(2)
+  expect(wrapper.find('.alert-info').exists()).toBe(true)
+  expect(wrapper.get('.alert-info').attributes('role')).toBe('alert')
+  expect(wrapper.get('.alert-info').text()).toBe('Asked it to stop. If it is running in this app, it stops after the turns it is on.')
+  expect(wrapper.find('.alert-danger').exists()).toBe(false)
+  await action(wrapper, next).trigger('click'); await flushPromises()
+  expect(wrapper.find('.alert-info').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('Asked it to stop.')
+})
+
+it('does not claim a saved panel is still running when the reload fails', async () => {
+  const backend = fakeBackend({ panel: vi.fn().mockResolvedValueOnce(detail('running')).mockRejectedValueOnce(new Error('private detail')) })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  await action(wrapper, 'Stop for now').trigger('click'); await flushPromises()
+  expect(wrapper.get('.alert-danger').text()).toBe("This panel couldn't be read. Try again.")
+  expect(wrapper.find('.alert-info').exists()).toBe(false)
+})

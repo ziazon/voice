@@ -91,6 +91,10 @@ async function stopSaved() {
   try {
     await backend.stopPanel({ id: id.value })
     await load()
+    if (!readError.value && detail.value?.summary.status === 'running') {
+      info.value = true
+      error.value = 'Asked it to stop. If it is running in this app, it stops after the turns it is on.'
+    }
   } catch (failure) {
     error.value = failureMessage(failure, "The panel couldn't be asked to stop. Try again.")
   } finally {

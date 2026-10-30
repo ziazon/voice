@@ -59,7 +59,7 @@ function agreed(consent: ConsentAnswer) {
   if (consent.agreed) view.value = 'connect'
 }
 function goToStep(step: string) {
-  if (panelsRunning.value || !assistant.value) return
+  if (!assistant.value) return
   if (step === 'consent') view.value = 'consent'
   if (step === 'save') view.value = 'save'
   if ((step === 'connect' || step === 'sources' || step === 'build' || step === 'report' || step === 'review') && assistant.value.consent.agreed) {
