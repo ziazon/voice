@@ -2,6 +2,65 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO10.2: the one-Mac panel runner (2026-10-30, lane: V1)
+
+- **What:** `builder/panel-runner` (`voice-panel-runner`) runs a panel of the person's own
+  assistants on this computer, ported from the reference relay (commit `6f754c91`) without hosts,
+  skills, the mirror, notify or polling. Each turn is the agent crate's tool-less Claude Code call
+  (`step: panel-turn`, a `{post}` schema) on that assistant's own ledger and daily limit, only with
+  its permission given and a built `decisions.md`, which the brief carries as data. Every other
+  post reaches a brief fenced, scrubbed and cleaned; the leak guard (the protocol's plus the
+  runner's own path and email checks and every seated assistant's personal and secret filters)
+  withholds a post on any finding. Files in `~/.claude/voice/panels/<id>/`, 0600 in 0700, opened by
+  descriptor without following links. The time box asks and pauses at once (no polling); stop
+  discards the round; resume trims after a crash, takes the time-box answer, or reopens a closed
+  panel with a steer. `persona-builder panel convene|resume|status|list` and `builder/api`'s
+  `panels.rs` (DTOs and generated types) share one path; the app's commands and parity rows wait
+  for VO10.3. Carried from VO10.1's review and closed: member names must be assistant slugs, saved
+  weights finite and within 0 to 1, posts scrubbed of tag characters, the soft hyphen and variation
+  selectors, and the `file:`, `C:\`, spaced and `localhost` gaps. Where panels live is this slice's
+  choice: not under `~/.claude/state/`, whose names are assistant slugs. Brief:
+  `plans/briefs/VO10.2-panel-runner.md`.
+- **Who built it:** Codex: the tests against a pinned API with placeholder bodies (A, 76 red on
+  assertions), the implementation with the tests frozen (B, hashes checked unchanged), then the
+  review fixes (C, D), each red first.
+- **Verified:** `ci-local.sh` all passed (before and after the fixes). Mutations by V1 in a scratch
+  copy, each a test failure: the tag-character range, the UNC check, the decoded-block check, the
+  scrubbed filter check, the brief's scrub, the weight range, the consent check; the slug check
+  on read-back names survived (shadowed by the member-list check) and gained two tests in C.
+- **Security review (Opus sub-agent):** one medium, fixed in C: the guard checked the raw and
+  scrubbed post, but the brief forwards `clean(scrub(post), 8000)`, and `clean` turns other control
+  characters into spaces, so `/Users\u0001/…`, `me\u0001@…` or a filter phrase split by U+0001
+  passed the guard and appeared whole in the next brief. `guard::forwarded` is now the one
+  definition of the shared text, checked beside the raw and scrubbed forms.
+- **Verifier (Fable):** PASS but for the same must-fix (M1, fixed in C). Should-fixes, done in D:
+  scrub the reopened result before its fence; catch `me＠localhost`, `~/notes.txt` and `~user/`
+  after a comma or colon; clean an assistant name in every error. Left as a stated limit: a
+  detail spelled out in plain words.
+- **Repeat Verifier (Opus, over `d4a6275..ad29f1b`):** PASS; M1 proved closed (control
+  characters, the 8000-character cut completing a filter word, decoded blocks, errored and
+  malformed posts), and each new test shown to fail with its fix reverted. Should-fixes, done in E
+  (`db7776f`): the question, background and steer are stored scrubbed, as the guard saw them
+  (a steer `see` + U+200B + `/Users/…` passed and showed as a path); U+FE6B counts as an `@`; a
+  doubled tilde or a tilde after a word starts a home path; a tilde before a digit (`~7/10`) is
+  prose. Left as notes: a post opening with `@domain` sits after its fence label, and a block item
+  re-escaped by JSON (`\`) can show UNC-shaped in the author's own last block and in
+  `result.md`; neither reveals more than the guard already passed. Prose that looks like an
+  address (`Meet @ noon. See you`) is withheld on purpose: it has the shape of `a @ b . com`.
+- **Delta Verifier (Opus, over `ad29f1b..db7776f`):** PASS; 62 inputs compared before and after,
+  every earlier case still caught, the 200-character and 4096-byte limits hold, the 13 new tests
+  fail on the old source. One should-fix, done in F: E's user-name class (`[A-Za-z_]`) dropped
+  non-ASCII names (`~Ølaf/x`); it is now any word character but a digit. Notes, unchanged: a path
+  glued to a word (`see/Users/…`) passes, as the protocol's own check requires a space or
+  punctuation before the `/`; a name starting with a digit cannot be told from `~3/4`.
+- **Not verified:** a real Claude Code turn (Mimi's `claude` is not signed in, and a panel spends
+  real usage): only a stub on `PATH`. Owed as a walk with VO10.3's screens.
+- **Skills Review:** ✅ tdd-skill (frozen red tests, then mutations) · ✅ security-and-hardening
+  (two independent reviews, both fixes red first) · ✅ source-driven-development (the relay and the
+  agent crate read, never recalled) · ✅ code-quality · ⚠️ plain-language (CLI and API sentences
+  only; the screens are VO10.3's) · ⚠️ my own dispatch D brief first held a bare-words email
+  pattern that flags ordinary prose; caught before dispatch.
+
 ## VO10.1: the panel protocol as a Rust crate (2026-10-29, lane: V1)
 
 - **What:** VO10 split into VO10.1 (this crate), VO10.2 (the one-Mac panel runner) and VO10.3
