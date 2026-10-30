@@ -28,7 +28,7 @@ static PATHS: LazyLock<[Result<Regex, regex::Error>; 5]> = LazyLock::new(|| {
         Regex::new(r"(?:^|[^\w])[A-Za-z]:[\\/]"),
         Regex::new(r"\\\\[\w.$-]+\\"),
         Regex::new(r"(?:^|[^\w])~+/|\w~/"),
-        Regex::new(r"(?:^|[^\w])~+[A-Za-z_][\w.-]*/"),
+        Regex::new(r"(?:^|[^\w])~+[^\W\d][\w.-]*/"),
     ]
 });
 static EMAILS: LazyLock<[Result<Regex, regex::Error>; 2]> = LazyLock::new(|| {

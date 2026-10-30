@@ -622,3 +622,5 @@ review_guard_case!(
     ["email"]
 );
 review_guard_case!(plain_user_home_stays_path, "~rowan/x", ["path"]);
+review_guard_case!(unicode_user_home_is_path, "~Ølaf/x", ["path"]);
+review_guard_case!(comma_unicode_user_home_is_path, "a,~Ølaf/x", ["path"]);
