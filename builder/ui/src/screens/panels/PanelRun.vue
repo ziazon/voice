@@ -44,7 +44,7 @@ async function sendStop() {
     stopSent.value = false
     stopping.value = false
     info.value = false
-    error.value = failureMessage(failure, 'The panel stopped before it finished. You can carry on from where it stopped.')
+    error.value = failureMessage(failure, "The panel couldn't be asked to stop. Try again.")
   }
 }
 function progress(value: PanelProgress) {
@@ -113,7 +113,7 @@ onMounted(() => {
       </template>
       <template v-if="detail">
         <h2 class="text-break" style="white-space: pre-wrap">{{ detail.summary.question }}</h2>
-        <p>{{ statusWords(detail.summary.status, detail.summary.round) }}</p>
+        <p v-if="!running">{{ statusWords(detail.summary.status, detail.summary.round) }}</p>
         <p class="text-break">{{ detail.seats.join(', ') }}</p>
         <div v-for="round in detail.rounds" :key="round.round" class="mb-3">
           <p>Round {{ round.round }}: how far apart they were, {{ round.d.toFixed(2) }} (0 means they all agree).</p>

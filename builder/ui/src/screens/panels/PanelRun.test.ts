@@ -76,6 +76,38 @@ it('reloads using the resolved PanelRan id when no progress supplied an id', asy
   expect(wrapper.emitted('running')).toEqual([[true], [false]])
 })
 
+it.each([
+  { failure: new Error('private detail'), text: "The panel couldn't be asked to stop. Try again." },
+  { failure: { message: 'The stop request could not be sent.' }, text: 'The stop request could not be sent.' },
+])('retries a rejected stop and keeps its danger alert until the next run: $text', async ({ failure, text }) => {
+  const call = deferred<PanelRan>()
+  const next = deferred<PanelRan>()
+  const backend = fakeBackend({
+    panel: vi.fn().mockResolvedValueOnce(detail('stopped')).mockResolvedValue(detail('closed')),
+    resumePanel: vi.fn().mockReturnValueOnce(call.promise).mockReturnValueOnce(next.promise),
+    stopPanel: vi.fn().mockRejectedValue(failure),
+  })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  await action(wrapper, 'Carry on').trigger('click'); await flushPromises()
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await action(wrapper, 'Stop for now').trigger('click'); await flushPromises()
+    expect(wrapper.get('.alert-danger[role="alert"]').text()).toBe(text)
+    expect(wrapper.find('.alert-info').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('private detail')
+    expect(action(wrapper, 'Stop for now').attributes('disabled')).toBeUndefined()
+    expect(backend.stopPanel).toHaveBeenCalledTimes(attempt)
+    expect(backend.stopPanel).toHaveBeenLastCalledWith({ id })
+    expect(wrapper.emitted('running')).toEqual([[true]])
+  }
+  call.resolve(done); await flushPromises()
+  expect(wrapper.emitted('running')).toEqual([[true], [false]])
+  expect(wrapper.get('.alert-danger[role="alert"]').text()).toBe(text)
+  await wrapper.get('textarea').setValue('Consider the smaller route.')
+  await action(wrapper, 'Reconsider').trigger('click'); await flushPromises()
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  next.resolve(done); await flushPromises()
+})
+
 it.each([{ error: { message: 'The daily limit was reached.' }, text: 'The daily limit was reached.' }, { error: new Error('private detail'), text: fallback }])('shows a call rejection through failureMessage: $text', async ({ error, text }) => {
   const backend = fakeBackend({ panel: vi.fn().mockResolvedValue(detail('stopped')), resumePanel: vi.fn().mockRejectedValue(error) })
   const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
@@ -158,6 +190,34 @@ it('shows the closed result and reconsiders only a nonempty trimmed steer', asyn
   expect(action(wrapper, 'Reconsider').attributes('disabled')).toBeUndefined()
   await action(wrapper, 'Reconsider').trigger('click'); await flushPromises()
   expect(backend.resumePanel).toHaveBeenCalledWith({ id, steer: 'Consider the smaller route.', timeBox: null }, expect.any(Function))
+})
+
+it('hides the saved status during reconsideration while keeping detail and live progress visible until reload', async () => {
+  const call = deferred<PanelRan>()
+  const reload = deferred<PanelDetail>()
+  let progress!: (value: PanelProgress) => void
+  const loaded = detail('closed', { seats: ['Pebble', 'Quill'], rounds: [{ round: 2, d: 0.42, withheld: [], failed: [] }] })
+  const backend = fakeBackend({
+    panel: vi.fn().mockResolvedValueOnce(loaded).mockReturnValueOnce(reload.promise),
+    resumePanel: vi.fn().mockImplementation((_request, callback) => { progress = callback; return call.promise }),
+  })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  expect(wrapper.text()).toContain('Finished after round 2.')
+  await wrapper.get('textarea').setValue('Consider the smaller route.')
+  await action(wrapper, 'Reconsider').trigger('click'); await flushPromises()
+  progress({ id, round: 3, line: 'Pebble is reconsidering in round 3.' }); await flushPromises()
+  expect(wrapper.text()).not.toContain('Finished after round 2.')
+  expect(wrapper.get('h2').text()).toBe(loaded.summary.question)
+  expect(wrapper.text()).toContain('Pebble, Quill')
+  expect(wrapper.text()).toContain('Round 2: how far apart they were, 0.42 (0 means they all agree).')
+  expect(wrapper.get('ul[aria-live="polite"]').text()).toBe('Pebble is reconsidering in round 3.')
+  call.resolve(done); await flushPromises()
+  expect(backend.panel).toHaveBeenCalledTimes(2)
+  expect(wrapper.text()).not.toContain('Finished after round 2.')
+  expect(wrapper.emitted('running')).toEqual([[true]])
+  reload.resolve(detail('closed', { summary: { ...loaded.summary, round: 3 } })); await flushPromises()
+  expect(wrapper.text()).toContain('Finished after round 3.')
+  expect(wrapper.emitted('running')).toEqual([[true], [false]])
 })
 
 it('renders hostile question, progress and withheld seat names literally without making elements', async () => {
