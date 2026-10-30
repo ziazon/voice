@@ -486,3 +486,139 @@ fn unknown_long_seat_has_a_short_error() {
         "must reach the seat error"
     );
 }
+
+#[test]
+fn invisible_boundary_question_is_refused_without_writes() {
+    let home = Home::new();
+    let before = snapshot(&home.0);
+    let turns = Script::new(post("A modest trial."));
+    let result = convene(
+        &home.0,
+        &Convene {
+            question: "Should x\u{200b}/Users/rowan/ go?".into(),
+            background: String::new(),
+            kind: "list:1".into(),
+            seats: vec!["pebble".into(), "quill".into()],
+            time_box: Some("deadlock".into()),
+        },
+        &|_, _| true,
+        &turns,
+        &FakeClock,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    );
+    assert!(result.is_err(), "question path must be refused");
+    assert_eq!(snapshot(&home.0), before, "refused question wrote files");
+    assert!(turns.prompts.lock().unwrap().is_empty());
+}
+
+#[test]
+fn invisible_boundary_steer_is_refused_without_writes() {
+    let home = Home::new();
+    let id = home.start(&Script::new(post("A modest trial.")));
+    let before = snapshot(&home.0);
+    let turns = Script::new(post("A modest trial."));
+    let result = resume(
+        &home.0,
+        &Resume {
+            id,
+            steer: Some("see\u{200b}/Users/rowan/x".into()),
+            time_box: None,
+        },
+        &|_, _| true,
+        &turns,
+        &FakeClock,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    );
+    assert!(result.is_err(), "steer path must be refused");
+    assert_eq!(snapshot(&home.0), before, "refused steer wrote files");
+    assert!(turns.prompts.lock().unwrap().is_empty());
+}
+
+#[test]
+fn saved_inputs_are_scrubbed_before_cleaning() {
+    let home = Home::new();
+    let turns = Script::new(post("A modest trial."));
+    let ran = convene(
+        &home.0,
+        &Convene {
+            question: "Which tri\u{200b}al?".into(),
+            background: "A modest tri\u{200b}al.".into(),
+            kind: "list:1".into(),
+            seats: vec!["pebble".into(), "quill".into()],
+            time_box: Some("deadlock".into()),
+        },
+        &|_, _| true,
+        &turns,
+        &FakeClock,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    )
+    .unwrap();
+    let metadata = read(&home.room(&ran.id).join("convene.json"));
+    assert_eq!(metadata["question"], "Which trial?");
+    assert_eq!(metadata["background"], "A modest trial.");
+    resume(
+        &home.0,
+        &Resume {
+            id: ran.id.clone(),
+            steer: Some("Try a tri\u{200b}al.".into()),
+            time_box: None,
+        },
+        &|_, _| true,
+        &turns,
+        &FakeClock,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    )
+    .unwrap();
+    let transcript = fs::read_to_string(home.room(&ran.id).join("transcript.jsonl")).unwrap();
+    let steer = transcript
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|entry| entry["type"] == "steer")
+        .unwrap();
+    assert_eq!(steer["text"], "Try a trial.");
+    for prompt in turns.prompts.lock().unwrap().iter() {
+        assert!(!prompt.contains('\u{200b}'));
+        assert!(!prompt.contains("tri al"));
+    }
+}
+
+macro_rules! review_guard_case {
+    ($name:ident, $value:expr, $expected:expr) => {
+        #[test]
+        fn $name() {
+            assert_eq!(voice_panel_runner::guard::text_findings($value), $expected);
+        }
+    };
+}
+
+review_guard_case!(small_at_domain_is_email, "me﹫example.com", ["email"]);
+review_guard_case!(small_at_localhost_is_email, "me﹫localhost", ["email"]);
+review_guard_case!(small_at_spaced_is_email, "a ﹫ b . com", ["email"]);
+review_guard_case!(double_tilde_home_is_path, "~~/notes.txt", ["path"]);
+review_guard_case!(double_tilde_user_is_path, "~~rowan/x", ["path"]);
+review_guard_case!(word_tilde_home_is_path, "foo~/notes/x", ["path"]);
+review_guard_case!(score_tilde_is_prose, "Score:~7/10", Vec::<&str>::new());
+review_guard_case!(approx_tilde_is_prose, "approx.~20/day", Vec::<&str>::new());
+review_guard_case!(
+    rated_tilde_is_prose,
+    "Rated ~8/10 by most people.",
+    Vec::<&str>::new()
+);
+review_guard_case!(fraction_tilde_is_prose, "~3/4", Vec::<&str>::new());
+review_guard_case!(
+    cost_tilde_is_prose,
+    "It costs ~$5 a month.",
+    Vec::<&str>::new()
+);
+review_guard_case!(ratio_is_prose, "Ratio 3:2, roughly.", Vec::<&str>::new());
+review_guard_case!(letter_tilde_user_stays_path, "x,~ten/twelve", ["path"]);
+review_guard_case!(
+    spaced_at_sentence_stays_email,
+    "Meet @ noon. See you",
+    ["email"]
+);
+review_guard_case!(plain_user_home_stays_path, "~rowan/x", ["path"]);

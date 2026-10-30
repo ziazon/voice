@@ -251,7 +251,8 @@ pub fn convene_named(
     let (kind, n) = validate(request)?;
     let seats = crate::seats::load_for(home, &request.seats, consented, turns)?;
     let mut input = request.clone();
-    input.question = voice_panels::clean(&input.question, 200);
+    input.question = voice_panels::clean(&crate::guard::scrub(&input.question), 200);
+    input.background = crate::guard::scrub(&input.background);
     let metadata = Convened {
         input,
         created_at: clock.now_iso(),
@@ -343,7 +344,7 @@ pub fn resume(
         .as_deref()
         .map(|s| {
             crate::guard::guard_input(s)?;
-            Ok::<_, String>(voice_panels::clean(s, 8000))
+            Ok::<_, String>(voice_panels::clean(&crate::guard::scrub(s), 8000))
         })
         .transpose()?;
     let waiting = asked(&room)? && answer(&room)?.is_none();

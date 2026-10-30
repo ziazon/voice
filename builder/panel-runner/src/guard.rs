@@ -27,15 +27,15 @@ static PATHS: LazyLock<[Result<Regex, regex::Error>; 5]> = LazyLock::new(|| {
         Regex::new(r"(?i)\bfile:/"),
         Regex::new(r"(?:^|[^\w])[A-Za-z]:[\\/]"),
         Regex::new(r"\\\\[\w.$-]+\\"),
-        Regex::new(r"(?:^|[^\w~])~/"),
-        Regex::new(r"(?:^|[^\w~])~[\w.-]+/"),
+        Regex::new(r"(?:^|[^\w])~+/|\w~/"),
+        Regex::new(r"(?:^|[^\w])~+[A-Za-z_][\w.-]*/"),
     ]
 });
 static EMAILS: LazyLock<[Result<Regex, regex::Error>; 2]> = LazyLock::new(|| {
     [
-        Regex::new(r"[\w.+-]+[@＠][\w-]+"),
+        Regex::new(r"[\w.+-]+[@＠﹫][\w-]+"),
         Regex::new(
-            r"(?i)[\w.+-]+\s*(?:@|＠|\(at\)|\[at\])\s*[\w-]+(?:\s*(?:\.|\(dot\)|\[dot\])\s*[a-z]{2,})+",
+            r"(?i)[\w.+-]+\s*(?:@|＠|﹫|\(at\)|\[at\])\s*[\w-]+(?:\s*(?:\.|\(dot\)|\[dot\])\s*[a-z]{2,})+",
         ),
     ]
 });
@@ -119,7 +119,10 @@ pub fn post_findings_refs(
 
 /// Refuse private details in a question, background or steer.
 pub fn guard_input(text: &str) -> Result<(), String> {
-    let found = text_findings(text);
+    let mut found = text_findings(text);
+    found.extend(text_findings(&voice_panels::clean(text, usize::MAX)));
+    found.sort_unstable();
+    found.dedup();
     if found.is_empty() {
         Ok(())
     } else {
