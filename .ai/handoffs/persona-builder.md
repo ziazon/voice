@@ -2,6 +2,61 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO10.3: Panels on the app's screen (2026-10-30, lane: V1)
+
+- **What:** the app gains Panels. From the home screen, *Ask a panel* opens a list of the
+  person's saved panels and a form to start one: the question, the kind of answer (one written
+  answer or a list of 1 to 12 items), which of their assistants sit (2 to 24, only those with
+  permission given), and how long they may take (ask after five minutes, 15 minutes, an hour,
+  or no limit). A running panel shows its rounds as they finish and can be stopped (a stop pressed
+  before Rust has named the panel is sent as soon as the first progress line names it). A saved
+  panel shows its question, status, seats and rounds (how far apart they were, posts kept from the
+  others and why, who couldn't answer), and, by status: the time question's three answers when
+  paused, *Carry on* when stopped, failed, saved as running or paused without a question, a Stop
+  for one saved as running, and for a finished one the result (the answer, how they grouped
+  with each group's share, every dissent quoted in full, the whole result as raw text) and *Ask
+  them to reconsider*. Every model-written string is shown as text through Vue's interpolation,
+  never as HTML or rendered markdown. Five app commands (`convene_panel`, `resume_panel`,
+  `stop_panel`, `list_panels`, `panel`) are thin calls into VO10.2's `builder/api` functions,
+  added to the command lists, the capability, the generated permissions and the CLI parity
+  table. Brief: `plans/briefs/VO10.3-panels-on-screen.md`.
+- **Who built it:** Codex, in four dispatches: the tests against placeholder screens (A, 89
+  red on assertions, checksums frozen), the implementation with the tests unchanged (B, the
+  checksums checked), then three fix-ups (C, D, E), each red first.
+- **Verified:** `ci-local.sh` all passed after C and again after D (Codex's own run after B failed only on seven `save` tests whose local listeners its sandbox refuses). Mutations by V1 in
+  place (`cp` backup, `cmp` restore), each a test failure: `v-html` on a dissent (two tests), the
+  remembered stop, bytes counted as characters, the 24-seat cap, the time question without
+  `asked`, `Your assistants` while a panel runs, a bound `href` on a panel screen. One survived:
+  the seat list's permission filter, redundant because such a box is disabled and Rust refuses
+  the seat; removed in D.
+- **Security review (Opus sub-agent):** no high or medium. Lows, fixed in D: once Stop was
+  pressed a real failure showed as "Stopped" (in Rust a stopped run resolves, it never rejects);
+  a panel saved as running (after a window reload) had *Carry on*, which can only fail as busy,
+  and no Stop; step navigation did not itself refuse while a panel ran.
+- **Verifier (Fable, over `b835343..6749441`):** all six claims PASS, no must-fix, each checked
+  with her own mutations (a `v-html`, the remembered stop, a swapped capability). Should-fixes,
+  done in D: the two stop outcomes above; a paused panel without a time question was a dead
+  end; the binding guard missed `v-bind="{…}"` and `:[x]`; the background counter gave no
+  reason its count jumps for some letters. Noted, unchanged: a stop cannot save round 1's turns,
+  which are paid for (the runner checks the flag after a round's turns); a panel run from the
+  command line looks "running" here and this screen's Stop cannot reach it.
+- **Repeat Verifier (Opus, over `6749441..ef2dfd7`):** all seven claims PASS, no must-fix, 17
+  mutations in a scratch copy (13 caught; the misses were her should-fixes). Should-fixes, done
+  in E (`daa15cd`): the `goToStep` guard was untested and unreachable (Panels opens only from
+  home, which clears the assistant), so it is removed and a test proves no step shows there; the
+  binding guard is now an allowlist (`class`, `disabled`, `id`, `key`, `result`, `start`,
+  `value`), catching `.srcdoc`, `v-bind.prop`, `:srcset`, `:HREF` and the rest; a stop on a panel
+  saved as running now says it was asked. `ci-local.sh` all passed after D. **E (83 added lines,
+  mostly tests) has no Verifier pass yet and no ci-local run of its own:** a delta pass and the
+  gate come before the land.
+- **Not verified:** the screens in the real app window, light and dark, and a real Claude Code
+  panel (Mimi's `claude` is not signed in, and a panel spends real usage): owed as a walk.
+- **Skills Review:** ✅ tdd-skill (frozen red tests, then mutations) · ✅ security-and-hardening
+  (two independent reviews, every fix red first) · ✅ frontend (loading, empty and error states on
+  each read; neighbours' patterns) · ⚠️ design-guide (Tabler classes only; no screenshot pass,
+  owed with the walk) · ✅ plain-language (every sentence fixed in the brief, checked by the
+  Verifier) · ✅ source-driven-development (the runner's state machine read, not recalled)
+
 ## VO10.2: the one-Mac panel runner (2026-10-30, lane: V1)
 
 - **What:** `builder/panel-runner` (`voice-panel-runner`) runs a panel of the person's own
