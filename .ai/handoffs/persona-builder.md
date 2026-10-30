@@ -39,7 +39,8 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Not verified:** Python 3.10 and 3.11 sum floats plainly, so their last digits can differ from
   this crate's (within the reference's 1e-9 rule); `match_key`'s casefold table is Python 3.12's
   (Unicode 15.0), so letters added in later Unicode versions fold by Rust's own lowercase there
-  (the leak guard uses Python's tables throughout, below); `statistics.mean`
+  (the leak guard's word class and lowercase are Python's, below; its `\s` is the `regex`
+  crate's plus U+001C–U+001F, equal to Python's on every code point today); `statistics.mean`
   is exact in Python and a compensated sum divided by the count here (used only by the zero-weight
   fallback and the time-box projection), which can differ in the last digit. No tag yet: one
   waits on VO16's versioning, and until then the land commit is the pin.
@@ -81,8 +82,15 @@ One record per slice, newest first. Paraphrase only; no real person.
   (exit 101): boundary from the term (4), lowercase through Rust (110), the class as
   `\p{L}\p{N}_` (52), one new letter as a word character. Differential by V1 against the reference
   under Python 3.12.14, every code point: 2,224,126 term-boundary cases, 5,560,315 email and path
-  cases, 30,480 case-equal pairs at a term's edge and middle, 0 mismatches; 27 hand cases, the one
-  difference being the 1,000-character rule above.
+  cases, 6,096 case-equal pairs at a term's edge and middle (30,480 cases), 0 mismatches; 27 hand
+  cases, the one difference being the 1,000-character rule above. The repeat pass on `aa3ce62`
+  (Opus) proved the code: her own differential, 15,604,140 cases over every code point (term
+  edges, one-character terms, email and path positions, 5,874 case-equal pairs), all equal to the
+  reference; she failed it only on the pairs-versus-cases wording, fixed here. Her should-fixes,
+  done: six email and path punctuation probes (a `$` added to either class is now caught), and
+  the generator refuses any Python but 3.12 (the security review's low). Left: nothing in CI
+  regenerates `sre_table.rs` (CI's Python may not be 3.12); the probes and the sortedness test
+  guard it. Security review of the delta: no high, no medium.
 
 ## PB8.4: the lasting place is the two Applications folders only (2026-10-27, lane: V1)
 
