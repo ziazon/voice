@@ -464,7 +464,7 @@ unsafe extern "C" {
 }
 
 /// UTC to the second, `YYYY-MM-DDTHH:MM:SSZ`.
-fn utc_stamp(time: SystemTime) -> String {
+pub fn utc_stamp(time: SystemTime) -> String {
     let when = seconds(time);
     // SAFETY: tm is plain data; all-zero is valid and gmtime_r fills it.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };

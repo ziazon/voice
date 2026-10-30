@@ -2781,6 +2781,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ts-rs",
+ "voice-panel-runner",
 ]
 
 [[package]]
@@ -4657,6 +4658,21 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "voice-panel-runner"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "persona-builder",
+ "persona-builder-agent",
+ "persona-builder-build",
+ "persona-builder-ingest",
+ "regex",
+ "serde",
+ "serde_json",
+ "voice-panels",
+]
 
 [[package]]
 name = "voice-panels"
