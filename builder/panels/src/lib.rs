@@ -9,6 +9,7 @@ mod error;
 mod replay;
 mod result;
 mod rounds;
+mod sre_table;
 mod sum;
 mod text;
 mod timebox;

@@ -1,4 +1,8 @@
-use crate::{ProtocolError, casefold_table::CASEFOLD};
+use crate::{
+    ProtocolError,
+    casefold_table::CASEFOLD,
+    sre_table::{LOWER, WORD},
+};
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -117,11 +121,24 @@ pub(crate) fn py_strip(text: &str) -> &str {
     text.trim_matches(|c: char| c.is_whitespace() || matches!(c, '\u{001c}'..='\u{001f}'))
 }
 
-static WORD: LazyLock<Result<Regex, regex::Error>> =
-    LazyLock::new(|| Regex::new(r"^[\p{L}\p{N}_]$"));
+fn is_word(c: char) -> bool {
+    WORD.binary_search_by(|&(start, end)| {
+        if c < start {
+            std::cmp::Ordering::Greater
+        } else if c > end {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    })
+    .is_ok()
+}
 
 fn simple_lower(c: char) -> char {
-    c.to_lowercase().next().unwrap_or(c)
+    match LOWER.binary_search_by_key(&c, |(key, _)| *key) {
+        Ok(i) => LOWER[i].1,
+        Err(_) => c,
+    }
 }
 
 fn same_case(t: char, p: char) -> bool {
@@ -140,25 +157,31 @@ fn term_matches(text: &[char], term: &str) -> bool {
     if term.is_empty() || term.len() > text.len() {
         return false;
     }
-    let Ok(word) = WORD.as_ref() else {
-        return true;
-    };
-    let is_word = |c: char| word.is_match(c.encode_utf8(&mut [0; 4]));
-    let first_word = is_word(term[0]);
-    let last_word = is_word(term[term.len() - 1]);
     text.windows(term.len()).enumerate().any(|(start, part)| {
         let before_word = start.checked_sub(1).is_some_and(|i| is_word(text[i]));
         let after_word = text.get(start + term.len()).is_some_and(|c| is_word(*c));
-        first_word != before_word
-            && last_word != after_word
+        // Boundaries compare text characters, which can differ in word-ness from the term.
+        is_word(part[0]) != before_word
+            && is_word(part[part.len() - 1]) != after_word
             && part.iter().zip(&term).all(|(&t, &p)| same_case(t, p))
     })
 }
 
-static EMAIL: LazyLock<Result<Regex, regex::Error>> =
-    LazyLock::new(|| Regex::new(r"[\p{L}\p{N}_.+-]+@[\p{L}\p{N}_-]+(\.[\p{L}\p{N}_-]+)+"));
-static PATH: LazyLock<Result<Regex, regex::Error>> =
-    LazyLock::new(|| Regex::new(r#"(?:^|[\s\x1c-\x1f(\["'`=])(?:~/|/)[\p{L}\p{N}_.-]+/"#));
+// Pin regex word classes to the reference's Unicode version too.
+static WORD_CLASS: LazyLock<String> = LazyLock::new(|| {
+    WORD.iter()
+        .map(|&(start, end)| format!(r"\x{{{:x}}}-\x{{{:x}}}", start as u32, end as u32))
+        .collect()
+});
+
+static EMAIL: LazyLock<Result<Regex, regex::Error>> = LazyLock::new(|| {
+    let w = &*WORD_CLASS;
+    Regex::new(&format!(r"[{w}.+-]+@[{w}-]+(\.[{w}-]+)+"))
+});
+static PATH: LazyLock<Result<Regex, regex::Error>> = LazyLock::new(|| {
+    let w = &*WORD_CLASS;
+    Regex::new(&format!(r#"(?:^|[\s\x1c-\x1f(\["'`=])(?:~/|/)[{w}.-]+/"#))
+});
 /// Return sorted leak categories without exposing matched text.
 pub fn leak_findings(text: &str, terms: &[String]) -> Vec<&'static str> {
     let mut findings = Vec::new();
@@ -174,4 +197,21 @@ pub fn leak_findings(text: &str, terms: &[String]) -> Vec<&'static str> {
         findings.push("term");
     }
     findings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EXTRA_CASES, LOWER, WORD};
+
+    #[test]
+    fn unicode_tables_are_sorted_for_binary_search() {
+        assert!(WORD.iter().all(|&(start, end)| start <= end));
+        assert!(WORD.windows(2).all(|pair| {
+            let previous_end = pair[0].1 as u32;
+            let next_start = pair[1].0 as u32;
+            previous_end + 1 < next_start
+        }));
+        assert!(LOWER.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        assert!(EXTRA_CASES.windows(2).all(|pair| pair[0].0 < pair[1].0));
+    }
 }
