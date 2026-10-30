@@ -1,5 +1,9 @@
 //! Fence every untrusted part of an assistant's turn as data.
-use crate::{guard::scrub, run::Convened, text};
+use crate::{
+    guard::{forwarded, scrub},
+    run::Convened,
+    text,
+};
 use persona_builder::member::Member;
 use std::collections::BTreeMap;
 use voice_panels::{DeliberationState, RoundReport, clean, fence};
@@ -52,7 +56,7 @@ pub fn make_brief(
             section(
                 &mut parts,
                 &text::post_label(state.round_no, name),
-                &clean(&scrub(post), 8000),
+                &forwarded(post),
             );
         }
     }

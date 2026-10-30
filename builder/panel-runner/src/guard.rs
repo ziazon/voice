@@ -50,11 +50,17 @@ pub fn scrub(text: &str) -> String {
         .collect()
 }
 
+/// The exact text shared as a previous post in the next round's brief.
+pub fn forwarded(text: &str) -> String {
+    voice_panels::clean(&scrub(text), 8000)
+}
+
 /// Sorted categories of private details found in text.
 pub fn text_findings(text: &str) -> Vec<&'static str> {
     let scrubbed = scrub(text);
+    let forwarded = forwarded(text);
     let mut found = BTreeSet::new();
-    for value in [text, scrubbed.as_str()] {
+    for value in [text, scrubbed.as_str(), forwarded.as_str()] {
         found.extend(voice_panels::leak_findings(value, &[]));
         for (category, patterns) in [("path", PATHS.as_slice()), ("email", EMAILS.as_slice())] {
             if patterns.iter().any(|pattern| {
@@ -92,8 +98,9 @@ pub fn post_findings_refs(
     for value in [text, decoded.as_str()] {
         found.extend(text_findings(value));
         let scrubbed = scrub(value);
+        let forwarded = forwarded(value);
         for filter in filters {
-            for checked in [value, scrubbed.as_str()] {
+            for checked in [value, scrubbed.as_str(), forwarded.as_str()] {
                 match filter.kind(checked) {
                     Some(Kind::Personal) => {
                         found.insert("private");
