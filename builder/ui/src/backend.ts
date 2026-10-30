@@ -1,3 +1,10 @@
+import type { ConvenePanelRequest } from './types/generated/ConvenePanelRequest'
+import type { ResumePanelRequest } from './types/generated/ResumePanelRequest'
+import type { PanelIdRequest } from './types/generated/PanelIdRequest'
+import type { PanelProgress } from './types/generated/PanelProgress'
+import type { PanelRan } from './types/generated/PanelRan'
+import type { PanelSummary } from './types/generated/PanelSummary'
+import type { PanelDetail } from './types/generated/PanelDetail'
 import type { ReportView } from './types/generated/ReportView'
 import type { ReviewStatus } from './types/generated/ReviewStatus'
 import type { KeepAnswerRequest } from './types/generated/KeepAnswerRequest'
@@ -50,6 +57,11 @@ import type { MergeCounts } from './types/generated/MergeCounts'
  * A host app must keep the same rule.
  */
 export interface Backend {
+  convenePanel(request: ConvenePanelRequest, onProgress: (progress: PanelProgress) => void): Promise<PanelRan>
+  resumePanel(request: ResumePanelRequest, onProgress: (progress: PanelProgress) => void): Promise<PanelRan>
+  stopPanel(request: PanelIdRequest): Promise<void>
+  listPanels(): Promise<PanelSummary[]>
+  panel(request: PanelIdRequest): Promise<PanelDetail>
   showReport(request: SlugRequest): Promise<ReportView>
   reviewStatus(request: SlugRequest): Promise<ReviewStatus>
   keepAnswer(request: KeepAnswerRequest): Promise<ReviewStatus>

@@ -30,6 +30,11 @@ import type { ClaudeaiCounts } from '../types/generated/ClaudeaiCounts'
 import type { MergeCounts } from '../types/generated/MergeCounts'
 
 export const tauriBackend: Backend = {
+  convenePanel: () => Promise.reject(new Error('todo')),
+  resumePanel: () => Promise.reject(new Error('todo')),
+  stopPanel: () => Promise.reject(new Error('todo')),
+  listPanels: () => Promise.reject(new Error('todo')),
+  panel: () => Promise.reject(new Error('todo')),
   showReport: request => invoke<ReportView>('show_report', { request }),
   reviewStatus: request => invoke<ReviewStatus>('review_status', { request }),
   keepAnswer: request => invoke<ReviewStatus>('keep_answer', { request }),

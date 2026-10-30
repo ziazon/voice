@@ -1,3 +1,4 @@
+import type { PanelDetail } from './types/generated/PanelDetail'
 import { readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +9,14 @@ import type { Assistant } from './types/generated/Assistant'
 import type { SaveOptions } from './types/generated/SaveOptions'
 
 export const assistant: Assistant = { slug: 'example', name: 'Example', principal: 'Sample', consent: { agreed: false, agreedOn: null } }
+export const panelDetail: PanelDetail = {
+  summary: {
+    id: 'dl-20261030T120000Z-0a1b2c3d', question: 'Which path should we take?',
+    status: 'closed', round: 2, outcome: 'agreed', updatedAt: '2026-10-30T12:00:00Z',
+  },
+  kind: 'text', seats: ['Pebble', 'Quill'], timeBox: null, asked: false, rounds: [],
+  result: { outcome: 'agreed', answerText: 'Take the shorter path.', answerItems: [], groups: [], dissent: [], markdown: '**Their answer**\nTake the shorter path.' },
+}
 export const saveOptions: SaveOptions = {
   choices: [
     { kind: 'github', label: 'A new private GitHub repo' },
@@ -22,6 +31,11 @@ export const saveOptions: SaveOptions = {
 export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
   const reviewStatus = { built: false, areas: [], tests: { waiting: 0, inUse: 0, retired: 0 }, byArea: [], change: null }
   return {
+    convenePanel: vi.fn().mockResolvedValue({ id: panelDetail.summary.id, status: 'closed', outcome: 'agreed' }),
+    resumePanel: vi.fn().mockResolvedValue({ id: panelDetail.summary.id, status: 'closed', outcome: 'agreed' }),
+    stopPanel: vi.fn().mockResolvedValue(undefined),
+    listPanels: vi.fn().mockResolvedValue([]),
+    panel: vi.fn().mockResolvedValue(panelDetail),
     showReport: vi.fn().mockResolvedValue({ report: null, unreadable: false, growth: null }),
     reviewStatus: vi.fn().mockResolvedValue(reviewStatus),
     keepAnswer: vi.fn().mockResolvedValue(reviewStatus),

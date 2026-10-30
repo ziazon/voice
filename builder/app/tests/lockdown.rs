@@ -92,6 +92,11 @@ fn lockdown_1_command_lists_agree_in_order() {
             "draft_refresh",
             "answer_refresh",
             "apply_refresh",
+            "convene_panel",
+            "resume_panel",
+            "stop_panel",
+            "list_panels",
+            "panel",
         ]
     );
     let capability = json("capabilities/default.json");

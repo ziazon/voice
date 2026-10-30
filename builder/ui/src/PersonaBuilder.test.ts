@@ -2,6 +2,7 @@ import { flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import { assistant, button, fakeBackend, screen } from './test-support'
 import PersonaBuilder from './PersonaBuilder.vue'
+import Panels from './screens/Panels.vue'
 
 it('shows Welcome and disables all steps before choosing an assistant', async () => {
   const wrapper = screen(PersonaBuilder)
@@ -245,4 +246,42 @@ it('reloads review status after going to Build and back', async () => {
   expect(backend.reviewStatus).toHaveBeenCalledTimes(2)
   expect(wrapper.text()).not.toContain('Build your assistant first.')
   expect(button(wrapper, 'Draft a change').attributes('disabled')).toBeUndefined()
+})
+
+
+it('opens Panels from the home card after the assistants', async () => {
+  const wrapper = screen(PersonaBuilder)
+  await flushPromises()
+  const ask = wrapper.findAll('button').find(item => item.text() === 'Ask a panel')
+  expect(ask, 'home card has Ask a panel').toBeDefined()
+  expect(wrapper.text()).toContain('Ask several of your assistants one question. They work it out in rounds and come back with a joint answer, with any disagreement in full.')
+  const cards = wrapper.findAll('.card')
+  expect(cards.at(-1)?.text()).toContain('Panels')
+  await ask!.trigger('click')
+  await flushPromises()
+  expect(wrapper.findComponent(Panels).exists()).toBe(true)
+})
+
+it('blocks leaving Panels while running and enables Your assistants after it ends', async () => {
+  const wrapper = screen(PersonaBuilder)
+  await flushPromises()
+  const ask = wrapper.findAll('button').find(item => item.text() === 'Ask a panel')
+  expect(ask, 'home card has Ask a panel').toBeDefined()
+  await ask!.trigger('click')
+  await flushPromises()
+  const panels = wrapper.findComponent(Panels)
+  expect(panels.exists()).toBe(true)
+  panels.vm.$emit('running', true)
+  await flushPromises()
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeDefined()
+  expect(wrapper.text()).toContain('Stop the panel first to leave Panels.')
+  await button(wrapper, 'Your assistants').trigger('click')
+  expect(wrapper.findComponent(Panels).exists()).toBe(true)
+  panels.vm.$emit('running', false)
+  await flushPromises()
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeUndefined()
+  expect(wrapper.text()).not.toContain('Stop the panel first to leave Panels.')
+  await button(wrapper, 'Your assistants').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('main h1').text()).toBe('Persona Builder')
 })

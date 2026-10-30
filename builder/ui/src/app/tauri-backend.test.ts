@@ -131,3 +131,36 @@ it('applyRefresh passes a progress channel whose messages reach the callback', a
   args.onProgress.onmessage(progress)
   expect(onProgress).toHaveBeenCalledExactlyOnceWith(progress)
 })
+
+it('maps listPanels to list_panels without arguments', async () => {
+  const answer = [{ id: 'dl-20261030T120000Z-0a1b2c3d', question: 'Which path?', status: 'closed', round: 2 }]
+  vi.mocked(invoke).mockClear().mockResolvedValue(answer)
+  await expect(tauriBackend.listPanels()).resolves.toEqual(answer)
+  expect(invoke).toHaveBeenCalledExactlyOnceWith('list_panels')
+})
+
+it.each([
+  ['stopPanel', 'stop_panel'],
+  ['panel', 'panel'],
+] as const)('maps panel method %s with a request', async (method, command) => {
+  const request = { id: 'dl-20261030T120000Z-0a1b2c3d' }
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  await expect(tauriBackend[method](request)).resolves.toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
+})
+
+it.each([
+  ['convenePanel', 'convene_panel', { question: 'Which path?', background: '', kind: 'text', seats: ['pebble', 'quill'], timeBox: null }],
+  ['resumePanel', 'resume_panel', { id: 'dl-20261030T120000Z-0a1b2c3d', steer: null, timeBox: '15m' }],
+] as const)('maps panel method %s with a progress channel whose messages reach the callback', async (method, command, request) => {
+  const onProgress = vi.fn()
+  const answer = { id: 'dl-20261030T120000Z-0a1b2c3d', status: 'closed', outcome: 'agreed' }
+  vi.mocked(invoke).mockClear().mockResolvedValue(answer)
+  const call = tauriBackend[method] as (value: typeof request, callback: typeof onProgress) => Promise<unknown>
+  await expect(call(request, onProgress)).resolves.toEqual(answer)
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request, onProgress: expect.any(Channel) })
+  const args = vi.mocked(invoke).mock.calls[0]![1] as { onProgress: Channel<unknown> }
+  const progress = { id: answer.id, round: 1, line: 'Pebble is considering the question.' }
+  args.onProgress.onmessage(progress)
+  expect(onProgress).toHaveBeenCalledExactlyOnceWith(progress)
+})
