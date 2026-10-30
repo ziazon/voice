@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stop-panel"
+description = "Enables the stop_panel command without any pre-configured scope."
+commands.allow = ["stop_panel"]
+
+[[permission]]
+identifier = "deny-stop-panel"
+description = "Denies the stop_panel command without any pre-configured scope."
+commands.deny = ["stop_panel"]

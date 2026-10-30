@@ -51,6 +51,11 @@
     "allow-keep-answer",
     "allow-draft-refresh",
     "allow-answer-refresh",
-    "allow-apply-refresh"
+    "allow-apply-refresh",
+    "allow-convene-panel",
+    "allow-resume-panel",
+    "allow-stop-panel",
+    "allow-list-panels",
+    "allow-panel"
   ]
 }

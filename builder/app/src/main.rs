@@ -59,6 +59,11 @@ fn main() {
             commands::draft_refresh,
             commands::answer_refresh,
             commands::apply_refresh,
+            commands::convene_panel,
+            commands::resume_panel,
+            commands::stop_panel,
+            commands::list_panels,
+            commands::panel,
         ])
         .build(tauri::generate_context!());
     match app {

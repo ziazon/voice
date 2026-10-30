@@ -1,3 +1,7 @@
+import type { PanelProgress } from '../types/generated/PanelProgress'
+import type { PanelRan } from '../types/generated/PanelRan'
+import type { PanelSummary } from '../types/generated/PanelSummary'
+import type { PanelDetail } from '../types/generated/PanelDetail'
 import type { ReportView } from '../types/generated/ReportView'
 import type { ReviewStatus } from '../types/generated/ReviewStatus'
 import type { RefreshDrafted } from '../types/generated/RefreshDrafted'
@@ -30,11 +34,19 @@ import type { ClaudeaiCounts } from '../types/generated/ClaudeaiCounts'
 import type { MergeCounts } from '../types/generated/MergeCounts'
 
 export const tauriBackend: Backend = {
-  convenePanel: () => Promise.reject(new Error('todo')),
-  resumePanel: () => Promise.reject(new Error('todo')),
-  stopPanel: () => Promise.reject(new Error('todo')),
-  listPanels: () => Promise.reject(new Error('todo')),
-  panel: () => Promise.reject(new Error('todo')),
+  convenePanel: (request, onProgress) => {
+    const channel = new Channel<PanelProgress>()
+    channel.onmessage = onProgress
+    return invoke<PanelRan>('convene_panel', { request, onProgress: channel })
+  },
+  resumePanel: (request, onProgress) => {
+    const channel = new Channel<PanelProgress>()
+    channel.onmessage = onProgress
+    return invoke<PanelRan>('resume_panel', { request, onProgress: channel })
+  },
+  stopPanel: request => invoke<void>('stop_panel', { request }),
+  listPanels: () => invoke<PanelSummary[]>('list_panels'),
+  panel: request => invoke<PanelDetail>('panel', { request }),
   showReport: request => invoke<ReportView>('show_report', { request }),
   reviewStatus: request => invoke<ReviewStatus>('review_status', { request }),
   keepAnswer: request => invoke<ReviewStatus>('keep_answer', { request }),

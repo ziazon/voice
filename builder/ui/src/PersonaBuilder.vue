@@ -13,13 +13,15 @@ import Forget from './screens/Forget.vue'
 import Build from './screens/Build.vue'
 import Report from './screens/Report.vue'
 import Review from './screens/Review.vue'
+import Panels from './screens/Panels.vue'
 import type { Assistant } from './types/generated/Assistant'
 import type { Consent as ConsentAnswer } from './types/generated/Consent'
 import { steps } from './steps'
 
-const view = ref<'home' | 'new' | 'consent' | 'connect' | 'sources' | 'save' | 'build' | 'report' | 'review'>('home')
+const view = ref<'home' | 'new' | 'consent' | 'connect' | 'sources' | 'save' | 'build' | 'report' | 'review' | 'panels'>('home')
 const buildOpened = ref(false)
 const buildRunning = ref(false)
+const panelsRunning = ref(false)
 const reviewOpened = ref(false)
 const reviewRunning = ref(false)
 watch(view, value => {
@@ -69,6 +71,7 @@ function disabled(step: string) {
   return !assistant.value?.consent.agreed
 }
 function home() {
+  panelsRunning.value = false
   buildOpened.value = false
   reviewOpened.value = false
   reviewRunning.value = false
@@ -101,13 +104,22 @@ function home() {
             </ol>
           </aside>
           <main class="col-9">
-            <button v-if="view !== 'home'" type="button" class="btn btn-link p-0 mb-4" :disabled="buildRunning || reviewRunning" @click="home">Your assistants</button>
+            <button v-if="view !== 'home'" type="button" class="btn btn-link p-0 mb-4" :disabled="buildRunning || reviewRunning || panelsRunning" @click="home">Your assistants</button>
+            <p v-if="panelsRunning" class="text-secondary">Stop the panel first to leave Panels.</p>
             <p v-if="reviewRunning" class="text-secondary">Wait for the test to finish to choose another assistant.</p>
             <p v-if="buildRunning" class="text-secondary">Stop the build first to choose another assistant.</p>
             <template v-if="view === 'home'">
               <Welcome />
               <Assistants @open="open" @make="view = 'new'" />
+              <section class="card mt-4">
+                <div class="card-body">
+                  <h2 class="card-title">Panels</h2>
+                  <p>Ask several of your assistants one question. They work it out in rounds and come back with a joint answer, with any disagreement in full.</p>
+                  <button type="button" class="btn btn-primary" @click="view = 'panels'">Ask a panel</button>
+                </div>
+              </section>
             </template>
+            <Panels v-else-if="view === 'panels'" @running="panelsRunning = $event" />
             <NewAssistant v-else-if="view === 'new'" @made="made" @cancel="home" />
             <Consent v-else-if="view === 'consent' && assistant" :key="assistant.slug" :assistant="assistant" @agreed="agreed" @next="goToStep('connect')" />
             <ConnectClaude v-else-if="view === 'connect' && assistant" :key="assistant.slug" :assistant="assistant" @next="goToStep('sources')" />

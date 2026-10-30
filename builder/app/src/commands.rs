@@ -351,3 +351,43 @@ pub fn apply_refresh(
         let _ = on_progress.send(p);
     })
 }
+
+#[tauri::command(async)]
+pub fn convene_panel(
+    request: persona_builder_api::dto::ConvenePanelRequest,
+    on_progress: tauri::ipc::Channel<persona_builder_api::dto::PanelProgress>,
+) -> Result<persona_builder_api::dto::PanelRan, persona_builder_api::dto::Failure> {
+    persona_builder_api::convene_panel(request, &mut |p| {
+        let _ = on_progress.send(p);
+    })
+}
+
+#[tauri::command(async)]
+pub fn resume_panel(
+    request: persona_builder_api::dto::ResumePanelRequest,
+    on_progress: tauri::ipc::Channel<persona_builder_api::dto::PanelProgress>,
+) -> Result<persona_builder_api::dto::PanelRan, persona_builder_api::dto::Failure> {
+    persona_builder_api::resume_panel(request, &mut |p| {
+        let _ = on_progress.send(p);
+    })
+}
+
+#[tauri::command(async)]
+pub fn stop_panel(
+    request: persona_builder_api::dto::PanelIdRequest,
+) -> Result<(), persona_builder_api::dto::Failure> {
+    persona_builder_api::stop_panel(request)
+}
+
+#[tauri::command(async)]
+pub fn list_panels()
+-> Result<Vec<persona_builder_api::dto::PanelSummary>, persona_builder_api::dto::Failure> {
+    persona_builder_api::list_panels()
+}
+
+#[tauri::command(async)]
+pub fn panel(
+    request: persona_builder_api::dto::PanelIdRequest,
+) -> Result<persona_builder_api::dto::PanelDetail, persona_builder_api::dto::Failure> {
+    persona_builder_api::panel(request)
+}

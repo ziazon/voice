@@ -48,4 +48,9 @@ pub const COMMANDS: &[&str] = &[
     "draft_refresh",
     "answer_refresh",
     "apply_refresh",
+    "convene_panel",
+    "resume_panel",
+    "stop_panel",
+    "list_panels",
+    "panel",
 ];
