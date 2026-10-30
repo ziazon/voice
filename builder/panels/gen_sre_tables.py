@@ -5,8 +5,8 @@ import unicodedata
 
 
 def main():
-    if unicodedata.unidata_version != "15.0.0":
-        print("Unicode 15.0.0 is required; run with python3.12", file=sys.stderr)
+    if sys.version_info[:2] != (3, 12) or unicodedata.unidata_version != "15.0.0":
+        print("Python 3.12 (Unicode 15.0.0) is required; run with python3.12", file=sys.stderr)
         return 1
 
     word = []
