@@ -11,9 +11,15 @@ it('keeps every screen and TypeScript source free of HTML insertion', () => {
   expect(forbidden.map(path => relative(source, path))).toEqual([])
 })
 
+const boundAttribute = /(?:^|\s)(?:v-bind\s*=|(?::|v-bind:)(?:\[|(?:href|src|srcdoc|style|action|formaction)\b))/m
+
 it('binds no link, source or style to anything on the panel screens', () => {
   const panelScreens = files(source).filter(path => /screens\/(Panels\.vue|panels\/.*\.vue)$/.test(relative(source, path)))
   expect(panelScreens.length).toBeGreaterThan(0)
-  const bound = panelScreens.filter(path => /(?:^|\s)(?::|v-bind:)(?:href|src|srcdoc|style|action|formaction)\b/m.test(readFileSync(path, 'utf8')))
+  const bound = panelScreens.filter(path => boundAttribute.test(readFileSync(path, 'utf8')))
   expect(bound.map(path => relative(source, path))).toEqual([])
+})
+
+it.each(['v-bind="{ title: value }"', ':[attribute]="value"', 'v-bind:[attribute]="value"'])('rejects a panel binding that can hide its attribute: %s', binding => {
+  expect(boundAttribute.test(`<div ${binding}>Text</div>`)).toBe(true)
 })

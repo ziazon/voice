@@ -75,7 +75,7 @@ it('labels the fields, counts trimmed Unicode characters and background bytes wi
   await question.setValue('  🌱🌱  ')
   expect(wrapper.text()).toContain('2 of 200 characters')
   await control(wrapper, 'Anything they should know (optional)').setValue('é🌱')
-  expect(wrapper.text()).toMatch(/6\s+of 4096/)
+  expect(wrapper.text()).toMatch(/6\s+of 4096 \(some letters and symbols count as more than one\)/)
   expect(wrapper.text()).toContain('The kind of answer')
   expect(wrapper.text()).toContain('Who sits on the panel')
   expect(wrapper.text()).toContain('How long they may take')
@@ -155,4 +155,13 @@ it('emits cancel without starting a panel', async () => {
   await action(wrapper, 'Cancel').trigger('click')
   expect(wrapper.emitted('cancel')).toEqual([[]])
   expect(wrapper.emitted('start')).toBeUndefined()
+})
+
+it('derives selected seats from the selection alone', async () => {
+  const { wrapper } = await ready([assistants[0]!, { ...assistants[1]!, consent: { agreed: false, agreedOn: null } }])
+  const form = wrapper.vm as unknown as { selected: string[], seats: string[] }
+  form.selected = ['quill', 'pebble']
+  await flushPromises()
+  expect(form.seats).toEqual(['pebble', 'quill'])
+  expect(control(wrapper, 'Quill').attributes('disabled')).toBeDefined()
 })

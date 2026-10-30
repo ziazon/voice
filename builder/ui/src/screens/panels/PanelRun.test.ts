@@ -61,7 +61,7 @@ it.each(['before', 'after'] as const)('stops %s the first progress message and d
   expect(backend.stopPanel).toHaveBeenCalledExactlyOnceWith({ id })
   progress({ id, round: 1, line: 'Finishing the turn.' }); await flushPromises()
   expect(backend.stopPanel).toHaveBeenCalledTimes(1)
-  call.reject({ message: 'Stopped by request.' }); await flushPromises()
+  call.resolve({ id, status: 'stopped', outcome: null }); await flushPromises()
   expect(wrapper.find('.alert-info').exists()).toBe(true)
   expect(wrapper.get('.alert-info').text()).toBe('Stopped. You can carry on from here.')
   expect(wrapper.find('.alert-danger').exists()).toBe(false)
@@ -235,4 +235,75 @@ it('renders hostile question, progress and withheld seat names literally without
   expect(wrapper.text()).toContain(`${seat}'s post was kept from the others: it had an email address.`)
   expect(wrapper.find('img, script, a').exists()).toBe(false)
   expect((window as unknown as { hit?: number }).hit).toBeUndefined()
+})
+
+it('shows a real rejection after Stop as danger', async () => {
+  const call = deferred<PanelRan>()
+  const backend = fakeBackend({ panel: vi.fn().mockResolvedValue(detail('stopped')), resumePanel: vi.fn().mockReturnValue(call.promise) })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  await action(wrapper, 'Carry on').trigger('click')
+  await action(wrapper, 'Stop for now').trigger('click')
+  call.reject({ message: 'Pebble: This assistant is already working.' }); await flushPromises()
+  expect(wrapper.find('.alert-danger').exists()).toBe(true)
+  expect(wrapper.get('.alert-danger').text()).toBe('Pebble: This assistant is already working.')
+  expect(wrapper.find('.alert-info').exists()).toBe(false)
+})
+
+it.each([false, true])('uses resolved status for the stopped notice with Stop pressed=%s', async pressed => {
+  const call = deferred<PanelRan>()
+  const backend = fakeBackend({ panel: vi.fn().mockResolvedValue(detail('closed')), resumePanel: vi.fn().mockReturnValue(call.promise) })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  await wrapper.get('textarea').setValue('Consider another route.')
+  await action(wrapper, 'Reconsider').trigger('click')
+  if (pressed) await action(wrapper, 'Stop for now').trigger('click')
+  call.resolve(pressed ? done : { id, status: 'stopped', outcome: null }); await flushPromises()
+  expect(wrapper.find('.alert-info').exists()).toBe(!pressed)
+  if (pressed) {
+    expect(wrapper.text()).not.toContain('Stopped. You can carry on from here.')
+    expect(wrapper.findComponent(PanelResult).exists()).toBe(true)
+  } else expect(wrapper.get('.alert-info').text()).toBe('Stopped. You can carry on from here.')
+})
+
+it('stops a saved running panel and reloads after the stop completes', async () => {
+  const stop = deferred<void>()
+  const reload = deferred<PanelDetail>()
+  const backend = fakeBackend({ panel: vi.fn().mockResolvedValueOnce(detail('running')).mockReturnValueOnce(reload.promise), stopPanel: vi.fn().mockReturnValue(stop.promise) })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  expect(action(wrapper, 'Stop for now').classes()).toContain('btn-outline-danger')
+  expect(action(wrapper, 'Carry on').exists()).toBe(true)
+  expect(wrapper.text()).toContain('If this panel is still running somewhere, stop it first, then carry on.')
+  await action(wrapper, 'Stop for now').trigger('click')
+  expect(backend.stopPanel).toHaveBeenCalledExactlyOnceWith({ id })
+  expect(action(wrapper, 'Stopping…').attributes('disabled')).toBeDefined()
+  expect(backend.panel).toHaveBeenCalledTimes(1)
+  stop.resolve(); await flushPromises()
+  expect(backend.panel).toHaveBeenCalledTimes(2)
+  expect(backend.panel).toHaveBeenLastCalledWith({ id })
+  expect(action(wrapper, 'Stopping…').attributes('disabled')).toBeDefined()
+  reload.resolve(detail('stopped')); await flushPromises()
+  expect(wrapper.findAll('button').some(item => item.text() === 'Stop for now')).toBe(false)
+  expect(wrapper.text()).not.toContain('If this panel is still running somewhere, stop it first, then carry on.')
+  expect(backend.resumePanel).not.toHaveBeenCalled()
+})
+
+it.each([
+  { failure: { message: 'The stop request could not be sent.' }, text: 'The stop request could not be sent.' },
+  { failure: new Error('private detail'), text: "The panel couldn't be asked to stop. Try again." },
+])('shows a saved running panel stop failure and allows retry: $text', async ({ failure, text }) => {
+  const backend = fakeBackend({ panel: vi.fn().mockResolvedValue(detail('running')), stopPanel: vi.fn().mockRejectedValue(failure) })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await action(wrapper, 'Stop for now').trigger('click'); await flushPromises()
+    expect(wrapper.get('.alert-danger').text()).toBe(text)
+    expect(wrapper.text()).not.toContain('private detail')
+    expect(action(wrapper, 'Stop for now').attributes('disabled')).toBeUndefined()
+    expect(backend.stopPanel).toHaveBeenCalledTimes(attempt)
+  }
+})
+
+it('carries on a paused panel after its time answer was already saved', async () => {
+  const backend = fakeBackend({ panel: vi.fn().mockResolvedValue(detail('paused', { asked: false })) })
+  const wrapper = screen(PanelRun, backend, { id, start: null }); await flushPromises()
+  await action(wrapper, 'Carry on').trigger('click'); await flushPromises()
+  expect(backend.resumePanel).toHaveBeenCalledExactlyOnceWith({ id, steer: null, timeBox: null }, expect.any(Function))
 })

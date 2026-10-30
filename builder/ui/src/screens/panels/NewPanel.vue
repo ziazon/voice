@@ -19,7 +19,7 @@ const selected = ref<string[]>([])
 const timeBox = ref<string | null>(null)
 const questionCount = computed(() => [...question.value.trim()].length)
 const backgroundBytes = computed(() => new TextEncoder().encode(background.value).length)
-const seats = computed(() => assistants.value.filter(item => item.consent.agreed && selected.value.includes(item.slug)).map(item => item.slug))
+const seats = computed(() => assistants.value.filter(item => selected.value.includes(item.slug)).map(item => item.slug))
 const valid = computed(() => !loading.value && !error.value && questionCount.value >= 1 && questionCount.value <= 200
   && backgroundBytes.value <= 4096 && seats.value.length >= 2 && seats.value.length <= 24
   && (kind.value === 'text' || (typeof items.value === 'number' && Number.isInteger(items.value) && items.value >= 1 && items.value <= 12)))
@@ -54,7 +54,7 @@ function start() {
         <div class="mb-3">
           <label for="panel-background" class="form-label">Anything they should know (optional)</label>
           <textarea id="panel-background" v-model="background" class="form-control" rows="4" aria-describedby="panel-background-count" />
-          <p id="panel-background-count" class="form-hint">{{ backgroundBytes }} of 4096</p>
+          <p id="panel-background-count" class="form-hint">{{ backgroundBytes }} of 4096 (some letters and symbols count as more than one)</p>
         </div>
         <fieldset class="mb-3">
           <legend class="form-label">The kind of answer</legend>

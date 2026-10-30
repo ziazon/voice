@@ -64,14 +64,13 @@ async function run(call: () => Promise<PanelRan>) {
   try {
     const result = await call()
     id.value = result.id
-    if (stopping.value) {
+    if (result.status === 'stopped') {
       info.value = true
       error.value = 'Stopped. You can carry on from here.'
     }
   } catch (failure) {
-    info.value = stopping.value
-    error.value = stopping.value ? 'Stopped. You can carry on from here.'
-      : failureMessage(failure, 'The panel stopped before it finished. You can carry on from where it stopped.')
+    info.value = false
+    error.value = failureMessage(failure, 'The panel stopped before it finished. You can carry on from where it stopped.')
   } finally {
     await load()
     running.value = false
@@ -83,6 +82,20 @@ function stop() {
   if (stopping.value) return
   stopping.value = true
   void sendStop()
+}
+async function stopSaved() {
+  if (!id.value || stopping.value) return
+  stopping.value = true
+  error.value = ''
+  info.value = false
+  try {
+    await backend.stopPanel({ id: id.value })
+    await load()
+  } catch (failure) {
+    error.value = failureMessage(failure, "The panel couldn't be asked to stop. Try again.")
+  } finally {
+    stopping.value = false
+  }
 }
 function resume(timeBox: string | null = null, reconsider = false) {
   if (!id.value || (reconsider && !steer.value.trim())) return
@@ -127,7 +140,11 @@ onMounted(() => {
               <button v-if="limit.value !== null" type="button" class="btn btn-primary me-2 mb-2" @click="resume(limit.value)">{{ limit.label }}</button>
             </template>
           </div>
-          <button v-if="['stopped', 'failed', 'running'].includes(detail.summary.status)" type="button" class="btn btn-primary" @click="resume()">Carry on</button>
+          <button v-if="['stopped', 'failed', 'running'].includes(detail.summary.status) || (detail.summary.status === 'paused' && !detail.asked)" type="button" class="btn btn-primary" :disabled="stopping" @click="resume()">Carry on</button>
+          <template v-if="detail.summary.status === 'running'">
+            <button type="button" class="btn btn-outline-danger ms-2" :disabled="stopping" @click="stopSaved">{{ stopping ? 'Stopping…' : 'Stop for now' }}</button>
+            <p class="text-secondary">If this panel is still running somewhere, stop it first, then carry on.</p>
+          </template>
           <template v-if="detail.summary.status === 'closed'">
             <PanelResult v-if="detail.result" :result="detail.result" />
             <h3 class="mt-4">Ask them to reconsider</h3>
