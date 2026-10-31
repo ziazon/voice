@@ -174,6 +174,10 @@ Exactly (one line):
 Reach words: `OwnMachines` → `your own machines`, `Anthropic` → `Anthropic`, `ThirdParty` →
 `another company`.
 
+When the ceiling is wide enough for that reach but the provider still isn't allowed (today only
+`AnyConsented` against a `ThirdParty` provider: no consent exists yet), the sentence is instead:
+`Nothing was sent. This step uses {source.name()}, and {provider} sends what it's given to another company, which you haven't agreed to.`
+
 ## 3. Providers take only a sealed brief
 
 - `Provider::call` becomes `fn call(&self, session: &Session, sealed: &Sealed) -> Result<Reply>;`
