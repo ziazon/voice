@@ -2,6 +2,63 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11: the operating-system sandbox spike (2026-10-31, lane: V1)
+
+- **What:** the answer to gate Q12, in `docs/spikes/VO11-os-sandbox.md`: Seatbelt through
+  `/usr/bin/sandbox-exec`, one profile per child, started side by side by an unsandboxed launcher
+  (macOS refuses a sandbox inside one), egress through a `CONNECT` proxy on one local port. App
+  Sandbox is out for now (one network switch, children get the whole app's grants, the person's
+  own Claude Code needs a pick and an extra entitlement, it needs signing). Landed: the profile
+  for the `claude` child (`builder/agent/sandbox/claude-code.sb`: deny by default; reads of the
+  system's code, the program, profile and run folders; writes to the profile and run folders; out
+  to the proxy port only; listening only while signing in; the secrets deny list last, with
+  Claude Code's own `.credentials.json` in its profile folder the one exception; no Keychain),
+  its tests (`builder/agent/tests/sandbox_profile.rs`, 11, run in `ci-local.sh` on macOS with
+  `PERSONA_BUILDER_REQUIRE_SANDBOX=1`), and the probe for the walk
+  (`scripts/claude_sandbox_probe.py`, 31 tests). **Not wired into `claude.rs`:** that is VO11.1,
+  which waits on V-Q10 (where the login lives inside the sandbox). Brief:
+  `plans/briefs/VO11-os-sandbox-spike.md` (sections 6 and 7: the fixes after review).
+- **Measured by V1 on Mimi** (macOS 27.0.1, Claude Code 2.1.292, throwaway folders, `canary`
+  files): the last matching rule wins; symlinks out are refused, hard links in are readable, the
+  child can't make one; Seatbelt's regexes ignore letter case, on a case-sensitive disk image too
+  (so the profile's letter classes are a backup); `claude -p` needs `CLAUDE_CODE_TMPDIR`; a
+  signed-out `-p` runs to `Not logged in` inside the profile; signed out with telemetry off, it
+  makes no network call; only the proxy port is reachable, DNS fails; Claude Code's sign-in needs
+  a listener, and Seatbelt's `localhost` filter also allows one on every address (reachable from
+  the Mac's network address; no rule tried closed it without refusing the sign-in's own);
+  `claude auth status --json` exits 1 when signed out. The research sub-agent (Sonnet) read
+  Apple's, Anthropic's, OpenAI's and Tauri's sources; the report cites them.
+- **Who built it:** Codex, in three dispatches: the profile, tests and probe (`fb25206`); the
+  probe's status and version fixes (in `fb25206`, before commit); the review fixes (`9620330`).
+  Her sandbox refuses a nested one, so the profile tests skipped for her and V1 ran them.
+- **Security review (Opus sub-agent, on `ee99585`):** three mediums, all defence in depth (the
+  child has no tools): the child could read the person's own terminals through `/dev`, and
+  `/Library`, `/private/var/db` and `/usr/local` held logs, crash reports and Homebrew data (fixed
+  in `9620330`, with a test over every such path the test can open, 22 on Mimi); `system.sb`'s
+  `trustd` grant is a theoretical way out (recorded, VO11.1 checks); the tunnel to Anthropic is
+  opaque (accepted, recorded). Lows fixed in the probe: the child's process group always killed,
+  `--profile` refusing the home folder and unmarked folders, control characters stripped, proxy
+  caps, cleanup failures reported. Recorded for VO11.1: `process-exec` not narrowed; the profile
+  folder lasts, so `--setting-sources` on every call.
+- **Verifier (Fable, first pass on `ee99585`):** PASS. She re-ran the measurements, the tests and
+  the probe, and fetched six sources. Should-fixes: the same `/dev` and `/Library` reads (fixed);
+  the App Sandbox quote was cut short (completed: an Open-panel pick plus
+  `com.apple.security.files.user-selected.executable` can run it); private-tooling words in the
+  public report (removed); `[::1]` on the proxy port is reachable too (noted).
+- **Verified:** `bash scripts/ci-local.sh` all passed at `ee99585` (V1, outside the sandbox, two
+  jobs under the resource gate's throttle). Profile tests 11/11 at `9620330`. Live probe on Mimi:
+  `status` reads *Claude Code 2.1.292 runs inside the sandbox. Signed in inside the sandbox: no.*;
+  `ask` gets Claude Code's own *Not logged in*; `--profile ~` is refused. Mutations by V1 (`cp`
+  backup, `cmp` restore), five killed: the deny list moved before the allows, the login exception
+  removed, the network rule widened to every local port, the listener made unconditional, `/dev`
+  and `/Library` put back. One equivalent: the letter classes dropped (Seatbelt ignores case
+  here).
+- **Not verified (walk owed):** a signed-in Claude Code inside the profile: the sign-in finishing
+  there and writing the profile's own file, pasting the code when no browser opens, TLS from
+  Claude Code itself through the proxy, a real `ask`. This Mac had no Claude Code login, and the
+  run could not write a Keychain test item.
+- **Next:** VO11.1 (Parked on V-Q10), VO11.2 (Backlog, after VO11.1).
+
 ## VO9: a model server on the person's own machines (2026-10-31, lane: V1)
 
 - **What:** the second provider behind VO8's contract (`builder/agent/src/self_hosted.rs`,
