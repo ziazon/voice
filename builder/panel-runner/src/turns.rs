@@ -159,3 +159,74 @@ fn ask(provider: &dyn Provider, session: &Session, system: &str, prompt: &str) -
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use persona_builder::ceilings::{Ceilings, Source};
+    use persona_builder_agent::{
+        guard::{Guard, Sealed},
+        provider::{Reach, Reply, Usage},
+    };
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct Fake(Mutex<Vec<Vec<Source>>>);
+    impl Provider for Fake {
+        fn id(&self) -> &'static str {
+            "fake"
+        }
+        fn name(&self) -> &'static str {
+            "Fake"
+        }
+        fn reach(&self) -> Reach {
+            Reach::OwnMachines
+        }
+        fn call(
+            &self,
+            _session: &Session,
+            sealed: &Sealed,
+        ) -> persona_builder::error::Result<Reply> {
+            sealed.check(self.id(), self.reach())?;
+            self.0.lock().unwrap().push(sealed.brief().sources.to_vec());
+            Ok(Reply {
+                output: serde_json::json!({"post": "Try a small step."}),
+                usage: Usage::default(),
+                cost_usd: 0.0,
+            })
+        }
+    }
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test]
+    fn panel_turn_briefs_name_crew_folder_and_typed() {
+        let home = Scratch(std::env::temp_dir().join(format!(
+            "panel-sources-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )));
+        std::fs::create_dir(&home.0).unwrap();
+        let session = Session::open(&home.0, "pebble", Cap::default()).unwrap();
+        let fake = Fake(Mutex::new(Vec::new()));
+        let guard = Guard::new(vec![&fake], Ceilings::defaults());
+        let turn = ask(
+            &guard,
+            &session,
+            "Answer as Pebble.",
+            "Choose a small step.",
+        );
+        assert_eq!(turn.error, None);
+        assert_eq!(turn.post.as_deref(), Some("Try a small step."));
+        assert_eq!(
+            *fake.0.lock().unwrap(),
+            vec![vec![Source::CrewFolder, Source::Typed]]
+        );
+    }
+}

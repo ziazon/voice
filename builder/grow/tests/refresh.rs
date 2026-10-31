@@ -804,3 +804,40 @@ fn windows_proposal_is_saved_shown_and_its_diffs_apply() {
         before
     );
 }
+
+#[test]
+fn refresh_briefs_name_the_build_sources() {
+    use persona_builder::ceilings::{Ceilings, Source};
+    use persona_builder_agent::guard::Guard;
+    let s = Setup::new(1);
+    let claude = Claude::at(s.stub.join("claude"));
+    let provider = RecordingProvider::new(&claude);
+    let guard = Guard::new(vec![&provider], Ceilings::for_member(&s.f.member).unwrap());
+    let session = Session::open(&s.f.home, &s.f.member.slug, Cap::default()).unwrap();
+    assert!(matches!(
+        refresh::propose(
+            &guard,
+            &session,
+            &s.f.home,
+            &s.store(),
+            &s.f.member,
+            &s.dir,
+            &s.filters(),
+            "sonnet",
+            NOW
+        )
+        .unwrap(),
+        Proposed::Drafted(_)
+    ));
+    assert_eq!(
+        persona_builder_build::build::SOURCES,
+        &[Source::ClaudeHistory, Source::Typed, Source::CrewFolder]
+    );
+    let sources = provider.sources.lock().unwrap();
+    assert!(!sources.is_empty());
+    assert!(
+        sources
+            .iter()
+            .all(|sources| sources == persona_builder_build::build::SOURCES)
+    );
+}

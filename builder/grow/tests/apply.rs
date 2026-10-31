@@ -1059,3 +1059,44 @@ fn locked_answer_matches_answer_without_taking_another_lock() {
     );
     assert_eq!(actual.unwrap(), expected);
 }
+
+#[test]
+fn apply_briefs_name_the_build_sources() {
+    use persona_builder::ceilings::{Ceilings, Source};
+    use persona_builder_agent::guard::Guard;
+    let s = Setup::new();
+    let proposal = s.approved(CANDIDATE);
+    let claude = Claude::at(s.stub.join("claude"));
+    let provider = RecordingProvider::new(&claude);
+    let guard = Guard::new(vec![&provider], Ceilings::for_member(&s.f.member).unwrap());
+    let session = Session::open(&s.f.home, &s.f.member.slug, Cap::default()).unwrap();
+    let measured = apply::measure(
+        &guard,
+        &session,
+        &s.f.home,
+        &s.store(),
+        &s.f.member,
+        &s.dir,
+        &s.filters(),
+        "sonnet",
+        &proposal.id,
+        &|| NOW.into(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!measured.already);
+    assert_eq!(
+        persona_builder_build::build::SOURCES,
+        &[Source::ClaudeHistory, Source::Typed, Source::CrewFolder]
+    );
+    let sources = provider.sources.lock().unwrap();
+    assert!(
+        sources.len() >= 2,
+        "both baseline and candidate must be asked"
+    );
+    assert!(
+        sources
+            .iter()
+            .all(|sources| sources == persona_builder_build::build::SOURCES)
+    );
+}

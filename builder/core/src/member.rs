@@ -272,6 +272,71 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn ceilings_must_be_an_object() {
+        for ceilings in [json!(null), json!([]), json!("anthropic")] {
+            let mut value = config();
+            value["ceilings"] = ceilings;
+            assert_eq!(
+                validate_config(&value, "fixture").unwrap_err().to_string(),
+                "member config: fixture: ceilings must be a JSON object"
+            );
+        }
+    }
+
+    #[test]
+    fn ceilings_refuse_an_unknown_source_with_the_exact_sentence() {
+        let mut value = config();
+        value["ceilings"] = json!({"Mail": "anthropic"});
+        assert_eq!(
+            validate_config(&value, "fixture").unwrap_err().to_string(),
+            "member config: fixture: ceilings names \"Mail\", which isn't a source. The sources are claude-history, crew-folder, typed, skill-mirror, mail, calendar, contacts, family-skills, legal-skills."
+        );
+    }
+
+    #[test]
+    fn ceilings_refuse_unknown_or_non_string_values_with_the_exact_sentence() {
+        for ceiling in [json!("Anthropic"), json!(null), json!(true), json!([])] {
+            let mut value = config();
+            value["ceilings"] = json!({"mail": ceiling});
+            assert_eq!(
+                validate_config(&value, "fixture").unwrap_err().to_string(),
+                "member config: fixture: ceilings.mail must be local-only, anthropic or any-consented"
+            );
+        }
+    }
+
+    #[test]
+    fn private_json_cannot_supply_ceilings() {
+        let scratch = Scratch::new();
+        let path = scratch.path().join("member.json");
+        fs::write(&path, to_python_json(&config()).unwrap()).unwrap();
+        fs::write(
+            scratch.path().join("private.json"),
+            r#"{"ceilings":{"mail":"anthropic"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            read_member(&path).unwrap_err().to_string(),
+            "member config: private.json: ceilings go in member.json, not private.json"
+        );
+    }
+
+    #[test]
+    fn member_read_write_preserves_the_ceilings_object() {
+        let scratch = Scratch::new();
+        let path = scratch.path().join("member.json");
+        let mut value = config();
+        let ceilings = json!({"mail": "anthropic", "claude-history": "local-only"});
+        value["ceilings"] = ceilings.clone();
+        fs::write(&path, to_python_json(&value).unwrap()).unwrap();
+        let member = read_member(&path).unwrap();
+        assert_eq!(member.extra["ceilings"], ceilings);
+        write_member(&path, &member).unwrap();
+        let written: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(written["ceilings"], ceilings);
+    }
+
+    #[test]
     fn private_state_dir_accepts_only_the_exact_member_folder() {
         let home = Path::new("/home/robin");
         let mut member = Member::from_value(config(), "fixture").unwrap();

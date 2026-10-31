@@ -1,6 +1,11 @@
 mod common;
 
 use common::*;
+use persona_builder::{
+    ceilings::{Ceilings, Source},
+    member::Member,
+};
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     claude::MAX_PROMPT,
     ledger::local_day,
@@ -50,9 +55,16 @@ fn a_call_runs_tool_less_in_the_work_folder_with_the_prompt_on_stdin() {
     let session = common::session(&home.0);
     let schema = schema();
     let prompt = format!("record one\nrecord two {MARKER}\n");
-    let reply = stub
-        .claude()
-        .call(&session, &call(&prompt, &schema))
+    let claude = stub.claude();
+    let guard = Guard::new(vec![&claude], Ceilings::defaults());
+    let reply = guard
+        .call(
+            &session,
+            &persona_builder_agent::provider::Brief {
+                sources: &[Source::ClaudeHistory],
+                ..call(&prompt, &schema)
+            },
+        )
         .unwrap();
 
     assert_eq!(stub.argv(0).unwrap(), expected_argv(&schema));
@@ -538,4 +550,33 @@ fn an_unlimited_call_without_a_cost_records_unknown_and_the_ledger_reads_it() {
     line["cost_usd"] = json!(1234.56789);
     seed_ledger(&home.0, &[line.to_string()]);
     assert_eq!(session.spent_today().unwrap(), 1234.56789);
+}
+
+#[test]
+fn local_history_is_refused_before_the_stub_runs_or_spends() {
+    let home = Scratch::new("local-history");
+    let stub = Stub::replying(&ok_reply(&json!({})), 0);
+    let claude = stub.claude();
+    let mut member: Member =
+        serde_json::from_str(include_str!("../../../crew/_template/member.json")).unwrap();
+    member
+        .extra
+        .insert("ceilings".into(), json!({"claude-history": "local-only"}));
+    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member).unwrap());
+    let schema = schema();
+    let error = guard
+        .call(
+            &common::session(&home.0),
+            &Brief {
+                sources: &[Source::ClaudeHistory],
+                ..call("records", &schema)
+            },
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and Claude, through your own Claude Code sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
+    );
+    assert!(!stub.ran());
+    assert!(ledger_lines(&home.0).is_empty());
 }

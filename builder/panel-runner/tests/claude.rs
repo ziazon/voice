@@ -383,3 +383,31 @@ fn guard_input_names_sorted_categories_and_does_not_apply_member_filters() {
         Ok(())
     );
 }
+
+#[test]
+fn a_seats_local_typed_ceiling_is_its_turn_error_without_a_stub_call() {
+    let fixture = Fixture::new();
+    let path = fixture.home.join(".claude/crew/pebble/member.json");
+    let mut member: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    member["ceilings"] = json!({"typed": "local-only"});
+    fs::write(&path, serde_json::to_vec(&member).unwrap()).unwrap();
+    let turns = fixture.runner().unwrap();
+    let turn = turns.turn("pebble", "Answer as Pebble.", "Choose a small step.");
+    assert_eq!(
+        turn.error.as_deref(),
+        Some(
+            "Nothing was sent. This step uses what you type into Persona Builder (interview answers, notes on answers, a panel's question), which you keep on your own machines, and Claude, through your own Claude Code sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> typed anthropic"
+        )
+    );
+    assert!(turn.post.is_none());
+    assert!(turn.usage.is_none());
+    assert!(!fixture.bin.join("turn-calls").exists());
+    assert!(!fixture.ledger().exists() || fs::read_to_string(fixture.ledger()).unwrap().is_empty());
+    // Another seat retains its own defaults, rather than inheriting Pebble's setting.
+    let other = turns.turn("quill", "Answer as Quill.", "Choose a small step.");
+    assert_eq!(other.error, None);
+    assert_eq!(
+        fs::read_to_string(fixture.bin.join("turn-calls")).unwrap(),
+        "called\n"
+    );
+}

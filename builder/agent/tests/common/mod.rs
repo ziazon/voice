@@ -143,6 +143,7 @@ pub fn call<'a>(prompt: &'a str, schema: &'a Value) -> Brief<'a> {
         prompt,
         model: "sonnet",
         schema,
+        sources: &[persona_builder::ceilings::Source::ClaudeHistory],
     }
 }
 

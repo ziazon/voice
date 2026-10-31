@@ -1,7 +1,12 @@
-use persona_builder::{error::Result, member::Member};
+use persona_builder::{
+    ceilings::{Ceilings, Source},
+    error::Result,
+    member::Member,
+};
 use persona_builder_agent::{
+    guard::{Guard, Sealed},
     ledger::{Cap, Session},
-    provider::{Brief, Provider, Reach, Reply, Usage},
+    provider::{Provider, Reach, Reply, Usage},
 };
 use persona_builder_build::{
     build::{Asker, Misfit},
@@ -47,6 +52,7 @@ struct Recorded {
     prompt: String,
     model: String,
     schema: Value,
+    sources: Vec<Source>,
 }
 
 struct Fake {
@@ -80,13 +86,16 @@ impl Provider for Fake {
     fn reach(&self) -> Reach {
         Reach::OwnMachines
     }
-    fn call(&self, _session: &Session, brief: &Brief) -> Result<Reply> {
+    fn call(&self, _session: &Session, sealed: &Sealed) -> Result<Reply> {
+        sealed.check(self.id(), self.reach())?;
+        let brief = sealed.brief();
         self.briefs.lock().unwrap().push(Recorded {
             step: brief.step.to_owned(),
             system: brief.system.to_owned(),
             prompt: brief.prompt.to_owned(),
             model: brief.model.to_owned(),
             schema: brief.schema.clone(),
+            sources: brief.sources.to_vec(),
         });
         Ok(self
             .replies
@@ -142,7 +151,9 @@ fn interview_drafts_through_the_provider_with_the_forms_brief() {
         // The caller must check and rebuild the output, dropping unrecognised keys.
         output["extra"] = json!("discard me");
         let fake = Fake::new(vec![output]);
-        let draft = interview::draft(form, &fake, &session, "test-model", &book, &weights).unwrap();
+        let guard = Guard::new(vec![&fake], Ceilings::defaults());
+        let draft =
+            interview::draft(form, &guard, &session, "test-model", &book, &weights).unwrap();
         assert_eq!(Value::Object(draft), questions(count));
         let briefs = fake.briefs.lock().unwrap();
         assert_eq!(
@@ -153,6 +164,7 @@ fn interview_drafts_through_the_provider_with_the_forms_brief() {
                 prompt: interview::prompt(form, &book, &weights),
                 model: "test-model".to_owned(),
                 schema: interview::schema(count),
+                sources: vec![Source::CrewFolder],
             }]
         );
     }
@@ -168,11 +180,17 @@ fn interview_retries_a_misfit_once_and_names_the_problem() {
     let mut bad = good.clone();
     bad["questions"][1]["header"] = json!("zebracorn");
     let fake = Fake::new(vec![bad, good.clone()]);
+    let guard = Guard::new(vec![&fake], Ceilings::defaults());
     let draft =
-        interview::draft(Form::Full, &fake, &session, "test-model", &book, &weights).unwrap();
+        interview::draft(Form::Full, &guard, &session, "test-model", &book, &weights).unwrap();
     assert_eq!(Value::Object(draft), good);
     let briefs = fake.briefs.lock().unwrap();
     assert_eq!(briefs.len(), 2);
+    assert!(
+        briefs
+            .iter()
+            .all(|brief| brief.sources == [Source::CrewFolder])
+    );
     assert_eq!(
         briefs[0].prompt,
         interview::prompt(Form::Full, &book, &weights)
@@ -205,7 +223,19 @@ fn a_build_step_sends_its_brief_and_a_new_asker_reuses_the_checked_cache() {
     let fake = Fake::new(vec![json!({"label": "scope"})]);
     let schema = json!({"type": "object", "required": ["label"],
                         "properties": {"label": {"type": "string"}}});
-    let mut asker = Asker::new(&fake, &session, &home.0, "ada", "test-model");
+    let guard = Guard::new(vec![&fake], Ceilings::defaults());
+    assert_eq!(
+        persona_builder_build::build::SOURCES,
+        &[Source::ClaudeHistory, Source::Typed, Source::CrewFolder]
+    );
+    let mut asker = Asker::new(
+        &guard,
+        persona_builder_build::build::SOURCES,
+        &session,
+        &home.0,
+        "ada",
+        "test-model",
+    );
     let (output, reused) = asker
         .ask(
             "label",
@@ -226,9 +256,17 @@ fn a_build_step_sends_its_brief_and_a_new_asker_reuses_the_checked_cache() {
             prompt: "record one\n".to_owned(),
             model: "test-model".to_owned(),
             schema: schema.clone(),
+            sources: persona_builder_build::build::SOURCES.to_vec(),
         }]
     );
-    let mut resumed = Asker::new(&fake, &session, &home.0, "ada", "test-model");
+    let mut resumed = Asker::new(
+        &guard,
+        persona_builder_build::build::SOURCES,
+        &session,
+        &home.0,
+        "ada",
+        "test-model",
+    );
     let (output, reused) = resumed
         .ask(
             "label",
