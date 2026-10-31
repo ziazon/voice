@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -106,6 +107,55 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(self.peers[-1].recv(100), b'first bytes')
         child.close()
 
+    def test_counts_bound_distinct_names(self):
+        for index in range(40):
+            self.request(('CONNECT host%d.example:443 HTTP/1.1' % index).encode())
+        counts = self.proxy.counts()
+        self.assertEqual(len(counts), 33)
+        self.assertEqual(counts['(other)'], (0, 8))
+        self.assertEqual(sum(n for _, n in counts.values()), 40)
+
+    def test_idle_tunnel_closes_but_traffic_resets_deadline(self):
+        with patch.object(probe, 'TUNNEL_IDLE_TIMEOUT', 0.3, create=True):
+            child, reply = self.request(b'CONNECT claude.ai:443 HTTP/1.1')
+            self.assertIn(b'200', reply)
+            peer = self.peers[-1]
+            peer.settimeout(2)
+            for _ in range(3):
+                time.sleep(0.15)
+                peer.sendall(b'x')
+                self.assertEqual(child.recv(1), b'x')
+            self.assertEqual(child.recv(1), b'')
+
+    def test_server_closes_excess_connections_and_reuses_slots(self):
+        # Drive the real server dispatch with socketpairs: no TCP bind is needed.
+        server = probe.ProxyServer(self.proxy, bind_and_activate=False)
+        self.addCleanup(server.server_close)
+        self.addCleanup(self.proxy.stop)
+        clients = []
+        self.addCleanup(lambda: [client.close() for client in clients])
+        def dispatch():
+            client, accepted = socket.socketpair()
+            client.settimeout(2)
+            clients.append(client)
+            server.process_request(accepted, ('127.0.0.1', 1))
+            return client
+        for _ in range(16):
+            client = dispatch()
+            client.sendall(b'CONNECT claude.ai:443 HTTP/1.1\r\n\r\n')
+            self.assertIn(b'200', client.recv(4096))
+        extra = dispatch()
+        self.assertEqual(extra.recv(1), b'')
+        self.assertEqual(sum(n for _, n in self.proxy.counts().values()), 1)
+        clients[0].close()
+        first_worker = server._threads[0]
+        first_worker.join(timeout=2)
+        self.assertFalse(first_worker.is_alive())
+        client = dispatch()
+        client.sendall(b'CONNECT claude.ai:443 HTTP/1.1\r\n\r\n')
+        self.assertIn(b'200', client.recv(4096))
+        self.proxy.stop()
+
 
 class ProbeTests(unittest.TestCase):
     def setUp(self):
@@ -115,6 +165,95 @@ class ProbeTests(unittest.TestCase):
         self.profile = self.root / 'profile'
         self.run = self.root / 'run'
         self.run.mkdir()
+
+    def test_profile_refuses_home_and_ancestors_without_changing_them(self):
+        home = self.root / 'home'
+        home.mkdir(mode=0o755)
+        user = MagicMock(pw_dir=str(home))
+        with patch.object(probe.pwd, 'getpwuid', return_value=user):
+            for path in [home, self.root, Path('/')]:
+                with self.subTest(path=path):
+                    mode = path.stat().st_mode
+                    with self.assertRaisesRegex(ValueError, 'Use a throwaway folder'):
+                        probe.prepare_profile(str(path))
+                    self.assertEqual(path.stat().st_mode, mode)
+            alias = self.root / 'alias'
+            alias.symlink_to(home, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                probe.prepare_profile(str(alias / '..'))
+
+    def test_profile_marks_empty_and_new_folders_and_refuses_unmarked_data(self):
+        for name, exists in [('new', False), ('empty', True)]:
+            folder = self.root / name
+            if exists:
+                folder.mkdir()
+            self.assertEqual(probe.prepare_profile(str(folder)), folder.resolve())
+            self.assertTrue((folder / '.voice-sandbox-probe').is_file())
+            (folder / 'data').write_text('canary')
+            self.assertEqual(probe.prepare_profile(str(folder)), folder.resolve())
+        self.profile.mkdir(mode=0o755)
+        (self.profile / 'data').write_text('canary')
+        mode = self.profile.stat().st_mode
+        with self.assertRaisesRegex(ValueError, "That folder isn't empty and wasn't made by this probe"):
+            probe.prepare_profile(str(self.profile))
+        self.assertEqual(self.profile.stat().st_mode, mode)
+        (self.profile / '.voice-sandbox-probe').symlink_to(self.profile / 'data')
+        with self.assertRaises(ValueError):
+            probe.prepare_profile(str(self.profile))
+
+    def test_controls_removed_from_failure_and_error_reply(self):
+        controls = ''.join(chr(n) for n in range(32) if n != 9) + chr(127) + ''.join(chr(n) for n in range(128, 160))
+        result, output = self.capture('status', [subprocess.CompletedProcess([], 1, '', 'bad' + controls.replace('\n', '') + '\tend')])
+        self.assertEqual(result, 1)
+        self.assertIn('bad\tend', output)
+        for char in controls:
+            if char != '\n':
+                self.assertNotIn(char, output)
+        _, output = self.capture('ask', [self.reply({'is_error': True, 'result': 'bad' + controls + '\tend'})])
+        self.assertIn('Claude Code said: bad\tend', output)
+
+    def test_normal_child_exit_also_kills_group_then_waits(self):
+        child = MagicMock(pid=123456, returncode=0)
+        child.communicate.return_value = ('ok', '')
+        popen = MagicMock()
+        popen.__enter__.return_value = child
+        events = []
+        with patch.object(probe.subprocess, 'Popen', return_value=popen), \
+                patch.object(probe.os, 'killpg', side_effect=lambda *args: events.append('kill')):
+            child.wait.side_effect = lambda: events.append('wait')
+            ran = probe.run_child(Path('/program/claude'), self.profile, self.run, 1, 'ask')
+        self.assertEqual(ran.stdout, 'ok')
+        self.assertEqual(events, ['kill', 'wait'])
+
+    def test_descendants_cannot_outlive_a_normally_finished_child(self):
+        for action in ['ask', 'sign-in']:
+            with self.subTest(action=action):
+                marker = self.root / ('late-' + action)
+                descendant = ('import pathlib, time; time.sleep(0.3); '
+                              'pathlib.Path(%r).write_text("canary")' % str(marker))
+                parent = ('import subprocess, sys; subprocess.Popen([sys.executable, "-c", %r], '
+                          'stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)' % descendant)
+                with patch.object(probe, 'command', return_value=[sys.executable, '-c', parent]):
+                    ran = probe.run_child(Path('/program/claude'), self.profile, self.run, 1, action)
+                self.assertEqual(ran.returncode, 0)
+                time.sleep(0.5)
+                self.assertFalse(marker.exists())
+
+    def test_removal_failure_follows_counts_and_sets_exit_one(self):
+        output = io.StringIO()
+        with patch.object(probe, 'find_claude', return_value=Path('/program/claude')), \
+                patch.object(probe, 'perform', return_value=0), \
+                patch.object(probe, 'EgressProxy') as proxy_class, \
+                patch.object(probe.shutil, 'rmtree', side_effect=OSError('invented failure')), \
+                patch.object(probe.tempfile, 'mkdtemp', return_value=str(self.run)), \
+                patch.object(probe.pwd, 'getpwuid', return_value=MagicMock(pw_dir=str(self.root))), \
+                contextlib.redirect_stdout(output):
+            proxy_class.return_value.counts.return_value = {}
+            result = probe.main(['--profile', str(self.profile), 'status'])
+        self.assertEqual(result, 1)
+        lines = output.getvalue().splitlines()
+        self.assertEqual(lines[0], 'Network: nothing.')
+        self.assertEqual(lines[1], 'The run folder could not be removed: ~/run.')
 
     def test_environment_is_built_from_nothing(self):
         poison = {key: 'poison' for key in ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN',
@@ -330,7 +469,7 @@ class ProbeTests(unittest.TestCase):
 
     def test_sign_in_inherits_stdin_and_copies_output(self):
         fake = self.fake(self.root / 'login')
-        fake.write_text('#!/bin/sh\nprintf "Sign in at https://example.com/login\\n"\n')
+        fake.write_text('#!/bin/sh\nprintf "\\033Sign in at https://example.com/login\\177\\n"\n')
         output = io.StringIO()
         real_popen = subprocess.Popen
         with patch.object(probe, 'command', return_value=[str(fake)]), \

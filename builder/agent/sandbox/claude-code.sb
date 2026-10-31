@@ -7,15 +7,22 @@
 (allow signal (target same-sandbox))
 (allow process-info* (target same-sandbox))
 
-; Read the operating system, the real program, its profile and this run alone.
+; Read only the system code and devices needed to run, plus the three folders.
 ; The caller gives absolute paths with links resolved for all three folders.
 (allow file-read*
-    (subpath "/usr")
+    (subpath "/usr/bin")
+    (subpath "/usr/lib")
+    (subpath "/usr/libexec")
+    (subpath "/usr/sbin")
+    (subpath "/usr/share")
     (subpath "/System")
-    (subpath "/Library")
-    (subpath "/private/var/db")
     (subpath "/private/etc")
-    (subpath "/dev")
+    (literal "/dev/null")
+    (literal "/dev/zero")
+    (literal "/dev/random")
+    (literal "/dev/urandom")
+    (literal "/dev/dtracehelper")
+    (subpath "/dev/fd")
     (subpath (param "PROGRAM_DIR"))
     (subpath (param "PROFILE_DIR"))
     (subpath (param "RUN_DIR")))
@@ -31,6 +38,9 @@
     (remote ip (string-append "localhost:" (param "PROXY_PORT"))))
 
 ; Signing in needs a local callback listener; ordinary calls do not.
+; Known limit: Seatbelt's localhost filter also permits listening on every address
+; during sign-in (measured reachable through the Mac's own network address).
+; Sign-in is short and started by the person.
 (if (string=? (param "SIGN_IN") "yes")
     (allow network-bind network-inbound (local ip "localhost:*")))
 

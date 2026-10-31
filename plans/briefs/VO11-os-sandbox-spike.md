@@ -283,3 +283,57 @@ folder, and no test runs `sandbox-exec` (those belong to § 2).
    later macOS starts matching case. No test change: on this macOS a test can't tell the two apart.
 
 Same rules as before: no commit, no new dependency, `-j 2`.
+
+## 7. Fixes after the security review and the Verifier (third dispatch)
+
+Both found the system reads too wide: `(subpath "/dev")` lets the child open the person's own
+terminal devices (`/dev/ttys*` are the person's, mode `crw--w----`, so a child could read keystrokes
+typed in another window), and `/Library`, `/private/var/db` and `/usr/local` (inside `/usr`) hold
+the unified log, crash reports, network settings and Intel Homebrew's data. The Verifier measured
+that `claude --version`, `auth status --json` and a signed-out `-p` still run without them.
+
+**The profile (`claude-code.sb`):**
+
+1. Reads: replace `(subpath "/usr")` with the subpaths `/usr/bin`, `/usr/lib`, `/usr/libexec`,
+   `/usr/sbin`, `/usr/share`; remove `(subpath "/Library")`, `(subpath "/private/var/db")` and
+   `(subpath "/dev")`; add the literals `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`,
+   `/dev/dtracehelper` and `(subpath "/dev/fd")`. Keep `/System`, `/private/etc` and the three
+   parameter folders. Update the comment.
+2. Above the sign-in rule, a comment: Seatbelt's `localhost` filter also lets the child listen on
+   every address while signing in (V1 measured a listener on `*:<port>` reachable through the
+   Mac's own network address); the sign-in is short and started by the person, and this is
+   recorded as a known limit.
+
+**The tests (`sandbox_profile.rs`):**
+
+3. Rename the `home` scratch folder to `outside` (it is not the home folder).
+4. A test `refuses_the_persons_terminals_and_system_logs`: for each path in a list (every
+   `/dev/ttys*` entry that exists, `/dev/console`, `/private/var/db/diagnostics`,
+   `/Library/Logs/DiagnosticReports`, `/Library/Preferences/SystemConfiguration/preferences.plist`,
+   `/usr/local/etc`), when the test process itself can open it read-only (a file or device: open
+   and drop; a folder: `read_dir`), assert that inside the sandbox it is refused (`/bin/cat` on a
+   file or device with a 2-second limit, killing it on timeout and counting that as a failure;
+   `/bin/ls` on a folder). Paths the test process can't open are skipped. Print how many were
+   checked to stderr.
+5. In `only_sign_in_can_listen`, also assert that with `SIGN_IN=no` a listener on all addresses
+   (`nc -l <port>`, no address) exits at once with an error.
+
+**The probe (`claude_sandbox_probe.py`) and its tests:**
+
+6. After every child ends, normally or not, kill its whole process group (so nothing it started
+   outlives the run), then wait for it.
+7. `--profile`: refuse the home folder and every folder above it (`Use a throwaway folder for the
+   profile, not your home folder.`). A folder that exists and is not empty must hold the marker
+   file `.voice-sandbox-probe` that the probe writes into a new or empty folder; otherwise refuse
+   with `That folder isn't empty and wasn't made by this probe. Use a new folder.`
+8. Every line the probe prints from the child (the failure line, `Claude Code said:`, each copied
+   sign-in line) has control characters removed (C0 except tab, DEL, and C1), so the child can't
+   send terminal escape sequences.
+9. The proxy takes at most 16 connections at once (more are closed at once and counted as
+   refused); it counts at most 32 distinct names, the rest as `(other)`; a relayed tunnel closes
+   after 120 seconds with no bytes either way.
+10. At the end, print the counts first, then remove the run folder; if removal fails, print
+    `The run folder could not be removed: <path with the home folder as ~>.` and exit 1 instead of
+    raising.
+
+Tests for 6 to 10, each red first. Same rules: no commit, no new dependency, `-j 2`.

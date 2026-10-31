@@ -25,6 +25,7 @@ import time
 
 PROFILE = Path(__file__).resolve().parent.parent / 'builder/agent/sandbox/claude-code.sb'
 HEADER_TIMEOUT = 10
+TUNNEL_IDLE_TIMEOUT = 120
 ALLOWED_HOSTS = frozenset(('api.anthropic.com', 'platform.claude.com', 'claude.ai'))
 ASK_FLAGS = ['-p', '--model', 'haiku', '--safe-mode', '--no-session-persistence',
              '--tools', '', '--output-format', 'json', '--setting-sources', 'project,local',
@@ -44,6 +45,45 @@ def host_name(target):
         return '(invalid)'
 
 
+def terminal_text(text):
+    """Drop terminal controls, keeping only tab from the control ranges."""
+    return re.sub(r'[\x00-\x08\x0a-\x1f\x7f-\x9f]', '', text)
+
+
+class ProxyServer(socketserver.ThreadingTCPServer):
+    daemon_threads = False
+    block_on_close = True
+
+    def __init__(self, owner, bind_and_activate=True):
+        self.owner = owner
+        self._slots = threading.BoundedSemaphore(16)
+
+        class Handler(socketserver.BaseRequestHandler):
+            def handle(self):
+                owner.handle_connection(self.request)
+
+        super().__init__(('127.0.0.1', 0), Handler, bind_and_activate=bind_and_activate)
+
+    def process_request(self, request, client_address):
+        # Reserve before starting a thread, so incomplete headers cannot grow
+        # either the socket set or the number of worker threads without bound.
+        if not self._slots.acquire(blocking=False):
+            self.owner._count('(other)', False)
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+
 class EgressProxy:
     """Let CONNECT requests reach only the three Claude hosts on port 443."""
 
@@ -57,17 +97,7 @@ class EgressProxy:
         self._thread = None
 
     def start(self):
-        owner = self
-
-        class Handler(socketserver.BaseRequestHandler):
-            def handle(self):
-                owner.handle_connection(self.request)
-
-        class Server(socketserver.ThreadingTCPServer):
-            daemon_threads = False
-            block_on_close = True
-
-        self._server = Server(('127.0.0.1', 0), Handler)
+        self._server = ProxyServer(self)
         self.port = self._server.server_address[1]
         self._thread = threading.Thread(target=self._server.serve_forever,
                                         kwargs={'poll_interval': 0.05}, daemon=True)
@@ -95,6 +125,8 @@ class EgressProxy:
 
     def _count(self, host, allowed):
         with self._lock:
+            if host not in self._counts and sum(name != '(other)' for name in self._counts) >= 32:
+                host = '(other)'
             count = self._counts.setdefault(host, [0, 0])
             count[0 if allowed else 1] += 1
 
@@ -163,13 +195,18 @@ class EgressProxy:
             tail = data[end + 4:]
             if tail:
                 upstream.sendall(tail)
+            last_byte = time.monotonic()
             while not self._stopped.is_set():
-                ready, _, _ = select.select([child, upstream], [], [], 0.2)
+                remaining = TUNNEL_IDLE_TIMEOUT - (time.monotonic() - last_byte)
+                if remaining <= 0:
+                    return
+                ready, _, _ = select.select([child, upstream], [], [], min(0.2, remaining))
                 for source in ready:
                     chunk = source.recv(65536)
                     if not chunk:
                         return
                     (upstream if source is child else child).sendall(chunk)
+                    last_byte = time.monotonic()
         except OSError:
             if not counted:
                 self._count(host, False)
@@ -185,6 +222,10 @@ def prepare_profile(value):
     path = Path(value)
     if not path.is_absolute():
         raise ValueError('Use an absolute path for the profile folder.')
+    home = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
+    resolved = path.resolve()
+    if resolved == home or resolved in home.parents:
+        raise ValueError('Use a throwaway folder for the profile, not your home folder.')
     try:
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
     except FileExistsError:
@@ -193,6 +234,14 @@ def prepare_profile(value):
     info = path.lstat()
     if not stat.S_ISDIR(info.st_mode):
         raise ValueError('That profile folder is a link or not a folder.')
+    marker = path / '.voice-sandbox-probe'
+    if any(path.iterdir()):
+        if marker.is_symlink() or not marker.is_file():
+            raise ValueError("That folder isn't empty and wasn't made by this probe. Use a new folder.")
+    else:
+        with marker.open('x'):
+            pass
+        marker.chmod(0o600)
     path.chmod(0o700)
     return path.resolve()
 
@@ -260,27 +309,25 @@ def run_child(claude, profile, run, port, action):
             if sign_in:
                 def copy_lines():
                     for line in child.stdout:
-                        print(line, end='', flush=True)
+                        print(terminal_text(line), end='\n' if line.endswith('\n') else '', flush=True)
                 copier = threading.Thread(target=copy_lines, daemon=True)
                 copier.start()
                 child.wait(timeout=timeout)
-                copier.join(timeout=1)
                 return subprocess.CompletedProcess(argv, child.returncode, '', '')
             stdout, stderr = child.communicate(
                 input='Reply with the single word: ok' if action == 'ask' else '', timeout=timeout)
             return subprocess.CompletedProcess(argv, child.returncode, stdout, stderr)
-        except BaseException:
+        finally:
             kill_group(child)
             if copier is not None:
                 copier.join(timeout=1)
-            raise
 
 
 def failure(ran):
     print("Claude Code doesn't run inside the sandbox (exit %d)." % ran.returncode)
-    lines = (ran.stderr or '').strip().splitlines()
+    lines = (ran.stderr or '').strip().split('\n')
     if lines:
-        print(lines[-1].replace(pwd.getpwuid(os.getuid()).pw_dir, '~')[:200])
+        print(terminal_text(lines[-1]).replace(pwd.getpwuid(os.getuid()).pw_dir, '~')[:200])
     return 1
 
 
@@ -342,7 +389,7 @@ def perform(action, claude, profile, run, port):
     print('It said ok: %s.' % ('yes' if ok else 'no'))
     print('Cost: $%.4f.' % cost)
     if data.get('is_error') is True and isinstance(result, str):
-        print('Claude Code said: ' + result[:200])
+        print('Claude Code said: ' + terminal_text(result)[:200])
     return 0 if ok else 1
 
 
@@ -361,6 +408,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     run = None
     proxy = None
+    result = 1
     try:
         profile = prepare_profile(args.profile)
         claude = find_claude(Path(pwd.getpwuid(os.getuid()).pw_dir))
@@ -368,22 +416,25 @@ def main(argv=None):
         run.chmod(0o700)
         proxy = EgressProxy()
         proxy.start()
-        return perform(args.action, claude, profile, run, proxy.port)
+        result = perform(args.action, claude, profile, run, proxy.port)
     except ValueError as error:
         print(str(error))
-        return 1
     except subprocess.TimeoutExpired:
         print('Claude Code took too long inside the sandbox.')
-        return 1
     except (OSError, KeyboardInterrupt):
         print('The sandbox check could not finish.')
-        return 1
     finally:
         if proxy is not None:
             proxy.stop()
-        if run is not None:
-            shutil.rmtree(run)
         print_counts(proxy)
+        if run is not None:
+            try:
+                shutil.rmtree(run)
+            except OSError:
+                path = terminal_text(str(run)).replace(pwd.getpwuid(os.getuid()).pw_dir, '~')
+                print('The run folder could not be removed: %s.' % path)
+                result = 1
+    return result
 
 
 if __name__ == '__main__':

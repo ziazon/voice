@@ -59,7 +59,7 @@ struct Sandbox {
     program: Scratch,
     profile: Scratch,
     run: Scratch,
-    home: Scratch,
+    outside: Scratch,
 }
 
 impl Sandbox {
@@ -68,7 +68,7 @@ impl Sandbox {
             program: Scratch::new("program"),
             profile: Scratch::new("profile"),
             run: Scratch::new("run"),
-            home: Scratch::new("home"),
+            outside: Scratch::new("outside"),
         }
     }
     fn command(&self, port: u16, sign_in: &str, omit: Option<&str>) -> Command {
@@ -140,16 +140,79 @@ fn reads_only_the_three_folders() {
 }
 
 #[test]
-fn refuses_the_rest_of_home_and_links_to_it() {
+fn refuses_outside_files_and_links_to_them() {
     if !available() {
         return;
     }
     let sb = Sandbox::new();
-    let outside = canary(&sb.home.0, "outside");
+    let outside = canary(&sb.outside.0, "outside");
     sb.cat(&outside, false);
     let link = sb.run.0.join("link");
     symlink(outside, &link).unwrap();
     sb.cat(&link, false);
+}
+
+#[test]
+fn refuses_the_persons_terminals_and_system_logs() {
+    if !available() {
+        return;
+    }
+    let sb = Sandbox::new();
+    let mut paths: Vec<PathBuf> = [
+        "/dev/console",
+        "/private/var/db/diagnostics",
+        "/Library/Logs/DiagnosticReports",
+        "/Library/Preferences/SystemConfiguration/preferences.plist",
+        "/usr/local/etc",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .collect();
+    for entry in fs::read_dir("/dev").unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name().to_string_lossy().starts_with("ttys") {
+            paths.push(entry.path());
+        }
+    }
+    let mut checked = 0;
+    for path in paths {
+        let folder = path.is_dir();
+        let readable = if folder {
+            fs::read_dir(&path).is_ok()
+        } else {
+            fs::File::open(&path).is_ok()
+        };
+        if !readable {
+            continue;
+        }
+        checked += 1;
+        let mut child = sb
+            .command(1, "no", None)
+            .arg(if folder { "/bin/ls" } else { "/bin/cat" })
+            .arg(&path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!("sandbox read timed out: {}", path.display());
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+        assert!(
+            !status.success(),
+            "sandbox read allowed: {}",
+            path.display()
+        );
+    }
+    eprintln!("sandbox_profile: checked {checked} terminal and system-log paths");
 }
 
 #[test]
@@ -162,7 +225,7 @@ fn writes_only_the_profile_and_run_folders() {
         (&sb.run.0, true),
         (&sb.profile.0, true),
         (&sb.program.0, false),
-        (&sb.home.0, false),
+        (&sb.outside.0, false),
     ] {
         sb.touch(&root.join("new"), allowed);
     }
@@ -325,13 +388,21 @@ fn only_sign_in_can_listen() {
         return;
     }
     let sb = Sandbox::new();
-    for sign_in in ["no", "yes"] {
+    for (sign_in, address) in [
+        ("no", Some("127.0.0.1")),
+        ("no", None),
+        ("yes", Some("127.0.0.1")),
+    ] {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
-        let mut child = sb
-            .command(1, sign_in, None)
-            .args(["/usr/bin/nc", "-l", "127.0.0.1", &port.to_string()])
+        let mut command = sb.command(1, sign_in, None);
+        command.args(["/usr/bin/nc", "-l"]);
+        if let Some(address) = address {
+            command.arg(address);
+        }
+        let mut child = command
+            .arg(port.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
