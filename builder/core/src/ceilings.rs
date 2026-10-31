@@ -1,4 +1,164 @@
-// Tests only in this dispatch. tests/ceilings.rs loads them until this module is exported.
+//! Sources of a brief and the limits chosen for their data.
+use crate::{
+    error::{Error, Result},
+    member::Member,
+};
+use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Where a brief's data came from. Ordered as listed; `ALL` is that order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Source {
+    ClaudeHistory,
+    CrewFolder,
+    Typed,
+    SkillMirror,
+    Mail,
+    Calendar,
+    Contacts,
+    FamilySkills,
+    LegalSkills,
+}
+
+impl Source {
+    pub const ALL: [Self; 9] = [
+        Self::ClaudeHistory,
+        Self::CrewFolder,
+        Self::Typed,
+        Self::SkillMirror,
+        Self::Mail,
+        Self::Calendar,
+        Self::Contacts,
+        Self::FamilySkills,
+        Self::LegalSkills,
+    ];
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::ClaudeHistory => "claude-history",
+            Self::CrewFolder => "crew-folder",
+            Self::Typed => "typed",
+            Self::SkillMirror => "skill-mirror",
+            Self::Mail => "mail",
+            Self::Calendar => "calendar",
+            Self::Contacts => "contacts",
+            Self::FamilySkills => "family-skills",
+            Self::LegalSkills => "legal-skills",
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::ClaudeHistory => {
+                "your Claude history (your Claude Code sessions and your claude.ai export)"
+            }
+            Self::CrewFolder => "your assistant's own folder",
+            Self::Typed => {
+                "what you type into Persona Builder (interview answers, notes on answers, a panel's question)"
+            }
+            Self::SkillMirror => "the copy of your skills",
+            Self::Mail => "your mail",
+            Self::Calendar => "your calendar",
+            Self::Contacts => "your contacts",
+            Self::FamilySkills => "your family skills",
+            Self::LegalSkills => "your legal skills",
+        }
+    }
+    pub fn default_ceiling(self) -> Ceiling {
+        match self {
+            Self::ClaudeHistory | Self::CrewFolder | Self::Typed | Self::SkillMirror => {
+                Ceiling::Anthropic
+            }
+            _ => Ceiling::LocalOnly,
+        }
+    }
+    pub fn read_today(self) -> bool {
+        matches!(self, Self::ClaudeHistory | Self::CrewFolder | Self::Typed)
+    }
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|source| source.id() == id)
+    }
+}
+
+/// How far a source's data may go. Ordered from the narrowest to the widest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Ceiling {
+    LocalOnly,
+    Anthropic,
+    AnyConsented,
+}
+impl Ceiling {
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::LocalOnly => "local-only",
+            Self::Anthropic => "anthropic",
+            Self::AnyConsented => "any-consented",
+        }
+    }
+    pub fn words(self) -> &'static str {
+        match self {
+            Self::LocalOnly => "on your own machines",
+            Self::Anthropic => "on your own machines or with Anthropic",
+            Self::AnyConsented => "with any provider you've agreed to",
+        }
+    }
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "local-only" => Some(Self::LocalOnly),
+            "anthropic" => Some(Self::Anthropic),
+            "any-consented" => Some(Self::AnyConsented),
+            _ => None,
+        }
+    }
+}
+
+/// Every source's ceiling: the defaults, with the person's own settings from member.json over them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ceilings {
+    values: BTreeMap<Source, Ceiling>,
+    settings: BTreeSet<Source>,
+}
+impl Ceilings {
+    pub fn defaults() -> Self {
+        Self {
+            values: Source::ALL
+                .into_iter()
+                .map(|source| (source, source.default_ceiling()))
+                .collect(),
+            settings: BTreeSet::new(),
+        }
+    }
+    pub fn get(&self, source: Source) -> Ceiling {
+        self.values[&source]
+    }
+    pub fn is_set(&self, source: Source) -> bool {
+        self.settings.contains(&source)
+    }
+    pub fn for_member(member: &Member) -> Result<Self> {
+        let mut ceilings = Self::defaults();
+        if let Some(value) = member.extra.get("ceilings") {
+            ceilings.apply(value, "member.json")?;
+        }
+        Ok(ceilings)
+    }
+    fn apply(&mut self, value: &Value, source: &str) -> Result<()> {
+        let object = value.as_object().ok_or_else(|| {
+            Error::Invalid(format!(
+                "member config: {source}: ceilings must be a JSON object"
+            ))
+        })?;
+        for (key, value) in object {
+            let entry = Source::from_id(key).ok_or_else(|| Error::Invalid(format!("member config: {source}: ceilings names {key:?}, which isn't a source. The sources are claude-history, crew-folder, typed, skill-mirror, mail, calendar, contacts, family-skills, legal-skills.")))?;
+            let ceiling = value.as_str().and_then(Ceiling::from_id).ok_or_else(|| Error::Invalid(format!("member config: {source}: ceilings.{key} must be local-only, anthropic or any-consented")))?;
+            self.values.insert(entry, ceiling);
+            self.settings.insert(entry);
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn validate(value: &Value, source: &str) -> Result<()> {
+    Ceilings::defaults().apply(value, source)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ceilings::{Ceiling, Ceilings, Source};

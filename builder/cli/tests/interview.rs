@@ -505,3 +505,29 @@ fn answer_uses_the_short_form_from_a_custom_corpus() {
     assert!(!f.state().join("decisions-interview.jsonl").exists());
     assert_eq!(f.calls(), 0);
 }
+
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and Claude, through your own Claude Code sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic";
+
+fn keep_folder_local(member: &std::path::Path) {
+    let path = member.join("member.json");
+    let mut settings: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    settings["ceilings"] = json!({"crew-folder": "local-only"});
+    fs::write(path, serde_json::to_vec(&settings).unwrap()).unwrap();
+}
+
+#[test]
+fn interview_draft_honors_the_members_local_folder_ceiling() {
+    let f = Fixture::new();
+    f.signed_in(&ok_reply(&draft()));
+    f.write_state("decisions.jsonl", &corpus(3));
+    keep_folder_local(&f.member);
+    let out = f.run(&["interview", "draft", &f.member()]);
+    assert!(!out.status.success());
+    assert_eq!(
+        text(&out.stderr),
+        format!("persona-builder: {FOLDER_KEPT_HOME}\n")
+    );
+    assert_eq!(f.calls(), 0);
+    assert!(!f.state().join("runs.jsonl").exists());
+}

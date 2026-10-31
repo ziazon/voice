@@ -2,13 +2,11 @@
 //! Both draft questions in the shape `round` reads and keep answers as training records.
 use crate::text;
 use persona_builder::{
+    ceilings::Source,
     error::{Error, Result},
     member::Member,
 };
-use persona_builder_agent::{
-    ledger::Session,
-    provider::{Brief, Provider},
-};
+use persona_builder_agent::{guard::Guard, ledger::Session, provider::Brief};
 use persona_builder_ingest::filters::Filters;
 use persona_builder_steps::{
     book::Book,
@@ -345,11 +343,13 @@ pub fn check(
     )]))
 }
 
+pub const SOURCES: &[Source] = &[Source::CrewFolder];
+
 /// One call drafts the questions; a draft that fails [`check`] is asked for once more, with the
 /// problem named. A call that fails, or that the cap refuses, is never retried here.
 pub fn draft(
     form: Form,
-    provider: &dyn Provider,
+    guard: &Guard,
     session: &Session,
     model: &str,
     book: &Book,
@@ -364,9 +364,10 @@ pub fn draft(
     let mut asked = first.clone();
     let mut problem = String::new();
     for _ in 0..2 {
-        let reply = provider.call(
+        let reply = guard.call(
             session,
             &Brief {
+                sources: SOURCES,
                 step: form.step(),
                 system: SYSTEM,
                 prompt: &asked,

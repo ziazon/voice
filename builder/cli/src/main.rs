@@ -1,4 +1,5 @@
 use clap::{CommandFactory, Parser, Subcommand};
+use persona_builder::ceilings::Ceilings;
 use persona_builder::{
     deny::DenyList,
     error::{Error, Result},
@@ -6,6 +7,7 @@ use persona_builder::{
     json::to_python_json,
     member::read_member,
 };
+use persona_builder_agent::guard::Guard;
 use persona_builder_ingest::private::StateLock;
 use persona_builder_save::{
     flow::{self, Choice, GithubRemotes, MemberPaths, RemoteCheck, Saved, Saver},
@@ -36,7 +38,104 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+enum CeilingsCommand {
+    /// Show where each source's data may go
+    Show { member_dir: PathBuf },
+    /// Set where one source's data may go
+    Set {
+        member_dir: PathBuf,
+        source: String,
+        ceiling: String,
+    },
+}
+
+fn ceilings(command: CeilingsCommand) -> Result<()> {
+    use persona_builder::{
+        ceilings::Source,
+        member::{Member, refuse_symlink, write_member},
+    };
+    match command {
+        CeilingsCommand::Show { member_dir } => {
+            let member = read_member(&member_dir.join("member.json"))?;
+            let ceilings = Ceilings::for_member(&member)?;
+            for source in Source::ALL {
+                println!(
+                    "{}\t{}\t{}\t{}{}",
+                    source.id(),
+                    ceilings.get(source).id(),
+                    if ceilings.is_set(source) {
+                        "set"
+                    } else {
+                        "default"
+                    },
+                    source.name(),
+                    if source.read_today() {
+                        ""
+                    } else {
+                        " (Persona Builder doesn't read this yet)"
+                    }
+                );
+            }
+            for agent in persona_builder_agent::agents::AGENTS {
+                println!(
+                    "{} sends what it's given to {}.",
+                    agent.name,
+                    persona_builder_agent::text::reach_words(agent.reach)
+                );
+            }
+        }
+        CeilingsCommand::Set {
+            member_dir,
+            source,
+            ceiling,
+        } => {
+            let path = member_dir.join("member.json");
+            refuse_symlink(&path)?;
+            let bytes = std::fs::read(&path).map_err(|source| Error::Io {
+                path: path.clone(),
+                source,
+            })?;
+            let value = serde_json::from_slice(&bytes).map_err(|error| {
+                Error::Invalid(format!(
+                    "member config: {} is not JSON ({error})",
+                    path.display()
+                ))
+            })?;
+            let mut member = Member::from_value(value, &path.display().to_string())?;
+            let value = member
+                .extra
+                .entry("ceilings")
+                .or_insert_with(|| serde_json::json!({}));
+            value
+                .as_object_mut()
+                .expect("validated ceilings")
+                .insert(source.clone(), serde_json::Value::String(ceiling));
+            // Use the member validator so command-line ids have the same errors as file settings.
+            let member = Member::from_value(
+                serde_json::to_value(member).expect("member serializes"),
+                &path.display().to_string(),
+            )?;
+            let source = Source::from_id(&source).expect("validated source");
+            let ceilings = Ceilings::for_member(&member)?;
+            refuse_symlink(&path)?;
+            write_member(&path, &member)?;
+            println!(
+                "{} now stays {}.",
+                source.name(),
+                ceilings.get(source).words()
+            );
+        }
+    }
+    Ok(())
+}
+
+#[derive(Subcommand)]
 enum Command {
+    /// Show or change where your assistant's data may go
+    Ceilings {
+        #[command(subcommand)]
+        command: CeilingsCommand,
+    },
     /// Ask a panel of your assistants
     Panel {
         #[command(subcommand)]
@@ -1343,6 +1442,7 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
+    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member)?);
     let session =
         Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
             Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
@@ -1355,7 +1455,7 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
         println!("{}", text::thin_history(prepared.answered));
     }
     let built = build::build(
-        &claude,
+        &guard,
         &session,
         &home,
         &prepared.inputs(&member, &args.corpus, &args.model),
@@ -1480,6 +1580,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
+    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member)?);
     let session = if existed {
         Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
             Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
@@ -1505,7 +1606,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     {
         return Err(Error::Invalid(text::ALREADY_DRAFTED.into()));
     }
-    let drafted = interview::draft(form, &claude, &session, &args.model, &book, &weights)?;
+    let drafted = interview::draft(form, &guard, &session, &args.model, &book, &weights)?;
     write_private(
         &home,
         &member.slug,
@@ -1592,10 +1693,11 @@ fn refresh_propose(
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
+    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member)?);
     let store = Store::open(&home, &member)?;
     let session = Session::open(&home, &member.slug, cap)?;
     match refresh::propose(
-        &claude,
+        &guard,
         &session,
         &home,
         &store,
@@ -1640,6 +1742,7 @@ fn refresh_apply(
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
+    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member)?);
     let store = Store::open(&home, &member)?;
     let session = Session::open(&home, &member.slug, cap)?;
     let Measured {
@@ -1647,7 +1750,7 @@ fn refresh_apply(
         measurement,
         already,
     } = apply::measure(
-        &claude,
+        &guard,
         &session,
         &home,
         &store,
@@ -2029,6 +2132,7 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
 
 fn run(cli: Cli) -> Result<std::process::ExitCode> {
     let result = match cli.command {
+        Some(Command::Ceilings { command }) => ceilings(command),
         Some(Command::Panel { command }) => return panel::run(command),
         Some(Command::New {
             name,

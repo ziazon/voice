@@ -4,7 +4,9 @@ use crate::{
     dto::*,
     history::{BUSY, FIND, PERMISSION, count, failure, locked, readable},
 };
+use persona_builder::ceilings::Ceilings;
 use persona_builder::{assistants, error::Error, member::Member};
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     claude,
     ledger::{Cap, Session, local_day},
@@ -151,6 +153,10 @@ pub fn build_assistant_in(
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
+    let guard = Guard::new(
+        vec![&claude],
+        Ceilings::for_member(&member).map_err(|_| failure(SETTINGS))?,
+    );
     let session = open(home, &request.slug)?;
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
@@ -169,7 +175,7 @@ pub fn build_assistant_in(
         });
     };
     let built = build::build(
-        &claude,
+        &guard,
         &session,
         home,
         &prepared.inputs(&member, CORPUS, claude::DEFAULT_MODEL),
@@ -375,6 +381,10 @@ pub fn draft_interview_in(
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
+    let guard = Guard::new(
+        vec![&claude],
+        Ceilings::for_member(&member).map_err(|_| failure(SETTINGS))?,
+    );
     let session = open(home, &request.slug)?;
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
@@ -384,7 +394,7 @@ pub fn draft_interview_in(
     let weights = interview_weights(home, &member, form)?;
     let drafted = interview::draft(
         form,
-        &claude,
+        &guard,
         &session,
         claude::DEFAULT_MODEL,
         &book,

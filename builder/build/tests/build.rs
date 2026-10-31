@@ -1,7 +1,9 @@
 //! The build: packing the records, each reply's check, the whole build against a stub `claude`
 //! (fixed instructions, no held-out answer in any prompt, one retry, the cache, the cap), the draft
 //! in the template's shape, the measurements entry and the write.
+use persona_builder::ceilings::Ceilings;
 use persona_builder::member::Member;
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     claude::Claude,
     ledger::{Cap, Session},
@@ -199,7 +201,7 @@ fn run(
     let filters = filters();
     let session = session(home, cap);
     build::build(
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session,
         home,
         &Inputs {
@@ -1046,7 +1048,7 @@ fn a_kind_of_decision_in_no_group_is_refused_before_any_call() {
     let session = session(&home.0, Cap::default());
     let text = corpus(12, 0);
     let error = build::build(
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session,
         &home.0,
         &Inputs {

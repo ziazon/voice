@@ -278,7 +278,8 @@ pub(crate) fn claude_message(error: Error) -> String {
                 text::SIGN_IN_STOPPED,
                 text::PROFILE_FAILED,
             ]
-            .contains(&message.as_str()) =>
+            .contains(&message.as_str())
+                || message.starts_with("Nothing was sent.") =>
         {
             message
         }

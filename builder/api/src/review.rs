@@ -5,8 +5,10 @@ use crate::{
     dto::*,
     history::{FIND, PERMISSION, count, failure, locked, readable},
 };
+use persona_builder::ceilings::Ceilings;
 use persona_builder::{assistants, error::Error, member::Member};
 use persona_builder_agent::claude;
+use persona_builder_agent::guard::Guard;
 use persona_builder_build::{interview, report};
 use persona_builder_grow::{
     apply, diff, keep,
@@ -254,6 +256,10 @@ pub fn draft_refresh_in(
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
+    let guard = Guard::new(
+        vec![&claude],
+        Ceilings::for_member(&member).map_err(|_| failure(REVIEW_SETTINGS))?,
+    );
     let session = open(home, &request.slug)?;
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
@@ -267,7 +273,7 @@ pub fn draft_refresh_in(
         return Err(failure(ALREADY_OPEN));
     }
     let proposed = refresh::propose(
-        &claude,
+        &guard,
         &session,
         home,
         &store,
@@ -335,6 +341,10 @@ pub fn apply_refresh_in(
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
+    let guard = Guard::new(
+        vec![&claude],
+        Ceilings::for_member(&member).map_err(|_| failure(REVIEW_SETTINGS))?,
+    );
     let session = open(home, &request.slug)?;
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
@@ -353,7 +363,7 @@ pub fn apply_refresh_in(
         daily_cap_usd: session.cap().daily_usd(),
     };
     let measured = apply::measure(
-        &claude,
+        &guard,
         &session,
         home,
         &store,

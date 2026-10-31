@@ -1,6 +1,8 @@
 mod common;
 use common::*;
+use persona_builder::ceilings::Ceilings;
 use persona_builder::error::Result;
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     claude::Claude,
     ledger::{Cap, Session},
@@ -144,7 +146,10 @@ impl Setup {
     fn measure_progress(&self, id: &str, progress: &mut dyn FnMut(&str)) -> Result<Measured> {
         let session = Session::open(&self.f.home, &self.f.member.slug, Cap::default()).unwrap();
         apply::measure(
-            &Claude::at(self.stub.join("claude")),
+            &Guard::new(
+                vec![&Claude::at(self.stub.join("claude"))],
+                Ceilings::defaults(),
+            ),
             &session,
             &self.f.home,
             &self.store(),
@@ -346,7 +351,10 @@ fn revert_for_new_failure_never_rewrites_decisions_and_unblocks_a_new_draft() {
     .unwrap();
     let session = Session::open(&s.f.home, &s.f.member.slug, Cap::default()).unwrap();
     refresh::propose(
-        &Claude::at(s.stub.join("claude")),
+        &Guard::new(
+            vec![&Claude::at(s.stub.join("claude"))],
+            Ceilings::defaults(),
+        ),
         &session,
         &s.f.home,
         &s.store(),

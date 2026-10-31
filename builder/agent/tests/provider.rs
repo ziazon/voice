@@ -1,6 +1,8 @@
 mod common;
 
 use common::*;
+use persona_builder::ceilings::Ceilings;
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     agents::{self, AGENTS},
     claude::Claude,
@@ -47,10 +49,11 @@ fn a_trait_call_uses_claude_and_leaves_one_ledger_line() {
     let provider: &dyn Provider = &claude;
     let session = session(&home.0);
     let schema = schema();
-    let reply = provider
+    let reply = Guard::new(vec![provider], Ceilings::defaults())
         .call(
             &session,
             &Brief {
+                sources: &[persona_builder::ceilings::Source::ClaudeHistory],
                 step: "label",
                 system: "Label each record.",
                 prompt: "record one\n",

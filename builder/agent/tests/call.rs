@@ -9,7 +9,7 @@ use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     claude::MAX_PROMPT,
     ledger::local_day,
-    provider::{Brief, Provider, Usage},
+    provider::{Brief, Usage},
     text,
 };
 use serde_json::{Value, json};
@@ -138,8 +138,7 @@ fn failing(reply: &str, code: i32) -> (String, Value) {
     let session = common::session(&home.0);
     let schema = schema();
     let prompt = format!("records {MARKER}");
-    let error = stub
-        .claude()
+    let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call(&prompt, &schema))
         .unwrap_err()
         .to_string();
@@ -213,7 +212,9 @@ fn a_reply_without_usable_output_fails() {
     let stub = Stub::replying(&ok_reply(&json!([1, 2])), 0);
     let session = common::session(&home.0);
     let schema = schema();
-    let reply = stub.claude().call(&session, &call("x", &schema)).unwrap();
+    let reply = Guard::new(vec![&stub.claude()], Ceilings::defaults())
+        .call(&session, &call("x", &schema))
+        .unwrap();
     assert_eq!(reply.output, json!([1, 2]));
 }
 
@@ -258,8 +259,7 @@ fn output_past_the_cap_is_unreadable() {
     );
     let session = common::session(&home.0);
     let schema = schema();
-    let error = stub
-        .claude()
+    let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("x", &schema))
         .unwrap_err();
     assert_eq!(error.to_string(), text::FAILED);
@@ -272,11 +272,12 @@ fn a_call_past_its_time_is_cut_off_with_everything_it_started() {
     let stub = Stub::new("sleep 30 &\necho $! > \"$here/pid\"\nwait");
     let session = common::session(&home.0);
     let schema = schema();
-    let error = stub
-        .claude()
-        .with_timeout(Duration::from_secs(1))
-        .call(&session, &call("x", &schema))
-        .unwrap_err();
+    let error = Guard::new(
+        vec![&stub.claude().with_timeout(Duration::from_secs(1))],
+        Ceilings::defaults(),
+    )
+    .call(&session, &call("x", &schema))
+    .unwrap_err();
     assert_eq!(error.to_string(), text::cut_off(1));
     let line = &ledger_lines(&home.0)[0];
     assert_eq!(line["outcome"], "cut-off");
@@ -292,7 +293,10 @@ fn a_call_past_its_time_is_cut_off_with_everything_it_started() {
 
 fn refused(home: &Scratch, stub: &Stub, call: &Brief) -> String {
     let session = common::session(&home.0);
-    let error = stub.claude().call(&session, call).unwrap_err().to_string();
+    let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
+        .call(&session, call)
+        .unwrap_err()
+        .to_string();
     assert!(!stub.ran(), "the stub ran for a refused call");
     assert!(ledger(&home.0).is_none());
     error
@@ -357,7 +361,9 @@ fn bad_calls_are_refused_before_anything_runs() {
     }
     let home = Scratch::new("call-ok-after");
     let session = common::session(&home.0);
-    stub.claude().call(&session, &base).unwrap();
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
+        .call(&session, &base)
+        .unwrap();
 }
 
 #[test]
@@ -367,7 +373,7 @@ fn a_prompt_at_the_limit_is_accepted() {
     let session = common::session(&home.0);
     let schema = schema();
     let prompt = "x".repeat(MAX_PROMPT);
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call(&prompt, &schema))
         .unwrap();
     assert_eq!(stub.file("stdin").len(), MAX_PROMPT);
@@ -387,8 +393,7 @@ fn anything_in_the_work_folder_stops_the_call() {
         } else {
             fs::write(agent.join(name), "{}").unwrap();
         }
-        let error = stub
-            .claude()
+        let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap_err();
         assert_eq!(error.to_string(), text::work_folder_not_empty(&agent));
@@ -402,8 +407,7 @@ fn anything_in_the_work_folder_stops_the_call() {
     let elsewhere = home.0.join("elsewhere");
     fs::create_dir(&elsewhere).unwrap();
     symlink(&elsewhere, &agent).unwrap();
-    let error = stub
-        .claude()
+    let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap_err();
     assert!(
@@ -419,7 +423,7 @@ fn a_program_that_cannot_start_spends_nothing() {
     let session = common::session(&home.0);
     let schema = schema();
     let claude = persona_builder_agent::claude::Claude::at(home.0.join("no-such-claude"));
-    let error = claude
+    let error = Guard::new(vec![&claude], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap_err();
     assert_eq!(error.to_string(), text::DOES_NOT_RUN);
@@ -439,11 +443,11 @@ fn a_call_that_never_started_gives_its_budget_back() {
     let session = common::session(&home.0);
     let schema = schema();
     let missing = persona_builder_agent::claude::Claude::at(home.0.join("no-such-claude"));
-    missing
+    Guard::new(vec![&missing], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap_err();
     let stub = Stub::replying(&ok_reply(&json!({})), 0);
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap();
     assert_eq!(ledger_lines(&home.0).len(), 2);
@@ -460,7 +464,7 @@ fn a_call_is_on_the_ledger_at_its_whole_budget_while_it_runs() {
     ));
     let session = common::session(&home.0);
     let schema = schema();
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap();
     let during: Vec<Value> = stub
@@ -497,7 +501,7 @@ fn a_prompt_that_starts_like_a_command_is_refused() {
     }
     let home = Scratch::new("call-slash-later");
     let session = common::session(&home.0);
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records\n/model opus", &schema))
         .unwrap();
 }
@@ -517,7 +521,7 @@ fn optional_budgets_change_only_the_budget_arguments() {
         let cap = Cap::new(daily, step).expect("zero means no limit");
         let session = Session::open_with_clock(&home.0, "wren", cap, fixed_clock()).unwrap();
         let schema = schema();
-        stub.claude()
+        Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap();
         let mut expected = expected_argv(&schema);
@@ -537,7 +541,7 @@ fn an_unlimited_call_without_a_cost_records_unknown_and_the_ledger_reads_it() {
     let cap = Cap::new(0.0, 0.0).expect("zero means no limit");
     let session = Session::open_with_clock(&home.0, "wren", cap, fixed_clock()).unwrap();
     let schema = schema();
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap();
     let lines = ledger_lines(&home.0);

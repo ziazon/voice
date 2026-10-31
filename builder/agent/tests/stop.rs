@@ -1,6 +1,7 @@
 mod common;
 use common::*;
-use persona_builder_agent::provider::Provider;
+use persona_builder::ceilings::Ceilings;
+use persona_builder_agent::guard::Guard;
 use std::{
     sync::{
         Arc,
@@ -26,7 +27,7 @@ fn stopped_call_kills_its_group_and_counts_the_budget() {
             thread::sleep(Duration::from_millis(200));
             stop.store(true, Ordering::SeqCst);
         });
-        claude
+        Guard::new(vec![&claude], Ceilings::defaults())
             .call(&session, &call("records", &schema()))
             .unwrap_err()
     });
@@ -51,11 +52,12 @@ fn stopped_before_a_call_never_runs_or_writes_a_ledger_line() {
     let home = Scratch::new("already-stop");
     let stub = Stub::replying(&ok_reply(&serde_json::json!({})), 0);
     let session = session(&home.0);
-    let error = stub
-        .claude()
-        .with_stop(Arc::new(AtomicBool::new(true)))
-        .call(&session, &call("records", &schema()))
-        .unwrap_err();
+    let error = Guard::new(
+        vec![&stub.claude().with_stop(Arc::new(AtomicBool::new(true)))],
+        Ceilings::defaults(),
+    )
+    .call(&session, &call("records", &schema()))
+    .unwrap_err();
     assert_eq!(error.to_string(), STOPPED);
     assert!(!stub.ran());
     assert!(ledger(&home.0).is_none());

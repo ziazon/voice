@@ -1,6 +1,8 @@
 //! The interview when the history is thin: counting, weighting, the prompt, the check of a drafted
 //! file, the call with one retry against a stub `claude`, and the answers as training records.
+use persona_builder::ceilings::Ceilings;
 use persona_builder::member::Member;
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     claude::Claude,
     ledger::{Cap, Session},
@@ -330,7 +332,7 @@ fn draft_makes_one_tool_less_call_with_fixed_instructions_and_shape() {
     let book = book(&member()).unwrap();
     let file = interview::draft(
         interview::Form::Full,
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session(&home.0, Cap::default()),
         "sonnet",
         &book,
@@ -363,7 +365,7 @@ fn short_draft_with_no_kinds_makes_no_call() {
     let stub = Stub::new(&[ok_reply(&json!({"questions": []}))]);
     let error = interview::draft(
         interview::Form::Short,
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session(&home.0, Cap::default()),
         "sonnet",
         &book(&member()).unwrap(),
@@ -385,7 +387,7 @@ fn draft_asks_once_more_when_the_first_draft_does_not_fit() {
     let book = book(&member()).unwrap();
     let file = interview::draft(
         interview::Form::Full,
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session(&home.0, Cap::default()),
         "sonnet",
         &book,
@@ -410,7 +412,7 @@ fn draft_stops_after_two_drafts_that_do_not_fit() {
     let stub = Stub::new(&[ok_reply(&bad), ok_reply(&bad), ok_reply(&good_draft())]);
     let error = interview::draft(
         interview::Form::Full,
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session(&home.0, Cap::default()),
         "sonnet",
         &book(&member()).unwrap(),
@@ -434,7 +436,7 @@ fn draft_never_retries_a_call_that_failed() {
     let stub = Stub::new(&[failed, ok_reply(&good_draft())]);
     let error = interview::draft(
         interview::Form::Full,
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session(&home.0, Cap::default()),
         "sonnet",
         &book(&member()).unwrap(),
@@ -452,7 +454,7 @@ fn draft_spends_nothing_past_the_daily_cap() {
     let session = session(&home.0, Cap::new(1.0, 1.0).unwrap());
     let first = interview::draft(
         interview::Form::Full,
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session,
         "sonnet",
         &book(&member()).unwrap(),
@@ -461,7 +463,7 @@ fn draft_spends_nothing_past_the_daily_cap() {
     assert!(first.is_ok());
     let error = interview::draft(
         interview::Form::Full,
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session,
         "sonnet",
         &book(&member()).unwrap(),
@@ -708,7 +710,7 @@ fn short_draft_retries_a_missing_kind_with_the_short_count_and_ledger_step() {
     let stub = Stub::new(&[ok_reply(&bad), ok_reply(&good)]);
     let file = interview::draft(
         Form::Short,
-        &stub.claude(),
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
         &session(&home.0, Cap::default()),
         "sonnet",
         &book(&member()).unwrap(),

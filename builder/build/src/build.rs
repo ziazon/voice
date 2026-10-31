@@ -3,13 +3,11 @@
 //! before it is used and kept in `build/` so a rerun pays only for what was not finished.
 use crate::text;
 use persona_builder::{
+    ceilings::Source,
     error::{Error, Result},
     member::Member,
 };
-use persona_builder_agent::{
-    ledger::Session,
-    provider::{Brief, Provider},
-};
+use persona_builder_agent::{guard::Guard, ledger::Session, provider::Brief};
 use persona_builder_ingest::{
     corpus::{read_records, split},
     filters::Filters,
@@ -750,9 +748,12 @@ pub fn cache_name(step: &str, model: &str, system: &str, schema: &Value, prompt:
     format!("{step}-{}.json", hash.digest())
 }
 
+pub const SOURCES: &[Source] = &[Source::ClaudeHistory, Source::Typed, Source::CrewFolder];
+
 pub struct Asker<'a> {
     misfit: fn(&str, &str) -> String,
-    provider: &'a dyn Provider,
+    guard: &'a Guard<'a>,
+    sources: &'a [Source],
     session: &'a Session,
     home: &'a Path,
     slug: &'a str,
@@ -763,14 +764,16 @@ pub struct Asker<'a> {
 
 impl<'a> Asker<'a> {
     pub fn new(
-        provider: &'a dyn Provider,
+        guard: &'a Guard<'a>,
+        sources: &'a [Source],
         session: &'a Session,
         home: &'a Path,
         slug: &'a str,
         model: &'a str,
     ) -> Self {
         Self {
-            provider,
+            guard,
+            sources,
             session,
             home,
             slug,
@@ -828,9 +831,10 @@ impl<'a> Asker<'a> {
         let mut asked = prompt.to_owned();
         let mut last = Misfit::plain("");
         for _ in 0..2 {
-            let reply = self.provider.call(
+            let reply = self.guard.call(
                 self.session,
                 &Brief {
+                    sources: self.sources,
                     step,
                     system,
                     prompt: &asked,
@@ -866,7 +870,7 @@ impl<'a> Asker<'a> {
 /// Label, distil and backtest. Writes nothing in the member's folder: only checked replies in
 /// the state folder's `build/`. `progress` gets each plain line the app shows.
 pub fn build(
-    provider: &dyn Provider,
+    guard: &Guard,
     session: &Session,
     home: &Path,
     inputs: &Inputs,
@@ -899,7 +903,7 @@ pub fn build(
         crate::interview::answered(&records),
         heldout.questions.len(),
     ));
-    let mut asker = Asker::new(provider, session, home, &member.slug, inputs.model);
+    let mut asker = Asker::new(guard, SOURCES, session, home, &member.slug, inputs.model);
 
     let schema = label_schema();
     let mut labels = Map::new();

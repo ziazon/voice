@@ -10,8 +10,9 @@
 //! and `https://code.claude.com/docs/en/headless` (stream-json).
 use crate::{
     child::{self, Ran},
+    guard::Sealed,
     ledger::{Line, Session},
-    provider::{Brief, Provider, Reach, Reply, Usage},
+    provider::{Provider, Reach, Reply, Usage},
     text,
 };
 use persona_builder::error::{Error, Result};
@@ -392,6 +393,11 @@ impl Claude {
         for marker in SESSION_MARKERS {
             command.env_remove(marker);
         }
+        for (name, _) in std::env::vars_os() {
+            if name.to_str().is_some_and(provider_override) {
+                command.env_remove(name);
+            }
+        }
         command
     }
 
@@ -457,7 +463,9 @@ impl Provider for Claude {
         REACH
     }
     /// One tool-less call, spent against the session's cap and recorded in its ledger.
-    fn call(&self, session: &Session, call: &Brief) -> Result<Reply> {
+    fn call(&self, session: &Session, sealed: &Sealed) -> Result<Reply> {
+        sealed.check(AGENT_ID, REACH)?;
+        let call = sealed.brief();
         if !valid_step(call.step) {
             return Err(invalid(
                 "a step's name must be a lower-case letter, then up to 39 letters, digits or dashes",
@@ -558,4 +566,13 @@ impl Provider for Claude {
         session.finish(started, &line)?;
         judged.result
     }
+}
+
+/// Provider switches and endpoint overrides: https://code.claude.com/docs/en/env-vars
+/// Remove these from every child so Claude Code's declared Anthropic reach holds.
+fn provider_override(name: &str) -> bool {
+    name.starts_with("CLAUDE_CODE_USE_")
+        || name == "ANTHROPIC_BASE_URL"
+        || (name.starts_with("ANTHROPIC_") && name.ends_with("_BASE_URL"))
+        || name == "ANTHROPIC_FOUNDRY_RESOURCE"
 }

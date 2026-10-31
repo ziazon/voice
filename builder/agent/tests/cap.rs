@@ -1,7 +1,8 @@
 mod common;
 
 use common::*;
-use persona_builder_agent::provider::Provider;
+use persona_builder::ceilings::Ceilings;
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     ledger::{Cap, LIMIT, local_day},
     text,
@@ -60,8 +61,7 @@ fn a_call_that_could_pass_the_daily_cap_never_starts() {
     let session = common::session(&home.0);
     assert_eq!(session.spent_today().unwrap(), 46.0);
     let schema = schema();
-    let error = stub
-        .claude()
+    let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap_err();
     assert_eq!(error.to_string(), text::cap_reached(46.0, 50.0));
@@ -81,7 +81,7 @@ fn only_today_counts_and_a_call_up_to_the_cap_runs() {
     let session = common::session(&home.0);
     assert_eq!(session.spent_today().unwrap(), 44.99);
     let schema = schema();
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap();
     let lines = ledger_lines(&home.0);
@@ -105,7 +105,7 @@ fn only_today_counts_and_a_call_up_to_the_cap_runs() {
     let home = Scratch::new("cap-exact");
     seed_ledger(&home.0, &[spent_line(&today(), 45.0)]);
     let session = common::session(&home.0);
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap();
 }
@@ -124,7 +124,7 @@ fn calls_in_flight_hold_their_budget() {
         .map(|_| {
             let (stub, session, schema) = (stub.clone(), session.clone(), schema.clone());
             std::thread::spawn(move || {
-                stub.claude()
+                Guard::new(vec![&stub.claude()], Ceilings::defaults())
                     .call(&session, &call("records", &schema))
                     .map(|_| ())
                     .map_err(|e| e.to_string())
@@ -173,8 +173,7 @@ fn a_damaged_ledger_stops_all_spending() {
             "{bad}"
         );
         let schema = schema();
-        let error = stub
-            .claude()
+        let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap_err();
         assert_eq!(error.to_string(), expected);

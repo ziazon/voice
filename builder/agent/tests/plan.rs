@@ -1,9 +1,11 @@
 mod common;
 
 use common::*;
+use persona_builder::ceilings::Ceilings;
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     ledger::{Cap, Session, local_day},
-    provider::{Provider, Usage},
+    provider::Usage,
     text,
 };
 use serde_json::{Value, json};
@@ -16,7 +18,7 @@ fn stream(lines: &[String]) -> String {
 fn refused(session: &Session, stub: &Stub) {
     let schema = schema();
     assert_eq!(
-        stub.claude()
+        Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(session, &call("records", &schema))
             .unwrap_err()
             .to_string(),
@@ -39,8 +41,7 @@ fn a_call_reads_the_result_from_a_stream() {
     );
     let session = session(&home.0);
     let schema = schema();
-    let reply = stub
-        .claude()
+    let reply = Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap();
     assert_eq!(reply.output, output);
@@ -70,7 +71,7 @@ fn a_warning_keeps_this_answer_and_stops_the_next_call() {
     let session = session(&home.0);
     let schema = schema();
     assert_eq!(
-        stub.claude()
+        Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap()
             .output,
@@ -92,7 +93,7 @@ fn a_rejected_plan_explains_the_failed_call() {
     let session = session(&home.0);
     let schema = schema();
     assert_eq!(
-        stub.claude()
+        Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap_err()
             .to_string(),
@@ -118,7 +119,7 @@ fn a_rejected_plan_explains_any_failed_reply() {
         let session = session(&home.0);
         let schema = schema();
         assert_eq!(
-            stub.claude()
+            Guard::new(vec![&stub.claude()], Ceilings::defaults())
                 .call(&session, &call("records", &schema))
                 .unwrap_err()
                 .to_string(),
@@ -146,11 +147,11 @@ fn allowed_and_unknown_statuses_change_nothing() {
     );
     let session = session(&home.0);
     let schema = schema();
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap();
     assert!(ledger_lines(&home.0)[0].get("plan").is_none());
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap();
     assert!(stub.argv(1).is_some());
@@ -173,7 +174,7 @@ fn the_worst_status_wins() {
         );
         let session = session(&home.0);
         let schema = schema();
-        stub.claude()
+        Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap();
         assert_eq!(ledger_lines(&home.0)[0]["plan"], expected);
@@ -189,7 +190,7 @@ fn the_stop_lasts_only_the_day() {
     );
     let schema = schema();
     let first = session(&home.0);
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&first, &call("records", &schema))
         .unwrap();
     drop(first);
@@ -200,7 +201,7 @@ fn the_stop_lasts_only_the_day() {
         Box::new(|| fixed_time() + Duration::from_secs(86_400)),
     )
     .unwrap();
-    stub.claude()
+    Guard::new(vec![&stub.claude()], Ceilings::defaults())
         .call(&tomorrow, &call("records", &schema))
         .unwrap();
     assert!(stub.argv(1).is_some());
@@ -216,7 +217,7 @@ fn a_warning_in_unreadable_output_still_stops() {
     let session = session(&home.0);
     let schema = schema();
     assert_eq!(
-        stub.claude()
+        Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap_err()
             .to_string(),
@@ -238,7 +239,7 @@ fn a_stream_without_a_result_is_unreadable() {
     let session = session(&home.0);
     let schema = schema();
     assert_eq!(
-        stub.claude()
+        Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap_err()
             .to_string(),
@@ -258,7 +259,7 @@ fn the_last_result_line_is_the_reply() {
     let session = session(&home.0);
     let schema = schema();
     assert_eq!(
-        stub.claude()
+        Guard::new(vec![&stub.claude()], Ceilings::defaults())
             .call(&session, &call("records", &schema))
             .unwrap()
             .output,
@@ -280,7 +281,7 @@ fn an_unknown_plan_value_in_the_ledger_stops_spending() {
         let stub = Stub::replying(&ok_reply(&json!({})), 0);
         let schema = schema();
         assert_eq!(
-            stub.claude()
+            Guard::new(vec![&stub.claude()], Ceilings::defaults())
                 .call(&session, &call("records", &schema))
                 .unwrap_err()
                 .to_string(),

@@ -91,3 +91,36 @@ pub fn shown_program(program: &Path, home: &Path) -> String {
         Err(_) => program.display().to_string(),
     }
 }
+
+/// Where a provider sends the data it receives, in words for people.
+pub fn reach_words(reach: crate::provider::Reach) -> &'static str {
+    match reach {
+        crate::provider::Reach::OwnMachines => "your own machines",
+        crate::provider::Reach::Anthropic => "Anthropic",
+        crate::provider::Reach::ThirdParty => "another company",
+    }
+}
+/// Explain why a source could not be sent to a provider.
+pub fn kept_home(
+    source: persona_builder::ceilings::Source,
+    ceiling: persona_builder::ceilings::Ceiling,
+    provider: &str,
+    reach: crate::provider::Reach,
+) -> String {
+    if reach == crate::provider::Reach::ThirdParty
+        && ceiling == persona_builder::ceilings::Ceiling::AnyConsented
+    {
+        return format!(
+            "Nothing was sent. This step uses {}, and {provider} sends what it's given to another company, which you haven't agreed to.",
+            source.name()
+        );
+    }
+    format!(
+        "Nothing was sent. This step uses {}, which you keep {}, and {provider} sends what it's given to {}. To let it go there, run: persona-builder ceilings set <assistant folder> {} {}",
+        source.name(),
+        ceiling.words(),
+        reach_words(reach),
+        source.id(),
+        crate::guard::needed(reach).id()
+    )
+}

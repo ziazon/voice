@@ -29,6 +29,15 @@ class Hardening(unittest.TestCase):
         self.addCleanup(self.h.dir.cleanup)
         self.member = self.h.member(ADA)
 
+    def test_member_with_ceilings_still_loads(self):
+        self.h.projects.mkdir()
+        self.member = self.h.member(dict(ADA, ceilings={'mail': 'anthropic',
+                                                      'claude-history': 'local-only'}))
+        proc = self.h.crew(self.member, 'folders', '--projects', str(self.h.projects))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(self.h.read('member.json'))['ceilings'],
+                         {'mail': 'anthropic', 'claude-history': 'local-only'})
+
     def test_merge_preserves_unicode_line_separators(self):
         record = crew.message_record('s', '2026-09-01', 'kit', 'scope\u2028next\u0085last', '')
         source = self.h.root / 'source.jsonl'

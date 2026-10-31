@@ -1,9 +1,17 @@
 //! The model-call seam and the person's own Claude Code.
-use persona_builder::error::Error;
+use persona_builder::{
+    assistants::assistant_dir,
+    ceilings::{Ceilings, Source},
+    error::Error,
+    member::read_member,
+};
+#[cfg(test)]
+use persona_builder_agent::provider::Provider;
 use persona_builder_agent::{
     claude::{self, Claude},
+    guard::Guard,
     ledger::{Cap, Session},
-    provider::{Brief, Provider},
+    provider::Brief,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
@@ -43,6 +51,7 @@ pub trait Turns: Sync {
 pub struct ClaudeTurns {
     claude: Claude,
     sessions: BTreeMap<String, Session>,
+    ceilings: BTreeMap<String, Ceilings>,
 }
 impl ClaudeTurns {
     /// Find and check Claude Code and lock each assistant's spending session.
@@ -55,7 +64,17 @@ impl ClaudeTurns {
         let claude = claude::find_in(home, path, fallbacks).map_err(message)?;
         claude.check(home).map_err(message)?;
         let mut sessions = BTreeMap::new();
+        let mut ceilings = BTreeMap::new();
         for seat in seats {
+            let settings = || -> persona_builder::error::Result<Ceilings> {
+                let folder = assistant_dir(home, seat)?;
+                Ceilings::for_member(&read_member(&folder.join("member.json"))?)
+            };
+            ceilings.insert(
+                seat.clone(),
+                settings()
+                    .map_err(|_| crate::text::assistant_problem(seat, crate::text::BAD_SETTINGS))?,
+            );
             let cap = Cap::load(home, seat)
                 .map_err(|_| crate::text::assistant_problem(seat, crate::text::BAD_LIMIT))?;
             let session = Session::open_existing(home, seat, cap).map_err(|error| {
@@ -69,6 +88,7 @@ impl ClaudeTurns {
         Ok(Self {
             claude: claude.with_timeout(Duration::from_secs(600)),
             sessions,
+            ceilings,
         })
     }
     /// Attach the app's stop flag to model calls.
@@ -97,6 +117,7 @@ fn turn_error(error: Error) -> String {
                 agent_text::DOES_NOT_RUN,
             ]
             .contains(&value.as_str())
+                || value.starts_with("Nothing was sent.")
                 || value.starts_with("Today's spending limit for this assistant is reached:")
                 || value.starts_with("Claude Code was still working on this step after ") =>
         {
@@ -116,15 +137,19 @@ impl Turns for ClaudeTurns {
                 ..Turn::default()
             };
         };
-        ask(&self.claude, session, system, prompt)
+        let guard = Guard::new(vec![&self.claude], self.ceilings[seat].clone());
+        ask(&guard, session, system, prompt)
     }
 }
 
-fn ask(provider: &dyn Provider, session: &Session, system: &str, prompt: &str) -> Turn {
+pub const SOURCES: &[Source] = &[Source::CrewFolder, Source::Typed];
+
+fn ask(guard: &Guard, session: &Session, system: &str, prompt: &str) -> Turn {
     let schema = serde_json::json!({"type":"object","properties":{"post":{"type":"string","minLength":1,"maxLength":12000}},"required":["post"],"additionalProperties":false});
-    match provider.call(
+    match guard.call(
         session,
         &Brief {
+            sources: SOURCES,
             step: "panel-turn",
             system,
             prompt,

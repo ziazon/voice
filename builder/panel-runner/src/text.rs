@@ -49,6 +49,7 @@ pub const NOT_BUILT_ASSISTANT: &str = "Build this assistant before starting a pa
 pub const ASSISTANT_BUSY: &str = "This assistant is already working.";
 pub const BAD_LIMIT: &str =
     "This assistant's daily limit couldn't be read. Set it again before starting a panel.";
+pub const BAD_SETTINGS: &str = "its settings in member.json can't be read";
 pub const BAD_FILTERS: &str = "This assistant's privacy rules couldn't be read.";
 pub const BAD_QUESTION: &str = "Write a question of 1 to 200 characters.";
 pub const BAD_BACKGROUND: &str = "Keep the background within 4096 bytes of text.";

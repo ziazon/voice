@@ -239,3 +239,43 @@ fn the_seal_refuses_a_different_provider_id() {
     );
     assert_eq!(fake.count(), 1);
 }
+
+struct Forwarder {
+    claude: persona_builder_agent::claude::Claude,
+    calls: AtomicUsize,
+}
+impl Provider for Forwarder {
+    fn id(&self) -> &'static str {
+        persona_builder_agent::claude::AGENT_ID
+    }
+    fn name(&self) -> &'static str {
+        "Forwarder"
+    }
+    fn reach(&self) -> Reach {
+        Reach::OwnMachines
+    }
+    fn call(&self, session: &Session, sealed: &Sealed) -> Result<Reply> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Provider::call(&self.claude, session, sealed)
+    }
+}
+
+#[test]
+fn claude_rechecks_a_local_history_seal_forwarded_with_its_own_id() {
+    let stub = Stub::replying(&ok_reply(&json!({"labels": []})), 0);
+    let forwarder = Forwarder {
+        claude: stub.claude(),
+        calls: AtomicUsize::new(0),
+    };
+    let guard = Guard::new(vec![&forwarder], settings("claude-history", "local-only"));
+    assert_eq!(
+        guard.route(&[Source::ClaudeHistory]).unwrap().name(),
+        "Forwarder"
+    );
+    assert_eq!(
+        refused(&guard, &[Source::ClaudeHistory]),
+        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and Forwarder sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
+    );
+    assert_eq!(forwarder.calls.load(Ordering::SeqCst), 1);
+    assert!(!stub.ran());
+}

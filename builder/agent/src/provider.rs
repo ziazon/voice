@@ -1,5 +1,6 @@
 //! The tool-less interface for model providers.
-use crate::ledger::Session;
+use crate::{guard::Sealed, ledger::Session};
+use persona_builder::ceilings::Source;
 use persona_builder::error::Result;
 use serde_json::Value;
 
@@ -19,6 +20,7 @@ pub enum Reach {
 /// the model and the shape the reply must have. It has no tools field: no provider can be handed
 /// a tool.
 pub struct Brief<'a> {
+    pub sources: &'a [Source],
     pub step: &'a str,
     pub system: &'a str,
     pub prompt: &'a str,
@@ -51,6 +53,6 @@ pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
     /// Where it sends a brief.
     fn reach(&self) -> Reach;
-    /// One call.
-    fn call(&self, session: &Session, brief: &Brief) -> Result<Reply>;
+    /// One call. The provider re-checks the seal before it sends anything.
+    fn call(&self, session: &Session, sealed: &Sealed) -> Result<Reply>;
 }

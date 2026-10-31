@@ -12,7 +12,7 @@ use persona_builder::{
     error::{Error, Result},
     member::Member,
 };
-use persona_builder_agent::{ledger::Session, provider::Provider};
+use persona_builder_agent::{guard::Guard, ledger::Session};
 use persona_builder_build::{
     build::{Asker, batches},
     draft,
@@ -89,7 +89,7 @@ fn check_candidate(
 
 #[allow(clippy::too_many_arguments)]
 pub fn measure(
-    provider: &dyn Provider,
+    guard: &Guard,
     session: &Session,
     home: &Path,
     store: &Store,
@@ -152,8 +152,15 @@ pub fn measure(
         .iter()
         .map(|(id, _)| cases.get(id).expect("checked test"))
         .collect();
-    let mut asker =
-        Asker::new(provider, session, home, &member.slug, model).with_misfit(text::apply_misfit);
+    let mut asker = Asker::new(
+        guard,
+        persona_builder_build::build::SOURCES,
+        session,
+        home,
+        &member.slug,
+        model,
+    )
+    .with_misfit(text::apply_misfit);
     let mut answers = Vec::new();
     for (decisions, line) in [
         (&before, text::testing_now(tests.len())),

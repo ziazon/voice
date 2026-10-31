@@ -1153,3 +1153,36 @@ fn drafted_model_call_uses_the_apps_own_claude_profile() {
         expected.to_str().unwrap()
     );
 }
+
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and Claude, through your own Claude Code sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic";
+
+fn keep_folder_local(member: &std::path::Path) {
+    let path = member.join("member.json");
+    let mut settings: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    settings["ceilings"] = json!({"crew-folder": "local-only"});
+    fs::write(path, serde_json::to_vec(&settings).unwrap()).unwrap();
+}
+
+#[test]
+fn build_assistant_honors_the_members_local_folder_ceiling() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s);
+    keep_folder_local(&h.member());
+    safe(&h, h.build(&Builds::new(), &mut |_| {}), FOLDER_KEPT_HOME);
+    assert_eq!(h.calls(), 0);
+    assert!(!h.state("runs.jsonl").exists());
+}
+
+#[test]
+fn draft_interview_honors_the_members_local_folder_ceiling() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    interview_stub(&h);
+    keep_folder_local(&h.member());
+    safe(&h, h.draft(false), FOLDER_KEPT_HOME);
+    assert_eq!(h.calls(), 0);
+    assert!(!h.state("runs.jsonl").exists());
+}

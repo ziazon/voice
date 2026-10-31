@@ -136,6 +136,9 @@ fn validate_config(value: &Value, source: &str) -> Result<()> {
     let object = value
         .as_object()
         .ok_or_else(|| invalid(" must be a JSON object"))?;
+    if let Some(ceilings) = object.get("ceilings") {
+        crate::ceilings::validate(ceilings, source)?;
+    }
     if let Some(filters) = object.get("filters") {
         let filters = filters
             .as_object()
@@ -160,7 +163,7 @@ fn validate_config(value: &Value, source: &str) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn refuse_symlink(path: &Path) -> Result<()> {
+pub fn refuse_symlink(path: &Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_symlink() => Err(Error::Invalid(format!(
             "{}: symlink refused",
@@ -196,6 +199,11 @@ pub fn read_member(path: &Path) -> Result<Member> {
     refuse_symlink(&private)?;
     if private.is_file() {
         let extra = read_json(&private)?;
+        if extra.get("ceilings").is_some() {
+            return Err(Error::Invalid(
+                "member config: private.json: ceilings go in member.json, not private.json".into(),
+            ));
+        }
         validate_config(&extra, &private.display().to_string())?;
         let merged = config.as_object_mut().expect("validated object");
         for (key, value) in extra.as_object().expect("validated object") {

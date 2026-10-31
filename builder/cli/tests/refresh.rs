@@ -400,3 +400,59 @@ fn apply_help_explains_the_model_is_for_testing() {
     assert!(out.status.success());
     assert!(text(&out.stdout).contains("The Claude model to test with"));
 }
+
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and Claude, through your own Claude Code sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic";
+
+fn keep_folder_local(member: &std::path::Path) {
+    let path = member.join("member.json");
+    let mut settings: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    settings["ceilings"] = json!({"crew-folder": "local-only"});
+    fs::write(path, serde_json::to_vec(&settings).unwrap()).unwrap();
+}
+
+#[test]
+fn refresh_propose_honors_the_members_local_folder_ceiling() {
+    let python = python().expect("python3 is required for the stub claude");
+    let f = Fixture::new();
+    f.built(&python);
+    f.keep_answers();
+    keep_folder_local(&f.member);
+    let calls = f.calls();
+    let ledger = fs::read(f.state().join("runs.jsonl")).unwrap();
+    let out = f.run(&["refresh", "propose", &f.member()]);
+    assert!(!out.status.success());
+    assert_eq!(
+        text(&out.stderr),
+        format!("persona-builder: {FOLDER_KEPT_HOME}\n")
+    );
+    assert_eq!(f.calls(), calls);
+    assert_eq!(fs::read(f.state().join("runs.jsonl")).unwrap(), ledger);
+}
+
+#[test]
+fn refresh_apply_honors_the_members_local_folder_ceiling() {
+    let python = python().expect("python3 is required for the stub claude");
+    let f = Fixture::new();
+    f.built(&python);
+    f.keep_answers();
+    let out = f.run(&["refresh", "propose", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let proposals = f.records("prop-");
+    let id = proposals[0]["id"].as_str().unwrap();
+    let out = f.run(&["refresh", "approve", &f.member(), id]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let script = include_str!("../../grow/tests/fixtures/apply_stub.py");
+    f.write_stub(&format!("#!{} -I\n{script}", python.display()));
+    keep_folder_local(&f.member);
+    let calls = f.calls();
+    let ledger = fs::read(f.state().join("runs.jsonl")).unwrap();
+    let out = f.run(&["refresh", "apply", &f.member(), id]);
+    assert!(!out.status.success());
+    assert_eq!(
+        text(&out.stderr),
+        format!("persona-builder: {FOLDER_KEPT_HOME}\n")
+    );
+    assert_eq!(f.calls(), calls);
+    assert_eq!(fs::read(f.state().join("runs.jsonl")).unwrap(), ledger);
+}

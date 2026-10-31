@@ -1,5 +1,7 @@
 mod common;
 use common::*;
+use persona_builder::ceilings::Ceilings;
+use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     claude::Claude,
     ledger::{Cap, Session},
@@ -102,7 +104,10 @@ impl Setup {
     fn propose(&self) -> persona_builder::error::Result<Proposed> {
         let session = Session::open(&self.f.home, &self.f.member.slug, Cap::default()).unwrap();
         refresh::propose(
-            &Claude::at(self.stub.join("claude")),
+            &Guard::new(
+                vec![&Claude::at(self.stub.join("claude"))],
+                Ceilings::defaults(),
+            ),
             &session,
             &self.f.home,
             &self.store(),
