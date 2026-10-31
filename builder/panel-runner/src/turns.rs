@@ -193,12 +193,12 @@ fn ask(guard: &Guard, session: &Session, system: &str, prompt: &str) -> Turn {
                 cost_usd: reply.cost_usd,
             });
             match reply.output.get("post").and_then(serde_json::Value::as_str) {
-                Some(post) => Turn {
+                Some(post) if post.chars().count() <= 12000 => Turn {
                     post: Some(post.into()),
                     error: None,
                     usage,
                 },
-                None => Turn {
+                _ => Turn {
                     error: Some(crate::text::UNREADABLE.into()),
                     usage,
                     ..Turn::default()
@@ -253,7 +253,7 @@ mod tests {
         }
     }
 
-    struct Fake(Mutex<Vec<Vec<Source>>>);
+    struct Fake(Mutex<Vec<Vec<Source>>>, String);
     impl Provider for Fake {
         fn id(&self) -> &'static str {
             "fake"
@@ -272,9 +272,14 @@ mod tests {
             sealed.check(self.id(), self.reach())?;
             self.0.lock().unwrap().push(sealed.brief().sources.to_vec());
             Ok(Reply {
-                output: serde_json::json!({"post": "Try a small step."}),
-                usage: Usage::default(),
-                cost_usd: 0.0,
+                output: serde_json::json!({"post": self.1}),
+                usage: Usage {
+                    input_tokens: 7,
+                    output_tokens: 11,
+                    cache_creation_input_tokens: 2,
+                    cache_read_input_tokens: 3,
+                },
+                cost_usd: 0.25,
             })
         }
     }
@@ -294,7 +299,7 @@ mod tests {
         )));
         std::fs::create_dir(&home.0).unwrap();
         let session = Session::open(&home.0, "pebble", Cap::default()).unwrap();
-        let fake = Fake(Mutex::new(Vec::new()));
+        let fake = Fake(Mutex::new(Vec::new()), "Try a small step.".into());
         let guard = Guard::new(vec![&fake], Ceilings::defaults());
         let turn = ask(
             &guard,
@@ -308,5 +313,43 @@ mod tests {
             *fake.0.lock().unwrap(),
             vec![vec![Source::CrewFolder, Source::Typed]]
         );
+    }
+    #[test]
+    fn panel_post_length_is_enforced_in_characters_and_keeps_usage() {
+        let home = Scratch(std::env::temp_dir().join(format!(
+            "panel-post-length-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )));
+        std::fs::create_dir(&home.0).unwrap();
+        let session = Session::open(&home.0, "pebble", Cap::default()).unwrap();
+        for length in [12001, 12000] {
+            let post = "界".repeat(length);
+            let fake = Fake(Mutex::new(Vec::new()), post.clone());
+            let guard = Guard::new(vec![&fake], Ceilings::defaults());
+            let turn = ask(
+                &guard,
+                &session,
+                "Answer as Pebble.",
+                "Choose a small step.",
+            );
+            if length > 12000 {
+                assert!(turn.post.is_none(), "accepted a 12,001-character post");
+                assert_eq!(turn.error.as_deref(), Some(crate::text::UNREADABLE));
+            } else {
+                assert_eq!(turn.error, None);
+                assert_eq!(turn.post.as_deref(), Some(post.as_str()));
+            }
+            assert_eq!(
+                turn.usage,
+                Some(TurnUsage {
+                    input_tokens: 7,
+                    output_tokens: 11,
+                    cache_creation_input_tokens: 2,
+                    cache_read_input_tokens: 3,
+                    cost_usd: 0.25,
+                })
+            );
+        }
     }
 }

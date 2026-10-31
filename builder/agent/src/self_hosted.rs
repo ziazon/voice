@@ -60,16 +60,30 @@ pub fn own_network(ip: IpAddr) -> bool {
     }
 }
 
+/// Loopback addresses of this computer, including IPv4-mapped IPv6.
+pub fn this_computer(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => u32::from(ip) & 0xff00_0000 == 0x7f00_0000,
+        IpAddr::V6(ip) => {
+            let bits = u128::from(ip);
+            bits == 1
+                || (bits >> 32 == 0xffff && this_computer(IpAddr::V4(Ipv4Addr::from(bits as u32))))
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Server {
     url: String,
     model: String,
+    network: bool,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Saved {
     url: String,
     model: String,
+    network: bool,
 }
 
 fn invalid(message: &str) -> Error {
@@ -77,7 +91,7 @@ fn invalid(message: &str) -> Error {
 }
 
 impl Server {
-    pub fn new(url: &str, model: &str) -> Result<Server> {
+    pub fn new(url: &str, model: &str, network: bool) -> Result<Server> {
         let bad_url = || invalid(text::BAD_SERVER_URL);
         if url.len() > 255
             || !url.is_ascii()
@@ -134,8 +148,18 @@ impl Server {
         }) {
             return Err(bad_url());
         }
-        if ip.is_some_and(|ip| !own_network(ip)) {
-            return Err(invalid(text::SERVER_NOT_OWN));
+        if ip.is_some_and(|ip| {
+            !if network {
+                own_network(ip)
+            } else {
+                this_computer(ip)
+            }
+        }) {
+            return Err(invalid(if network {
+                text::SERVER_NOT_OWN
+            } else {
+                text::SERVER_NOT_THIS_COMPUTER
+            }));
         }
         if model.is_empty()
             || model.len() > 128
@@ -150,7 +174,11 @@ impl Server {
         Ok(Server {
             url: format!("{scheme}://{host}{port}"),
             model: model.into(),
+            network,
         })
+    }
+    pub fn network(&self) -> bool {
+        self.network
     }
     pub fn url(&self) -> &str {
         &self.url
@@ -166,7 +194,7 @@ impl Server {
             return Ok(None);
         };
         let saved: Saved = serde_json::from_slice(&bytes).map_err(|_| damaged())?;
-        Self::new(&saved.url, &saved.model)
+        Self::new(&saved.url, &saved.model, saved.network)
             .map(Some)
             .map_err(|_| damaged())
     }
@@ -175,6 +203,7 @@ impl Server {
         let bytes = serde_json::to_vec(&Saved {
             url: self.url.clone(),
             model: self.model.clone(),
+            network: self.network,
         })
         .expect("strings serialize");
         write_private(home, slug, FILE, &bytes)?;
@@ -195,7 +224,9 @@ impl std::fmt::Display for NotOwnNetwork {
 }
 impl std::error::Error for NotOwnNetwork {}
 #[derive(Debug)]
-struct OwnNetworkOnly;
+struct OwnNetworkOnly {
+    network: bool,
+}
 impl Resolver for OwnNetworkOnly {
     fn resolve(
         &self,
@@ -204,27 +235,46 @@ impl Resolver for OwnNetworkOnly {
         timeout: NextTimeout,
     ) -> std::result::Result<ResolvedSocketAddrs, ureq::Error> {
         let addresses = DefaultResolver::default().resolve(uri, config, timeout)?;
-        if addresses.iter().all(|address| own_network(address.ip())) {
+        if addresses.iter().all(|address| {
+            if self.network {
+                own_network(address.ip())
+            } else {
+                this_computer(address.ip())
+            }
+        }) {
             Ok(addresses)
         } else {
             Err(ureq::Error::Other(Box::new(NotOwnNetwork)))
         }
     }
 }
-fn agent(timeout: Duration) -> ureq::Agent {
+fn agent(timeout: Duration, network: bool) -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .max_redirects(0)
         .proxy(None)
         .timeout_global(Some(timeout))
+        .timeout_connect(Some(Duration::from_secs(10).min(timeout)))
         .user_agent(format!("persona-builder/{}", persona_builder::VERSION))
         .build();
-    ureq::Agent::with_parts(config, DefaultConnector::default(), OwnNetworkOnly)
+    ureq::Agent::with_parts(
+        config,
+        DefaultConnector::default(),
+        OwnNetworkOnly { network },
+    )
 }
-fn transport_error(error: ureq::Error, timeout: Duration) -> (&'static str, Error) {
+fn transport_error(error: ureq::Error, timeout: Duration, network: bool) -> (&'static str, Error) {
     match error {
-        ureq::Error::Other(ref inner) if inner.is::<NotOwnNetwork>() => {
-            ("refused", invalid(text::SERVER_NOT_OWN))
+        ureq::Error::Other(ref inner) if inner.is::<NotOwnNetwork>() => (
+            "refused",
+            invalid(if network {
+                text::SERVER_NOT_OWN
+            } else {
+                text::SERVER_NOT_THIS_COMPUTER
+            }),
+        ),
+        ureq::Error::Timeout(ureq::Timeout::Resolve | ureq::Timeout::Connect) => {
+            ("unreachable", invalid(text::SERVER_UNREACHABLE))
         }
         ureq::Error::Timeout(_) => (
             "cut-off",
@@ -244,8 +294,8 @@ pub struct SelfHosted {
 impl SelfHosted {
     pub fn new(server: Server) -> SelfHosted {
         Self {
+            agent: agent(DEFAULT_TIMEOUT, server.network),
             server,
-            agent: agent(DEFAULT_TIMEOUT),
             timeout: DEFAULT_TIMEOUT,
             stop: None,
         }
@@ -256,7 +306,7 @@ impl SelfHosted {
     pub fn with_timeout(self, timeout: Duration) -> SelfHosted {
         Self {
             timeout,
-            agent: agent(timeout),
+            agent: agent(timeout, self.server.network),
             ..self
         }
     }
@@ -272,10 +322,10 @@ impl SelfHosted {
     /// The server answers and lists the model, within 30 seconds at most.
     pub fn check(&self) -> Result<()> {
         let timeout = CHECK_TIMEOUT.min(self.timeout);
-        let mut response = agent(timeout)
+        let mut response = agent(timeout, self.server.network)
             .get(format!("{}/v1/models", self.server.url))
             .call()
-            .map_err(|e| transport_error(e, timeout).1)?;
+            .map_err(|e| transport_error(e, timeout, self.server.network).1)?;
         if response.status() != 200 {
             return Err(invalid(text::SERVER_FAILED));
         }
@@ -288,7 +338,7 @@ impl SelfHosted {
                 if matches!(error, ureq::Error::BodyExceedsLimit(_)) {
                     invalid(text::SERVER_FAILED)
                 } else {
-                    transport_error(error, timeout).1
+                    transport_error(error, timeout, self.server.network).1
                 }
             })?;
         let body: Value =
@@ -328,13 +378,13 @@ impl SelfHosted {
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .send(body.to_string())
-            .map_err(|e| transport_error(e, self.timeout))?;
+            .map_err(|e| transport_error(e, self.timeout, self.server.network))?;
         let bytes = response
             .body_mut()
             .with_config()
             .limit(BODY_CAP)
             .read_to_vec()
-            .map_err(|e| transport_error(e, self.timeout))?;
+            .map_err(|e| transport_error(e, self.timeout, self.server.network))?;
         if response.status() != 200 {
             return Err(("error", invalid(text::SERVER_FAILED)));
         }
@@ -433,10 +483,56 @@ mod tests {
     use ureq::unversioned::transport::time::Duration as UreqDuration;
 
     #[test]
+    fn this_computer_accepts_only_loopback() {
+        for ip in ["127.0.0.1", "127.255.0.1", "::1", "::ffff:127.0.0.1"] {
+            assert!(this_computer(ip.parse().unwrap()), "{ip}");
+        }
+        for ip in [
+            "10.0.0.1",
+            "192.168.1.10",
+            "169.254.1.1",
+            "fd00::1",
+            "fe80::1",
+            "::ffff:192.168.1.10",
+            "8.8.8.8",
+            "::",
+            "::127.0.0.1",
+            "0.0.0.0",
+        ] {
+            assert!(!this_computer(ip.parse().unwrap()), "{ip}");
+        }
+    }
+
+    #[test]
+    fn resolver_honours_network_opt_in() {
+        let config = agent(DEFAULT_TIMEOUT, false);
+        for (network, url, allowed) in [
+            (false, "http://10.0.0.1:9/", false),
+            (false, "http://127.0.0.1:9/", true),
+            (true, "http://10.0.0.1:9/", true),
+        ] {
+            let result = OwnNetworkOnly { network }.resolve(
+                &url.parse().unwrap(),
+                config.config(),
+                NextTimeout {
+                    after: UreqDuration::NotHappening,
+                    reason: ureq::Timeout::Global,
+                },
+            );
+            assert_eq!(result.is_ok(), allowed, "{url}, network={network}");
+            if !allowed {
+                assert!(
+                    matches!(result, Err(ureq::Error::Other(ref e)) if e.is::<NotOwnNetwork>())
+                );
+            }
+        }
+    }
+
+    #[test]
     fn resolver_returns_only_own_addresses_and_preserves_its_error_type() {
-        let config = agent(DEFAULT_TIMEOUT);
+        let config = agent(DEFAULT_TIMEOUT, false);
         for (url, allowed) in [("http://127.0.0.1:9/", true), ("http://8.8.8.8:9/", false)] {
-            let result = OwnNetworkOnly.resolve(
+            let result = OwnNetworkOnly { network: true }.resolve(
                 &url.parse().unwrap(),
                 config.config(),
                 NextTimeout {
@@ -463,11 +559,43 @@ mod tests {
     }
 
     #[test]
+    fn connection_timeouts_are_unreachable_and_other_timeouts_are_cut_off() {
+        for reason in [ureq::Timeout::Resolve, ureq::Timeout::Connect] {
+            let (outcome, error) =
+                transport_error(ureq::Error::Timeout(reason), Duration::from_secs(61), false);
+            assert_eq!(outcome, "unreachable", "{reason:?}");
+            assert_eq!(error.to_string(), text::SERVER_UNREACHABLE);
+        }
+        for reason in [
+            ureq::Timeout::Global,
+            ureq::Timeout::PerCall,
+            ureq::Timeout::SendRequest,
+            ureq::Timeout::Await100,
+            ureq::Timeout::SendBody,
+            ureq::Timeout::RecvResponse,
+            ureq::Timeout::RecvBody,
+        ] {
+            let (outcome, error) =
+                transport_error(ureq::Error::Timeout(reason), Duration::from_secs(61), false);
+            assert_eq!(outcome, "cut-off", "{reason:?}");
+            assert_eq!(error.to_string(), text::server_cut_off(2));
+        }
+    }
+
+    #[test]
     fn agent_disables_proxies_including_after_timeout_changes() {
-        let server = SelfHosted::new(Server::new("http://localhost", "qwen").unwrap());
+        let server = SelfHosted::new(Server::new("http://localhost", "qwen", false).unwrap());
         assert!(server.agent.config().proxy().is_none());
+        assert_eq!(
+            server.agent.config().timeouts().connect,
+            Some(Duration::from_secs(10))
+        );
         let server = server.with_timeout(Duration::from_secs(1));
         assert!(server.agent.config().proxy().is_none());
+        assert_eq!(
+            server.agent.config().timeouts().connect,
+            Some(Duration::from_secs(1))
+        );
     }
 
     #[test]
@@ -480,6 +608,7 @@ mod tests {
         let server = SelfHosted::new(Server {
             url: "http://8.8.8.8:9".into(),
             model: "qwen".into(),
+            network: true,
         });
         let session = Session::open(&home, "wren", Cap::default()).unwrap();
         let schema = json!({"type":"object"});

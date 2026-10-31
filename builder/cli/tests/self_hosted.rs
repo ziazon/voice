@@ -78,7 +78,7 @@ fn show_and_off_use_the_saved_server_without_network_calls() {
     assert_eq!(shown.stdout, format!("{}\n", text::NO_SERVER).as_bytes());
     assert!(!f.state_home().exists());
     f.state();
-    let server = Server::new("http://Model-Box.local:11434/", "qwen3:8b").unwrap();
+    let server = Server::new("http://Model-Box.local:11434/", "qwen3:8b", false).unwrap();
     {
         let _lock =
             persona_builder_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
@@ -107,7 +107,13 @@ fn set_refuses_a_public_literal_without_saving_anything() {
     let f = Fixture::new();
     let output = f.run(
         "set",
-        &["--url", "http://8.8.8.8:80", "--model", "qwen3:8b"],
+        &[
+            "--url",
+            "http://8.8.8.8:80",
+            "--model",
+            "qwen3:8b",
+            "--network",
+        ],
     );
     assert!(!output.status.success());
     assert_eq!(
@@ -174,38 +180,40 @@ fn model_server(model: &str) -> (String, std::thread::JoinHandle<()>) {
 
 #[test]
 fn listener_set_saves_private_normalised_settings_and_show_off_round_trip() {
-    let f = Fixture::new();
-    f.state();
-    let (url, worker) = model_server("qwen3:8b");
-    let output = f.run(
-        "set",
-        &[
-            "--url",
-            &format!("{}/", url.to_uppercase().replacen("HTTP://", "http://", 1)),
-            "--model",
-            "qwen3:8b",
-        ],
-    );
-    worker.join().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let server = Server::new(&url, "qwen3:8b").unwrap();
-    assert_eq!(
-        output.stdout,
-        format!("{}\n", text::server(&server)).as_bytes()
-    );
-    assert_eq!(
-        fs::metadata(f.settings()).unwrap().permissions().mode() & 0o777,
-        0o600
-    );
-    let saved: Value = serde_json::from_slice(&fs::read(f.settings()).unwrap()).unwrap();
-    assert_eq!(saved, json!({"url":url,"model":"qwen3:8b"}));
-    assert_eq!(f.run("show", &[]).stdout, output.stdout);
-    assert!(f.run("off", &[]).status.success());
-    assert!(!f.settings().exists());
+    for network in [false, true] {
+        let f = Fixture::new();
+        f.state();
+        let (url, worker) = model_server("qwen3:8b");
+        let normalised_input = format!("{}/", url.to_uppercase().replacen("HTTP://", "http://", 1));
+        let mut args = vec!["--url", &normalised_input, "--model", "qwen3:8b"];
+        if network {
+            args.push("--network");
+        }
+        let output = f.run("set", &args);
+        worker.join().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let server = Server::new(&url, "qwen3:8b", network).unwrap();
+        assert_eq!(
+            output.stdout,
+            format!("{}\n", text::server(&server)).as_bytes()
+        );
+        assert_eq!(
+            fs::metadata(f.settings()).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let saved: Value = serde_json::from_slice(&fs::read(f.settings()).unwrap()).unwrap();
+        assert_eq!(
+            saved,
+            json!({"url":url,"model":"qwen3:8b","network":network})
+        );
+        assert_eq!(f.run("show", &[]).stdout, output.stdout);
+        assert!(f.run("off", &[]).status.success());
+        assert!(!f.settings().exists());
+    }
 }
 
 #[test]
@@ -221,4 +229,56 @@ fn listener_set_does_not_save_a_model_the_server_does_not_list() {
         format!("persona-builder: {}\n", text::no_model("qwen3:8b")).as_bytes()
     );
     assert!(!f.settings().exists());
+}
+
+#[test]
+fn set_requires_network_opt_in_for_private_literals() {
+    let f = Fixture::new();
+    let output = f.run(
+        "set",
+        &["--url", "http://192.168.1.20:1", "--model", "qwen"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "persona-builder: Nothing was sent. Your model server's address isn't this computer, and you haven't said to use your network. To use another computer on your own network, set it up again with --network.\n"
+    );
+    assert!(!f.settings().exists());
+    assert!(!f.state_home().exists());
+}
+
+#[test]
+fn show_prints_exact_computer_scope() {
+    let f = Fixture::new();
+    f.state();
+    let _lock =
+        persona_builder_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
+    Server::new("http://localhost:1234", "qwen", false)
+        .unwrap()
+        .save(&f.state_home(), "ari")
+        .unwrap();
+    let output = f.run("show", &[]);
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Model server: http://localhost:1234, model qwen, on this computer. Steps with data you keep on your own machines go to it, and before each step Persona Builder checks the address still leads to this computer.\n"
+    );
+}
+
+#[test]
+fn show_prints_exact_network_scope() {
+    let f = Fixture::new();
+    f.state();
+    let _lock =
+        persona_builder_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
+    Server::new("http://localhost:1234", "qwen", true)
+        .unwrap()
+        .save(&f.state_home(), "ari")
+        .unwrap();
+    let output = f.run("show", &[]);
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Model server: http://localhost:1234, model qwen, on your network. Steps with data you keep on your own machines go to it. Before each step Persona Builder checks the address is on a private network, but it can't tell your network from someone else's: on other Wi-Fi, a stranger's computer could answer at the same address. Before you use other Wi-Fi, turn it off with persona-builder self-hosted off.\n"
+    );
 }

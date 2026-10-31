@@ -126,6 +126,7 @@ pub fn kept_home(
 }
 
 pub const SERVER_UNREACHABLE: &str = "Persona Builder couldn't reach your model server. Check it's running and that its address is right (`persona-builder self-hosted show`), then try again.";
+pub const SERVER_NOT_THIS_COMPUTER: &str = "Nothing was sent. Your model server's address isn't this computer, and you haven't said to use your network. To use another computer on your own network, set it up again with --network.";
 pub const SERVER_NOT_OWN: &str = "Nothing was sent. Your model server's address leads outside this computer and your own network, so Persona Builder won't use it. Give it the address of a computer on your own network.";
 pub const SERVER_FAILED: &str = "Your model server couldn't finish this step. Check it answers you and has the model loaded, then try again.";
 pub const SERVER_STOPPED: &str =
@@ -137,9 +138,10 @@ pub const NO_SERVER: &str = "No model server is set up for this assistant, so a 
 pub const SELF_HOSTED_HINT: &str = "To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`.";
 /// Every fixed sentence a model-server call can fail with, for callers that pass only known
 /// sentences on to a person.
-pub const SERVER_MESSAGES: [&str; 4] = [
+pub const SERVER_MESSAGES: [&str; 5] = [
     SERVER_UNREACHABLE,
     SERVER_NOT_OWN,
+    SERVER_NOT_THIS_COMPUTER,
     SERVER_FAILED,
     SERVER_STOPPED,
 ];
@@ -162,9 +164,17 @@ pub fn no_model(model: &str) -> String {
     )
 }
 pub fn server(server: &crate::self_hosted::Server) -> String {
-    format!(
-        "Model server: {}, model {}. Steps with data you keep on your own machines go to it. Before each step Persona Builder checks the address still leads to this computer or your own network.",
-        server.url(),
-        server.model()
-    )
+    if server.network() {
+        format!(
+            "Model server: {}, model {}, on your network. Steps with data you keep on your own machines go to it. Before each step Persona Builder checks the address is on a private network, but it can't tell your network from someone else's: on other Wi-Fi, a stranger's computer could answer at the same address. Before you use other Wi-Fi, turn it off with persona-builder self-hosted off.",
+            server.url(),
+            server.model()
+        )
+    } else {
+        format!(
+            "Model server: {}, model {}, on this computer. Steps with data you keep on your own machines go to it, and before each step Persona Builder checks the address still leads to this computer.",
+            server.url(),
+            server.model()
+        )
+    }
 }

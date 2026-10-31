@@ -441,6 +441,9 @@ enum SelfHostedCommand {
         url: String,
         #[arg(long)]
         model: String,
+        /// Allow a computer on your own network, not only this one
+        #[arg(long)]
+        network: bool,
     },
     /// Stop using a model server
     Off { member_dir: PathBuf },
@@ -469,8 +472,13 @@ fn self_hosted(command: SelfHostedCommand) -> Result<()> {
             Some(server) => println!("{}", text::server(&server)),
             None => println!("{}", text::NO_SERVER),
         },
-        SelfHostedCommand::Set { url, model, .. } => {
-            let provider = SelfHosted::new(Server::new(&url, &model)?);
+        SelfHostedCommand::Set {
+            url,
+            model,
+            network,
+            ..
+        } => {
+            let provider = SelfHosted::new(Server::new(&url, &model, network)?);
             provider.check()?;
             let _lock = lock()?;
             provider.server().save(&home, &member.slug)?;

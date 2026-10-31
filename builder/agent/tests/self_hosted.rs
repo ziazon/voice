@@ -76,7 +76,7 @@ fn server_validates_and_normalises_addresses_and_models() {
             "http://model-box.local:11434",
         ),
     ] {
-        assert_eq!(Server::new(url, "qwen3:8b").unwrap().url(), saved);
+        assert_eq!(Server::new(url, "qwen3:8b", false).unwrap().url(), saved);
     }
     for url in [
         "ftp://127.0.0.1",
@@ -102,7 +102,7 @@ fn server_validates_and_normalises_addresses_and_models() {
         "http://mödél.lan",
     ] {
         assert_eq!(
-            Server::new(url, "qwen3:8b").unwrap_err().to_string(),
+            Server::new(url, "qwen3:8b", false).unwrap_err().to_string(),
             text::BAD_SERVER_URL,
             "{url:?}"
         );
@@ -110,12 +110,12 @@ fn server_validates_and_normalises_addresses_and_models() {
     let long = format!("http://{}", "a".repeat(249));
     assert_eq!(long.len(), 256);
     assert_eq!(
-        Server::new(&long, "qwen").unwrap_err().to_string(),
+        Server::new(&long, "qwen", false).unwrap_err().to_string(),
         text::BAD_SERVER_URL
     );
     for url in ["http://8.8.8.8:80", "http://[2001:db8::1]:80"] {
         assert_eq!(
-            Server::new(url, "qwen").unwrap_err().to_string(),
+            Server::new(url, "qwen", true).unwrap_err().to_string(),
             text::SERVER_NOT_OWN
         );
     }
@@ -125,13 +125,15 @@ fn server_validates_and_normalises_addresses_and_models() {
         "lmstudio-community/gemma-3-12b@q4_k_m",
     ] {
         assert_eq!(
-            Server::new("http://localhost", model).unwrap().model(),
+            Server::new("http://localhost", model, false)
+                .unwrap()
+                .model(),
             model
         );
     }
     for model in ["", " qwen", "a b", ".hidden", &"a".repeat(129)] {
         assert_eq!(
-            Server::new("http://localhost", model)
+            Server::new("http://localhost", model, false)
                 .unwrap_err()
                 .to_string(),
             text::BAD_SERVER_MODEL
@@ -148,7 +150,7 @@ fn saved_server_round_trips_privately_without_creating_missing_state() {
     let _session = session(&home.0);
     assert_eq!(Server::load(&home.0, "wren").unwrap(), None);
     assert!(!Server::remove(&home.0, "wren").unwrap());
-    let server = Server::new("http://Model-Box.local:11434/", "qwen3:8b").unwrap();
+    let server = Server::new("http://Model-Box.local:11434/", "qwen3:8b", false).unwrap();
     server.save(&home.0, "wren").unwrap();
     assert_eq!(Server::load(&home.0, "wren").unwrap(), Some(server.clone()));
     assert_eq!(
@@ -173,9 +175,9 @@ fn damaged_server_settings_name_the_file() {
     let _session = session(&home.0);
     let path = state(&home.0).join(FILE);
     for raw in [
-        r#"{"url":"http://localhost","model":"qwen","extra":1}"#,
+        r#"{"url":"http://localhost","model":"qwen","network":false,"extra":1}"#,
         "not json",
-        r#"{"url":"http://8.8.8.8","model":"qwen"}"#,
+        r#"{"url":"http://8.8.8.8","model":"qwen","network":true}"#,
     ] {
         persona_builder_ingest::private::write_private(&home.0, "wren", FILE, raw.as_bytes())
             .unwrap();
@@ -188,7 +190,7 @@ fn damaged_server_settings_name_the_file() {
 
 #[test]
 fn provider_reports_the_server_model_and_claude_keeps_the_asked_model() {
-    let server = SelfHosted::new(Server::new("http://localhost", "qwen3:8b").unwrap());
+    let server = SelfHosted::new(Server::new("http://localhost", "qwen3:8b", false).unwrap());
     assert_eq!(server.id(), "self-hosted");
     assert_eq!(server.name(), "A model server on your own machines");
     assert_eq!(server.reach(), Reach::OwnMachines);
@@ -292,7 +294,7 @@ impl HttpServer {
         Self::new(200, String::new(), String::new(), false)
     }
     fn provider(&self) -> SelfHosted {
-        SelfHosted::new(Server::new(&self.url, "qwen3:8b").unwrap())
+        SelfHosted::new(Server::new(&self.url, "qwen3:8b", false).unwrap())
     }
     fn request(&self) -> Request {
         self.requests.recv_timeout(Duration::from_secs(3)).unwrap()
@@ -457,7 +459,7 @@ fn listener_closed_port_and_timeout_have_plain_errors_and_ledger_lines() {
     let url = format!("http://{}", listener.local_addr().unwrap());
     drop(listener);
     failure(
-        &SelfHosted::new(Server::new(&url, "qwen").unwrap()),
+        &SelfHosted::new(Server::new(&url, "qwen", false).unwrap()),
         text::SERVER_UNREACHABLE,
         "unreachable",
     );
@@ -551,4 +553,64 @@ fn listener_provider_order_routes_mail_home_and_history_to_claude() {
         .unwrap();
     assert!(error.to_string().starts_with("Nothing was sent."));
     assert!(error.to_string().ends_with(text::SELF_HOSTED_HINT));
+}
+
+#[test]
+fn private_literal_requires_network_opt_in() {
+    let result = Server::new("http://192.168.1.20:11434", "qwen", false);
+    assert!(
+        Server::new("http://192.168.1.20:11434", "qwen", true)
+            .unwrap()
+            .network()
+    );
+    assert!(
+        !Server::new("http://localhost:1234", "qwen", false)
+            .unwrap()
+            .network()
+    );
+    assert!(
+        result.is_err(),
+        "private address accepted without network consent"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "Nothing was sent. Your model server's address isn't this computer, and you haven't said to use your network. To use another computer on your own network, set it up again with --network."
+    );
+}
+
+#[test]
+fn saved_settings_without_network_are_damaged() {
+    let home = Scratch::new("missing-network");
+    let _session = session(&home.0);
+    persona_builder_ingest::private::write_private(
+        &home.0,
+        "wren",
+        FILE,
+        br#"{"url":"http://localhost","model":"qwen"}"#,
+    )
+    .unwrap();
+    let result = Server::load(&home.0, "wren");
+    assert!(
+        result.is_err(),
+        "settings without network consent were loaded"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        text::server_damaged(&state(&home.0).join(FILE))
+    );
+}
+
+#[test]
+fn saved_server_round_trips_both_network_scopes() {
+    let home = Scratch::new("network-round-trip");
+    let _session = session(&home.0);
+    for network in [true, false] {
+        let server = Server::new("http://localhost:1234", "qwen", network).unwrap();
+        assert_eq!(server.network(), network);
+        server.save(&home.0, "wren").unwrap();
+        let saved: Value =
+            serde_json::from_slice(&fs::read(state(&home.0).join(FILE)).unwrap()).unwrap();
+        assert_eq!(saved["network"], json!(network));
+        assert_eq!(Server::load(&home.0, "wren").unwrap(), Some(server));
+    }
 }
