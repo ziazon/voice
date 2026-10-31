@@ -139,6 +139,11 @@ fn malformed_entries_are_refused_with_the_sentence() {
         "~/./x".into(),
         "x".repeat(256),
         "bad\nname".into(),
+        "/".into(),
+        "~/".into(),
+        "~".into(),
+        "~//Private".into(),
+        "café*".into(),
     ] {
         let error = match DenyList::new(&home.0, std::slice::from_ref(&entry)) {
             Ok(_) => panic!("accepted {entry:?}"),
@@ -148,7 +153,7 @@ fn malformed_entries_are_refused_with_the_sentence() {
         assert_eq!(
             error.to_string(),
             format!(
-                "member config: filters.denied_paths: {entry:?} isn't a name or a path Persona Builder can use. Write a name like diary*, or a path starting with ~/ or /, with no . or .. parts, at most 255 characters."
+                "member config: filters.denied_paths: {entry:?} isn't a name or a path Persona Builder can use. Write a name like diary*, or a path starting with ~/ or / below a folder, in plain letters (use * for an accented letter), with no . or .. parts, at most 255 characters."
             )
         );
     }

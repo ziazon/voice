@@ -47,7 +47,8 @@ fn kind(value: &str) -> std::result::Result<String, String> {
     }
 }
 fn read(path: &std::path::Path) -> Result<String> {
-    persona_builder::deny::DenyList::builtin().check(path)?;
+    let home = crate::home()?;
+    persona_builder::deny::DenyList::new(&home, &[])?.check(path)?;
     persona_builder_build::draft::read_text(path, 8 * 1024 * 1024)
         .map_err(|_| Error::Invalid(persona_builder_api::panels::text::READ_INPUT.into()))?
         .ok_or_else(|| Error::Invalid(persona_builder_api::panels::text::READ_INPUT.into()))

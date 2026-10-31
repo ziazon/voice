@@ -29,7 +29,7 @@ const SEQUENCES: &[&[&str]] = &[
 pub const TOO_MANY: &str = "member config: filters.denied_paths holds more than 200 entries.";
 pub fn bad_entry(entry: &str) -> String {
     format!(
-        "member config: filters.denied_paths: {entry:?} isn't a name or a path Persona Builder can use. Write a name like diary*, or a path starting with ~/ or /, with no . or .. parts, at most 255 characters."
+        "member config: filters.denied_paths: {entry:?} isn't a name or a path Persona Builder can use. Write a name like diary*, or a path starting with ~/ or / below a folder, in plain letters (use * for an accented letter), with no . or .. parts, at most 255 characters."
     )
 }
 pub fn refusal(shown: &str) -> String {
@@ -62,6 +62,9 @@ impl DenyList {
         };
         for entry in extra {
             if entry.trim().is_empty()
+                || !entry.is_ascii()
+                || matches!(entry.as_str(), "/" | "~/" | "~")
+                || entry.contains("//")
                 || entry.len() > 255
                 || entry.chars().any(char::is_control)
                 || entry.split('/').any(|part| matches!(part, "." | ".."))

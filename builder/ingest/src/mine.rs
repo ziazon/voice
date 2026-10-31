@@ -95,8 +95,9 @@ fn project_folders(projects: &Path) -> Result<Vec<PathBuf>> {
     folders.sort_by_key(|p| name(p).expect("validated folder name"));
     Ok(folders)
 }
-fn session_files(folder: &Path, deny: &DenyList) -> Result<Vec<PathBuf>> {
+fn session_files(folder: &Path, deny: &DenyList) -> Result<(Vec<PathBuf>, usize)> {
     let mut files = vec![];
+    let mut denied = 0;
     for entry in io(folder, fs::read_dir(folder))? {
         let entry = io(folder, entry)?;
         let p = entry.path();
@@ -104,7 +105,7 @@ fn session_files(folder: &Path, deny: &DenyList) -> Result<Vec<PathBuf>> {
             continue;
         }
         if deny.denied(&p) {
-            files.push(p);
+            denied += 1;
             continue;
         }
         name(&p)?;
@@ -118,7 +119,7 @@ fn session_files(folder: &Path, deny: &DenyList) -> Result<Vec<PathBuf>> {
         files.push(p)
     }
     files.sort_by_key(|p| p.file_name().map(|name| name.to_owned()));
-    Ok(files)
+    Ok((files, denied))
 }
 fn open_session(path: &Path) -> Result<File> {
     let file = OpenOptions::new()
@@ -608,13 +609,7 @@ pub fn mine_with_progress(
     progress(0, total);
     for (index, folder) in folders.into_iter().enumerate() {
         if deny.denied(&folder) {
-            // Count names only; never open the sessions in a denied project.
-            for entry in io(&folder, fs::read_dir(&folder))? {
-                let entry = io(&folder, entry)?;
-                if entry.file_name().as_encoded_bytes().ends_with(b".jsonl") {
-                    mined.denied += 1;
-                }
-            }
+            mined.excluded += 1;
             progress(index + 1, total);
             continue;
         }
@@ -625,11 +620,9 @@ pub fn mine_with_progress(
             continue;
         }
         let project = project_name(&folder_name, home);
-        for path in session_files(&folder, &deny)? {
-            if deny.denied(&path) {
-                mined.denied += 1;
-                continue;
-            }
+        let (files, denied) = session_files(&folder, &deny)?;
+        mined.denied += denied;
+        for path in files {
             let session = path
                 .file_stem()
                 .and_then(|n| n.to_str())
@@ -765,7 +758,7 @@ pub fn folders(
         let folder = name(&p)?;
         rows.push(FolderRow {
             excluded: filters.excluded(&folder),
-            sessions: session_files(&p, deny)?.len(),
+            sessions: session_files(&p, deny)?.0.len(),
             project: project_name(&folder, home),
             folder,
         })

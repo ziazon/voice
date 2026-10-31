@@ -71,3 +71,27 @@ fn shingle_refuses_document_under_ssh() {
         "~/.ssh/draft.md",
     );
 }
+
+#[test]
+fn panel_convene_refuses_question_under_ssh_with_home_shorthand() {
+    let home = Scratch::new("deny-cli-panel-question");
+    fs::create_dir(home.0.join(".ssh")).unwrap();
+    let path = home.0.join(".ssh/question.md");
+    fs::write(&path, "canary").unwrap();
+    refused(
+        run(
+            &home,
+            &[
+                "panel",
+                "convene",
+                "--question-file",
+                path.to_str().unwrap(),
+                "--kind",
+                "text",
+                "--seat",
+                "pebble",
+            ],
+        ),
+        "~/.ssh/question.md",
+    );
+}
