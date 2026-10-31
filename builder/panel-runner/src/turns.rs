@@ -1,8 +1,9 @@
 //! The model-call seam and the person's own Claude Code.
 use persona_builder::error::Error;
 use persona_builder_agent::{
-    claude::{self, Call, Claude},
+    claude::{self, Claude},
     ledger::{Cap, Session},
+    provider::{Brief, Provider},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
@@ -115,42 +116,46 @@ impl Turns for ClaudeTurns {
                 ..Turn::default()
             };
         };
-        let schema = serde_json::json!({"type":"object","properties":{"post":{"type":"string","minLength":1,"maxLength":12000}},"required":["post"],"additionalProperties":false});
-        match self.claude.call(
-            session,
-            &Call {
-                step: "panel-turn",
-                system,
-                prompt,
-                model: claude::DEFAULT_MODEL,
-                schema: &schema,
-            },
-        ) {
-            Ok(reply) => {
-                let usage = Some(TurnUsage {
-                    input_tokens: reply.usage.input_tokens,
-                    output_tokens: reply.usage.output_tokens,
-                    cache_creation_input_tokens: reply.usage.cache_creation_input_tokens,
-                    cache_read_input_tokens: reply.usage.cache_read_input_tokens,
-                    cost_usd: reply.cost_usd,
-                });
-                match reply.output.get("post").and_then(serde_json::Value::as_str) {
-                    Some(post) => Turn {
-                        post: Some(post.into()),
-                        error: None,
-                        usage,
-                    },
-                    None => Turn {
-                        error: Some(crate::text::UNREADABLE.into()),
-                        usage,
-                        ..Turn::default()
-                    },
-                }
+        ask(&self.claude, session, system, prompt)
+    }
+}
+
+fn ask(provider: &dyn Provider, session: &Session, system: &str, prompt: &str) -> Turn {
+    let schema = serde_json::json!({"type":"object","properties":{"post":{"type":"string","minLength":1,"maxLength":12000}},"required":["post"],"additionalProperties":false});
+    match provider.call(
+        session,
+        &Brief {
+            step: "panel-turn",
+            system,
+            prompt,
+            model: claude::DEFAULT_MODEL,
+            schema: &schema,
+        },
+    ) {
+        Ok(reply) => {
+            let usage = Some(TurnUsage {
+                input_tokens: reply.usage.input_tokens,
+                output_tokens: reply.usage.output_tokens,
+                cache_creation_input_tokens: reply.usage.cache_creation_input_tokens,
+                cache_read_input_tokens: reply.usage.cache_read_input_tokens,
+                cost_usd: reply.cost_usd,
+            });
+            match reply.output.get("post").and_then(serde_json::Value::as_str) {
+                Some(post) => Turn {
+                    post: Some(post.into()),
+                    error: None,
+                    usage,
+                },
+                None => Turn {
+                    error: Some(crate::text::UNREADABLE.into()),
+                    usage,
+                    ..Turn::default()
+                },
             }
-            Err(error) => Turn {
-                error: Some(turn_error(error)),
-                ..Turn::default()
-            },
         }
+        Err(error) => Turn {
+            error: Some(turn_error(error)),
+            ..Turn::default()
+        },
     }
 }

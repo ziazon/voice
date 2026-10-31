@@ -2,8 +2,9 @@ mod common;
 
 use common::*;
 use persona_builder_agent::{
-    claude::{Call, MAX_PROMPT, Usage},
+    claude::MAX_PROMPT,
     ledger::local_day,
+    provider::{Brief, Provider, Usage},
     text,
 };
 use serde_json::{Value, json};
@@ -277,7 +278,7 @@ fn a_call_past_its_time_is_cut_off_with_everything_it_started() {
     assert!(!alive.success(), "the stub's child {pid} outlived the call");
 }
 
-fn refused(home: &Scratch, stub: &Stub, call: &Call) -> String {
+fn refused(home: &Scratch, stub: &Stub, call: &Brief) -> String {
     let session = common::session(&home.0);
     let error = stub.claude().call(&session, call).unwrap_err().to_string();
     assert!(!stub.ran(), "the stub ran for a refused call");
@@ -292,48 +293,48 @@ fn bad_calls_are_refused_before_anything_runs() {
     let big = "x".repeat(MAX_PROMPT + 1);
     let not_object = json!(["labels"]);
     let base = call("records", &schema);
-    let cases: Vec<Call> = vec![
-        Call {
+    let cases: Vec<Brief> = vec![
+        Brief {
             step: "",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             step: "Label",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             step: "label step",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             model: "",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             model: "Sonnet",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             model: "sonnet --tools default",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             model: "-sonnet",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             prompt: "  \n",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             prompt: &big,
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             system: " ",
             ..call("records", &schema)
         },
-        Call {
+        Brief {
             schema: &not_object,
             ..call("records", &schema)
         },

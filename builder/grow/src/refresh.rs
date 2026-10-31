@@ -12,7 +12,7 @@ use persona_builder::{
     error::{Error, Result},
     member::Member,
 };
-use persona_builder_agent::{claude::Claude, ledger::Session};
+use persona_builder_agent::{ledger::Session, provider::Provider};
 use persona_builder_build::{
     build::{Asker, Misfit, SHINGLE},
     draft::read_text,
@@ -283,7 +283,7 @@ fn pending(store: &Store, base: &str) -> Result<Option<(Proposal, bool)>> {
 
 #[allow(clippy::too_many_arguments)]
 pub fn propose(
-    claude: &Claude,
+    provider: &dyn Provider,
     session: &Session,
     home: &Path,
     store: &Store,
@@ -333,7 +333,7 @@ pub fn propose(
     let categories = book(member)?.categories;
     let prompt = refresh_prompt(&categories, &before, &cases, &signals, &rejected);
     let mut asker =
-        Asker::new(claude, session, home, &member.slug, model).with_misfit(text::refresh_misfit);
+        Asker::new(provider, session, home, &member.slug, model).with_misfit(text::refresh_misfit);
     let ((summary, edits), _) = asker.ask(
         "refresh",
         REFRESH_SYSTEM,

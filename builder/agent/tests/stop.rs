@@ -1,5 +1,6 @@
 mod common;
 use common::*;
+use persona_builder_agent::provider::Provider;
 use std::{
     sync::{
         Arc,

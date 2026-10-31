@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
 use persona_builder_agent::{
-    claude::{Call, Claude},
+    claude::Claude,
     ledger::{Cap, Clock, Session},
+    provider::Brief,
 };
 use serde_json::{Value, json};
 use std::{
@@ -135,8 +136,8 @@ pub fn schema() -> Value {
     json!({"type": "object", "properties": {"labels": {"type": "array"}}, "required": ["labels"]})
 }
 
-pub fn call<'a>(prompt: &'a str, schema: &'a Value) -> Call<'a> {
-    Call {
+pub fn call<'a>(prompt: &'a str, schema: &'a Value) -> Brief<'a> {
+    Brief {
         step: "label",
         system: "Label each record.",
         prompt,

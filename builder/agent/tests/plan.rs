@@ -2,8 +2,8 @@ mod common;
 
 use common::*;
 use persona_builder_agent::{
-    claude::Usage,
     ledger::{Cap, Session, local_day},
+    provider::{Provider, Usage},
     text,
 };
 use serde_json::{Value, json};

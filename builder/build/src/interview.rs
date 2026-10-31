@@ -6,8 +6,8 @@ use persona_builder::{
     member::Member,
 };
 use persona_builder_agent::{
-    claude::{Call, Claude},
     ledger::Session,
+    provider::{Brief, Provider},
 };
 use persona_builder_ingest::filters::Filters;
 use persona_builder_steps::{
@@ -349,7 +349,7 @@ pub fn check(
 /// problem named. A call that fails, or that the cap refuses, is never retried here.
 pub fn draft(
     form: Form,
-    claude: &Claude,
+    provider: &dyn Provider,
     session: &Session,
     model: &str,
     book: &Book,
@@ -364,9 +364,9 @@ pub fn draft(
     let mut asked = first.clone();
     let mut problem = String::new();
     for _ in 0..2 {
-        let reply = claude.call(
+        let reply = provider.call(
             session,
-            &Call {
+            &Brief {
                 step: form.step(),
                 system: SYSTEM,
                 prompt: &asked,

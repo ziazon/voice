@@ -5,7 +5,7 @@
 //! line is replaced by the call's own result when it ends. So a call in flight counts against the
 //! cap, in this process and in any other, and a build that is killed mid-call (its `claude` child
 //! runs on in its own process group) still has that call counted at its budget.
-use crate::{claude::Usage, text};
+use crate::{provider::Usage, text};
 use persona_builder::error::{Error, Result};
 use persona_builder_ingest::private::{
     StateLock, lock_existing_state, lock_state, private_folder, read_private_optional,

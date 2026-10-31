@@ -11,6 +11,7 @@
 use crate::{
     child::{self, Ran},
     ledger::{Line, Session},
+    provider::{Brief, Provider, Reach, Reply, Usage},
     text,
 };
 use persona_builder::error::{Error, Result};
@@ -29,6 +30,8 @@ use std::{
 };
 
 pub const AGENT_ID: &str = "claude-code";
+pub const AGENT_NAME: &str = "Claude, through your own Claude Code";
+pub const REACH: Reach = Reach::Anthropic;
 pub const DEFAULT_MODEL: &str = "sonnet";
 /// How long one call may take before it is killed: a 300-record labelling step can take minutes.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -40,32 +43,6 @@ const CHECK_CAP: u64 = 64 * 1024;
 const STDOUT_CAP: u64 = 16 * 1024 * 1024;
 /// Set by Claude Code in the sessions it runs; Persona Builder's calls run as a fresh, top-level CLI.
 const SESSION_MARKERS: [&str; 2] = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"];
-
-/// One call: what it is for (`step`, kept in the ledger), the instructions, the person's records,
-/// the model and the shape the answer must have.
-pub struct Call<'a> {
-    pub step: &'a str,
-    pub system: &'a str,
-    pub prompt: &'a str,
-    pub model: &'a str,
-    pub schema: &'a Value,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct Usage {
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub cache_creation_input_tokens: u64,
-    pub cache_read_input_tokens: u64,
-}
-
-/// A call's answer. `output` is untrusted: the caller checks it.
-#[derive(Debug)]
-pub struct Reply {
-    pub output: Value,
-    pub usage: Usage,
-    pub cost_usd: f64,
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ready {
@@ -467,9 +444,20 @@ impl Claude {
             api_key_set: status.api_key_set,
         })
     }
+}
 
+impl Provider for Claude {
+    fn id(&self) -> &'static str {
+        AGENT_ID
+    }
+    fn name(&self) -> &'static str {
+        AGENT_NAME
+    }
+    fn reach(&self) -> Reach {
+        REACH
+    }
     /// One tool-less call, spent against the session's cap and recorded in its ledger.
-    pub fn call(&self, session: &Session, call: &Call) -> Result<Reply> {
+    fn call(&self, session: &Session, call: &Brief) -> Result<Reply> {
         if !valid_step(call.step) {
             return Err(invalid(
                 "a step's name must be a lower-case letter, then up to 39 letters, digits or dashes",

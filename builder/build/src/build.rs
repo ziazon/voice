@@ -7,8 +7,8 @@ use persona_builder::{
     member::Member,
 };
 use persona_builder_agent::{
-    claude::{Call, Claude},
     ledger::Session,
+    provider::{Brief, Provider},
 };
 use persona_builder_ingest::{
     corpus::{read_records, split},
@@ -752,7 +752,7 @@ pub fn cache_name(step: &str, model: &str, system: &str, schema: &Value, prompt:
 
 pub struct Asker<'a> {
     misfit: fn(&str, &str) -> String,
-    claude: &'a Claude,
+    provider: &'a dyn Provider,
     session: &'a Session,
     home: &'a Path,
     slug: &'a str,
@@ -763,14 +763,14 @@ pub struct Asker<'a> {
 
 impl<'a> Asker<'a> {
     pub fn new(
-        claude: &'a Claude,
+        provider: &'a dyn Provider,
         session: &'a Session,
         home: &'a Path,
         slug: &'a str,
         model: &'a str,
     ) -> Self {
         Self {
-            claude,
+            provider,
             session,
             home,
             slug,
@@ -828,9 +828,9 @@ impl<'a> Asker<'a> {
         let mut asked = prompt.to_owned();
         let mut last = Misfit::plain("");
         for _ in 0..2 {
-            let reply = self.claude.call(
+            let reply = self.provider.call(
                 self.session,
-                &Call {
+                &Brief {
                     step,
                     system,
                     prompt: &asked,
@@ -866,7 +866,7 @@ impl<'a> Asker<'a> {
 /// Label, distil and backtest. Writes nothing in the member's folder: only checked replies in
 /// the state folder's `build/`. `progress` gets each plain line the app shows.
 pub fn build(
-    claude: &Claude,
+    provider: &dyn Provider,
     session: &Session,
     home: &Path,
     inputs: &Inputs,
@@ -899,7 +899,7 @@ pub fn build(
         crate::interview::answered(&records),
         heldout.questions.len(),
     ));
-    let mut asker = Asker::new(claude, session, home, &member.slug, inputs.model);
+    let mut asker = Asker::new(provider, session, home, &member.slug, inputs.model);
 
     let schema = label_schema();
     let mut labels = Map::new();

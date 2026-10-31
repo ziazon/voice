@@ -1,6 +1,7 @@
 mod common;
 
 use common::*;
+use persona_builder_agent::provider::Provider;
 use persona_builder_agent::{
     ledger::{Cap, LIMIT, local_day},
     text,
