@@ -49,6 +49,13 @@ One record per slice, newest first. Paraphrase only; no real person.
   saved as running now says it was asked. `ci-local.sh` all passed after D. **E (83 added lines,
   mostly tests) has no Verifier pass yet and no ci-local run of its own:** a delta pass and the
   gate come before the land.
+- **Landed by lane keeping (2026-10-31):** lane V was braked idle with this branch stranded,
+  so the lane keeper landed it. Delta Verifier (Opus) on `ef2dfd7..daa15cd`: PASS, no must-fix;
+  a repeat pass at the head: PASS. Should-fixes left for V1: `plain-text.test.ts` checks only
+  top-level bindings (deleting `visit(node.children)` passes; add a nested `<template><a :href>`
+  case); its literals `1` and `7` should be `NodeTypes.ELEMENT` and `NodeTypes.DIRECTIVE`;
+  `PersonaBuilder.vue` `open()` keeps a `panelsRunning` guard as unreachable as the removed
+  `goToStep` one (keep both or drop both). The gate ran on the land.
 - **Not verified:** the screens in the real app window, light and dark, and a real Claude Code
   panel (Mimi's `claude` is not signed in, and a panel spends real usage): owed as a walk.
 - **Skills Review:** ✅ tdd-skill (frozen red tests, then mutations) · ✅ security-and-hardening
