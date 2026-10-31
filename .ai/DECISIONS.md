@@ -113,7 +113,8 @@ Choices made at pickup:
   kept home; a person who wants everything local sets every ceiling to `local-only`.
 - **This computer only, unless the person says their network.** The check is on the address
   connected to, not the name typed, for every address a name resolves to at each connection:
-  loopback by default; with `--network`, also `10/8`, `172.16/12`, `192.168/16` and link-local.
+  loopback by default; with `--network`, also `10/8`, `172.16/12`, `192.168/16`, IPv6 unique-local
+  (`fc00::/7`) and link-local.
   A private address isn't proof of the person's own network (on other Wi-Fi a stranger's device
   can answer at the same address or name), so `--network` is the person's choice and the words
   say so. `100.64/10` is left out (carrier-grade NAT is shared with strangers), so a Tailscale
