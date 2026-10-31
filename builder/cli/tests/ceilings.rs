@@ -66,7 +66,8 @@ calendar\tlocal-only\tdefault\tyour calendar (Persona Builder doesn't read this 
 contacts\tlocal-only\tdefault\tyour contacts (Persona Builder doesn't read this yet)\n\
 family-skills\tlocal-only\tdefault\tyour family skills (Persona Builder doesn't read this yet)\n\
 legal-skills\tlocal-only\tdefault\tyour legal skills (Persona Builder doesn't read this yet)\n\
-Claude, through your own Claude Code: sends what it's given to Anthropic.\n"
+Claude, through your own Claude Code: sends what it's given to Anthropic.\n\
+A model server on your own machines: sends what it's given to your own machines.\n"
     )
 }
 

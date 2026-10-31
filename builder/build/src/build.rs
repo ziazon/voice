@@ -1,5 +1,5 @@
 //! The build (`bootstrap/PROMPT.md` steps 8 to 10) without sub-agents or tools: label, distil and
-//! the blind backtest, one call at a time through the person's own Claude Code, every reply checked
+//! the blind backtest, one call at a time through the privacy guard, every reply checked
 //! before it is used and kept in `build/` so a rerun pays only for what was not finished.
 use crate::text;
 use persona_builder::{
@@ -7,7 +7,7 @@ use persona_builder::{
     error::{Error, Result},
     member::Member,
 };
-use persona_builder_agent::{guard::Guard, ledger::Session, provider::Brief};
+use persona_builder_agent::{claude, guard::Guard, ledger::Session, provider::Brief};
 use persona_builder_ingest::{
     corpus::{read_records, split},
     filters::Filters,
@@ -736,6 +736,7 @@ pub struct Built {
     pub counts: Counts,
     pub calls: usize,
     pub reused: usize,
+    pub by: Vec<(String, String)>,
 }
 
 /// The cache key: the step, the model, the fixed instructions and shape, and the first prompt.
@@ -781,6 +782,7 @@ pub struct Asker<'a> {
     model: &'a str,
     calls: usize,
     reused: usize,
+    by: Vec<(String, String)>,
 }
 
 impl<'a> Asker<'a> {
@@ -801,6 +803,7 @@ impl<'a> Asker<'a> {
             model,
             calls: 0,
             reused: 0,
+            by: Vec::new(),
             misfit: crate::text::misfit,
         }
     }
@@ -810,6 +813,9 @@ impl<'a> Asker<'a> {
     }
     pub fn calls(&self) -> usize {
         self.calls
+    }
+    pub fn by(&self) -> &[(String, String)] {
+        &self.by
     }
     pub fn reused(&self) -> usize {
         self.reused
@@ -842,7 +848,18 @@ impl<'a> Asker<'a> {
         what: &str,
         check: impl Fn(&Value) -> std::result::Result<T, Misfit>,
     ) -> Result<(T, bool)> {
-        let name = cache_name(step, self.model, system, schema, prompt);
+        let provider = self.guard.route(self.sources)?;
+        let model = provider.model(self.model);
+        let keyed = if provider.id() == claude::AGENT_ID {
+            model.to_owned()
+        } else {
+            format!("{}/{model}", provider.id())
+        };
+        let by = (provider.id().to_owned(), model.to_owned());
+        if !self.by.contains(&by) {
+            self.by.push(by);
+        }
+        let name = cache_name(step, &keyed, system, schema, prompt);
         if let Some(kept) = self.kept(&name)?
             && let Ok(checked) = check(&kept)
         {
@@ -1037,5 +1054,6 @@ pub fn build(
         counts,
         calls: asker.calls(),
         reused: asker.reused(),
+        by: asker.by().to_vec(),
     })
 }

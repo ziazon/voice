@@ -1325,7 +1325,7 @@ fn mined_mail_at_its_default_is_refused_before_a_call_or_ledger_line() {
     assert!(result.is_err(), "mail at its default must stay home");
     assert_eq!(
         result.err().unwrap().to_string(),
-        "Nothing was sent. This step uses your mail, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> mail anthropic"
+        "Nothing was sent. This step uses your mail, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> mail anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."
     );
     assert!(provider.sources.lock().unwrap().is_empty());
     assert_eq!(stub.calls(), 0);
@@ -1383,4 +1383,21 @@ fn merged_mbox_config_names_mail_without_a_mined_file_and_other_sources_do_not()
             assert_eq!(*sources, expected, "source kind {kind:?}");
         }
     }
+}
+
+#[test]
+fn backtest_method_names_each_answering_provider_in_order() {
+    let home = Scratch::new();
+    let mut built = built(&home.0, 32);
+    built.by.clear();
+    let original = draft::entries(&the_book(), &built, "sonnet", "2026-10-31");
+    built.by = vec![("claude-code".into(), "sonnet".into())];
+    assert_eq!(
+        draft::entries(&the_book(), &built, "ignored", "2026-10-31"),
+        original
+    );
+    built.by.push(("self-hosted".into(), "qwen3:8b".into()));
+    built.by.push(("future".into(), "local".into()));
+    let entry = draft::entries(&the_book(), &built, "ignored", "2026-10-31");
+    assert!(entry.contains("predicted each one blind through the person's own Claude Code (model sonnet) and a model server on the person's own machines (model qwen3:8b) and future (model local), from decisions.md"), "{entry}");
 }

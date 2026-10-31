@@ -29,6 +29,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
+        Self::with_seats([("pebble", "Pebble"), ("quill", "Quill")])
+    }
+    fn with_seats(members: [(&str, &str); 2]) -> Self {
         let home = std::env::temp_dir().join(format!(
             "voice-panel-claude-{}-{}",
             std::process::id(),
@@ -38,8 +41,8 @@ impl Fixture {
         let home = home.canonicalize().unwrap();
         let bin = home.join("bin");
         fs::create_dir(&bin).unwrap();
-        let seats = vec!["pebble".into(), "quill".into()];
-        for (slug, name) in [("pebble", "Pebble"), ("quill", "Quill")] {
+        let seats = members.iter().map(|(slug, _)| (*slug).into()).collect();
+        for (slug, name) in members {
             let target = home.join(".claude/crew").join(slug);
             new_member_embedded(
                 &target,
@@ -396,18 +399,37 @@ fn a_seats_local_typed_ceiling_is_its_turn_error_without_a_stub_call() {
     assert_eq!(
         turn.error.as_deref(),
         Some(
-            "Nothing was sent. This step uses what you type into Persona Builder (interview answers, notes on answers, a panel's question), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> typed anthropic"
+            "Nothing was sent. This step uses what you type into Persona Builder (interview answers, notes on answers, a panel's question), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> typed anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."
         )
     );
     assert!(turn.post.is_none());
     assert!(turn.usage.is_none());
     assert!(!fixture.bin.join("turn-calls").exists());
     assert!(!fixture.ledger().exists() || fs::read_to_string(fixture.ledger()).unwrap().is_empty());
-    // Another seat retains its own defaults, rather than inheriting Pebble's setting.
+    // Pebble's typed ceiling also covers the other seat's brief.
     let other = turns.turn("quill", "Answer as Quill.", "Choose a small step.");
-    assert_eq!(other.error, None);
-    assert_eq!(
-        fs::read_to_string(fixture.bin.join("turn-calls")).unwrap(),
-        "called\n"
+    assert_eq!(other.error, turn.error);
+    assert!(other.post.is_none());
+    assert!(other.usage.is_none());
+    assert!(!fixture.bin.join("turn-calls").exists());
+}
+
+#[test]
+fn every_seats_folder_ceiling_covers_other_seats_turns() {
+    let fixture = Fixture::with_seats([("pebble", "Pebble"), ("wren", "Wren")]);
+    let path = fixture.home.join(".claude/crew/pebble/member.json");
+    let mut member: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    member["ceilings"] = json!({"crew-folder":"local-only"});
+    fs::write(path, serde_json::to_vec(&member).unwrap()).unwrap();
+    let turn = fixture
+        .runner()
+        .unwrap()
+        .turn("wren", "Answer as Wren.", "Choose a small step.");
+    assert!(
+        turn.error
+            .as_deref()
+            .is_some_and(|error| error.starts_with("Nothing was sent.")),
+        "{turn:?}"
     );
+    assert!(!fixture.bin.join("turn-calls").exists());
 }

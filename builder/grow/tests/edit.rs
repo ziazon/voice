@@ -16,7 +16,7 @@ fn decisions() -> String {
         signals: vec![],
         groups: vec![],
     };
-    let built = Built { sections: "### scope\n\n**The lean:**\n- Keep the goal small.\n\n**What flips it:**\n- A deadline changes the order.\n\n**When they write their own answer:**\n- Ask for a clearer aim.\n\n**Standing rules:**\n- None yet.\n\n**Precedents:**\n- Once we waited.\n".into(), tally: vec![], backtest: None, held: 0, counts: Counts::default(), calls: 0, reused: 0 };
+    let built = Built { sections: "### scope\n\n**The lean:**\n- Keep the goal small.\n\n**What flips it:**\n- A deadline changes the order.\n\n**When they write their own answer:**\n- Ask for a clearer aim.\n\n**Standing rules:**\n- None yet.\n\n**Precedents:**\n- Once we waited.\n".into(), tally: vec![], backtest: None, held: 0, counts: Counts::default(), calls: 0, reused: 0, by: vec![] };
     draft::decisions(&member, &book, &built)
 }
 fn add(area: &str, text: &str) -> Edit {

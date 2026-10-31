@@ -84,7 +84,7 @@ fn agents_lists_claude_code() {
     assert!(out.status.success());
     assert_eq!(
         text(&out.stdout),
-        "claude-code  Claude, through your own Claude Code\n"
+        "claude-code  Claude, through your own Claude Code\nself-hosted  A model server on your own machines\n"
     );
 }
 

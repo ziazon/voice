@@ -37,6 +37,7 @@ fn built() -> Built {
         counts: Counts::default(),
         calls: 0,
         reused: 0,
+        by: vec![],
     }
 }
 fn row(questions: usize, messages: usize) -> Row {

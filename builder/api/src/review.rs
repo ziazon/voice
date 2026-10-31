@@ -7,8 +7,11 @@ use crate::{
 };
 use persona_builder::ceilings::Ceilings;
 use persona_builder::{assistants, error::Error, member::Member};
-use persona_builder_agent::claude;
-use persona_builder_agent::guard::Guard;
+use persona_builder_agent::{
+    claude,
+    guard::{self, Guard},
+    self_hosted::SelfHosted,
+};
 use persona_builder_build::{interview, report};
 use persona_builder_grow::{
     apply, diff, keep,
@@ -256,8 +259,9 @@ pub fn draft_refresh_in(
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
+    let server = SelfHosted::load(home, &request.slug).map_err(|_| failure(REVIEW_SETTINGS))?;
     let guard = Guard::new(
-        vec![&claude],
+        guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member).map_err(|_| failure(REVIEW_SETTINGS))?,
     );
     let session = open(home, &request.slug)?;
@@ -341,8 +345,9 @@ pub fn apply_refresh_in(
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
+    let server = SelfHosted::load(home, &request.slug).map_err(|_| failure(REVIEW_SETTINGS))?;
     let guard = Guard::new(
-        vec![&claude],
+        guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member).map_err(|_| failure(REVIEW_SETTINGS))?,
     );
     let session = open(home, &request.slug)?;

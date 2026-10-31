@@ -6,10 +6,11 @@ use crate::{
 };
 use persona_builder::ceilings::Ceilings;
 use persona_builder::{assistants, error::Error, member::Member};
-use persona_builder_agent::guard::Guard;
 use persona_builder_agent::{
     claude,
+    guard::{self, Guard},
     ledger::{Cap, Session, local_day},
+    self_hosted::SelfHosted,
     text as agent_text,
 };
 use persona_builder_build::{build, interview, report, run, text};
@@ -153,8 +154,11 @@ pub fn build_assistant_in(
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
+    let server = SelfHosted::load(home, &request.slug)
+        .map_err(|_| failure(SETTINGS))?
+        .map(|server| server.with_stop(Arc::clone(&running.stop)));
     let guard = Guard::new(
-        vec![&claude],
+        guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member).map_err(|_| failure(SETTINGS))?,
     );
     let session = open(home, &request.slug)?;
@@ -381,8 +385,9 @@ pub fn draft_interview_in(
     claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
+    let server = SelfHosted::load(home, &request.slug).map_err(|_| failure(SETTINGS))?;
     let guard = Guard::new(
-        vec![&claude],
+        guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member).map_err(|_| failure(SETTINGS))?,
     );
     let session = open(home, &request.slug)?;

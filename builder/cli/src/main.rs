@@ -7,7 +7,10 @@ use persona_builder::{
     json::to_python_json,
     member::read_member,
 };
-use persona_builder_agent::guard::Guard;
+use persona_builder_agent::{
+    guard::{self, Guard},
+    self_hosted::{SelfHosted, Server},
+};
 use persona_builder_ingest::private::StateLock;
 use persona_builder_save::{
     flow::{self, Choice, GithubRemotes, MemberPaths, RemoteCheck, Saved, Saver},
@@ -408,6 +411,11 @@ enum Command {
     },
     /// Show how well your assistant knows you, from its last build.
     Report { member_dir: PathBuf },
+    /// Use a model server on your own machines for this assistant
+    SelfHosted {
+        #[command(subcommand)]
+        command: SelfHostedCommand,
+    },
     /// Show or set how much building this assistant may use.
     Limit {
         #[command(subcommand)]
@@ -420,6 +428,61 @@ enum Command {
         #[arg(long)]
         daily_cap_usd: Option<f64>,
     },
+}
+
+#[derive(Subcommand)]
+enum SelfHostedCommand {
+    /// Show the model server set up for this assistant
+    Show { member_dir: PathBuf },
+    /// Use a model server on this computer or your own network
+    Set {
+        member_dir: PathBuf,
+        #[arg(long)]
+        url: String,
+        #[arg(long)]
+        model: String,
+    },
+    /// Stop using a model server
+    Off { member_dir: PathBuf },
+}
+
+fn self_hosted(command: SelfHostedCommand) -> Result<()> {
+    use persona_builder_agent::text;
+    let member_dir = match &command {
+        SelfHostedCommand::Show { member_dir }
+        | SelfHostedCommand::Set { member_dir, .. }
+        | SelfHostedCommand::Off { member_dir } => member_dir,
+    };
+    let (member, home) = member_and_home(member_dir)?;
+    let lock = || {
+        persona_builder_ingest::private::lock_existing_state(&home, &member.slug).map_err(|error| {
+            match error {
+                Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                    Error::Invalid(text::NO_STATE_FOR_SERVER.into())
+                }
+                error => error,
+            }
+        })
+    };
+    match command {
+        SelfHostedCommand::Show { .. } => match Server::load(&home, &member.slug)? {
+            Some(server) => println!("{}", text::server(&server)),
+            None => println!("{}", text::NO_SERVER),
+        },
+        SelfHostedCommand::Set { url, model, .. } => {
+            let provider = SelfHosted::new(Server::new(&url, &model)?);
+            provider.check()?;
+            let _lock = lock()?;
+            provider.server().save(&home, &member.slug)?;
+            println!("{}", text::server(provider.server()));
+        }
+        SelfHostedCommand::Off { .. } => {
+            let _lock = lock()?;
+            Server::remove(&home, &member.slug)?;
+            println!("{}", text::NO_SERVER);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Subcommand)]
@@ -1456,7 +1519,11 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
-    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member)?);
+    let server = SelfHosted::load(&home, &member.slug)?;
+    let guard = Guard::new(
+        guard::providers(&claude, server.as_ref()),
+        Ceilings::for_member(&member)?,
+    );
     let session =
         Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
             Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
@@ -1594,7 +1661,11 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
-    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member)?);
+    let server = SelfHosted::load(&home, &member.slug)?;
+    let guard = Guard::new(
+        guard::providers(&claude, server.as_ref()),
+        Ceilings::for_member(&member)?,
+    );
     let session = if existed {
         Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
             Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
@@ -1707,7 +1778,11 @@ fn refresh_propose(
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
-    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member)?);
+    let server = SelfHosted::load(&home, &member.slug)?;
+    let guard = Guard::new(
+        guard::providers(&claude, server.as_ref()),
+        Ceilings::for_member(&member)?,
+    );
     let store = Store::open(&home, &member)?;
     let session = Session::open(&home, &member.slug, cap)?;
     match refresh::propose(
@@ -1756,7 +1831,11 @@ fn refresh_apply(
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     claude.check(&home)?;
-    let guard = Guard::new(vec![&claude], Ceilings::for_member(&member)?);
+    let server = SelfHosted::load(&home, &member.slug)?;
+    let guard = Guard::new(
+        guard::providers(&claude, server.as_ref()),
+        Ceilings::for_member(&member)?,
+    );
     let store = Store::open(&home, &member)?;
     let session = Session::open(&home, &member.slug, cap)?;
     let Measured {
@@ -2418,6 +2497,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             },
         ),
         Some(Command::Report { member_dir }) => report(member_dir),
+        Some(Command::SelfHosted { command }) => self_hosted(command),
         Some(Command::Limit { command }) => match command {
             LimitCommand::Show { member_dir } => limit_show(member_dir),
             LimitCommand::Set {

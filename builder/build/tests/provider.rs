@@ -281,3 +281,124 @@ fn a_build_step_sends_its_brief_and_a_new_asker_reuses_the_checked_cache() {
     assert!(reused);
     assert_eq!(fake.briefs.lock().unwrap().len(), 1);
 }
+
+#[test]
+fn claude_cache_key_is_pinned() {
+    let name = persona_builder_build::build::cache_name(
+        "label",
+        "sonnet",
+        "S",
+        &json!({"type":"object"}),
+        "P",
+    );
+    assert_eq!(name, "label-a81454259719d691af2c1d509da0bd64977c5e8e.json");
+}
+
+struct Named {
+    id: &'static str,
+    model: &'static str,
+    fake: Fake,
+}
+impl Provider for Named {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+    fn name(&self) -> &'static str {
+        "Test provider"
+    }
+    fn reach(&self) -> Reach {
+        Reach::OwnMachines
+    }
+    fn model<'b>(&'b self, _asked: &'b str) -> &'b str {
+        self.model
+    }
+    fn call(&self, _session: &Session, sealed: &Sealed) -> Result<Reply> {
+        sealed.check(self.id(), self.reach())?;
+        Ok(self
+            .fake
+            .replies
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("canned reply"))
+    }
+}
+
+#[test]
+fn a_self_hosted_step_does_not_reuse_a_claude_reply() {
+    let home = Scratch::new();
+    let session = session(&home.0);
+    let schema = json!({"type":"object"});
+    let claude = Named {
+        id: "claude-code",
+        model: "sonnet",
+        fake: Fake::new(vec![json!({"label":"claude"})]),
+    };
+    let server = Named {
+        id: "self-hosted",
+        model: "sonnet",
+        fake: Fake::new(vec![json!({"label":"server"})]),
+    };
+    let ask = |provider: &dyn Provider| {
+        let guard = Guard::new(vec![provider], Ceilings::defaults());
+        let mut asker = Asker::new(
+            &guard,
+            &[Source::CrewFolder],
+            &session,
+            &home.0,
+            "ada",
+            "sonnet",
+        );
+        asker
+            .ask("label", "S", &schema, "P", "Labelling", checked_label)
+            .unwrap()
+    };
+    assert_eq!(ask(&claude), ("claude".into(), false));
+    assert_eq!(ask(&server), ("server".into(), false));
+    assert_eq!(ask(&server), ("server".into(), true));
+    let folder = home.0.join(".claude/state/ada/build");
+    assert!(
+        folder
+            .join("label-a81454259719d691af2c1d509da0bd64977c5e8e.json")
+            .exists()
+    );
+    assert!(
+        folder
+            .join(persona_builder_build::build::cache_name(
+                "label",
+                "self-hosted/sonnet",
+                "S",
+                &schema,
+                "P"
+            ))
+            .exists()
+    );
+}
+
+#[test]
+fn asker_records_the_answering_provider_and_model_once_even_when_reused() {
+    let home = Scratch::new();
+    let session = session(&home.0);
+    let server = Named {
+        id: "self-hosted",
+        model: "qwen3:8b",
+        fake: Fake::new(vec![json!({"label":"server"})]),
+    };
+    let guard = Guard::new(vec![&server], Ceilings::defaults());
+    let schema = json!({"type":"object"});
+    let mut asker = Asker::new(&guard, &[Source::Mail], &session, &home.0, "ada", "sonnet");
+    for _ in 0..2 {
+        asker
+            .ask("label", "S", &schema, "P", "Labelling", checked_label)
+            .unwrap();
+    }
+    assert_eq!(asker.by(), &[("self-hosted".into(), "qwen3:8b".into())]);
+    let mut resumed = Asker::new(&guard, &[Source::Mail], &session, &home.0, "ada", "sonnet");
+    assert!(
+        resumed
+            .ask("label", "S", &schema, "P", "Labelling", checked_label)
+            .unwrap()
+            .1
+    );
+    assert_eq!(resumed.by(), asker.by());
+}

@@ -1,4 +1,4 @@
-//! The model-call seam and the person's own Claude Code.
+//! Panel model calls through the person's Claude Code or per-seat model servers.
 use persona_builder::{
     assistants::assistant_dir,
     ceilings::{Ceilings, Source},
@@ -9,9 +9,10 @@ use persona_builder::{
 use persona_builder_agent::provider::Provider;
 use persona_builder_agent::{
     claude::{self, Claude},
-    guard::Guard,
+    guard::{self, Guard},
     ledger::{Cap, Session},
     provider::Brief,
+    self_hosted::SelfHosted,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
@@ -47,11 +48,12 @@ pub trait Turns: Sync {
         false
     }
 }
-/// Claude Code and the sessions held for each assistant.
+/// Claude Code, per-seat model servers and sessions, and the whole panel's ceilings.
 pub struct ClaudeTurns {
     claude: Claude,
     sessions: BTreeMap<String, Session>,
-    ceilings: BTreeMap<String, Ceilings>,
+    servers: BTreeMap<String, Option<SelfHosted>>,
+    ceilings: Ceilings,
 }
 impl ClaudeTurns {
     /// Find and check Claude Code and lock each assistant's spending session.
@@ -64,17 +66,21 @@ impl ClaudeTurns {
         let claude = claude::find_in(home, path, fallbacks).map_err(message)?;
         claude.check(home).map_err(message)?;
         let mut sessions = BTreeMap::new();
-        let mut ceilings = BTreeMap::new();
+        let mut ceilings = Vec::new();
+        let mut servers = BTreeMap::new();
         for seat in seats {
             let settings = || -> persona_builder::error::Result<Ceilings> {
                 let folder = assistant_dir(home, seat)?;
                 Ceilings::for_member(&read_member(&folder.join("member.json"))?)
             };
-            ceilings.insert(
-                seat.clone(),
-                settings()
-                    .map_err(|_| crate::text::assistant_problem(seat, crate::text::BAD_SETTINGS))?,
-            );
+            ceilings
+                .push(settings().map_err(|_| {
+                    crate::text::assistant_problem(seat, crate::text::BAD_SETTINGS)
+                })?);
+            let server = SelfHosted::load(home, seat)
+                .map_err(|_| crate::text::assistant_problem(seat, crate::text::BAD_SERVER))?
+                .map(|server| server.with_timeout(Duration::from_secs(600)));
+            servers.insert(seat.clone(), server);
             let cap = Cap::load(home, seat)
                 .map_err(|_| crate::text::assistant_problem(seat, crate::text::BAD_LIMIT))?;
             let session = Session::open_existing(home, seat, cap).map_err(|error| {
@@ -88,16 +94,32 @@ impl ClaudeTurns {
         Ok(Self {
             claude: claude.with_timeout(Duration::from_secs(600)),
             sessions,
-            ceilings,
+            servers,
+            ceilings: panel_ceilings(&ceilings),
         })
     }
     /// Attach the app's stop flag to model calls.
-    pub fn with_stop(self, stop: Arc<AtomicBool>) -> Self {
-        Self {
-            claude: self.claude.with_stop(stop),
-            ..self
-        }
+    pub fn with_stop(mut self, stop: Arc<AtomicBool>) -> Self {
+        self.claude = self.claude.with_stop(Arc::clone(&stop));
+        self.servers = self
+            .servers
+            .into_iter()
+            .map(|(seat, server)| {
+                (
+                    seat,
+                    server.map(|server| server.with_stop(Arc::clone(&stop))),
+                )
+            })
+            .collect();
+        self
     }
+}
+fn panel_ceilings(ceilings: &[Ceilings]) -> Ceilings {
+    ceilings
+        .iter()
+        .cloned()
+        .reduce(|all, seat| all.narrowest(&seat))
+        .unwrap_or_else(Ceilings::defaults)
 }
 fn message(error: Error) -> String {
     match error {
@@ -117,6 +139,8 @@ fn turn_error(error: Error) -> String {
                 agent_text::DOES_NOT_RUN,
             ]
             .contains(&value.as_str())
+                || agent_text::SERVER_MESSAGES.contains(&value.as_str())
+                || value.starts_with(agent_text::SERVER_CUT_OFF_START)
                 || value.starts_with("Nothing was sent.")
                 || value.starts_with("Today's spending limit for this assistant is reached:")
                 || value.starts_with("Claude Code was still working on this step after ") =>
@@ -137,7 +161,10 @@ impl Turns for ClaudeTurns {
                 ..Turn::default()
             };
         };
-        let guard = Guard::new(vec![&self.claude], self.ceilings[seat].clone());
+        let guard = Guard::new(
+            guard::providers(&self.claude, self.servers[seat].as_ref()),
+            self.ceilings.clone(),
+        );
         ask(&guard, session, system, prompt)
     }
 }
@@ -197,6 +224,34 @@ mod tests {
         Mutex,
         atomic::{AtomicUsize, Ordering},
     };
+
+    #[test]
+    fn panel_ceiling_fold_keeps_every_seats_narrowest_and_explicit_settings() {
+        use persona_builder::ceilings::Ceiling;
+        let seat = |settings| {
+            let mut member: persona_builder::member::Member =
+                serde_json::from_str(include_str!("../../../crew/_template/member.json")).unwrap();
+            member.extra.insert("ceilings".into(), settings);
+            Ceilings::for_member(&member).unwrap()
+        };
+        let first = seat(serde_json::json!({"mail":"anthropic", "crew-folder":"local-only"}));
+        let second = seat(serde_json::json!({"mail":"anthropic", "typed":"local-only"}));
+        let third = seat(serde_json::json!({"mail":"anthropic", "calendar":"local-only"}));
+        let all = panel_ceilings(&[first.clone(), second.clone(), third.clone()]);
+        assert_eq!(all.get(Source::Typed), Ceiling::LocalOnly);
+        assert_eq!(all.get(Source::CrewFolder), Ceiling::LocalOnly);
+        assert_eq!(all.get(Source::Mail), Ceiling::Anthropic);
+        assert!(all.is_set(Source::Calendar));
+        assert_eq!(panel_ceilings(&[third, second, first]), all);
+    }
+
+    #[test]
+    fn server_turn_errors_are_shown_verbatim() {
+        use persona_builder_agent::text;
+        for message in [text::SERVER_FAILED.to_owned(), text::server_cut_off(3)] {
+            assert_eq!(turn_error(Error::Invalid(message.clone())), message);
+        }
+    }
 
     struct Fake(Mutex<Vec<Vec<Source>>>);
     impl Provider for Fake {

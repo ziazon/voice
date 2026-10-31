@@ -208,12 +208,28 @@ fn tiers(s: &Score) -> String {
 /// The dated entries for `measurements.md`: the backtest (or why there was none), and the interview
 /// when the history holds one.
 pub fn entries(book: &Book, built: &Built, model: &str, today: &str) -> String {
+    let who = if built.by.is_empty() {
+        format!("the person's own Claude Code (model {model})")
+    } else {
+        built
+            .by
+            .iter()
+            .map(|(id, model)| match id.as_str() {
+                "claude-code" => format!("the person's own Claude Code (model {model})"),
+                "self-hosted" => {
+                    format!("a model server on the person's own machines (model {model})")
+                }
+                _ => format!("{id} (model {model})"),
+            })
+            .collect::<Vec<_>>()
+            .join(" and ")
+    };
     let mut out = match &built.backtest {
         Some(test) => {
             let s = &test.score;
             let live = live_categories(book, s);
             format!(
-                "## {today}: build backtest\n\n- **Set:** {} held-out questions, {} → {}: the newest share of answered questions, never seen by the model.\n- **Method:** `persona-builder build` predicted each one blind through the person's own Claude Code (model {model}), from decisions.md and the closest past decisions in the training split only; scored with `persona-builder score`.\n- **Result:** {} of {} ({}); always-take-the-recommendation baseline {}. {}.\n- **Read:** {}\n",
+                "## {today}: build backtest\n\n- **Set:** {} held-out questions, {} → {}: the newest share of answered questions, never seen by the model.\n- **Method:** `persona-builder build` predicted each one blind through {who}, from decisions.md and the closest past decisions in the training split only; scored with `persona-builder score`.\n- **Result:** {} of {} ({}); always-take-the-recommendation baseline {}. {}.\n- **Read:** {}\n",
                 s.overall.n,
                 test.first,
                 test.last,

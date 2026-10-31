@@ -279,6 +279,8 @@ pub(crate) fn claude_message(error: Error) -> String {
                 text::PROFILE_FAILED,
             ]
             .contains(&message.as_str())
+                || text::SERVER_MESSAGES.contains(&message.as_str())
+                || message.starts_with(text::SERVER_CUT_OFF_START)
                 || message.starts_with("Nothing was sent.") =>
         {
             message
@@ -420,5 +422,17 @@ pub fn claude_sign_in_shutdown(wait: Duration) {
             break;
         }
         std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[cfg(test)]
+mod server_message_tests {
+    use super::*;
+
+    #[test]
+    fn model_server_failures_cross_the_app_boundary() {
+        for message in [text::SERVER_UNREACHABLE.to_owned(), text::server_cut_off(2)] {
+            assert_eq!(claude_message(Error::Invalid(message.clone())), message);
+        }
     }
 }
