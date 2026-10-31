@@ -1,0 +1,64 @@
+(version 1)
+(deny default)
+(import "system.sb")
+
+; The child can start helpers and manage only processes in this sandbox.
+(allow process-exec process-fork)
+(allow signal (target same-sandbox))
+(allow process-info* (target same-sandbox))
+
+; Read the operating system, the real program, its profile and this run alone.
+; The caller gives absolute paths with links resolved for all three folders.
+(allow file-read*
+    (subpath "/usr")
+    (subpath "/System")
+    (subpath "/Library")
+    (subpath "/private/var/db")
+    (subpath "/private/etc")
+    (subpath "/dev")
+    (subpath (param "PROGRAM_DIR"))
+    (subpath (param "PROFILE_DIR"))
+    (subpath (param "RUN_DIR")))
+
+; Only the profile and this run may change.
+(allow file-write*
+    (subpath (param "PROFILE_DIR"))
+    (subpath (param "RUN_DIR"))
+    (literal "/dev/null"))
+
+; All outgoing traffic must go through the caller's local proxy.
+(allow network-outbound
+    (remote ip (string-append "localhost:" (param "PROXY_PORT"))))
+
+; Signing in needs a local callback listener; ordinary calls do not.
+(if (string=? (param "SIGN_IN") "yes")
+    (allow network-bind network-inbound (local ip "localhost:*")))
+
+; These rules follow the allows so password and key files stay closed even
+; inside an allowed folder. Match whole components, in either letter case.
+; macOS 27 ignores regex letter case; the letter classes keep these rules right
+; if a later macOS starts matching case.
+; Keep one rule per built-in name or sequence in core/src/deny.rs.
+(deny file-read* file-write*
+    (regex #"(^|/)\.[Ss][Ss][Hh](/|$)")
+    (regex #"(^|/)\.[Aa][Ww][Ss](/|$)")
+    (regex #"(^|/)\.[Gg][Nn][Uu][Pp][Gg](/|$)")
+    (regex #"(^|/)\.[Ee][Nn][Vv][^/]*(/|$)")
+    (regex #"(^|/)\.[Ee][Nn][Vv][Rr][Cc](/|$)")
+    (regex #"(^|/)\.[Nn][Pp][Mm][Rr][Cc](/|$)")
+    (regex #"(^|/)\.[Nn][Ee][Tt][Rr][Cc](/|$)")
+    (regex #"(^|/)\.[Pp][Gg][Pp][Aa][Ss][Ss](/|$)")
+    (regex #"(^|/)[^/]*\.[Pp][Ee][Mm](/|$)")
+    (regex #"(^|/)[^/]*\.[Kk][Ee][Yy](/|$)")
+    (regex #"(^|/)[^/]*\.[Pp]12(/|$)")
+    (regex #"(^|/)[^/]*\.[Kk][Ee][Yy][Cc][Hh][Aa][Ii][Nn](/|$)")
+    (regex #"(^|/)[^/]*\.[Kk][Ee][Yy][Cc][Hh][Aa][Ii][Nn]-[Dd][Bb](/|$)")
+    (regex #"(^|/)\.[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][Ss]\.[Jj][Ss][Oo][Nn](/|$)")
+    (regex #"(^|/)\.[Cc][Oo][Nn][Ff][Ii][Gg]/[Gg][Hh](/|$)")
+    (regex #"(^|/)\.[Dd][Oo][Cc][Kk][Ee][Rr]/[Cc][Oo][Nn][Ff][Ii][Gg]\.[Jj][Ss][Oo][Nn](/|$)")
+    (regex #"(^|/)[Ll][Ii][Bb][Rr][Aa][Rr][Yy]/[Kk][Ee][Yy][Cc][Hh][Aa][Ii][Nn][Ss](/|$)"))
+
+; Keychain access is unavailable here. Let Claude Code keep its own login in
+; this one file, while .credentials.json stays denied everywhere else.
+(allow file-read* file-write*
+    (literal (string-append (param "PROFILE_DIR") "/.credentials.json")))

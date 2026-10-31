@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-for t in crew_decisions crew_sources crew_extra_sources crew_labels crew_hardening crew_documents crew_rounds slack_mine slack_select crew_personas growth_loop_spec; do
+for t in crew_decisions crew_sources crew_extra_sources crew_labels crew_hardening crew_documents crew_rounds slack_mine slack_select crew_personas growth_loop_spec claude_sandbox_probe; do
   echo "python3 tests/${t}_test.py"
   python3 "tests/${t}_test.py"
 done
@@ -19,8 +19,13 @@ if command -v cargo >/dev/null 2>&1; then
   cargo fmt --check
   echo 'cargo clippy --all-targets --locked -- -D warnings'
   cargo clippy --all-targets --locked -- -D warnings
-  echo 'PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked'
-  PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked
+  if [ "$(uname -s)" = Darwin ]; then
+    echo 'PERSONA_BUILDER_REQUIRE_PARITY=1 PERSONA_BUILDER_REQUIRE_SANDBOX=1 cargo test --locked'
+    PERSONA_BUILDER_REQUIRE_PARITY=1 PERSONA_BUILDER_REQUIRE_SANDBOX=1 cargo test --locked
+  else
+    echo 'PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked'
+    PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked
+  fi
   echo 'git diff --exit-code -- builder/ui/src/types/generated'
   git diff --exit-code -- builder/ui/src/types/generated
   if [ -n "$(git status --porcelain -- builder/ui/src/types/generated)" ]; then
