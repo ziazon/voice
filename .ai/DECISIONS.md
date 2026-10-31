@@ -74,6 +74,32 @@ third party) and one tool-less call. A `Brief` has no tools field, so no provide
 one. The person's own Claude Code is the first provider, unchanged. Finding, checking and signing
 in to Claude Code stay Claude Code's own, because a later provider will have none of them.
 
+## 2026-10-31: where each source's data may go (VO8.2)
+
+Every brief names the sources of what it carries, and every model call goes through the privacy
+guard (`persona_builder_agent::guard`): it hands the brief only to a provider whose reach every
+source's ceiling allows, seals it for that provider, and refuses in plain words when none is
+allowed, before anything is spent. A provider takes only a sealed brief and checks the seal again
+first. The ceilings (`local-only`, `anthropic`, `any-consented`) default to the VO plan's gate
+answer Q6: the person's Claude history, the assistant's own folder and the copy of their skills
+may go to Anthropic; mail, calendar, contacts, family and legal skills stay on their own
+machines. Two choices made at pickup:
+
+- **What the person types into Persona Builder is a source of its own** (`typed`: interview
+  answers, notes on answers, a panel's question and steers), defaulting to `anthropic` because
+  it is typed into steps that run on Claude Code. The person can keep it home like any other.
+- **Ceilings live in member.json** (`"ceilings": {"<source>": "<ceiling>"}`), changed with
+  `persona-builder ceilings show|set`; private.json may not hold them, so one file is the only
+  setting. The app gets its screen in a later slice.
+
+`any-consented` reaches no third party yet: there is no third-party provider and no record of
+the person agreeing to one. The build names mail when mail mined by the guided build can be in
+its corpus (a `decisions-src-*` file in the state folder, or an `mbox` source in the config),
+because merged records do not say where they came from. Claude Code's child no longer inherits
+the variables that switch it to another provider or endpoint. The interview's draft is labelled
+with the assistant's own folder only: it sends the kinds of decision and how many of each the
+last build found, numbers but no record.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.

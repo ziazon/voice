@@ -2,6 +2,67 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO8.2: ceilings per source, and routing in the privacy guard (2026-10-31, lane: V1)
+
+- **What:** every brief names the sources of what it carries (`Brief.sources`), each source has a
+  ceiling, and every model call goes through the privacy guard (`builder/agent/src/guard.rs`,
+  VO-D2, VO-D5, gate Q6). `persona_builder::ceilings` holds the nine sources (Claude history, the
+  assistant's own folder, what the person types, the copy of their skills, mail, calendar,
+  contacts, family and legal skills) and the three ceilings (`local-only`, `anthropic`,
+  `any-consented`), defaulting by Q6. The person sets one in member.json's `ceilings` with
+  `persona-builder ceilings show|set` (private.json may not hold them). `Guard::call` routes to the
+  first provider every ceiling allows, seals the brief for it (`Sealed`, no public constructor),
+  and refuses before any spend, child or ledger line with a sentence naming the source that kept
+  it home and the `ceilings set` that would let it go. `Provider::call` takes only a `Sealed`;
+  Claude Code checks it first. `any-consented` reaches no third party yet. The steps name: build
+  `[claude-history, typed, crew-folder]`, plus `mail` when mail the guided build mined can be in
+  the corpus (a `decisions-src-*` file, or an `mbox` source in the config); interview
+  `[crew-folder]`; refresh and apply as the build without mail; a panel turn
+  `[crew-folder, typed]`, under that seat's own ceilings. Claude Code's child drops
+  `CLAUDE_CODE_USE_*`, `ANTHROPIC_BASE_URL`, every `ANTHROPIC_*_BASE_URL` and
+  `ANTHROPIC_FOUNDRY_RESOURCE` (carried from VO8.1's reviews). Brief:
+  `plans/briefs/VO8.2-ceilings-and-routing.md`.
+- **Decided at pickup** (the spec left both open): the interview's answers, notes on answers and
+  a panel's question and steers are one source, `typed`, defaulting to `anthropic`; ceilings are
+  changed on the command line now, the app's screen is a later card.
+- **Who built it:** Codex, in six dispatches: the red tests (frozen in `0cee2ee`; V1 then changed
+  one expected sentence, the no-consent refusal, and recorded it in the brief), the
+  implementation, the mechanical move of the older tests onto the guard (the red dispatch had
+  left them), tests for the eight CLI and API sites and Claude Code's own seal check (a mutation
+  check by V1 showed nothing caught a site using the default ceilings), the review fixes
+  (section 8), and the staged-file sweep.
+- **Security review (Opus sub-agent, on `4445c72`):** one medium, fixed in `5a9b045`: mail the
+  guided build mined reached the build's briefs unnamed, so mail at its `local-only` default
+  went to Anthropic, and `ceilings show` said the app didn't read mail. V1 had found the same
+  path while the reviews ran. Lows: `ceilings set` followed a link and wrote in place (fixed:
+  `O_NOFOLLOW` read, the state lock, a synced staged sibling); managed Claude Code settings can
+  still route the child elsewhere and a panel turn is checked under the receiving seat's ceilings
+  only (both recorded in `.ai/SECURITY.md`).
+- **Verifier (Fable, first pass on `4445c72`):** PASS with should-fixes: the refusal's dangling
+  comma after the provider's name (fixed), a test for a linked member.json (added), the
+  interview's counts (recorded in DECISIONS), and `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` as a
+  hardening (recorded as a candidate: not verifiable live here, since this Mac's Persona Builder
+  profile isn't signed in). She marked the sources claim proven without seeing the mail path.
+- **Repeat Verifier (Opus, on `5a9b045`):** PASS with should-fixes: a staged member.json left by
+  an interrupted `ceilings set` was never swept (fixed in `ad0700c`, 33 lines, within the
+  pass); the mail marker residual below (recorded); the core `write_member` now used only by
+  tests (left).
+- **Verified:** `bash scripts/ci-local.sh` all passed at `4445c72` and `5a9b045` (V1's runs,
+  outside Codex's sandbox, where seven `save` listener tests fail). Mutations by V1 (`cp` backup,
+  `cmp` restore), eleven killed: `allows` ignoring `local-only`, the env scrub off, private.json
+  ceilings allowed, a panel seat on default ceilings, the build naming fewer sources, `is_set`
+  never set, Claude Code skipping the seal check, the CLI build and the API apply on default
+  ceilings (the last three after the added tests; all three survived before them), and the mail
+  file and the `mbox` config each ignored. Live: the debug `persona-builder ceilings show` and
+  `set` on an invented assistant in a scratch folder (set, an unknown ceiling, an unknown source,
+  private.json holding ceilings), each as the brief says.
+- **Not verified / residual:** no live model call (the profile here is signed out); the refusal
+  is proven against the stub Claude Code. Mail is recognised by markers only: a merged corpus
+  still holding mail after both the mined file and the `mbox` entry are gone, or copied from
+  another Mac, is not named. Managed settings, and a MITM proxy (proxy variables pass on
+  purpose), can still see or route briefs. Follow-ups: the app's ceilings screen; the narrowest
+  ceiling across seats before a second provider (VO9).
+
 ## VO8.1: the provider interface, Claude Code its first adapter (2026-10-31, lane: V1)
 
 - **What:** one `Provider` trait in `builder/agent/src/provider.rs` (VO-D5): `id`, `name`,
