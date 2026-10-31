@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 mod assistants;
 mod panel;
 mod record;
+mod skills;
 mod stdin_json;
 
 /// The `persona-builder` command: a thin layer over the core library.
@@ -148,6 +149,17 @@ fn ceilings(command: CeilingsCommand) -> Result<()> {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Skills on this computer, and which ones your assistant may copy
+    Skills {
+        #[command(subcommand)]
+        command: skills::SkillsCommand,
+    },
+    /// Copy the skills you agreed to, with private details taken out
+    Anonymize {
+        member_dir: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Show or change where your assistant's data may go
     Ceilings {
         #[command(subcommand)]
@@ -2233,6 +2245,8 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
 
 fn run(cli: Cli) -> Result<std::process::ExitCode> {
     let result = match cli.command {
+        Some(Command::Skills { command }) => skills::run(command),
+        Some(Command::Anonymize { member_dir, out }) => return skills::anonymize(member_dir, out),
         Some(Command::Ceilings { command }) => ceilings(command),
         Some(Command::Panel { command }) => return panel::run(command),
         Some(Command::New {

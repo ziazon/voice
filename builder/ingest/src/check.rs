@@ -136,7 +136,7 @@ pub fn tracked_or_walked(folder: &Path) -> Result<Vec<PathBuf>> {
     files.sort();
     Ok(files)
 }
-fn read(path: &Path) -> Result<Vec<u8>> {
+pub(crate) fn read(path: &Path) -> Result<Vec<u8>> {
     let mut file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW)

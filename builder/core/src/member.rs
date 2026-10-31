@@ -195,6 +195,11 @@ fn read_json(path: &Path) -> Result<Value> {
 pub fn read_member(path: &Path) -> Result<Member> {
     let mut config = read_json(path)?;
     validate_config(&config, &path.display().to_string())?;
+    if config.get("anonymizer").is_some() {
+        return Err(Error::Invalid(
+            "member config: member.json: the anonymizer's lists go in private.json, not member.json".into(),
+        ));
+    }
     let private = path.with_file_name("private.json");
     refuse_symlink(&private)?;
     if private.is_file() {
@@ -311,6 +316,19 @@ mod tests {
                 "member config: fixture: ceilings.mail must be local-only, anthropic or any-consented"
             );
         }
+    }
+
+    #[test]
+    fn member_json_cannot_supply_anonymizer_lists() {
+        let scratch = Scratch::new();
+        let path = scratch.path().join("member.json");
+        let mut value = config();
+        value["anonymizer"] = json!({"terms": ["Rowan Vale"]});
+        fs::write(&path, to_python_json(&value).unwrap()).unwrap();
+        assert_eq!(
+            read_member(&path).unwrap_err().to_string(),
+            "member config: member.json: the anonymizer's lists go in private.json, not member.json"
+        );
     }
 
     #[test]

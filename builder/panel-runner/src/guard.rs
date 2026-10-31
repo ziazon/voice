@@ -4,24 +4,6 @@ use regex::Regex;
 use std::{collections::BTreeSet, sync::LazyLock};
 use voice_panels::Block;
 
-const INVISIBLE: &[(u32, u32)] = &[
-    (0x00ad, 0x00ad),
-    (0x034f, 0x034f),
-    (0x061c, 0x061c),
-    (0x115f, 0x1160),
-    (0x17b4, 0x17b5),
-    (0x180b, 0x180f),
-    (0x200b, 0x200f),
-    (0x202a, 0x202e),
-    (0x2060, 0x206f),
-    (0x3164, 0x3164),
-    (0xfe00, 0xfe0f),
-    (0xfeff, 0xfeff),
-    (0xffa0, 0xffa0),
-    (0x1d173, 0x1d17a),
-    (0xe0000, 0xe007f),
-    (0xe0100, 0xe01ef),
-];
 static PATHS: LazyLock<[Result<Regex, regex::Error>; 5]> = LazyLock::new(|| {
     [
         Regex::new(r"(?i)\bfile:/"),
@@ -40,16 +22,7 @@ static EMAILS: LazyLock<[Result<Regex, regex::Error>; 2]> = LazyLock::new(|| {
     ]
 });
 
-/// Remove invisible characters that can hide a private detail.
-pub fn scrub(text: &str) -> String {
-    text.chars()
-        .filter(|c| {
-            !INVISIBLE
-                .iter()
-                .any(|&(lo, hi)| (lo..=hi).contains(&(*c as u32)))
-        })
-        .collect()
-}
+pub use persona_builder_ingest::anonymize::scrub;
 
 /// The exact text shared as a previous post in the next round's brief.
 pub fn forwarded(text: &str) -> String {

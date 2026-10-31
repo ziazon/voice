@@ -188,7 +188,7 @@ canonical, `shown` with the home folder as `~`, sorted by `id`. A skill is a fol
 | Root | Where | Id |
 | --- | --- | --- |
 | `Claude` | `~/.claude/skills/<s>/SKILL.md`, every `<s>` but `synced` | `claude:<s>` |
-| `Synced` | `~/.claude/skills/synced/<a>/<s>/SKILL.md` (claude.ai's synced skills) | `synced:<s>`; when two `<a>` hold the same `<s>`, keep the first `<a>` in name order and add the note `Two claude.ai skills are named <s>; only the first is listed.` |
+| `Synced` | `~/.claude/skills/synced/<a>/<s>/SKILL.md` (claude.ai's synced skills) | `synced:<s>`; when two `<a>` hold the same `<s>`, keep the first `<a>` in name order and add this note once: `Some claude.ai skills are in more than one synced folder; each is listed once, from the first folder by name.` |
 | `Plugin` | `~/.claude/plugins/installed_plugins.json` (at most 4 MiB): for each `plugins.<plugin>@<market>[].installPath`, `<installPath>/skills/<s>/SKILL.md` | `plugin:<plugin>:<s>` |
 | `Project` | each `projects` folder `<p>`: `<p>/.claude/skills/<s>/SKILL.md` | `project:<last component of p>:<s>` |
 | `Codex` | `~/.codex/skills/<s>/SKILL.md` | `codex:<s>` |
