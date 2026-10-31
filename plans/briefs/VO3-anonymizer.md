@@ -147,9 +147,9 @@ In this order:
    matches, keep a non-overlapping set (earliest start first; at the same start, the longest),
    and replace each with `mapping.placeholder(kind, term)`. Line breaks never change, so the line
    map from step 3 still holds.
-6. **The re-scan copy.** From the result: replace every placeholder
-   (`<[a-z][a-z-]{0,31}-[0-9]+>`) and every case-insensitive occurrence of an `allow` entry or a
-   built-in mask with spaces, **byte for byte** (same length, so offsets and lines hold).
+6. **The re-scan copy.** From the result: mask only the placeholders the transform inserted
+   (record their ranges; never mask placeholder-shaped source text), plus bounded, case-insensitive
+   `allow` entries and built-in masks, with spaces **byte for byte** (same length, so offsets and lines hold).
 7. **Re-scan** the copy with every detector in § 3, every `patterns` entry, and the terms again,
    two ways: as in step 5 but with `\n` allowed in the separator (a term wrapped over two lines),
    and, for a term of 4 or more letters and digits with no whitespace, as a plain case-insensitive
@@ -333,3 +333,64 @@ a non-empty unstamped folder, inside a skill folder, or inside `~/.claude/skills
 Then run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
 `cargo test -p persona-builder-ingest -p persona-builder-cli -p voice-panel-runner`, `cargo test --manifest-path builder/core/Cargo.toml`,
 and `bash scripts/ci-local.sh`, and report each result.
+
+## 8. After the Verifier
+
+1. **Scan before replacement too.** Run detectors and private patterns on the step-4 text,
+   with the same allow and built-in masks, as well as on the masked step-5 copy.
+   Both scans use the source-line map; replacing a term cannot split and hide a detector hit.
+
+2. **Compact terms.** Re-scan every term with all whitespace removed, case-insensitively
+   and without boundaries, when it contains at least four letters or digits.
+   Punctuation in a term does not disable this scan; the wrapped-word scan remains too.
+
+3. **Names are private data too.** Scan every relative path component and skill name with
+   both term scans, patterns and detectors; a hit refuses the skill as `file name`.
+   Mask hit components as `*` (including project/plugin ID parts and report paths); a private skill name gets only the anonymous discovery-order number, with no file lines.
+
+4. **Accents and sharp s.** Re-scan terms containing `ß` with `ss` too, both wrapped and compact.
+   When any term has a non-ASCII letter, combining marks U+0300–U+036F refuse their source line as
+   `accent mark`: rewrite it using single accented letters. Full Unicode normalization is not done, to add no dependency.
+
+5. **Home-folder case.** Match `/Users/` and `/home/` without regard to letter case.
+   Preserve `/Users/Shared` in every case; Windows home matching remains case-insensitive.
+
+6. **Protect discovery roots.** Refuse output at or below `~/.claude/skills`, `~/.codex/skills`,
+   `~/.claude/plugins`, or any configured project's `.claude/skills`, including future folders.
+   Compare canonical paths, resolving existing ancestors for missing folders; conservatively reject case variants of future roots too.
+
+7. **Save before writing.** Save `anonymizer/placeholders.json` after each skill is anonymized,
+   before writing any of its files; refuse case-insensitively equal kept paths as `same name in another case`.
+   Writer failures say `Couldn't write <name>/<path> in the copy. Check there's space, then run anonymize again.`
+
+8. **Allow boundaries.** Allow entries match case-insensitively only with no letter or digit
+   immediately before or after them, like terms. A partial mask cannot exempt a detected identifier:
+   `com` must not hide the rest of an email address; allowing the whole address can exempt it.
+
+9. **Reserved fixtures.** Hosts and mail fixtures use reserved example or test domains.
+   A detector-positive address or private host is assembled at runtime from pieces, so no
+   registrable address literal is stored in the repository.
+
+10. **Bound line lookup.** Build each scanned text's line-start offsets once and binary-search
+    them for matches; retain only one finding per source line and kind, without an intermediate detector-hit list.
+    A 1 MiB `~a/ ` fixture must finish within ten seconds even in a debug build.
+
+11. **Bound term regexes.** A term may contain at most 12 words; refuse more with
+    `{at} must have at most 12 words`. Compile every term regex with `size_limit(1 << 20)`;
+    a build failure returns `{at} is too complex to search for`, never a panic.
+
+12. **Plugin containment.** A plugin skill's canonical folder must stay within that plugin's
+    canonical `installPath`; skip an escaping link. Claude, Codex, synced and project skill
+    folders may still link elsewhere, subject to the existing deny list.
+
+13. **Odd and duplicate names.** Leave non-UTF-8 file names out as `LeftOut::OddName`, reported
+    `odd name`, without reading them or aborting the run. Compare agreed skill names lower-cased;
+    the second in discovery order gets the existing same-name refusal.
+
+14. **Fullwidth text.** Re-scan terms, both wrapped and compact and including sharp-s variants,
+    after mapping U+FF01–U+FF5E to ASCII; build that copy's own line index.
+    Other-script look-alikes are not handled: this guards against mistakes, not someone hiding their own terms.
+
+15. **Protect containing folders.** Refuse output that contains any discovered skill folder
+    or configured project folder, including equality. Make this canonical-path check before
+    deleting an earlier stamped copy, so re-running cannot delete an input tree.

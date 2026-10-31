@@ -5,8 +5,7 @@ pub(super) struct Term {
     pub text: String,
     pub kind: String,
     pub exact: Regex,
-    pub wrapped: Regex,
-    pub substring: Option<Regex>,
+    pub rescans: Vec<(Regex, bool)>,
 }
 pub(super) fn normalize(s: &str) -> String {
     s.split_whitespace()
@@ -15,62 +14,67 @@ pub(super) fn normalize(s: &str) -> String {
         .to_lowercase()
 }
 impl Term {
-    pub fn new(text: &str, kind: &str) -> Self {
-        let words = text
-            .split_whitespace()
-            .map(regex::escape)
-            .collect::<Vec<_>>();
+    pub fn new(text: &str, kind: &str) -> Result<Self, regex::Error> {
         let compile = |pattern: &str| {
             RegexBuilder::new(pattern)
                 .case_insensitive(true)
+                .size_limit(1 << 20)
                 .build()
-                .expect("escaped term regex")
         };
-        let exact = compile(&words.join(r"[^\p{L}\p{N}\n]{1,8}"));
-        let wrapped = compile(&words.join(r"[^\p{L}\p{N}]{1,8}"));
-        let substring = if text.chars().count() >= 4 && text.chars().all(char::is_alphanumeric) {
-            Some(compile(&regex::escape(text)))
-        } else {
-            None
+        let words = |value: &str| {
+            value
+                .split_whitespace()
+                .map(regex::escape)
+                .collect::<Vec<_>>()
         };
-        Self {
+        let exact = compile(&words(text).join(r"[^\p{L}\p{N}\n]{1,8}"))?;
+        let mut rescans = Vec::new();
+        let folded = text.to_lowercase().replace('ß', "ss");
+        let mut variants = vec![text];
+        if text.to_lowercase().contains('ß') {
+            variants.push(&folded);
+        }
+        for variant in variants {
+            rescans.push((compile(&words(variant).join(r"[^\p{L}\p{N}]{1,8}"))?, true));
+            let compact: String = variant.chars().filter(|c| !c.is_whitespace()).collect();
+            if compact.chars().filter(|c| c.is_alphanumeric()).count() >= 4 {
+                rescans.push((compile(&regex::escape(&compact))?, false));
+            }
+        }
+        Ok(Self {
             text: text.into(),
             kind: kind.into(),
             exact,
-            wrapped,
-            substring,
-        }
+            rescans,
+        })
     }
 }
-pub(super) fn matches(text: &str, re: &Regex) -> Vec<(usize, usize)> {
-    let mut found = vec![];
+pub(super) fn matches<'a>(
+    text: &'a str,
+    re: &'a Regex,
+) -> impl Iterator<Item = (usize, usize)> + 'a {
     let mut offset = 0;
-    while offset < text.len() {
-        let Some(m) = re.find_at(text, offset) else {
-            break;
-        };
-        let bounded = !text[..m.start()]
-            .chars()
-            .next_back()
-            .is_some_and(char::is_alphanumeric)
-            && !text[m.end()..]
+    std::iter::from_fn(move || {
+        while offset < text.len() {
+            let m = re.find_at(text, offset)?;
+            let bounded = !text[..m.start()]
                 .chars()
-                .next()
-                .is_some_and(char::is_alphanumeric);
-        if bounded {
-            found.push((m.start(), m.end()));
-            offset = m.end();
-        } else {
-            offset = m.start()
-                + text[m.start()..]
+                .next_back()
+                .is_some_and(char::is_alphanumeric)
+                && !text[m.end()..]
                     .chars()
                     .next()
-                    .expect("match start")
-                    .len_utf8();
+                    .is_some_and(char::is_alphanumeric);
+            // Advance even after an empty match; literals and terms are nonempty by validation.
+            offset = m.start() + text[m.start()..].chars().next()?.len_utf8();
+            if bounded {
+                return Some((m.start(), m.end()));
+            }
         }
-    }
-    found
+        None
+    })
 }
+
 pub(super) fn replace(
     text: &str,
     rules: &Rules,

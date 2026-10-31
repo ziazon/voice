@@ -119,12 +119,17 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
         Some(bytes) => Mapping::from_json(&bytes)?,
         None => Mapping::default(),
     };
-    let out = skills::prepare_output(&super::expand_home(out, &home), &home, &found.skills)?;
-    let mut names = BTreeMap::new();
+    let out = skills::prepare_output_with_projects(
+        &super::expand_home(out, &home),
+        &home,
+        &found.skills,
+        rules.projects(),
+    )?;
+    let mut names: BTreeMap<String, String> = BTreeMap::new();
     let mut agreed = 0;
     let mut copied = 0;
     let mut waiting = 0;
-    for skill in &found.skills {
+    for (index, skill) in found.skills.iter().enumerate() {
         match agreements.state(skill, &rules) {
             State::Agreed(_) => {}
             State::Waiting | State::NotOffered | State::Moved => {
@@ -134,14 +139,23 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
             State::NeverCopied => continue,
         }
         agreed += 1;
-        if let Some(other) = names.get(&skill.name) {
+        if anonymize::name_holds_private_detail(&skill.name, &rules) {
             println!(
-                "{}: not copied, another skill you agreed to has the same name ({other})",
-                skill.id
+                "A skill you agreed to: not copied, its name holds a private detail (number {} in persona-builder skills list)",
+                index + 1
             );
             continue;
         }
-        names.insert(skill.name.clone(), skill.id.clone());
+        let name_key = skill.name.to_lowercase();
+        if let Some(other) = names.get(&name_key) {
+            println!(
+                "{}: not copied, another skill you agreed to has the same name ({})",
+                anonymize::report_id(&skill.id, &rules),
+                anonymize::report_id(other, &rules)
+            );
+            continue;
+        }
+        names.insert(name_key, skill.id.clone());
         let files = match skills::read_with_rules(skill, &rules) {
             Ok(files) => files,
             Err(Error::Invalid(message)) if message == skills::SKILL_TOO_LARGE => {
@@ -151,6 +165,13 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
             Err(error) => return Err(error),
         };
         let result = anonymize::skill(&files, &rules, &mut mapping);
+        private::write_private_at(
+            &home,
+            &member.slug,
+            Some("anonymizer"),
+            "placeholders.json",
+            &mapping.to_json(),
+        )?;
         if result.refused.is_empty() {
             skills::write_skill(&out, &skill.name, &result.kept)?;
             copied += 1;
@@ -166,12 +187,16 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
     )?;
     println!(
         "Copied {copied} of {agreed} skills into {}.",
-        skills::display_path(&out, &home)
+        anonymize::report_path(&PathBuf::from(skills::display_path(&out, &home)), &rules).display()
     );
     if waiting > 0 {
         println!(
             "{waiting} skills wait for your yes: persona-builder skills list {}",
-            skills::display_path(&member_dir, &home)
+            anonymize::report_path(
+                &PathBuf::from(skills::display_path(&member_dir, &home)),
+                &rules
+            )
+            .display()
         );
     }
     Ok(if copied == agreed {

@@ -51,6 +51,17 @@ fn future_canonical(path: &Path) -> Result<PathBuf> {
     }
     Ok(canonical)
 }
+// Also protect not-yet-created roots on disks that ignore letter case.
+// Rejecting a case variant on a case-sensitive disk is deliberately conservative.
+fn within(path: &Path, root: &Path) -> bool {
+    let mut parts = path.components();
+    root.components().all(|component| {
+        parts.next().is_some_and(|part| {
+            part.as_os_str().to_string_lossy().to_lowercase()
+                == component.as_os_str().to_string_lossy().to_lowercase()
+        })
+    })
+}
 fn make_dirs(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => Ok(()),
@@ -67,15 +78,41 @@ fn make_dirs(path: &Path) -> Result<()> {
     }
 }
 pub fn prepare_output(out: &Path, home: &Path, skills: &[Skill]) -> Result<PathBuf> {
+    prepare_output_with_projects(out, home, skills, &[])
+}
+pub fn prepare_output_with_projects(
+    out: &Path,
+    home: &Path,
+    skills: &[Skill],
+    projects: &[PathBuf],
+) -> Result<PathBuf> {
     if let Ok(meta) = fs::symlink_metadata(out)
         && (meta.file_type().is_symlink() || !meta.is_dir())
     {
         return Err(output_bad());
     }
     let out = future_canonical(out)?;
-    let claude = future_canonical(&home.join(".claude/skills"))?;
-    if out.starts_with(claude) || skills.iter().any(|s| out.starts_with(&s.folder)) {
-        return Err(output_bad());
+    let mut roots = vec![
+        home.join(".claude/skills"),
+        home.join(".codex/skills"),
+        home.join(".claude/plugins"),
+    ];
+    roots.extend(projects.iter().map(|p| p.join(".claude/skills")));
+    for root in roots {
+        if within(&out, &future_canonical(&root)?) {
+            return Err(output_bad());
+        }
+    }
+    for skill in skills {
+        let folder = future_canonical(&skill.folder)?;
+        if within(&out, &folder) || within(&folder, &out) {
+            return Err(output_bad());
+        }
+    }
+    for project in projects {
+        if within(&future_canonical(project)?, &out) {
+            return Err(output_bad());
+        }
     }
     if out.exists() {
         let empty = fs::read_dir(&out)
@@ -156,18 +193,33 @@ pub fn write_skill(out: &Path, name: &str, kept: &[(PathBuf, String)]) -> Result
     {
         return Err(output_bad());
     }
-    let root = child_folder(&open_folder(out)?, name)?;
+    let failed = |path: &Path| {
+        invalid(&format!(
+            "Couldn't write {name}/{} in the copy. Check there's space, then run anonymize again.",
+            path.display()
+        ))
+    };
+    let first = kept
+        .first()
+        .map(|(p, _)| p.as_path())
+        .unwrap_or(Path::new("SKILL.md"));
+    let root = child_folder(&open_folder(out).map_err(|_| failed(first))?, name)
+        .map_err(|_| failed(first))?;
     for (path, text) in kept {
-        let mut directory = root.try_clone().map_err(|_| output_bad())?;
-        let mut parts = path.iter().peekable();
-        while let Some(part) = parts.next() {
-            let part = part.to_str().ok_or_else(output_bad)?;
-            if parts.peek().is_some() {
-                directory = child_folder(&directory, part)?;
-            } else {
-                write_file(&directory, part, text.as_bytes())?;
+        let write = || -> Result<()> {
+            let mut directory = root.try_clone().map_err(|_| failed(path))?;
+            let mut parts = path.iter().peekable();
+            while let Some(part) = parts.next() {
+                let part = part.to_str().ok_or_else(|| failed(path))?;
+                if parts.peek().is_some() {
+                    directory = child_folder(&directory, part)?;
+                } else {
+                    write_file(&directory, part, text.as_bytes())?;
+                }
             }
-        }
+            Ok(())
+        };
+        write().map_err(|_| failed(path))?;
     }
     Ok(())
 }

@@ -13,7 +13,7 @@ use std::{
 pub struct Rules {
     pub(super) terms: Vec<Term>,
     pub(super) patterns: Vec<Regex>,
-    pub(super) allow: Vec<String>,
+    pub(super) allow: Vec<Regex>,
     never_copy: Vec<String>,
     pub(super) drop_files: Vec<String>,
     projects: Vec<PathBuf>,
@@ -92,6 +92,9 @@ impl Rules {
                     if !valid_literal(term, 2) {
                         return Err(bad(format!("{at} must be 2 to 200 characters on one line")));
                     }
+                    if term.split_whitespace().count() > 12 {
+                        return Err(bad(format!("{at} must have at most 12 words")));
+                    }
                     if !valid_kind(kind) {
                         return Err(bad(format!("{at}.kind must match ^[a-z][a-z-]{{0,31}}$")));
                     }
@@ -99,7 +102,10 @@ impl Rules {
                     if let Some(previous) = normalized.insert(norm, i) {
                         return Err(bad(format!("{at} repeats anonymizer.terms[{previous}]")));
                     }
-                    rules.terms.push(Term::new(term, kind));
+                    rules.terms.push(
+                        Term::new(term, kind)
+                            .map_err(|_| bad(format!("{at} is too complex to search for")))?,
+                    );
                     continue;
                 }
                 let s = value
@@ -129,7 +135,13 @@ impl Rules {
                                 "{at} must be 3 to 200 characters on one line"
                             )));
                         }
-                        rules.allow.push(s.to_owned());
+                        rules.allow.push(
+                            RegexBuilder::new(&regex::escape(s))
+                                .case_insensitive(true)
+                                .size_limit(1 << 20)
+                                .build()
+                                .map_err(|_| bad(format!("{at} is too complex to search for")))?,
+                        );
                     }
                     "never_copy" => {
                         if s.is_empty()

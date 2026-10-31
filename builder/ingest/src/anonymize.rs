@@ -1,6 +1,7 @@
 //! Deterministic removal and refusal of private skill details.
 mod detect;
 mod rules;
+mod scan;
 mod terms;
 use persona_builder::{
     deny::DenyList,
@@ -108,6 +109,7 @@ pub enum LeftOut {
     Link,
     NotText,
     TooLarge,
+    OddName,
 }
 #[derive(Debug)]
 pub struct Finding {
@@ -128,10 +130,13 @@ pub struct SkillResult {
     pub left_out: Vec<(PathBuf, LeftOut)>,
 }
 static HOMES: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"/Users/[^/\s"'`<>()\[\]{}]+|/home/[^/\s"'`<>()\[\]{}]+|(?i:[a-z]:\\Users\\[^\\/\s"'`<>()\[\]{}]+)"#).expect("fixed regex")
+    Regex::new(r#"(?i)/Users/[^/\s"'`<>()\[\]{}]+|/home/[^/\s"'`<>()\[\]{}]+|(?i:[a-z]:\\Users\\[^\\/\s"'`<>()\[\]{}]+)"#).expect("fixed regex")
 });
 
 pub(crate) fn exclusion(relative: &Path, size: usize, rules: &Rules) -> Option<LeftOut> {
+    if relative.to_str().is_none() {
+        return Some(LeftOut::OddName);
+    }
     let name = relative.file_name().unwrap_or_default().to_string_lossy();
     if ["LOCAL.md", "LEARNINGS.md"]
         .iter()
@@ -163,66 +168,50 @@ pub fn file(relative: &Path, bytes: &[u8], rules: &Rules, mapping: &mut Mapping)
     let Ok(text) = std::str::from_utf8(bytes) else {
         return FileResult::LeftOut(LeftOut::NotText);
     };
+    let original = text;
     let scrubbed = scrub(text);
     let (text, lines, mut found) = sections(&scrubbed);
+    // U+034F is scrubbed as invisible; detect combining marks on retained source lines too.
+    if rules
+        .terms
+        .iter()
+        .any(|t| t.text.chars().any(|c| c.is_alphabetic() && !c.is_ascii()))
+    {
+        for (index, line) in original.split_inclusive('\n').enumerate() {
+            if lines.binary_search(&(index + 1)).is_ok()
+                && line.chars().any(|c| ('\u{0300}'..='\u{036f}').contains(&c))
+            {
+                found.insert((index + 1, "accent mark"));
+            }
+        }
+    }
     let text = HOMES
         .replace_all(&text, |cap: &regex::Captures<'_>| {
-            if &cap[0] == "/Users/Shared" {
+            if cap[0].eq_ignore_ascii_case("/Users/Shared") {
                 cap[0].to_owned()
             } else {
                 "~".into()
             }
         })
         .into_owned();
-    let (text, inserted) = terms::replace(&text, rules, mapping);
-    let mut masked = text.as_bytes().to_vec();
-    for range in inserted {
-        masked[range].fill(b' ');
-    }
-    for allow in rules.allow.iter().map(String::as_str).chain([
-        "git@github.com",
-        "git@gitlab.com",
-        "git@bitbucket.org",
-    ]) {
-        let re = regex::RegexBuilder::new(&regex::escape(allow))
-            .case_insensitive(true)
-            .build()
-            .expect("literal regex");
-        let mut offset = 0;
-        while let Some(m) = re.find_at(&text, offset) {
-            masked[m.range()].fill(b' ');
-            offset = m.start()
-                + text[m.start()..]
-                    .chars()
-                    .next()
-                    .expect("nonempty literal")
-                    .len_utf8();
-        }
-    }
-    let masked = String::from_utf8(masked).expect("space masking preserves utf8");
     let source_eof_line = scrubbed.bytes().filter(|b| *b == b'\n').count() + 1;
-    let source_line = |offset| {
-        let index = masked[..offset].bytes().filter(|b| *b == b'\n').count();
-        lines.get(index).copied().unwrap_or(source_eof_line)
-    };
-    for (offset, kind) in detect::find(&masked) {
-        found.insert((source_line(offset), kind));
-    }
-    for pattern in &rules.patterns {
-        for m in pattern.find_iter(&masked) {
-            found.insert((source_line(m.start()), "your pattern"));
-        }
-    }
-    for term in &rules.terms {
-        for (start, _) in terms::matches(&masked, &term.wrapped) {
-            found.insert((source_line(start), "your term"));
-        }
-        if let Some(pattern) = &term.substring {
-            for m in pattern.find_iter(&masked) {
-                found.insert((source_line(m.start()), "your term"));
-            }
-        }
-    }
+    scan::scan(
+        &scan::mask(&text, rules, &[]),
+        rules,
+        &lines,
+        source_eof_line,
+        false,
+        &mut found,
+    );
+    let (text, inserted) = terms::replace(&text, rules, mapping);
+    scan::scan(
+        &scan::mask(&text, rules, &inserted),
+        rules,
+        &lines,
+        source_eof_line,
+        true,
+        &mut found,
+    );
     if found.is_empty() {
         FileResult::Kept(text)
     } else {
@@ -273,21 +262,49 @@ pub fn skill(
 ) -> SkillResult {
     let mut result = SkillResult::default();
     let mut skill_kept = false;
+    let mut names = BTreeSet::new();
     for (path, source) in files {
-        let outcome = match source {
-            crate::skills::Source::Bytes(bytes) => file(path, bytes, rules, mapping),
-            crate::skills::Source::Link => FileResult::LeftOut(LeftOut::Link),
-            crate::skills::Source::TooLarge => FileResult::LeftOut(LeftOut::TooLarge),
+        if path.to_str().is_some()
+            && path
+                .components()
+                .any(|c| name_holds_private_detail(&c.as_os_str().to_string_lossy(), rules))
+        {
+            result.refused.push(Finding {
+                file: report_path(path, rules),
+                line: 1,
+                kind: "file name",
+            });
+        }
+        let outcome = if path.to_str().is_none() {
+            FileResult::LeftOut(LeftOut::OddName)
+        } else {
+            match source {
+                crate::skills::Source::Bytes(bytes) => file(path, bytes, rules, mapping),
+                crate::skills::Source::Link => FileResult::LeftOut(LeftOut::Link),
+                crate::skills::Source::TooLarge => FileResult::LeftOut(LeftOut::TooLarge),
+            }
         };
         match outcome {
             FileResult::Kept(text) => {
                 if path == Path::new("SKILL.md") {
                     skill_kept = true;
                 }
+                if !names.insert(path.to_string_lossy().to_lowercase()) {
+                    result.refused.push(Finding {
+                        file: report_path(path, rules),
+                        line: 1,
+                        kind: "same name in another case",
+                    });
+                }
                 result.kept.push((path.clone(), text));
             }
-            FileResult::Refused(found) => result.refused.extend(found),
-            FileResult::LeftOut(reason) => result.left_out.push((path.clone(), reason)),
+            FileResult::Refused(mut found) => {
+                for finding in &mut found {
+                    finding.file = report_path(&finding.file, rules);
+                }
+                result.refused.extend(found);
+            }
+            FileResult::LeftOut(reason) => result.left_out.push((report_path(path, rules), reason)),
         }
     }
     if !skill_kept {
@@ -310,6 +327,7 @@ pub fn left_out_reason(reason: &LeftOut) -> &'static str {
         LeftOut::Link => "a link",
         LeftOut::NotText => "not text",
         LeftOut::TooLarge => "too large",
+        LeftOut::OddName => "odd name",
     }
 }
 pub fn report(name: &str, result: &SkillResult) -> String {
@@ -323,12 +341,19 @@ pub fn report(name: &str, result: &SkillResult) -> String {
     }
     text.push('\n');
     for f in &result.refused {
+        if f.kind == "file name" {
+            text.push_str(&format!("  {name}/{} (file name)\n", f.file.display()));
+            continue;
+        }
         text.push_str(&format!(
             "  {name}/{}:{} ({})\n",
             f.file.display(),
             f.line,
             f.kind
         ));
+        if f.kind == "accent mark" {
+            text.push_str("    Rewrite this line with single accented letters.\n");
+        }
     }
     for (path, reason) in &result.left_out {
         text.push_str(&format!(
@@ -338,4 +363,31 @@ pub fn report(name: &str, result: &SkillResult) -> String {
         ));
     }
     text
+}
+
+/// Names cannot be transformed: any private detail refuses the skill.
+pub fn name_holds_private_detail(name: &str, rules: &Rules) -> bool {
+    scan::private_name(name, rules)
+}
+pub fn report_path(path: &Path, rules: &Rules) -> PathBuf {
+    path.components()
+        .map(|c| match c.as_os_str().to_str() {
+            Some(text) if !name_holds_private_detail(text, rules) => text,
+            _ => "*",
+        })
+        .collect()
+}
+
+/// Skill IDs can also hold a private project or plugin name.
+pub fn report_id(id: &str, rules: &Rules) -> String {
+    id.split(':')
+        .map(|part| {
+            if name_holds_private_detail(part, rules) {
+                "*"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(":")
 }

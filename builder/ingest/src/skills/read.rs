@@ -94,6 +94,13 @@ fn walk(
             continue;
         }
         let relative = relative.join(OsString::from_vec(name.to_bytes().to_vec()));
+        if relative.to_str().is_none() {
+            if files.len() >= 500 {
+                return Err(invalid(SKILL_TOO_LARGE));
+            }
+            files.push((relative, Source::Bytes(vec![])));
+            continue;
+        }
         // SAFETY: stat is plain data initialized before fstatat overwrites it.
         let mut metadata: libc::stat = unsafe { std::mem::zeroed() };
         // SAFETY: fd remains owned by stream; name and writable stat are live.

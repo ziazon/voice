@@ -18,10 +18,11 @@ const STANDARDS: &[&str] = &[
     "IPV", "ISO", "MD", "NIST", "OWASP", "PEP", "PKCS", "RFC", "RSA", "SHA", "SP", "SSL", "TLS",
     "UCS", "UTF", "WCAG", "X86",
 ];
-pub(super) fn find(text: &str) -> Vec<(usize, &'static str)> {
-    let mut out = vec![];
-    for (kind, re) in DETECTORS.iter() {
-        for cap in re.captures_iter(text) {
+pub(super) fn find(
+    text: &str,
+) -> impl Iterator<Item = (std::ops::Range<usize>, &'static str)> + '_ {
+    DETECTORS.iter().flat_map(move |(kind, re)| {
+        re.captures_iter(text).filter_map(move |cap| {
             let m = cap.get(0).expect("whole match");
             if *kind == "email" {
                 let domain = m
@@ -35,7 +36,7 @@ pub(super) fn find(text: &str) -> Vec<(usize, &'static str)> {
                         .iter()
                         .any(|suffix| domain.ends_with(suffix))
                 {
-                    continue;
+                    return None;
                 }
             }
             if *kind == "private host" {
@@ -46,14 +47,13 @@ pub(super) fn find(text: &str) -> Vec<(usize, &'static str)> {
                         .and_then(|s| s.chars().next())
                         .is_some_and(|c| c.is_alphanumeric())
                 {
-                    continue;
+                    return None;
                 }
             }
             if *kind == "ticket id" && STANDARDS.contains(&cap[1].as_ref()) {
-                continue;
+                return None;
             }
-            out.push((m.start(), *kind));
-        }
-    }
-    out
+            Some((m.range(), *kind))
+        })
+    })
 }

@@ -379,3 +379,116 @@ fn oversized_file_is_left_out_without_counting_unread_bytes() {
         )]
     );
 }
+
+#[test]
+fn verifier_06_all_discovery_roots_protect_future_output() {
+    let scratch = Scratch::new("verifier-roots");
+    for root in [".claude/skills", ".codex/skills", ".claude/plugins"] {
+        for tail in ["", "/new"] {
+            assert!(
+                skills::prepare_output(&scratch.0.join(format!("{root}{tail}")), &scratch.0, &[])
+                    .is_err(),
+                "{root}{tail}"
+            );
+        }
+    }
+}
+
+#[test]
+fn verifier_07_writer_names_failed_relative_path() {
+    let scratch = Scratch::new("verifier-writer");
+    let out = skills::prepare_output(&scratch.0.join("copy"), &scratch.0, &[]).unwrap();
+    let files = vec![("SKILL.md".into(), "public".into())];
+    skills::write_skill(&out, "notes", &files).unwrap();
+    let error = skills::write_skill(&out, "notes", &files).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Couldn't write notes/SKILL.md in the copy. Check there's space, then run anonymize again."
+    );
+}
+
+#[test]
+fn verifier_12_plugin_skill_cannot_escape_its_install() {
+    let scratch = Scratch::new("verifier-plugin");
+    let h = &scratch.0;
+    skill(h, ".codex/skills/notes");
+    skill(h, ".claude/plugins/cache/tool/skills/inside");
+    symlink(
+        h.join(".codex/skills/notes"),
+        h.join(".claude/plugins/cache/tool/skills/outside"),
+    )
+    .unwrap();
+    fs::write(h.join(".claude/plugins/installed_plugins.json"), serde_json::json!({"plugins":{"tool@market":[{"installPath":h.join(".claude/plugins/cache/tool")}]}}).to_string()).unwrap();
+    let found = skills::discover(h, &Rules::builtin()).unwrap();
+    assert!(found.skills.iter().any(|s| s.id == "codex:notes"));
+    assert!(found.skills.iter().any(|s| s.id == "plugin:tool:inside"));
+    assert!(!found.skills.iter().any(|s| s.id == "plugin:tool:outside"));
+}
+
+#[test]
+fn verifier_13_odd_file_name_is_left_out() {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+    let scratch = Scratch::new("verifier-odd");
+    skill(&scratch.0, ".codex/skills/notes");
+    let odd = OsString::from_vec(b"odd-\xff".to_vec());
+    let written = fs::write(scratch.0.join(".codex/skills/notes").join(&odd), "public");
+    // macOS filesystems can reject non-UTF-8 names; still exercise the public transform.
+    if let Err(error) = &written {
+        #[cfg(target_os = "macos")]
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        #[cfg(not(target_os = "macos"))]
+        panic!("could not create odd-name fixture: {error}");
+    }
+    let found = skills::discover(&scratch.0, &Rules::builtin()).unwrap();
+    let mut files = skills::read(&found.skills[0]).unwrap();
+    if written.is_err() {
+        files.push((odd.into(), Source::Bytes(b"public".to_vec())));
+    }
+    let result = persona_builder_ingest::anonymize::skill(
+        &files,
+        &Rules::builtin(),
+        &mut Default::default(),
+    );
+    assert!(result.refused.is_empty());
+    assert_eq!(result.kept.len(), 1);
+    assert!(result.left_out.iter().any(|(_, reason)| {
+        persona_builder_ingest::anonymize::left_out_reason(reason) == "odd name"
+    }));
+}
+
+#[test]
+fn verifier_15_output_cannot_contain_discovered_skill() {
+    let scratch = Scratch::new("verifier-parent");
+    skill(&scratch.0, "copy/notes");
+    let out = scratch.0.join("copy");
+    fs::write(
+        out.join(".anonymized-copy"),
+        "Made by persona-builder anonymize. Running it again replaces this folder.\n",
+    )
+    .unwrap();
+    let folder = out.join("notes").canonicalize().unwrap();
+    let found = vec![skills::Skill {
+        id: "codex:notes".into(),
+        name: "notes".into(),
+        root: skills::Root::Codex,
+        shown: folder.display().to_string(),
+        folder,
+    }];
+    assert!(skills::prepare_output(&out, &scratch.0, &found).is_err());
+    assert!(out.join("notes/SKILL.md").exists());
+}
+
+#[test]
+fn verifier_06_future_roots_are_protected_in_another_case() {
+    let scratch = Scratch::new("verifier-root-case");
+    for root in [
+        ".CLAUDE/SKILLS/new",
+        ".CODEX/SKILLS/new",
+        ".CLAUDE/PLUGINS/new",
+    ] {
+        assert!(
+            skills::prepare_output(&scratch.0.join(root), &scratch.0, &[]).is_err(),
+            "{root}"
+        );
+    }
+}

@@ -7,7 +7,7 @@ use persona_builder::{
 use serde_json::{Value, json};
 mod output;
 mod read;
-pub use output::{prepare_output, write_skill};
+pub use output::{prepare_output, prepare_output_with_projects, write_skill};
 pub use read::{read, read_with_rules};
 
 use std::{
@@ -121,6 +121,21 @@ fn root_skills(
     for (name, path) in children(path)? {
         if root == Root::Claude && name == "synced" {
             continue;
+        }
+        if root == Root::Plugin {
+            let Some(install) = path
+                .parent()
+                .and_then(Path::parent)
+                .and_then(|p| p.canonicalize().ok())
+            else {
+                continue;
+            };
+            if !path
+                .canonicalize()
+                .is_ok_and(|folder| folder.starts_with(install))
+            {
+                continue;
+            }
         }
         add(found, home, root, prefix, &name, &path);
     }
