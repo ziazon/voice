@@ -29,12 +29,12 @@ One record per slice, newest first. Paraphrase only; no real person.
   `claude auth status --json` exits 1 when signed out. The research sub-agent (Sonnet) read
   Apple's, Anthropic's, OpenAI's and Tauri's sources; the report cites them.
 - **Who built it:** Codex, in three dispatches: the profile, tests and probe (`fb25206`); the
-  probe's status and version fixes (in `fb25206`, before commit); the review fixes (`9620330`).
+  probe's status and version fixes (in `fb25206`, before commit); the review fixes (`9620330`); the repeat Verifier's fixes (fourth dispatch, the commit after `f3a6df9`).
   Her sandbox refuses a nested one, so the profile tests skipped for her and V1 ran them.
 - **Security review (Opus sub-agent, on `ee99585`):** three mediums, all defence in depth (the
   child has no tools): the child could read the person's own terminals through `/dev`, and
-  `/Library`, `/private/var/db` and `/usr/local` held logs, crash reports and Homebrew data (fixed
-  in `9620330`, with a test over every such path the test can open, 22 on Mimi); `system.sb`'s
+  `/Library`, `/private/var/db` and `/usr/local` held logs, crash reports and installed tools
+  (fixed in `9620330`, with a test over every such path the test can open, 23 on Mimi); `system.sb`'s
   `trustd` grant is a theoretical way out (recorded, VO11.1 checks); the tunnel to Anthropic is
   opaque (accepted, recorded). Lows fixed in the probe: the child's process group always killed,
   `--profile` refusing the home folder and unmarked folders, control characters stripped, proxy
@@ -45,13 +45,18 @@ One record per slice, newest first. Paraphrase only; no real person.
   the App Sandbox quote was cut short (completed: an Open-panel pick plus
   `com.apple.security.files.user-selected.executable` can run it); private-tooling words in the
   public report (removed); `[::1]` on the proxy port is reachable too (noted).
-- **Verified:** `bash scripts/ci-local.sh` all passed at `ee99585` (V1, outside the sandbox, two
-  jobs under the resource gate's throttle). Profile tests 11/11 at `9620330`. Live probe on Mimi:
+- **Repeat Verifier (Opus, on `f3a6df9`):** PASS. Should-fixes, fixed in the fourth dispatch: a
+  UDP datagram reached the proxy's port number (`remote ip` allows UDP; now `remote tcp`, with a
+  test); `/usr/local/etc` doesn't exist on Mimi, so the check now uses `/usr/local`. Nits fixed in
+  the report and here; recorded for VO11.1: a descendant that calls `setsid` escapes the probe's
+  group kill (the sandbox still holds it).
+- **Verified:** `bash scripts/ci-local.sh` all passed at `ee99585`, `f3a6df9` and the final head
+  (V1, outside the sandbox, two jobs under the resource gate's throttle). Profile tests 11/11. Live probe on Mimi:
   `status` reads *Claude Code 2.1.292 runs inside the sandbox. Signed in inside the sandbox: no.*;
   `ask` gets Claude Code's own *Not logged in*; `--profile ~` is refused. Mutations by V1 (`cp`
-  backup, `cmp` restore), five killed: the deny list moved before the allows, the login exception
+  backup, `cmp` restore), six killed: the deny list moved before the allows, the login exception
   removed, the network rule widened to every local port, the listener made unconditional, `/dev`
-  and `/Library` put back. One equivalent: the letter classes dropped (Seatbelt ignores case
+  and `/Library` put back, the network rule back to `remote ip`. One equivalent: the letter classes dropped (Seatbelt ignores case
   here).
 - **Not verified (walk owed):** a signed-in Claude Code inside the profile: the sign-in finishing
   there and writing the profile's own file, pasting the code when no browser opens, TLS from

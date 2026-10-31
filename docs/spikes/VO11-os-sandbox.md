@@ -37,11 +37,11 @@ Each line was run on the Mac named above, with throwaway folders and canary file
 | The same without `process-exec` | `sandbox-exec` can't start `claude` |
 | `claude -p` with only those rules | `EPERM … open '/tmp/claude-<uid>'`; setting `CLAUDE_CODE_TMPDIR` to a writable run folder fixes it (`TMPDIR` alone does not) |
 | `claude -p` signed out, inside the full profile | runs to Claude Code's own `Not logged in · Please run /login` |
-| Network allowed to `localhost:<proxy port>` only | the proxy port works (on `127.0.0.1` and `[::1]` alike: `localhost` covers both); a listener on another localhost port, `127.0.0.2`, UDP, Unix sockets and `1.1.1.1:443` are refused; DNS fails (`system.sb`'s network helper is not called) |
+| Network allowed to TCP on `localhost:<proxy port>` only | the proxy port works (on `127.0.0.1` and `[::1]` alike: `localhost` covers both); a listener on another localhost port, `127.0.0.2`, UDP (to the proxy's port number too, once the rule says `tcp`: with `ip` a datagram got through), Unix sockets and `1.1.1.1:443` are refused; DNS fails (`system.sb`'s network helper is not called) |
 | `curl` through a `CONNECT` proxy on that port | `api.anthropic.com` reached (HTTP 404, TLS fine); `example.com` refused by the proxy |
 | Signed-out `claude -p` with `HTTPS_PROXY` set | two connections to `api.anthropic.com`, both through the proxy; with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, none |
 | `claude auth login --claudeai` inside the profile | `Failed to start OAuth callback server`; with listening on localhost allowed (the profile's `SIGN_IN=yes`), it starts and waits for the browser |
-| Listening while `SIGN_IN=yes` | the `localhost` filter also lets the child listen on **every** address: a listener on `*:<port>` was reachable through the Mac's own network address. the other rules tried either left it open (a later `deny` on inbound by `remote` address, `network*`) or refused every listener, the sign-in's too (`ip4 "127.0.0.1"`, `remote` on inbound alone) |
+| Listening while `SIGN_IN=yes` | the `localhost` filter also lets the child listen on **every** address: a listener on `*:<port>` was reachable through the Mac's own network address. The other rules tried either left it open (a later `deny` on inbound by `remote` address, `network*`) or refused every listener, the sign-in's too (`ip4 "127.0.0.1"`, `remote` on inbound alone) |
 | A deny rule after an allow of the folder | a `.env`, `.ssh/…` or `.pem` inside an allowed folder is refused; the same rule placed **before** the allow is not (the last matching rule wins) |
 | A symlink in an allowed folder pointing outside | refused (Seatbelt checks the real path) |
 | A deny rule written in lower case (`\.pem$`) | denies `UP.PEM` too, on this Mac's volume and on a case-sensitive disk image alike: Seatbelt's regexes ignore letter case here; the profile still spells both cases, in case a later macOS stops |
@@ -134,7 +134,7 @@ temporary folder), `PROXY_PORT`, and `SIGN_IN` (`yes` only while signing in).
   `random`, `urandom`, `dtracehelper` and `/dev/fd`, and the three folders. Not the rest of the
   home folder, `/Library`, `/usr/local`, the system logs, or the person's terminals.
 - **Writes:** the profile and run folders, and `/dev/null`.
-- **Network:** out to the proxy's port on this computer only; listening only while signing in
+- **Network:** out over TCP to the proxy's port on this computer only; listening only while signing in
   (on every address, see above).
 - **Never, whatever the folders:** the secrets deny list of `builder/core/src/deny.rs`, in either
   letter case, with one exception: Claude Code's own `.credentials.json` directly in its profile
