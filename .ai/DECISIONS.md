@@ -100,6 +100,35 @@ the variables that switch it to another provider or endpoint. The interview's dr
 with the assistant's own folder only: it sends the kinds of decision and how many of each the
 last build found, numbers but no record.
 
+## 2026-10-31: a model server on the person's own machines (VO9)
+
+The second provider is any model server on this computer or the person's own network that speaks
+the OpenAI-style `POST /v1/chat/completions` with a JSON-schema reply (Ollama, llama.cpp's
+`llama-server`, LM Studio, vLLM all do), set up per assistant with
+`persona-builder self-hosted set --url … --model …` and kept in the assistant's state folder
+(`self-hosted.json`, 0600), never in member.json, because the address belongs to this Mac.
+Choices made at pickup:
+
+- **Claude Code first, the server second.** A step goes where it goes today unless its data is
+  kept home; a person who wants everything local sets every ceiling to `local-only`.
+- **This computer only, unless the person says their network.** The check is on the address
+  connected to, not the name typed, for every address a name resolves to at each connection:
+  loopback by default; with `--network`, also `10/8`, `172.16/12`, `192.168/16` and link-local.
+  A private address isn't proof of the person's own network (on other Wi-Fi a stranger's device
+  can answer at the same address or name), so `--network` is the person's choice and the words
+  say so. `100.64/10` is left out (carrier-grade NAT is shared with strangers), so a Tailscale
+  address doesn't count yet. No proxy, no redirects.
+- **No token yet.** The common servers need none on a home network; a token kept in the
+  Keychain is a later card.
+- **A call costs $0 but still waits for the daily limit,** so one limit governs every step and
+  every refusal reads the same.
+- **The build cache keeps Claude Code's keys** (a rebuild reuses what the person already paid
+  for) and keys another provider's replies apart; the backtest entry names who answered.
+- **Panel turns take the narrowest ceilings across every seat,** because a seat's post carries
+  its folder's data into the other seats' briefs.
+
+The app's screen for it is a later card, as for ceilings.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.

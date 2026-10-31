@@ -2,6 +2,59 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO9: a model server on the person's own machines (2026-10-31, lane: V1)
+
+- **What:** the second provider behind VO8's contract (`builder/agent/src/self_hosted.rs`,
+  VO-D5): any server speaking the OpenAI-style `POST /v1/chat/completions` with a JSON-schema
+  reply (Ollama, llama.cpp's `llama-server`, LM Studio, vLLM; the reply shape was read in
+  Ollama's `openai/openai.go` and llama.cpp's `server-common.cpp`). `Reach::OwnMachines`; set
+  per assistant with `persona-builder self-hosted show|set|off` (`--url`, `--model`,
+  `--network`), kept in the state folder (`self-hosted.json`, 0600); `set` checks the server
+  lists the model (`GET /v1/models`) before it takes the state lock. Every address is checked
+  in ureq's resolver at every request (this computer only; with `--network`, the private
+  ranges and link-local too); no proxy, no redirects, a 10-second connect limit, a 16 MiB reply
+  cap. The request has no tools; a reply with tool calls, an unfinished answer or non-JSON
+  content fails. A call is on the ledger at $0 and waits for the daily limit. The guard lists
+  Claude Code first, then the server (`guard::providers`), at every CLI and app guard and in
+  panel turns; with no own-machines provider a refusal adds how to set one up. Panel turns now
+  take the narrowest ceilings across every seat (`Ceilings::narrowest`, carried from VO8.2) and
+  refuse a post over 12,000 characters. The build routes before its cache: Claude Code's keys
+  are unchanged (pinned in a test), another provider's are `<id>/<model>`; the backtest's
+  measurements entry names who answered (`Built.by`), a Claude-only build writing today's words.
+  Shared brief checks moved to `provider::check_brief`; `Provider::model` added. Brief:
+  `plans/briefs/VO9-self-hosted-model.md` (section 10: the fixes after review).
+- **Decided at pickup** (recorded in DECISIONS): the OpenAI-style endpoint (the one all four
+  servers share); Claude Code first in the order; settings in the state folder, not
+  member.json; no token yet; the daily limit still governs a $0 call; Claude's cache keys kept;
+  `100.64/10` (Tailscale) left out.
+- **Who built it:** Codex, in three dispatches: the provider (`ce854de`), the wiring
+  (`c11cbe7`), the review fixes (`3a2d593`). Her sandbox can't open listeners, so V1 ran the
+  listener tests; the first run found the test server's accepted socket inheriting
+  non-blocking mode on macOS (a 16 MiB write stopped early), fixed in dispatch two.
+- **Security review (Opus sub-agent, on `c11cbe7`):** one medium, fixed in `3a2d593`: a
+  private address isn't proof of the person's own network (on other Wi-Fi a stranger's device
+  can answer as `studio.lan` or hold `192.168.1.20`), so the server is this computer only unless
+  set with `--network`, whose words say the risk. Lows: *Stop* doesn't cut off a call already
+  waiting on the server (recorded in SECURITY); a panel post's length was only asked of the
+  server (fixed). Info: the cloud metadata address is link-local (recorded).
+- **Verifier (Fable, first pass on `c11cbe7`):** PASS, all ten claims verified with the ureq
+  3.4.2 source (`run.rs` resolves on every request before the pool; `tcp.rs` dials only the
+  resolver's addresses). Should-fixes: the records uncommitted at her pass (committed here); a
+  connect timeout read as a slow step (fixed: unreachable); routing before the cache means a
+  step narrowed to `local-only` with no server errors rather than reusing a Claude reply (by
+  design; noted here).
+- **Verified:** `bash scripts/ci-local.sh` all passed at `c11cbe7` and at `3a2d593` (V1's runs,
+  outside the sandbox; the second with 2 jobs under the resource gate's throttle). Listener
+  tests by V1: agent `self_hosted` 16, CLI `self_hosted` 8. Mutations by V1 (`cp` backup, `cmp`
+  restore), seven killed: the provider's seal check removed, the cache key's provider part
+  dropped, Claude dropped from the order, the tool-call refusal off, the resolver's check off,
+  the draft's server words, and the loopback-only default widened to the private ranges; Codex
+  killed more (no proxy, the refusal's outcome, the panel fold).
+- **Not verified / residual:** no call to a real model: no model file on this Mac, and pulling
+  one onto a 24 GB Mac mid-run was not done (walk owed, `## Walks owed` in the lane file). The
+  app has no screen for the server yet (a card to file). DNS rebinding was proven from ureq's
+  source and the resolver's unit test, not against a live name.
+
 ## VO8.2: ceilings per source, and routing in the privacy guard (2026-10-31, lane: V1)
 
 - **What:** every brief names the sources of what it carries (`Brief.sources`), each source has a
