@@ -459,3 +459,60 @@ refused and saves nothing; `show` before and after; `off` removes it.
 - `Cargo.lock` adds no package (only `persona-builder-agent`'s dependency list changes).
 - No real person, no fixed path, no network address outside `127.0.0.1` dialled by any test.
 - Report: each file changed, each test added, and the red failure you saw for each before green.
+
+## 10. Fixes after review (V1, 2026-10-31)
+
+The security review (Opus) found one medium, and the Verifier (Fable, PASS) two should-fixes;
+these close them.
+
+### 10.1 This computer only, unless the person says their network (medium)
+
+A private address is not proof of the person's own network: on café, hotel or office Wi-Fi a
+stranger's device can answer as `studio.lan` (DNS or mDNS) or simply hold `192.168.1.20`, and the
+briefs, mail included, would reach it in plain HTTP. So a server is **this computer only** by
+default; another machine needs the person's explicit `--network`, and the words say what that
+risks.
+
+- `Server` gains `network: bool` (`pub fn network(&self) -> bool`); `Server::new(url, model,
+  network)`. The saved file gains a required `"network": true|false`.
+- `pub fn this_computer(ip: IpAddr) -> bool`: `127.0.0.0/8`, `::1`, and an IPv4-mapped address
+  whose IPv4 part is in `127.0.0.0/8`. Nothing else.
+- With `network == false`: an IP literal that is not `this_computer` is refused by `Server::new`
+  with `text::SERVER_NOT_THIS_COMPUTER`, and the resolver (now `OwnNetworkOnly { network: bool }`)
+  returns addresses only when every one is `this_computer`, else the same `NotOwnNetwork` error,
+  mapped to `text::SERVER_NOT_THIS_COMPUTER`. With `network == true`: exactly today's
+  `own_network` rule and `SERVER_NOT_OWN`.
+- CLI: `self-hosted set` takes `--network` (a plain flag, "Allow a computer on your own network,
+  not only this one").
+- Texts, exactly (add `SERVER_NOT_THIS_COMPUTER` to `SERVER_MESSAGES`, which becomes 5 long):
+
+  ```rust
+  pub const SERVER_NOT_THIS_COMPUTER: &str = "Nothing was sent. Your model server's address isn't this computer, and you haven't said to use your network. To use another computer on your own network, set it up again with --network.";
+  ```
+
+  `text::server(&server)`, two forms:
+  - not network: `Model server: {url}, model {model}, on this computer. Steps with data you keep on your own machines go to it, and before each step Persona Builder checks the address still leads to this computer.`
+  - network: `Model server: {url}, model {model}, on your network. Steps with data you keep on your own machines go to it. Before each step Persona Builder checks the address is on a private network, but it can't tell your network from someone else's: on other Wi-Fi, a stranger's computer could answer at the same address. Before you use other Wi-Fi, turn it off with persona-builder self-hosted off.`
+- Tests: `this_computer` table (true: `127.0.0.1`, `127.255.0.1`, `::1`, `::ffff:127.0.0.1`;
+  false: `10.0.0.1`, `192.168.1.10`, `169.254.1.1`, `fd00::1`, `fe80::1`, `::ffff:192.168.1.10`,
+  `8.8.8.8`); `Server::new("http://192.168.1.20:11434", m, false)` refused with
+  `SERVER_NOT_THIS_COMPUTER` and accepted with `true`; `http://localhost:1234` accepted with
+  `false`; the resolver with `network: false` refuses `http://10.0.0.1:9/` and accepts
+  `http://127.0.0.1:9/`, with `network: true` accepts `http://10.0.0.1:9/`; the saved file round
+  trips `network`, and a file without it is `server_damaged`; the CLI `set` without `--network`
+  on `http://192.168.1.20:1` is refused and saves nothing, and both `show` forms print exactly.
+
+### 10.2 A server that doesn't answer is unreachable, not slow (Verifier)
+
+Set `.timeout_connect(Some(Duration::from_secs(10).min(timeout)))` on the agent, and map
+`ureq::Error::Timeout(ureq::Timeout::Resolve | ureq::Timeout::Connect)` to outcome `unreachable`,
+`text::SERVER_UNREACHABLE`; every other timeout stays `cut-off`. Test it in a unit test on
+`transport_error` (no network: construct the errors directly), and keep the existing
+never-answers listener test passing as `cut-off`.
+
+### 10.3 A panel post is held to its length here, not only by the server (security review, low)
+
+In `builder/panel-runner/src/turns.rs` `ask`, a `post` longer than 12,000 characters
+(`chars().count()`) is treated like a missing one: `crate::text::UNREADABLE`, usage kept. The
+schema's `maxLength` is only a request to a model server. Test with a fake provider whose post is
+12,001 characters (refused) and one of exactly 12,000 (kept).
