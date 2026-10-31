@@ -2,6 +2,45 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO8.1: the provider interface, Claude Code its first adapter (2026-10-31, lane: V1)
+
+- **What:** one `Provider` trait in `builder/agent/src/provider.rs` (VO-D5): `id`, `name`,
+  `reach` and `call(session, brief) -> reply`. Today's `claude::Call` is renamed `Brief` (same
+  fields: step, instructions, records, model, reply shape; no tools field) and `Usage` and `Reply`
+  moved beside it. `Reach` is ordered `OwnMachines < Anthropic < ThirdParty` for VO8.2 to compare
+  with a source's ceiling. The person's own Claude Code implements it with its call body moved
+  unchanged (same argv, checks, cap and ledger line) and reports `Anthropic`; finding, checking and
+  signing in stay on `Claude`. `AGENTS` gains each provider's reach; the app's `AgentInfo` and
+  `persona-builder agents` are unchanged. The build (`Asker`, `build`), the interview (`draft`),
+  `refresh`, `apply` and panel turns take `&dyn Provider`. No behaviour change. Brief:
+  `plans/briefs/VO8.1-provider-interface.md`.
+- **Who built it:** Codex, in two dispatches: the tests (red, they did not compile; frozen in
+  their own commit) and the implementation with them unchanged. Existing tests changed only in
+  imports and `Call` to `Brief`.
+- **Tests:** `builder/agent/tests/provider.rs` (Claude's id, name and reach through the trait;
+  `AGENTS` agrees; the order of `Reach`; one call through `&dyn Provider` leaves one ledger line)
+  and `builder/build/tests/provider.rs` (an in-process fake provider drives the interview draft,
+  its one retry, and a build step with its cache).
+- **Verification:** `bash scripts/ci-local.sh` all passed. Mutations 6 of 6 killed (Claude's
+  reach, `AGENTS`' reach, the order of `Reach`, the model a build step sends, the interview's step
+  name, the build cache's reuse). Live: `persona-builder agents` prints the same line as before.
+  Not verified: a real call to Claude Code (the stub-based tests cover the argv byte for byte).
+- **Security review (Opus sub-agent):** no high or medium; the moved call body is identical to
+  the old one (diffed, signature line only). **Verifier (Fable):** PASS, nothing to fix in this
+  slice.
+- **Carried to later slices** (from both reviews; on the VO8.2 and VO9 cards):
+  - Before VO8.2 routes by reach: Claude Code inherits the person's environment, so a
+    `CLAUDE_CODE_USE_BEDROCK` or `CLAUDE_CODE_USE_VERTEX` (or a base-URL override) would send
+    briefs to a third party while `reach()` says Anthropic. Remove those from the child's
+    environment, or make `reach()` follow them.
+  - Before VO9: the cap and the ledger line live inside `Claude`'s call, and `Session::start`,
+    `finish` and `discard` are crate-private, so a provider in another crate can't charge the cap.
+    Have the agent crate own one wrapper (checks, start, the provider's send, finish) and give
+    providers only the send.
+  - Claude's model names cross the seam (`claude::DEFAULT_MODEL` in panel turns, `valid_model`),
+    and the build cache's key leaves out the provider's id, so a cached Claude reply would be
+    reused for another provider under the same model name.
+
 ## VO8.3: the secrets deny list for paths (2026-10-31, lane: V1)
 
 - **What:** a path-level list of files Persona Builder never opens, whatever they hold (gate

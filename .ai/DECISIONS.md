@@ -66,6 +66,14 @@ Python kit's own readers don't, and its `private.json` reader refuses a `denied_
 member that sets one is read by the app only. A hard link to a key file under an ordinary name
 gets past a path list; the text filters still apply to what is read.
 
+## 2026-10-31: one provider interface for every model call (VO8.1)
+
+Every place the app asks a model takes a `Provider` (`persona_builder_agent::provider`), not
+Claude Code itself: an id, a name, where its data goes (`Reach`: your own machines, Anthropic, a
+third party) and one tool-less call. A `Brief` has no tools field, so no provider can be handed
+one. The person's own Claude Code is the first provider, unchanged. Finding, checking and signing
+in to Claude Code stay Claude Code's own, because a later provider will have none of them.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
