@@ -71,7 +71,10 @@ impl Source {
         }
     }
     pub fn read_today(self) -> bool {
-        matches!(self, Self::ClaudeHistory | Self::CrewFolder | Self::Typed)
+        matches!(
+            self,
+            Self::ClaudeHistory | Self::CrewFolder | Self::Typed | Self::Mail
+        )
     }
     pub fn from_id(id: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|source| source.id() == id)
@@ -198,7 +201,7 @@ mod tests {
                 Anthropic,
                 false,
             ),
-            (Mail, "mail", "your mail", LocalOnly, false),
+            (Mail, "mail", "your mail", LocalOnly, true),
             (Calendar, "calendar", "your calendar", LocalOnly, false),
             (Contacts, "contacts", "your contacts", LocalOnly, false),
             (

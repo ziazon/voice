@@ -111,12 +111,12 @@ pub fn kept_home(
         && ceiling == persona_builder::ceilings::Ceiling::AnyConsented
     {
         return format!(
-            "Nothing was sent. This step uses {}, and {provider} sends what it's given to another company, which you haven't agreed to.",
+            "Nothing was sent. This step uses {}, and the provider for this step, {provider}, sends what it's given to another company, which you haven't agreed to.",
             source.name()
         );
     }
     format!(
-        "Nothing was sent. This step uses {}, which you keep {}, and {provider} sends what it's given to {}. To let it go there, run: persona-builder ceilings set <assistant folder> {} {}",
+        "Nothing was sent. This step uses {}, which you keep {}, and the provider for this step, {provider}, sends what it's given to {}. To let it go there, run: persona-builder ceilings set <assistant folder> {} {}",
         source.name(),
         ceiling.words(),
         reach_words(reach),

@@ -379,6 +379,12 @@ pub fn write(member_dir: &Path, decisions: &str, measurements: &str) -> Result<(
     measurements.rename()
 }
 
+/// Replace member.json through the same synced, mode-preserving staged sibling as build output.
+pub fn write_member(member_dir: &Path, member: &Member) -> Result<()> {
+    let text = persona_builder::json::to_python_json(member)?;
+    Staged::new(member_dir, "member.json", &text)?.rename()
+}
+
 /// Replace only the measurements file, leaving decisions untouched.
 pub fn write_measurements(member_dir: &Path, measurements: &str) -> Result<()> {
     sweep(member_dir)?;

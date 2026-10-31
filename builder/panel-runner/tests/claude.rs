@@ -396,7 +396,7 @@ fn a_seats_local_typed_ceiling_is_its_turn_error_without_a_stub_call() {
     assert_eq!(
         turn.error.as_deref(),
         Some(
-            "Nothing was sent. This step uses what you type into Persona Builder (interview answers, notes on answers, a panel's question), which you keep on your own machines, and Claude, through your own Claude Code sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> typed anthropic"
+            "Nothing was sent. This step uses what you type into Persona Builder (interview answers, notes on answers, a panel's question), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> typed anthropic"
         )
     );
     assert!(turn.post.is_none());

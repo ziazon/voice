@@ -401,7 +401,7 @@ fn apply_help_explains_the_model_is_for_testing() {
     assert!(text(&out.stdout).contains("The Claude model to test with"));
 }
 
-const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and Claude, through your own Claude Code sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic";
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic";
 
 fn keep_folder_local(member: &std::path::Path) {
     let path = member.join("member.json");

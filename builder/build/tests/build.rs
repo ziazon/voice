@@ -1212,3 +1212,146 @@ fn preflight_and_the_codebook_refuse_links_before_anything_is_spent() {
     fs::write(dir.0.join("briefs/codebook.md"), "| category |\n").unwrap();
     assert_eq!(draft::read_codebook(&dir.0).unwrap(), "| category |\n");
 }
+
+// Section 8: exercise the complete build, including its guard, with invented corpus records.
+struct RecordingClaude {
+    claude: Claude,
+    sources: std::sync::Mutex<Vec<Vec<persona_builder::ceilings::Source>>>,
+}
+impl persona_builder_agent::provider::Provider for RecordingClaude {
+    fn id(&self) -> &'static str {
+        self.claude.id()
+    }
+    fn name(&self) -> &'static str {
+        self.claude.name()
+    }
+    fn reach(&self) -> persona_builder_agent::provider::Reach {
+        self.claude.reach()
+    }
+    fn call(
+        &self,
+        session: &Session,
+        sealed: &persona_builder_agent::guard::Sealed,
+    ) -> persona_builder::error::Result<persona_builder_agent::provider::Reply> {
+        self.sources
+            .lock()
+            .unwrap()
+            .push(sealed.brief().sources.to_vec());
+        self.claude.call(session, sealed)
+    }
+}
+
+fn mail_build(
+    home: &Path,
+    member: &Member,
+    provider: &RecordingClaude,
+) -> persona_builder::error::Result<build::Built> {
+    let session = session(home, Cap::default());
+    let book = book(member).unwrap();
+    let text = corpus(12, 0);
+    build::build(
+        &Guard::new(vec![provider], Ceilings::for_member(member).unwrap()),
+        &session,
+        home,
+        &Inputs {
+            member,
+            book: &book,
+            codebook: CODEBOOK,
+            corpus_name: "decisions.jsonl",
+            corpus: text.as_bytes(),
+            filters: &filters(),
+            model: "sonnet",
+        },
+        &mut |_| {},
+    )
+}
+fn recording(stub: &Stub) -> RecordingClaude {
+    RecordingClaude {
+        claude: stub.claude(),
+        sources: std::sync::Mutex::new(Vec::new()),
+    }
+}
+fn mined_mail(home: &Path) {
+    persona_builder_ingest::private::write_private(
+        home,
+        "ada",
+        "decisions-src-mail.jsonl",
+        format!("{}\n", message("message:mail0", 0)).as_bytes(),
+    )
+    .unwrap();
+}
+fn mail_sources() -> Vec<persona_builder::ceilings::Source> {
+    use persona_builder::ceilings::Source::*;
+    vec![ClaudeHistory, Typed, CrewFolder, Mail]
+}
+
+#[test]
+fn mined_mail_at_its_default_is_refused_before_a_call_or_ledger_line() {
+    let python = python().expect("python3 for the stub");
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    mined_mail(&home.0);
+    let provider = recording(&stub);
+    let result = mail_build(&home.0, &member(), &provider);
+    assert!(result.is_err(), "mail at its default must stay home");
+    assert_eq!(
+        result.err().unwrap().to_string(),
+        "Nothing was sent. This step uses your mail, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> mail anthropic"
+    );
+    assert!(provider.sources.lock().unwrap().is_empty());
+    assert_eq!(stub.calls(), 0);
+    let ledger = home.0.join(".claude/state/ada/runs.jsonl");
+    assert!(!ledger.exists() || fs::read(ledger).unwrap().is_empty());
+}
+
+#[test]
+fn mined_mail_allowed_to_anthropic_is_named_in_every_build_brief() {
+    let python = python().expect("python3 for the stub");
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    mined_mail(&home.0);
+    let mut member = member();
+    member
+        .extra
+        .insert("ceilings".into(), json!({"mail": "anthropic"}));
+    let provider = recording(&stub);
+    assert!(mail_build(&home.0, &member, &provider).is_ok());
+    let briefs = provider.sources.lock().unwrap();
+    assert!(!briefs.is_empty());
+    for sources in briefs.iter() {
+        assert_eq!(*sources, mail_sources());
+    }
+    assert_eq!(stub.calls(), briefs.len());
+}
+
+#[test]
+fn merged_mbox_config_names_mail_without_a_mined_file_and_other_sources_do_not() {
+    let python = python().expect("python3 for the stub");
+    for kind in [None, Some("project"), Some("mbox")] {
+        let home = Scratch::new();
+        let stub = Stub::new(&python);
+        let mut member = member();
+        member
+            .extra
+            .insert("ceilings".into(), json!({"mail": "anthropic"}));
+        if let Some(kind) = kind {
+            // The merged member can contain a source from private.json, without consent.
+            member.extra.insert(
+                "sources".into(),
+                json!([{"kind": kind, "name": "invented"}]),
+            );
+        }
+        let provider = recording(&stub);
+        assert!(mail_build(&home.0, &member, &provider).is_ok());
+        let briefs = provider.sources.lock().unwrap();
+        assert!(!briefs.is_empty());
+        let expected = if kind == Some("mbox") {
+            mail_sources()
+        } else {
+            build::SOURCES.to_vec()
+        };
+        for sources in briefs.iter() {
+            assert_eq!(*sources, expected, "source kind {kind:?}");
+        }
+    }
+}

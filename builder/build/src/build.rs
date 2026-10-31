@@ -750,6 +750,27 @@ pub fn cache_name(step: &str, model: &str, system: &str, schema: &Value, prompt:
 
 pub const SOURCES: &[Source] = &[Source::ClaudeHistory, Source::Typed, Source::CrewFolder];
 
+/// Sources that may be in this build's corpus, including mail mined by the guided build.
+pub fn sources(home: &Path, member: &Member) -> Result<Vec<Source>> {
+    let mined = persona_builder_ingest::private::list_private(home, &member.slug)?
+        .iter()
+        .any(|name| name.starts_with("decisions-src-") && name.ends_with(".jsonl"));
+    let configured = member
+        .extra
+        .get("sources")
+        .and_then(Value::as_array)
+        .is_some_and(|sources| {
+            sources
+                .iter()
+                .any(|source| source.get("kind").and_then(Value::as_str) == Some("mbox"))
+        });
+    let mut sources = SOURCES.to_vec();
+    if mined || configured {
+        sources.push(Source::Mail);
+    }
+    Ok(sources)
+}
+
 pub struct Asker<'a> {
     misfit: fn(&str, &str) -> String,
     guard: &'a Guard<'a>,
@@ -903,7 +924,8 @@ pub fn build(
         crate::interview::answered(&records),
         heldout.questions.len(),
     ));
-    let mut asker = Asker::new(guard, SOURCES, session, home, &member.slug, inputs.model);
+    let sources = sources(home, member)?;
+    let mut asker = Asker::new(guard, &sources, session, home, &member.slug, inputs.model);
 
     let schema = label_schema();
     let mut labels = Map::new();

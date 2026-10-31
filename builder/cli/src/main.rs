@@ -50,10 +50,7 @@ enum CeilingsCommand {
 }
 
 fn ceilings(command: CeilingsCommand) -> Result<()> {
-    use persona_builder::{
-        ceilings::Source,
-        member::{Member, refuse_symlink, write_member},
-    };
+    use persona_builder::{ceilings::Source, member::Member};
     match command {
         CeilingsCommand::Show { member_dir } => {
             let member = read_member(&member_dir.join("member.json"))?;
@@ -78,7 +75,7 @@ fn ceilings(command: CeilingsCommand) -> Result<()> {
             }
             for agent in persona_builder_agent::agents::AGENTS {
                 println!(
-                    "{} sends what it's given to {}.",
+                    "{}: sends what it's given to {}.",
                     agent.name,
                     persona_builder_agent::text::reach_words(agent.reach)
                 );
@@ -89,19 +86,37 @@ fn ceilings(command: CeilingsCommand) -> Result<()> {
             source,
             ceiling,
         } => {
+            let home = home()?;
+            let checked = checked_member(&member_dir, &home)?;
+            // An assistant can have settings before it has private state. Once that folder
+            // exists, use the same exclusive directory lock as builds and limit changes.
+            let _lock =
+                match persona_builder_ingest::private::lock_existing_state(&home, &checked.slug) {
+                    Ok(lock) => Some(lock),
+                    Err(Error::Io { source, .. })
+                        if source.kind() == std::io::ErrorKind::NotFound =>
+                    {
+                        None
+                    }
+                    Err(error) => return Err(error),
+                };
             let path = member_dir.join("member.json");
-            refuse_symlink(&path)?;
-            let bytes = std::fs::read(&path).map_err(|source| Error::Io {
-                path: path.clone(),
-                source,
-            })?;
-            let value = serde_json::from_slice(&bytes).map_err(|error| {
+            // Re-read only public settings under the build's lock. read_text opens with
+            // O_NOFOLLOW and checks the opened descriptor is a regular file.
+            let text = persona_builder_build::draft::read_text(&path, 1024 * 1024)?
+                .ok_or_else(|| Error::Invalid(format!("{} is missing", path.display())))?;
+            let value = serde_json::from_str(&text).map_err(|error| {
                 Error::Invalid(format!(
                     "member config: {} is not JSON ({error})",
                     path.display()
                 ))
             })?;
             let mut member = Member::from_value(value, &path.display().to_string())?;
+            if member.slug != checked.slug {
+                return Err(Error::Invalid(
+                    "member.json changed while its settings were being read: try again".into(),
+                ));
+            }
             let value = member
                 .extra
                 .entry("ceilings")
@@ -117,8 +132,7 @@ fn ceilings(command: CeilingsCommand) -> Result<()> {
             )?;
             let source = Source::from_id(&source).expect("validated source");
             let ceilings = Ceilings::for_member(&member)?;
-            refuse_symlink(&path)?;
-            write_member(&path, &member)?;
+            persona_builder_build::draft::write_member(&member_dir, &member)?;
             println!(
                 "{} now stays {}.",
                 source.name(),

@@ -579,7 +579,7 @@ fn local_history_is_refused_before_the_stub_runs_or_spends() {
         .unwrap_err();
     assert_eq!(
         error.to_string(),
-        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and Claude, through your own Claude Code sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
+        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
     );
     assert!(!stub.ran());
     assert!(ledger_lines(&home.0).is_empty());

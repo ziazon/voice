@@ -185,7 +185,7 @@ fn mail_refusal_names_the_blocked_source_without_a_call_or_ledger_line() {
     let guard = Guard::new(vec![&fake], Ceilings::defaults());
     assert_eq!(
         refused(&guard, &[Source::CrewFolder, Source::Mail]),
-        "Nothing was sent. This step uses your mail, which you keep on your own machines, and Fake sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> mail anthropic"
+        "Nothing was sent. This step uses your mail, which you keep on your own machines, and the provider for this step, Fake, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> mail anthropic"
     );
     assert_eq!(fake.count(), 0);
     assert!(fake.briefs.lock().unwrap().is_empty());
@@ -196,7 +196,7 @@ fn the_persons_local_history_setting_refuses_anthropic() {
     let guard = Guard::new(vec![&fake], settings("claude-history", "local-only"));
     assert_eq!(
         refused(&guard, &[Source::ClaudeHistory]),
-        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and Fake sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
+        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Fake, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
     );
     assert_eq!(fake.count(), 0);
 }
@@ -216,7 +216,7 @@ fn any_consented_still_refuses_a_third_party() {
     let guard = Guard::new(vec![&fake], settings("mail", "any-consented"));
     assert_eq!(
         refused(&guard, &[Source::Mail]),
-        "Nothing was sent. This step uses your mail, and Fake sends what it's given to another company, which you haven't agreed to."
+        "Nothing was sent. This step uses your mail, and the provider for this step, Fake, sends what it's given to another company, which you haven't agreed to."
     );
     assert_eq!(fake.count(), 0);
 }
@@ -274,7 +274,7 @@ fn claude_rechecks_a_local_history_seal_forwarded_with_its_own_id() {
     );
     assert_eq!(
         refused(&guard, &[Source::ClaudeHistory]),
-        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and Forwarder sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
+        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Forwarder, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
     );
     assert_eq!(forwarder.calls.load(Ordering::SeqCst), 1);
     assert!(!stub.ran());
