@@ -315,3 +315,48 @@ records every sealed brief it gets; a counter):
 - `grep -rn 'provider.call\|\.call(session\|\.call(self.session' builder --include='*.rs'` finds
   model calls only inside `guard.rs` (and tests of `Sealed::check`).
 - Report: the files changed, each test added, and anything this brief left unclear.
+
+## 8. Fixes after review (third dispatch)
+
+The security review (and V1's own reading) found that mail mined by the guided build can reach a
+build brief unnamed. The guided build's `sources mine` writes sent mail (an `mbox` source in
+private.json's `sources` list) to `decisions-src-<name>.jsonl` in the state folder; the guided
+build's merge and the app's `discover` both fold every `decisions-*.jsonl` into `decisions.jsonl`,
+which the app's `build` sends to Claude Code. Mail records carry no marker in the merged corpus
+(their `project` is the source's own name). So:
+
+- **The build names Mail when mail can be in its corpus.** In `builder/build/src/build.rs`, add
+  `pub fn sources(home: &Path, member: &Member) -> Result<Vec<Source>>`: `SOURCES`, plus
+  `Source::Mail` (appended last) when either the member's state folder holds a file whose name
+  starts `decisions-src-` and ends `.jsonl` (list it with `persona_builder_ingest::private::list_private`,
+  as `discover`'s callers do), or the member's merged config lists a source of kind `mbox` in
+  `member.extra["sources"]` (consented or not). `build` uses it for its `Asker`. `refresh`,
+  `apply` and the interview are unchanged: they send no corpus record (refresh and apply send
+  the assistant's decisions, notes on answers and their cases; the interview sends kinds and
+  counts).
+- `Source::Mail.read_today()` becomes `true` (the build can send mail the guided build mined).
+  Its name stays `your mail`. Update the core test row for mail and the CLI `ceilings show`
+  expected line for mail accordingly (that is the only change allowed to those two frozen tests).
+- **`ceilings set` writes safely.** Find the member with `checked_member` as the other member
+  commands do. Read member.json with `O_NOFOLLOW` and check it is a regular file on the opened
+  descriptor. Write it through a staged sibling (`create_new`, `O_NOFOLLOW`, member.json's own
+  mode) that is synced and renamed over member.json: reuse the staged writer in
+  `builder/build/src/draft.rs` (`Staged`), exposing one small `pub fn` there if needed, rather than
+  writing a second one. Hold the same lock the other member-changing CLI commands take, if one
+  exists; say in the report which you used or why none.
+- **Tests first (red, then green):** a build whose state folder holds `decisions-src-mail.jsonl`
+  (invented records) with mail at its default is refused with the `Nothing was sent.` sentence
+  naming `your mail`, with no model call and no ledger line; the same build with
+  `"ceilings": {"mail": "anthropic"}` runs and its briefs name `[ClaudeHistory, Typed,
+  CrewFolder, Mail]`; a config listing an `mbox` source with no `decisions-src-*` file also adds
+  Mail; a state folder with neither leaves `build::SOURCES`. For `ceilings set`: a member.json
+  that is a link is refused and its target unchanged; after a set, no staged file is left in the
+  folder and member.json keeps its mode.
+- **The provider's name closes its aside** (the Verifier): Claude Code's name is
+  `Claude, through your own Claude Code`, so `…, and {provider} sends…` leaves a dangling comma.
+  The refusal becomes:
+  `Nothing was sent. This step uses {source.name()}, which you keep {ceiling.words()}, and the provider for this step, {provider}, sends what it's given to {reach words}. To let it go there, run: persona-builder ceilings set <assistant folder> {source.id()} {needed(reach).id()}`
+  and the no-consent one:
+  `Nothing was sent. This step uses {source.name()}, and the provider for this step, {provider}, sends what it's given to another company, which you haven't agreed to.`
+  `ceilings show`'s provider line becomes `{agent name}: sends what it's given to {reach words}.`
+  Update every test that asserts these sentences to the new wording and nothing else.
