@@ -26,6 +26,7 @@ use std::{
 pub const TEMPLATE: &str = include_str!("../../../crew/_template/decisions.md");
 pub const DECISIONS: &str = "decisions.md";
 pub const MEASUREMENTS: &str = "measurements.md";
+const MEMBER: &str = "member.json";
 /// The template's example entries, removed once a real one is written.
 const PLACEHOLDERS: [&str; 2] = [
     "## YYYY-MM-DD: build backtest",
@@ -381,8 +382,9 @@ pub fn write(member_dir: &Path, decisions: &str, measurements: &str) -> Result<(
 
 /// Replace member.json through the same synced, mode-preserving staged sibling as build output.
 pub fn write_member(member_dir: &Path, member: &Member) -> Result<()> {
+    sweep(member_dir)?;
     let text = persona_builder::json::to_python_json(member)?;
-    Staged::new(member_dir, "member.json", &text)?.rename()
+    Staged::new(member_dir, MEMBER, &text)?.rename()
 }
 
 /// Replace only the measurements file, leaving decisions untouched.
@@ -403,7 +405,7 @@ fn sweep(member_dir: &Path) -> Result<()> {
         let entry = entry.map_err(|e| io(member_dir, e))?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        let left = [DECISIONS, MEASUREMENTS]
+        let left = [DECISIONS, MEASUREMENTS, MEMBER]
             .iter()
             .any(|target| name.starts_with(&format!(".{target}{STAGED}")));
         if left

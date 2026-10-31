@@ -1177,6 +1177,35 @@ fn a_write_sweeps_what_an_interrupted_run_left_but_never_a_link() {
 }
 
 #[test]
+fn a_member_write_sweeps_interrupted_staged_files_but_never_a_link() {
+    let dir = Scratch::new();
+    let path = dir.0.join("member.json");
+    fs::write(&path, "old member\n").unwrap();
+    let left = dir.0.join(".member.json.persona-builder-123-456-0");
+    fs::write(&left, "half written\n").unwrap();
+    let kept = dir.0.join(".member.json.persona-builder-123-456-1");
+    std::os::unix::fs::symlink(&path, &kept).unwrap();
+    let member = member();
+
+    draft::write_member(&dir.0, &member).unwrap();
+
+    assert!(
+        !left.exists(),
+        "interrupted member staging file was not swept"
+    );
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        persona_builder::json::to_python_json(&member).unwrap()
+    );
+    assert!(
+        fs::symlink_metadata(&kept)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
 fn preflight_and_the_codebook_refuse_links_before_anything_is_spent() {
     let dir = Scratch::new();
     draft::preflight(&dir.0).unwrap();
