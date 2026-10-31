@@ -394,3 +394,31 @@ and `bash scripts/ci-local.sh`, and report each result.
 15. **Protect containing folders.** Refuse output that contains any discovered skill folder
     or configured project folder, including equality. Make this canonical-path check before
     deleting an earlier stamped copy, so re-running cannot delete an input tree.
+
+## 9. After the repeat Verifier (Opus, on 0dff027: FAIL), still to do
+
+Red test first for each; the repeat Verifier reproduced each one.
+
+1. **Must-fix: punctuation inside a term, with a letter right before it.** `mypebble-freight.com`,
+   `xPebble_Freight` (term `Pebble Freight`), `github.com/xrowan-vale/x` (term `Rowan Vale`),
+   `mypebble_io`, `mypebbleio` (term `pebble-io`) are kept, end to end through `anonymize`. Fix:
+   the substring re-scan is the term's letter-and-digit runs joined by `[^\p{L}\p{N}]{0,8}`, with
+   no edge rule (it replaces the whitespace-stripped scan), for the `ß` and fullwidth variants
+   too, whenever the term has 4 or more letters or digits.
+2. **Must-fix: a file the tool can't open or stat prints its name and stops the run.** An agreed
+   skill holding a mode-000 `pebble-freight-notes.md` gives
+   `persona-builder: pebble-freight-notes.md: Permission denied (os error 13)` and no other skill is
+   copied. Fix: in `skills/read.rs`, a per-file `openat` or `fstatat` failure becomes a new
+   `LeftOut::Unreadable` (`unreadable`), reported through the `*`-hiding path display; no
+   `Error::Io` may carry a path from inside a skill.
+3. **Should-fix: an allow entry covering part of a term or pattern hit hides it.** `Rowan\nVale`
+   with allow `vale`; `pebble-12` with pattern `pebble-[0-9]+` and allow `pebble`. Fix: find the
+   term re-scan and pattern hits on the unmasked text too, and put back any hit only partly masked.
+4. **Nit: several allow entries together can exempt one hit** (`212 555 0199` with allow `212` and
+   `555 0199`). Exempt a hit only when a single allow match covers all of it.
+5. **Nit: the skill-name line says "number N in persona-builder skills list" but `list` prints
+   no numbers.** Number the `list` lines (`<n>. <id>…`) and keep the report's number in step.
+   Record in DECISIONS that `skills list` shows ids and folders as they are (the person needs them
+   to agree), while `anonymize`'s report never shows a found term.
+6. **Nit: `ß` folds one way only** (term `Strasse` misses `Straße`). Also scan the term with `ss`
+   written `ß` when it holds `ss`.

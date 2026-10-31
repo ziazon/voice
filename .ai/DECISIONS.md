@@ -150,6 +150,27 @@ The VO11 spike (`docs/spikes/VO11-os-sandbox.md`) decides how the broker is pack
 - **Not wired in yet.** Nothing runs under the profile until VO11.1, which waits on the owner's
   answer about where Claude Code's login lives inside it (the profile reaches no Keychain).
 
+## 2026-10-31: the anonymizer copies a skill whole or not at all (VO3)
+
+`persona-builder anonymize` copies the skills a person agreed to, with private details taken out
+(`persona_builder_ingest::anonymize`, `::skills`; brief `plans/briefs/VO3-anonymizer.md`):
+
+- **A yes per skill, kept in private state** (`~/.claude/state/<slug>/anonymizer/skills.json`),
+  with the folder it was given for: a skill that moves waits for a new yes. claude.ai's synced
+  skills are never offered; naming one is the yes. The person's `never_copy` list beats a yes.
+- **The rules are data.** Built-in detectors (emails, phone and long numbers, secrets, other
+  people's home folders, private hosts and addresses, ticket ids) are always on; the person's
+  terms, patterns, allow list, never-copy list, dropped files and project folders live in the
+  `anonymizer` object of their gitignored `private.json`, never in `member.json`.
+- **Transform, then re-scan, then refuse.** Invisible characters and `<!-- private -->` sections
+  go, home folders become `~`, a listed term becomes a placeholder (`<company-1>`) that keeps its
+  number for good (`anonymizer/placeholders.json`, private). Then everything is checked again,
+  terms included (wrapped over a line, or inside a longer word); any hit refuses the whole skill.
+  `LOCAL.md`, `LEARNINGS.md`, hidden, password and key files, links and files over 1 MiB are left
+  out unread.
+- **The report names file, line and kind**, the line being the source file's, never the text.
+- **No hashes yet.** Refreshing on change, and the review screen for new skills, are VO4.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
