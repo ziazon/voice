@@ -1,7 +1,7 @@
 //! The tool-less interface for model providers.
 use crate::{guard::Sealed, ledger::Session};
 use persona_builder::ceilings::Source;
-use persona_builder::error::Result;
+use persona_builder::error::{Error, Result};
 use serde_json::Value;
 
 /// Where a provider sends what it is given. Ordered from the narrowest to the widest, so VO8.2
@@ -53,6 +53,44 @@ pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
     /// Where it sends a brief.
     fn reach(&self) -> Reach;
+    /// The model this provider runs for a brief that asks for `asked`. Claude Code runs the one
+    /// asked for; a model server runs the one it was set up with.
+    fn model<'b>(&'b self, asked: &'b str) -> &'b str {
+        asked
+    }
     /// One call. The provider re-checks the seal before it sends anything.
     fn call(&self, session: &Session, sealed: &Sealed) -> Result<Reply>;
+}
+
+/// The largest prompt, under the CLI's 10 MB stdin cap.
+pub const MAX_PROMPT: usize = 8 * 1024 * 1024;
+pub const MAX_SYSTEM: usize = 32 * 1024;
+
+/// A step's name for the ledger: a lower-case letter, then up to 39 letters, digits or dashes.
+fn valid_step(step: &str) -> bool {
+    let mut chars = step.chars();
+    step.len() <= 40
+        && chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+/// The checks every provider makes on a brief before it spends anything.
+pub(crate) fn check_brief(brief: &Brief) -> Result<()> {
+    let invalid = |message: &str| Error::Invalid(message.into());
+    if !valid_step(brief.step) {
+        return Err(invalid(
+            "a step's name must be a lower-case letter, then up to 39 letters, digits or dashes",
+        ));
+    }
+    if brief.prompt.trim().is_empty() || brief.prompt.len() > MAX_PROMPT {
+        return Err(invalid("a step's records must be there and at most 8 MiB"));
+    }
+    if brief.system.trim().is_empty() || brief.system.len() > MAX_SYSTEM {
+        return Err(invalid(
+            "a step's instructions must be there and at most 32 KiB",
+        ));
+    }
+    if !brief.schema.is_object() {
+        return Err(invalid("a step's answer shape must be a JSON object"));
+    }
+    Ok(())
 }

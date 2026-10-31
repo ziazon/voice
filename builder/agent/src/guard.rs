@@ -1,13 +1,25 @@
 //! Privacy routing and provider-bound briefs.
 use crate::{
+    claude::Claude,
     ledger::Session,
     provider::{Brief, Provider, Reach, Reply},
+    self_hosted::SelfHosted,
     text,
 };
 use persona_builder::{
     ceilings::{Ceiling, Ceilings, Source},
     error::{Error, Result},
 };
+
+/// One assistant's providers, in the guard's order: Claude Code, then the person's model server
+/// when one is set up. A step goes to the first one its data may reach.
+pub fn providers<'a>(claude: &'a Claude, server: Option<&'a SelfHosted>) -> Vec<&'a dyn Provider> {
+    let mut providers: Vec<&dyn Provider> = vec![claude];
+    if let Some(server) = server {
+        providers.push(server);
+    }
+    providers
+}
 
 /// Whether data under this ceiling may go where a provider of this reach sends it.
 /// Third parties are never allowed yet: no third-party provider or consent record exists.
@@ -98,12 +110,20 @@ impl<'a> Guard<'a> {
             .iter()
             .find(|source| !allows(self.ceilings.get(**source), first.reach()))
             .expect("first provider refused a source");
-        Err(Error::Invalid(text::kept_home(
+        let mut message = text::kept_home(
             source,
             self.ceilings.get(source),
             first.name(),
             first.reach(),
-        )))
+        );
+        if !self
+            .providers
+            .iter()
+            .any(|provider| provider.reach() == Reach::OwnMachines)
+        {
+            message = format!("{message} {}", text::SELF_HOSTED_HINT);
+        }
+        Err(Error::Invalid(message))
     }
     /// Route, seal, and hand the sealed brief to that provider.
     pub fn call(&self, session: &Session, brief: &Brief) -> Result<Reply> {

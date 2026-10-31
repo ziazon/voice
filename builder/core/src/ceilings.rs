@@ -135,6 +135,16 @@ impl Ceilings {
     pub fn is_set(&self, source: Source) -> bool {
         self.settings.contains(&source)
     }
+    /// Per source, the narrower of the two ceilings; a source is set when either sets it.
+    pub fn narrowest(&self, other: &Ceilings) -> Ceilings {
+        Self {
+            values: Source::ALL
+                .into_iter()
+                .map(|source| (source, self.get(source).min(other.get(source))))
+                .collect(),
+            settings: self.settings.union(&other.settings).copied().collect(),
+        }
+    }
     pub fn for_member(member: &Member) -> Result<Self> {
         let mut ceilings = Self::defaults();
         if let Some(value) = member.extra.get("ceilings") {
@@ -291,5 +301,41 @@ mod tests {
                 }
             );
         }
+    }
+    #[test]
+    fn narrowest_takes_each_minimum_and_unions_explicit_settings() {
+        let mut left = Ceilings::defaults();
+        left.apply(
+            &json!({"crew-folder":"local-only", "mail":"anthropic"}),
+            "member.json",
+        )
+        .unwrap();
+        let mut right = Ceilings::defaults();
+        right
+            .apply(
+                &json!({"typed":"any-consented", "calendar":"local-only"}),
+                "member.json",
+            )
+            .unwrap();
+        let combined = left.narrowest(&right);
+        assert_eq!(combined.get(Source::CrewFolder), Ceiling::LocalOnly);
+        assert_eq!(combined.get(Source::Mail), Ceiling::LocalOnly);
+        assert_eq!(combined.get(Source::Typed), Ceiling::Anthropic);
+        assert_eq!(combined.get(Source::Calendar), Ceiling::LocalOnly);
+        for source in Source::ALL {
+            assert_eq!(
+                combined.is_set(source),
+                matches!(
+                    source,
+                    Source::CrewFolder | Source::Mail | Source::Typed | Source::Calendar
+                )
+            );
+        }
+        assert_eq!(combined, right.narrowest(&left));
+        assert_eq!(combined.narrowest(&combined), combined);
+        assert_eq!(
+            Ceilings::defaults().narrowest(&Ceilings::defaults()),
+            Ceilings::defaults()
+        );
     }
 }

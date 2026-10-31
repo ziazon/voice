@@ -32,6 +32,7 @@ fn the_registry_matches_the_provider_and_has_distinct_ids() {
     assert_eq!(agent.reach, provider.reach());
     let ids: HashSet<_> = AGENTS.iter().map(|agent| agent.id).collect();
     assert_eq!(ids.len(), AGENTS.len());
+    assert_eq!(AGENTS.len(), 2);
 }
 
 #[test]
@@ -69,4 +70,25 @@ fn a_trait_call_uses_claude_and_leaves_one_ledger_line() {
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0]["agent"], "claude-code");
     assert_eq!(lines[0]["outcome"], "ok");
+}
+
+#[test]
+fn shared_checks_run_before_claude_model_checks() {
+    let home = Scratch::new("shared-checks");
+    let claude = Claude::at(home.0.join("does-not-run"));
+    let session = session(&home.0);
+    let schema = schema();
+    let brief = Brief {
+        model: "BAD MODEL",
+        prompt: " ",
+        ..call("records", &schema)
+    };
+    let error = Guard::new(vec![&claude], Ceilings::defaults())
+        .call(&session, &brief)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "a step's records must be there and at most 8 MiB"
+    );
+    assert!(ledger_lines(&home.0).is_empty());
 }

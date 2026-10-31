@@ -124,3 +124,47 @@ pub fn kept_home(
         crate::guard::needed(reach).id()
     )
 }
+
+pub const SERVER_UNREACHABLE: &str = "Persona Builder couldn't reach your model server. Check it's running and that its address is right (`persona-builder self-hosted show`), then try again.";
+pub const SERVER_NOT_OWN: &str = "Nothing was sent. Your model server's address leads outside this computer and your own network, so Persona Builder won't use it. Give it the address of a computer on your own network.";
+pub const SERVER_FAILED: &str = "Your model server couldn't finish this step. Check it answers you and has the model loaded, then try again.";
+pub const SERVER_STOPPED: &str =
+    "Persona Builder stopped before asking your model server, as you asked.";
+pub const BAD_SERVER_URL: &str = "A model server's address looks like http://192.168.1.20:11434 or http://localhost:1234: http or https, a computer's name or address, and a port, with nothing after it.";
+pub const BAD_SERVER_MODEL: &str = "A model's name is letters and digits, and may have . _ - : / or @ in it, up to 128 in all, like qwen3:8b.";
+pub const NO_STATE_FOR_SERVER: &str = "This assistant has no private folder yet, so there's nowhere to keep its model server. Run `persona-builder consent agree` first.";
+pub const NO_SERVER: &str = "No model server is set up for this assistant, so a step with data you keep on your own machines doesn't run.";
+pub const SELF_HOSTED_HINT: &str = "To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`.";
+/// Every fixed sentence a model-server call can fail with, for callers that pass only known
+/// sentences on to a person.
+pub const SERVER_MESSAGES: [&str; 4] = [
+    SERVER_UNREACHABLE,
+    SERVER_NOT_OWN,
+    SERVER_FAILED,
+    SERVER_STOPPED,
+];
+pub const SERVER_CUT_OFF_START: &str = "Your model server was still working on this step after ";
+pub fn server_cut_off(minutes: u64) -> String {
+    let unit = if minutes == 1 { "minute" } else { "minutes" };
+    format!(
+        "Your model server was still working on this step after {minutes} {unit}, so Persona Builder stopped waiting. Try again; if it happens again, try a smaller model or a smaller step."
+    )
+}
+pub fn server_damaged(path: &Path) -> String {
+    format!(
+        "The model server settings saved at {} can't be read, so Persona Builder won't use them. Set them again with `persona-builder self-hosted set`, or remove them with `persona-builder self-hosted off`.",
+        path.display()
+    )
+}
+pub fn no_model(model: &str) -> String {
+    format!(
+        "Your model server answers, but it doesn't list the model {model}. Load it on the server, or give the name the server lists."
+    )
+}
+pub fn server(server: &crate::self_hosted::Server) -> String {
+    format!(
+        "Model server: {}, model {}. Steps with data you keep on your own machines go to it. Before each step Persona Builder checks the address still leads to this computer or your own network.",
+        server.url(),
+        server.model()
+    )
+}

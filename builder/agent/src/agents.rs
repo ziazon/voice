@@ -1,5 +1,5 @@
 //! The providers Persona Builder can drive, each with where its data goes.
-use crate::{claude, provider::Reach};
+use crate::{claude, provider::Reach, self_hosted};
 
 /// One provider: its id (for the CLI and the app), name (for people), and where its data goes.
 #[derive(Debug, PartialEq, Eq)]
@@ -9,11 +9,18 @@ pub struct Agent {
     pub reach: Reach,
 }
 
-pub const AGENTS: &[Agent] = &[Agent {
-    id: claude::AGENT_ID,
-    name: claude::AGENT_NAME,
-    reach: claude::REACH,
-}];
+pub const AGENTS: &[Agent] = &[
+    Agent {
+        id: claude::AGENT_ID,
+        name: claude::AGENT_NAME,
+        reach: claude::REACH,
+    },
+    Agent {
+        id: self_hosted::AGENT_ID,
+        name: self_hosted::AGENT_NAME,
+        reach: self_hosted::REACH,
+    },
+];
 
 /// The agent with this id.
 pub fn agent(id: &str) -> Option<&'static Agent> {

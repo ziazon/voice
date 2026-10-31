@@ -12,7 +12,7 @@ use crate::{
     child::{self, Ran},
     guard::Sealed,
     ledger::{Line, Session},
-    provider::{Provider, Reach, Reply, Usage},
+    provider::{Provider, Reach, Reply, Usage, check_brief},
     text,
 };
 use persona_builder::error::{Error, Result};
@@ -36,9 +36,7 @@ pub const REACH: Reach = Reach::Anthropic;
 pub const DEFAULT_MODEL: &str = "sonnet";
 /// How long one call may take before it is killed: a 300-record labelling step can take minutes.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-/// The largest prompt, under the CLI's 10 MB stdin cap.
-pub const MAX_PROMPT: usize = 8 * 1024 * 1024;
-pub const MAX_SYSTEM: usize = 32 * 1024;
+pub use crate::provider::{MAX_PROMPT, MAX_SYSTEM};
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const CHECK_CAP: u64 = 64 * 1024;
 const STDOUT_CAP: u64 = 16 * 1024 * 1024;
@@ -108,14 +106,6 @@ fn valid_model(model: &str) -> bool {
             .next()
             .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.'))
-}
-
-/// A step's name for the ledger: a lower-case letter, then up to 39 letters, digits or dashes.
-fn valid_step(step: &str) -> bool {
-    let mut chars = step.chars();
-    step.len() <= 40
-        && chars.next().is_some_and(|c| c.is_ascii_lowercase())
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// `2.1.292`: two to four dot-separated runs of digits.
@@ -466,31 +456,16 @@ impl Provider for Claude {
     fn call(&self, session: &Session, sealed: &Sealed) -> Result<Reply> {
         sealed.check(AGENT_ID, REACH)?;
         let call = sealed.brief();
-        if !valid_step(call.step) {
-            return Err(invalid(
-                "a step's name must be a lower-case letter, then up to 39 letters, digits or dashes",
-            ));
-        }
+        check_brief(call)?;
         if !valid_model(call.model) {
             return Err(invalid(
                 "the model name takes lower-case letters, digits, dots and dashes",
             ));
         }
-        if call.prompt.trim().is_empty() || call.prompt.len() > MAX_PROMPT {
-            return Err(invalid("a step's records must be there and at most 8 MiB"));
-        }
         // `claude -p` expands a prompt that opens with `/` as a command (`/model`, `/config`),
         // and the built-in ones work under `--safe-mode`: records never open a prompt that way.
         if opens_with_slash(call.prompt) {
             return Err(invalid("a step's records can't begin with /"));
-        }
-        if call.system.trim().is_empty() || call.system.len() > MAX_SYSTEM {
-            return Err(invalid(
-                "a step's instructions must be there and at most 32 KiB",
-            ));
-        }
-        if !call.schema.is_object() {
-            return Err(invalid("a step's answer shape must be a JSON object"));
         }
         if self
             .stop

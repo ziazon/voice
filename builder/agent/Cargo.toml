@@ -11,3 +11,4 @@ persona-builder = { path = "../core" }
 persona-builder-ingest = { path = "../ingest" }
 serde_json = { version = "1", features = ["preserve_order"] }
 libc = "=0.2.191"
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
