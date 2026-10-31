@@ -130,6 +130,26 @@ Choices made at pickup:
 
 The app's screen for it is a later card, as for ceilings.
 
+## 2026-10-31: the operating-system sandbox is Seatbelt, one profile per child (VO11)
+
+The VO11 spike (`docs/spikes/VO11-os-sandbox.md`) decides how the broker is packaged on macOS:
+
+- **Seatbelt, not App Sandbox.** Each sandboxed process is started through `/usr/bin/sandbox-exec`
+  with a profile kept in the repo and its folders passed as parameters. App Sandbox has a single
+  on-or-off network switch, gives a child the whole app's grants, can't run a Claude Code
+  installed outside the app, and needs a signed app (PB-D3).
+- **Siblings, never nested.** macOS refuses a sandbox inside a sandbox, so an unsandboxed
+  launcher (the app) starts each sandboxed piece itself: the `claude` child first (VO11.1), the
+  broker's reading in a helper of its own later (VO11.2).
+- **One port out.** A sandboxed child may connect only to a proxy on this computer, which allows
+  `CONNECT` to port 443 of a listed name only. Claude Code follows `HTTPS_PROXY` and has no SOCKS
+  support.
+- **The profile's own tests are part of the checks.** `builder/agent/tests/sandbox_profile.rs`
+  runs on every Mac in `scripts/ci-local.sh` (`PERSONA_BUILDER_REQUIRE_SANDBOX=1`), since Apple
+  doesn't document the profile language and an update could change it.
+- **Not wired in yet.** Nothing runs under the profile until VO11.1, which waits on the owner's
+  answer about where Claude Code's login lives inside it (the profile reaches no Keychain).
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
