@@ -47,7 +47,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   an interrupted `ceilings set` was never swept (fixed in `ad0700c`, 33 lines, within the
   pass); the mail marker residual below (recorded); the core `write_member` now used only by
   tests (left).
-- **Verified:** `bash scripts/ci-local.sh` all passed at `4445c72` and `5a9b045` (V1's runs,
+- **Verified:** `bash scripts/ci-local.sh` all passed at `4445c72`, at `5a9b045` and at the records head after the sweep fix (V1's runs,
   outside Codex's sandbox, where seven `save` listener tests fail). Mutations by V1 (`cp` backup,
   `cmp` restore), eleven killed: `allows` ignoring `local-only`, the env scrub off, private.json
   ceilings allowed, a panel seat on default ceilings, the build naming fewer sources, `is_set`
