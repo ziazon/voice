@@ -2,6 +2,66 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO8.3: the secrets deny list for paths (2026-10-31, lane: V1)
+
+- **What:** a path-level list of files Persona Builder never opens, whatever they hold (gate
+  amendment A2, VO-D2), in `builder/core/src/deny.rs` (`persona_builder::deny::DenyList`). Built
+  in: any path part named `.ssh`, `.aws`, `.gnupg`, `.env*`, `.envrc`, `.npmrc`, `.netrc`,
+  `.pgpass`, `*.pem`, `*.key`, `*.p12`, `*.keychain`, `*.keychain-db` or `.credentials.json`, and
+  the runs `.config/gh`, `.docker/config.json`, `Library/Keychains`. The person adds names or
+  `~/`/`/` paths in `filters.denied_paths` (member.json and private.json, appended like
+  `pasted_prefixes`; absent, every config reads and writes as before). A path is checked as given
+  and with its links resolved, without regard to letter case; a person's entry must be plain
+  letters (macOS writes accented names decomposed and the app has no Unicode normalisation), and
+  `/`, `~/`, `~` or one holding `//` is refused. Checked before mining Claude Code
+  history (the history folder refused; a denied project folder left out unlisted and counted as
+  excluded; a denied session file left out unopened and counted, the summary saying so only when
+  one was), before reading a claude.ai export
+  (and its `conversations.json`), the `shingle` document and a panel's question or steer file; the app shows
+  the refusal in place of "can't read the export" and counts left-out files with the private
+  ones. Saving refuses an assistant folder that holds such a file. Lives in core, not ingest,
+  because every reader (ingest, save, cli, api) depends on core. Brief:
+  `plans/briefs/VO8.3-path-deny-list.md`.
+- **Split:** VO8 was split at this pickup into VO8.1 (the provider interface), VO8.2 (ceilings and
+  routing) and VO8.3 (this); VO9, VO13 and VO14 now wait on the sub-cards.
+- **Who built it:** Codex, in four dispatches: the tests (red, they did not compile; frozen in
+  `00fb02a`), the implementation with them unchanged, a fix-up from V1's review (a denied project
+  folder that is a link had been listed through the link, now refused as every link there was
+  before; `DenyList::builtin()` read `HOME`, now it takes no environment), and a fix-up from the
+  two reviews below (`55bdf4a`), each red first. The one edit to a frozen test: the bad-entry
+  sentence and its new shapes.
+- **Security review (Opus sub-agent):** no high. Medium, fixed: an accented entry typed composed
+  missed a folder named decomposed on disk. Lows fixed: `~//Private` meant `/Private`; the folder
+  table counted denied sessions. Lows recorded, not fixed: hard links (below); the check-then-open
+  gap (below); the Python kit refuses a `denied_paths` list (`.ai/DECISIONS.md` 2026-10-31); an
+  empty `denied_paths: []` is dropped when the app rewrites member.json; common secret files the
+  plan's list lacks (`.git-credentials`, `*.kdbx`, `.kube/config`, `.config/gcloud`,
+  `.vault-token`, `.cargo/credentials.toml`, `.pypirc`, `id_rsa`/`id_ed25519` outside `.ssh`),
+  left for a later decision on widening the list.
+- **Verifier (Fable, first pass on `20cc8c1`):** PASS with should-fixes, none letting a denied
+  file's bytes through, all fixed in `55bdf4a`: the folder table's count; a denied project folder
+  was listed; `/` or `~/` as an entry denied everything; the panel showed full paths. Its other
+  point stands as scope: the panel's question and steer files and `claudeai inspect` load no
+  member, so they use the built-in list only.
+- **Repeat Verifier (Opus, on `55bdf4a`):** PASS. Two optional points not taken: the test that a
+  denied project folder is never listed would still pass if a `read_dir` came back while it was
+  counted (a `chmod 000` folder would pin it); entries such as `*`, `/*` or `~/*` are accepted and
+  deny everything, which fails safe.
+- **Verified:** `bash scripts/ci-local.sh` all passed at `20cc8c1` and again at `55bdf4a` (V1's
+  runs, outside Codex's sandbox, whose listener refusal fails seven `save` tests). Mutations by V1
+  (`cp` backup, `cmp` restore), nine of nine killed: `.ssh` dropped from the list, links not
+  resolved, case kept, the export's first check, save's check, the private.json merge, the
+  plain-letters rule, a denied folder not counted as excluded, a denied session counted in the
+  folder table. Live, the debug `persona-builder claudeai inspect` with an
+  invented home: an export under `.aws`, a link to it from an ordinary folder and
+  `DL/../.AWS/export.zip` refused with the sentence; an ordinary export folder read as before.
+- **Not verified / residual:** a hard link to a denied file under an ordinary name is not caught
+  (a path list can't see it; the text filters still apply to what is read); a local process that
+  swaps a folder for a link between the check and the open (it could read the file itself
+  anyway); Unicode normalisation differences in the person's own entries (built-in entries are
+  ASCII). The Python kit's own readers (`scripts/crew_*.py`) and the privacy check
+  (`check.rs`, byte-compared with Python) are unchanged.
+
 ## VO10.3: Panels on the app's screen (2026-10-30, lane: V1)
 
 - **What:** the app gains Panels. From the home screen, *Ask a panel* opens a list of the

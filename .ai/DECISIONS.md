@@ -54,6 +54,18 @@ guided build's Python alike; the flags stay for people typing the commands. JSON
 per line because a text can hold line breaks and a line that matches the heredoc's end. An
 assistant made before this keeps its old SKILL.md; make it again to get the new one.
 
+## 2026-10-31: files the app never opens (VO8.3)
+
+The app checks every file of the person's it is about to read against a list of password and key
+files (`persona_builder::deny`), as given and with links resolved, without regard to letter case,
+and never opens one that matches. The list is built in (the VO plan's list) plus the person's own
+`filters.denied_paths` in member.json or private.json: names, or `~/`/`/` paths, in plain
+letters only, because the app has no Unicode normalisation and macOS writes accented names
+decomposed. It lives in core because every reader depends on core. Only the app applies it: the
+Python kit's own readers don't, and its `private.json` reader refuses a `denied_paths` list, so a
+member that sets one is read by the app only. A hard link to a key file under an ordinary name
+gets past a path list; the text filters still apply to what is read.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
