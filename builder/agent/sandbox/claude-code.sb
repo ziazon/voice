@@ -35,7 +35,7 @@
 
 ; All outgoing traffic must go through the caller's local proxy.
 (allow network-outbound
-    (remote ip (string-append "localhost:" (param "PROXY_PORT"))))
+    (remote tcp (string-append "localhost:" (param "PROXY_PORT"))))
 
 ; Signing in needs a local callback listener; ordinary calls do not.
 ; Known limit: Seatbelt's localhost filter also permits listening on every address

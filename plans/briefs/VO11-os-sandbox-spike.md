@@ -337,3 +337,19 @@ that `claude --version`, `auth status --json` and a signed-out `-p` still run wi
     raising.
 
 Tests for 6 to 10, each red first. Same rules: no commit, no new dependency, `-j 2`.
+
+## 8. Fixes after the repeat Verifier (fourth dispatch)
+
+1. **TCP only out.** `(remote ip …)` also lets a UDP datagram reach the proxy's port number on
+   this computer (the repeat Verifier measured one delivered). Change the network rule in
+   `claude-code.sb` to `(remote tcp (string-append "localhost:" (param "PROXY_PORT")))`. V1
+   measured the change: TCP to the port still connects, the UDP datagram is no longer delivered.
+2. **A test for it.** In `network_reaches_only_the_proxy_port`, bind a UDP socket on
+   `127.0.0.1:<proxy port>` (same number as the TCP listener) with a short read timeout, send one
+   datagram from inside the sandbox (`/bin/sh -c 'echo hi | /usr/bin/nc -u -w1 127.0.0.1 <port>'`),
+   and assert none arrived.
+3. **`/usr/local` itself.** In `refuses_the_persons_terminals_and_system_logs`, replace
+   `/usr/local/etc` with `/usr/local` (it exists on Macs without Homebrew there too), checked as a
+   folder.
+
+Same rules: no commit, no new dependency, `-j 2`.

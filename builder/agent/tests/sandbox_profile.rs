@@ -6,7 +6,7 @@ use common::Scratch;
 use std::{
     fs,
     io::{Read, Write},
-    net::TcpListener,
+    net::{TcpListener, UdpSocket},
     os::unix::fs::symlink,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
@@ -163,7 +163,7 @@ fn refuses_the_persons_terminals_and_system_logs() {
         "/private/var/db/diagnostics",
         "/Library/Logs/DiagnosticReports",
         "/Library/Preferences/SystemConfiguration/preferences.plist",
-        "/usr/local/etc",
+        "/usr/local",
     ]
     .into_iter()
     .map(PathBuf::from)
@@ -319,6 +319,9 @@ fn network_reaches_only_the_proxy_port() {
     let sb = Sandbox::new();
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = proxy.local_addr().unwrap().port();
+    let udp = UdpSocket::bind(("127.0.0.1", port)).unwrap();
+    udp.set_read_timeout(Some(Duration::from_millis(500)))
+        .unwrap();
     proxy.set_nonblocking(true).unwrap();
     let responder = thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(7);
@@ -355,6 +358,23 @@ fn network_reaches_only_the_proxy_port() {
     responder.join().unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(output.stdout, b"ok");
+    sb.command(port, "no", None)
+        .args([
+            "/bin/sh",
+            "-c",
+            &format!("echo hi | /usr/bin/nc -u -w1 127.0.0.1 {port}"),
+        ])
+        .output()
+        .unwrap();
+    let mut datagram = [0; 64];
+    let error = udp.recv_from(&mut datagram).unwrap_err();
+    assert!(
+        matches!(
+            error.kind(),
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        ),
+        "UDP receive failed unexpectedly: {error}"
+    );
     for host in ["127.0.0.1", "[::1]"] {
         let listener = TcpListener::bind(if host == "127.0.0.1" {
             "127.0.0.1:0"
