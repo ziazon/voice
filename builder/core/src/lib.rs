@@ -11,6 +11,7 @@ pub mod block;
 pub mod cli_command;
 pub mod consent;
 pub mod crew;
+pub mod deny;
 pub mod error;
 pub mod fields;
 pub mod forget;

@@ -2,6 +2,7 @@
 use crate::dto::*;
 use persona_builder::{
     assistants,
+    deny::DenyList,
     error::Error,
     member::{self, Member},
 };
@@ -104,7 +105,8 @@ pub fn claude_code_folders_in(home: &Path, request: SlugRequest) -> Result<Claud
         });
     }
     let filters = Filters::compile(&member.filters).map_err(|_| failure(FOLDERS))?;
-    let folders = mine::folders(&filters, &projects, home)
+    let deny = DenyList::for_member(&member, home).map_err(|e| failure(&e.to_string()))?;
+    let folders = mine::folders(&filters, &projects, home, &deny)
         .map_err(|_| failure(FOLDERS))?
         .into_iter()
         .map(|row| ClaudeCodeFolder {
@@ -167,7 +169,12 @@ pub fn read_claude_code_in(
         questions: count(mined.questions),
         held_out: count(mined.held),
         messages: count(mined.messages),
-        private_left_out: count(mined.personal.saturating_add(mined.secret)),
+        private_left_out: count(
+            mined
+                .personal
+                .saturating_add(mined.secret)
+                .saturating_add(mined.denied),
+        ),
         unreadable: count(mined.unreadable),
         first: mined.records.first().map(date),
         last: mined.records.last().map(date),
@@ -206,11 +213,21 @@ fn chosen_export(home: &Path, slug: &str) -> Result<Option<PathBuf>> {
         })
         .transpose()
 }
+fn read_export(home: &Path, slug: &str, path: &Path) -> Result<claudeai::Export> {
+    let member = readable(home, slug)?;
+    let deny = DenyList::for_member(&member, home).map_err(|e| failure(&e.to_string()))?;
+    deny.check(path).map_err(|e| failure(&e.to_string()))?;
+    if path.is_dir() {
+        deny.check(&path.join("conversations.json"))
+            .map_err(|e| failure(&e.to_string()))?;
+    }
+    claudeai::read_export(path, &deny).map_err(|_| failure(EXPORT_BAD))
+}
 fn export_status(home: &Path, slug: &str) -> Result<Option<ExportStatus>> {
     let Some(path) = chosen_export(home, slug)? else {
         return Ok(None);
     };
-    let export = claudeai::read_export(&path).map_err(|_| failure(EXPORT_BAD))?;
+    let export = read_export(home, slug, &path)?;
     let inspection = claudeai::inspect(&export).map_err(|_| failure(EXPORT_BAD))?;
     let chats = claudeai::conversations(&export).map_err(|_| failure(EXPORT_BAD))?;
     Ok(Some(ExportStatus {
@@ -225,7 +242,7 @@ fn export_status(home: &Path, slug: &str) -> Result<Option<ExportStatus>> {
 }
 fn export(home: &Path, slug: &str) -> Result<claudeai::Export> {
     let path = chosen_export(home, slug)?.ok_or_else(|| failure(EXPORT_GONE))?;
-    claudeai::read_export(&path).map_err(|_| failure(EXPORT_BAD))
+    read_export(home, slug, &path)
 }
 fn review(home: &Path, slug: &str, missing: &str, error: &str) -> Result<Vec<claudeai::ReviewRow>> {
     let bytes = private::read_private_optional(home, slug, REVIEW)

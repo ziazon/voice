@@ -4,6 +4,7 @@ use crate::{
     python::{PythonFormatter, decode, py_space, splitlines, truthy},
 };
 use persona_builder::{
+    deny::DenyList,
     error::{Error, Result},
     member::Member,
 };
@@ -36,6 +37,8 @@ pub struct Mined {
     pub secret: usize,
     /// Records of a shape Persona Builder can't read, left out whole.
     pub unreadable: usize,
+    /// Files on the never-read list, left out unopened.
+    pub denied: usize,
 }
 #[derive(Debug)]
 pub struct FolderRow {
@@ -92,12 +95,16 @@ fn project_folders(projects: &Path) -> Result<Vec<PathBuf>> {
     folders.sort_by_key(|p| name(p).expect("validated folder name"));
     Ok(folders)
 }
-fn session_files(folder: &Path) -> Result<Vec<PathBuf>> {
+fn session_files(folder: &Path, deny: &DenyList) -> Result<Vec<PathBuf>> {
     let mut files = vec![];
     for entry in io(folder, fs::read_dir(folder))? {
         let entry = io(folder, entry)?;
         let p = entry.path();
         if !entry.file_name().as_encoded_bytes().ends_with(b".jsonl") {
+            continue;
+        }
+        if deny.denied(&p) {
+            files.push(p);
             continue;
         }
         name(&p)?;
@@ -110,7 +117,7 @@ fn session_files(folder: &Path) -> Result<Vec<PathBuf>> {
         }
         files.push(p)
     }
-    files.sort_by_key(|p| name(p).expect("validated session name"));
+    files.sort_by_key(|p| p.file_name().map(|name| name.to_owned()));
     Ok(files)
 }
 fn open_session(path: &Path) -> Result<File> {
@@ -585,6 +592,8 @@ pub fn mine_with_progress(
     split: &Split,
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<Mined> {
+    let deny = DenyList::for_member(member, home)?;
+    deny.check(projects)?;
     if matches!(split, Split::Holdout(h) if !h.is_finite() || !(0.0..=1.0).contains(h)) {
         return Err(Error::Invalid(
             "--holdout must be a number from 0 to 1".into(),
@@ -598,6 +607,17 @@ pub fn mine_with_progress(
     let total = folders.len();
     progress(0, total);
     for (index, folder) in folders.into_iter().enumerate() {
+        if deny.denied(&folder) {
+            // Count names only; never open the sessions in a denied project.
+            for entry in io(&folder, fs::read_dir(&folder))? {
+                let entry = io(&folder, entry)?;
+                if entry.file_name().as_encoded_bytes().ends_with(b".jsonl") {
+                    mined.denied += 1;
+                }
+            }
+            progress(index + 1, total);
+            continue;
+        }
         let folder_name = name(&folder)?;
         if filters.excluded(&folder_name) {
             mined.excluded += 1;
@@ -605,7 +625,11 @@ pub fn mine_with_progress(
             continue;
         }
         let project = project_name(&folder_name, home);
-        for path in session_files(&folder)? {
+        for path in session_files(&folder, &deny)? {
+            if deny.denied(&path) {
+                mined.denied += 1;
+                continue;
+            }
             let session = path
                 .file_stem()
                 .and_then(|n| n.to_str())
@@ -693,8 +717,13 @@ pub fn summary(m: &Mined) -> String {
     } else {
         format!("; skipped {} records of an unexpected shape", m.unreadable)
     };
+    let denied = if m.denied == 0 {
+        String::new()
+    } else {
+        format!("; left out {} files on the never-read list", m.denied)
+    };
     format!(
-        "mined {} questions ({} held out) and {} messages, {}; held out from {}\ndropped {} excluded folders, {} personal records, {} secret records{skipped}\n",
+        "mined {} questions ({} held out) and {} messages, {}; held out from {}\ndropped {} excluded folders, {} personal records, {} secret records{skipped}{denied}\n",
         m.questions,
         m.held,
         m.messages,
@@ -721,13 +750,22 @@ pub fn to_jsonl(records: &[Map<String, Value>]) -> String {
     }
     String::from_utf8(bytes).expect("JSON is UTF-8")
 }
-pub fn folders(filters: &Filters, projects: &Path, home: &Path) -> Result<Vec<FolderRow>> {
+pub fn folders(
+    filters: &Filters,
+    projects: &Path,
+    home: &Path,
+    deny: &DenyList,
+) -> Result<Vec<FolderRow>> {
+    deny.check(projects)?;
     let mut rows = vec![];
     for p in project_folders(projects)? {
+        if deny.denied(&p) {
+            continue;
+        }
         let folder = name(&p)?;
         rows.push(FolderRow {
             excluded: filters.excluded(&folder),
-            sessions: session_files(&p)?.len(),
+            sessions: session_files(&p, deny)?.len(),
             project: project_name(&folder, home),
             folder,
         })

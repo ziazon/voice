@@ -31,6 +31,8 @@ pub struct Filters {
     pub personal: String,
     pub secret: String,
     pub pasted_prefixes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub denied_paths: Vec<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -138,14 +140,16 @@ fn validate_config(value: &Value, source: &str) -> Result<()> {
         let filters = filters
             .as_object()
             .ok_or_else(|| invalid(": filters must be a JSON object"))?;
-        if let Some(prefixes) = filters.get("pasted_prefixes")
-            && !prefixes
-                .as_array()
-                .is_some_and(|items| items.iter().all(Value::is_string))
-        {
-            return Err(invalid(
-                ": filters.pasted_prefixes must be a list of strings",
-            ));
+        for key in ["pasted_prefixes", "denied_paths"] {
+            if let Some(items) = filters.get(key)
+                && !items
+                    .as_array()
+                    .is_some_and(|items| items.iter().all(Value::is_string))
+            {
+                return Err(Error::Invalid(format!(
+                    "member config: {source}: filters.{key} must be a list of strings"
+                )));
+            }
         }
     }
     if let Some(answerer) = object.get("queue_answerer")
@@ -206,7 +210,7 @@ pub fn read_member(path: &Path) -> Result<Member> {
             .unwrap_or_default();
         if let Some(extra_filters) = extra.get("filters").and_then(Value::as_object) {
             for (key, value) in extra_filters {
-                if key == "pasted_prefixes" {
+                if key == "pasted_prefixes" || key == "denied_paths" {
                     let mut prefixes = filters
                         .get(key)
                         .and_then(Value::as_array)

@@ -231,7 +231,12 @@ fn slug(value: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
-fn list(folder: &Path, directory: &Path, files: &mut Vec<String>) -> Result<()> {
+fn list(
+    folder: &Path,
+    directory: &Path,
+    files: &mut Vec<String>,
+    deny: &persona_builder::deny::DenyList,
+) -> Result<()> {
     let mut entries = fs::read_dir(directory)
         .map_err(|e| io(directory, e))?
         .collect::<std::io::Result<Vec<_>>>()
@@ -244,12 +249,15 @@ fn list(folder: &Path, directory: &Path, files: &mut Vec<String>) -> Result<()> 
             .to_str()
             .filter(|s| !s.contains('\\') && !s.chars().any(char::is_control))
             .ok_or_else(|| Error::Invalid("unsupported file name".into()))?;
+        if deny.denied_relative(relative) {
+            return Err(Error::Invalid(text::denied_in_folder(rel)));
+        }
         let kind = entry.file_type().map_err(|e| io(&path, e))?;
         if kind.is_symlink() {
             return Err(Error::Invalid(text::links_in_folder(rel)));
         }
         if kind.is_dir() {
-            list(folder, &path, files)?;
+            list(folder, &path, files, deny)?;
         } else if kind.is_file()
             && !matches!(
                 entry.file_name().to_str(),
@@ -264,7 +272,12 @@ fn list(folder: &Path, directory: &Path, files: &mut Vec<String>) -> Result<()> 
 
 pub fn folder_files(folder: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    list(folder, folder, &mut files)?;
+    list(
+        folder,
+        folder,
+        &mut files,
+        &persona_builder::deny::DenyList::builtin(),
+    )?;
     let mut paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
     paths.sort();
     Ok(paths)

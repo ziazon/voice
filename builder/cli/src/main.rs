@@ -1,5 +1,6 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use persona_builder::{
+    deny::DenyList,
     error::{Error, Result},
     install::{self, FileState, Places},
     json::to_python_json,
@@ -657,7 +658,8 @@ fn mine(
 }
 fn claudeai_inspect(export: PathBuf) -> Result<()> {
     use persona_builder_ingest::claudeai;
-    let export = claudeai::read_export(&expand_home(export, &home()?))?;
+    let home = home()?;
+    let export = claudeai::read_export(&expand_home(export, &home), &DenyList::new(&home, &[])?)?;
     let inspection = claudeai::inspect(&export)?;
     print!("{}", inspection.text);
     if !inspection.missing.is_empty() {
@@ -697,7 +699,10 @@ fn claudeai_titles(
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
     let filters = Filters::compile(&member.filters)?;
-    let export = claudeai::read_export(&expand_home(export, &home))?;
+    let export = claudeai::read_export(
+        &expand_home(export, &home),
+        &DenyList::for_member(&member, &home)?,
+    )?;
     let _lock = if dry_run {
         None
     } else {
@@ -807,7 +812,10 @@ fn claudeai_mine(
         Some(history_lock_existing(&home, &member.slug, no_review)?)
     };
     let filters = Filters::compile(&member.filters)?;
-    let export = claudeai::read_export(&expand_home(export, &home))?;
+    let export = claudeai::read_export(
+        &expand_home(export, &home),
+        &DenyList::for_member(&member, &home)?,
+    )?;
     let rows = existing_review(&home, &member.slug, &review)?;
     let mined = claudeai::mine(&filters, &export, &rows, &split)?;
     if !dry_run {
@@ -1145,6 +1153,7 @@ fn shingle(
     use persona_builder_steps::shingle;
     let (member, home) = member_and_home(&member_dir)?;
     let doc = expand_home(doc, &home);
+    DenyList::for_member(&member, &home)?.check(&doc)?;
     let bytes = std::fs::read(&doc).map_err(|source| Error::Io {
         path: doc.clone(),
         source,
@@ -1210,7 +1219,12 @@ fn folders(member_dir: PathBuf, projects: Option<PathBuf>) -> Result<()> {
     let projects = projects_path(projects, &home)?;
     print!(
         "{}",
-        mine::render_folders(&mine::folders(&filters, &projects, &home)?)
+        mine::render_folders(&mine::folders(
+            &filters,
+            &projects,
+            &home,
+            &DenyList::for_member(&member, &home)?
+        )?)
     );
     Ok(())
 }

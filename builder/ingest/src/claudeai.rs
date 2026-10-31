@@ -7,7 +7,10 @@ use crate::{
     privacy::privacy,
     python::{line_break, py_space, splitlines, truthy},
 };
-use persona_builder::error::{Error, Result};
+use persona_builder::{
+    deny::DenyList,
+    error::{Error, Result},
+};
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::{
@@ -189,7 +192,8 @@ fn from_zip(file: File) -> Result<(usize, Vec<u8>)> {
 
 /// The export's file count and its parsed conversations.json, from a zip, a folder or the file
 /// itself. Read in memory: nothing from the export is unpacked to disk.
-pub fn read_export(path: &Path) -> Result<Export> {
+pub fn read_export(path: &Path, deny: &DenyList) -> Result<Export> {
+    deny.check(path)?;
     let io = |source| Error::Io {
         path: path.to_owned(),
         source,
@@ -197,13 +201,14 @@ pub fn read_export(path: &Path) -> Result<Export> {
     let mut file = open(path)?;
     let metadata = file.metadata().map_err(io)?;
     let (files, bytes) = if metadata.is_dir() {
+        let inner = path.join(CONVERSATIONS);
+        deny.check(&inner)?;
         let mut files = 0;
         for entry in fs::read_dir(path).map_err(io)? {
             if fs::metadata(entry.map_err(io)?.path()).is_ok_and(|m| m.is_file()) {
                 files += 1;
             }
         }
-        let inner = path.join(CONVERSATIONS);
         let file = open(&inner).map_err(|e| match e {
             Error::Invalid(m) if m.ends_with("doesn't exist") => {
                 invalid(format!("{} has no conversations.json", path.display()))

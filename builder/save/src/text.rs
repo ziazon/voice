@@ -156,3 +156,9 @@ pub fn is_said(message: &str) -> bool {
                 && message.ends_with(suffix)
         })
 }
+
+pub fn denied_in_folder(rel: &str) -> String {
+    format!(
+        "{rel} is a kind of file that holds passwords or keys, so Persona Builder won't save this folder. Move it out of the assistant's folder, then save again."
+    )
+}

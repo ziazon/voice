@@ -2,7 +2,9 @@
 //! the Python does with the same input. Every export here is invented; `SENTINEL` stands for a
 //! person's words and must never appear in an error.
 mod common;
+
 use common::{Scratch, parity_tools_available, repo};
+use persona_builder::deny::DenyList;
 use persona_builder::member::read_member;
 use persona_builder_ingest::{
     claudeai::{self, Export, ReviewRow},
@@ -509,7 +511,7 @@ fn zip_caps_and_odd_archives() {
     let k = Kit::new("claudeai-zips");
     let parity = parity_tools_available();
     let body = serde_json::to_string(&json!([good()])).unwrap();
-    let read = |path: &Path| error(claudeai::read_export(path));
+    let read = |path: &Path| error(claudeai::read_export(path, &DenyList::builtin()));
     let python_fails = |path: &Path| {
         if parity {
             assert_eq!(
@@ -649,7 +651,12 @@ fn zip_caps_and_odd_archives() {
             ["data/users.json", "[]", "deflate"]
         ]),
     );
-    assert_eq!(claudeai::read_export(&fine).unwrap().files, 2);
+    assert_eq!(
+        claudeai::read_export(&fine, &DenyList::builtin())
+            .unwrap()
+            .files,
+        2
+    );
 }
 
 #[test]
@@ -661,7 +668,7 @@ fn links_pipes_and_missing_paths() {
     let link = k.path("link.json");
     symlink(&real, &link).unwrap();
     assert_eq!(
-        error(claudeai::read_export(&link)),
+        error(claudeai::read_export(&link, &DenyList::builtin())),
         format!(
             "{} is a link: Persona Builder doesn't follow links. Use the export file itself",
             link.display()
@@ -671,7 +678,7 @@ fn links_pipes_and_missing_paths() {
     fs::create_dir(&folder).unwrap();
     symlink(&real, folder.join("conversations.json")).unwrap();
     assert_eq!(
-        error(claudeai::read_export(&folder)),
+        error(claudeai::read_export(&folder, &DenyList::builtin())),
         format!(
             "{} is a link: Persona Builder doesn't follow links. Use the export file itself",
             folder.join("conversations.json").display()
@@ -685,12 +692,12 @@ fn links_pipes_and_missing_paths() {
     let empty = k.path("empty-folder");
     fs::create_dir(&empty).unwrap();
     assert_eq!(
-        error(claudeai::read_export(&empty)),
+        error(claudeai::read_export(&empty, &DenyList::builtin())),
         format!("{} has no conversations.json", empty.display())
     );
     let missing = k.path("missing.zip");
     assert_eq!(
-        error(claudeai::read_export(&missing)),
+        error(claudeai::read_export(&missing, &DenyList::builtin())),
         format!("{} doesn't exist", missing.display())
     );
     let pipe = k.path("pipe");
@@ -702,7 +709,7 @@ fn links_pipes_and_missing_paths() {
             .success()
     );
     assert_eq!(
-        error(claudeai::read_export(&pipe)),
+        error(claudeai::read_export(&pipe, &DenyList::builtin())),
         format!("{} is not a file or a folder", pipe.display())
     );
 }
@@ -716,9 +723,14 @@ fn encodings_and_json_limits() {
     // Difference 5: a byte-order mark is skipped in every form; Python skips it only in a zip.
     let plain = k.path("bom.json");
     fs::write(&plain, &bom).unwrap();
-    assert_eq!(claudeai::read_export(&plain).unwrap().files, 1);
+    assert_eq!(
+        claudeai::read_export(&plain, &DenyList::builtin())
+            .unwrap()
+            .files,
+        1
+    );
     let zipped = k.zip("bom.zip", json!([["conversations.json", bom, "deflate"]]));
-    assert!(claudeai::read_export(&zipped).is_ok());
+    assert!(claudeai::read_export(&zipped, &DenyList::builtin()).is_ok());
     // UTF-16, which Python detects inside a zip.
     let utf16: String = body
         .encode_utf16()
@@ -730,26 +742,26 @@ fn encodings_and_json_limits() {
         json!([["conversations.json", format!("\u{ff}\u{fe}{utf16}"), "raw"]]),
     );
     assert_eq!(
-        error(claudeai::read_export(&wide)),
+        error(claudeai::read_export(&wide, &DenyList::builtin())),
         "the export's conversations.json is not UTF-8 text"
     );
     // Not UTF-8 at all, and not JSON: both refuse.
     let latin = k.path("latin.json");
     fs::write(&latin, b"[\"caf\xe9\"]").unwrap();
     assert_eq!(
-        error(claudeai::read_export(&latin)),
+        error(claudeai::read_export(&latin, &DenyList::builtin())),
         "the export's conversations.json is not UTF-8 text"
     );
     let broken = k.path("broken.json");
     fs::write(&broken, format!("[{{\"name\": \"{SENTINEL}\"")).unwrap();
     assert_eq!(
-        error(claudeai::read_export(&broken)),
+        error(claudeai::read_export(&broken, &DenyList::builtin())),
         "the export's conversations.json is not valid JSON"
     );
     let nan = k.path("nan.json");
     fs::write(&nan, body.replacen("{", "{\"x\": NaN, ", 1)).unwrap();
     assert_eq!(
-        error(claudeai::read_export(&nan)),
+        error(claudeai::read_export(&nan, &DenyList::builtin())),
         "the export's conversations.json is not valid JSON"
     );
     if parity {
@@ -763,7 +775,7 @@ fn encodings_and_json_limits() {
     // An integer past 64 bits reads as a float (Python says int); -0 as serde_json reads it.
     let numbers = k.path("numbers.json");
     fs::write(&numbers, "[{\"big\": 18446744073709551616, \"zero\": -0}]").unwrap();
-    let text = claudeai::inspect(&claudeai::read_export(&numbers).unwrap())
+    let text = claudeai::inspect(&claudeai::read_export(&numbers, &DenyList::builtin()).unwrap())
         .unwrap()
         .text;
     assert!(text.contains("  .big: float (1/1)\n"), "{text}");
@@ -846,7 +858,7 @@ fn the_zip_itself_is_capped() {
     (&file).write_all(b"PK\x03\x04").unwrap();
     file.set_len(2 * 1024 * 1024 * 1024 + 1).unwrap();
     assert_eq!(
-        error(claudeai::read_export(&big)),
+        error(claudeai::read_export(&big, &DenyList::builtin())),
         "the export zip is bigger than the 2 GB cap"
     );
     let many = k.path("many.zip");
@@ -855,7 +867,7 @@ fn the_zip_itself_is_capped() {
         .arg(&many).output().unwrap();
     assert!(out.status.success());
     assert_eq!(
-        error(claudeai::read_export(&many)),
+        error(claudeai::read_export(&many, &DenyList::builtin())),
         "the export zip holds more than 100,000 files, so Persona Builder won't open it"
     );
 }

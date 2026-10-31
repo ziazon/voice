@@ -1,3 +1,4 @@
+use persona_builder::deny::DenyList;
 mod common;
 use common::{Scratch, repo};
 use persona_builder::member::read_member;
@@ -16,7 +17,7 @@ fn links_inside_history_are_refused() {
     let m = read_member(&repo().join("crew/_template/member.json")).unwrap();
     let f = Filters::compile(&m.filters).unwrap();
     assert!(mine(&m, &f, &p, &s.0, &Split::Holdout(0.15)).is_err());
-    assert!(folders(&f, &p, &s.0).is_err());
+    assert!(folders(&f, &p, &s.0, &DenyList::builtin()).is_err());
 }
 
 fn member() -> persona_builder::member::Member {
@@ -108,7 +109,12 @@ fn jsonl_directories_and_pipes_are_not_files() {
                 .to_string(),
             expected
         );
-        assert_eq!(folders(&f, &s.0, &s.0).unwrap_err().to_string(), expected);
+        assert_eq!(
+            folders(&f, &s.0, &s.0, &DenyList::builtin())
+                .unwrap_err()
+                .to_string(),
+            expected
+        );
         if pipe {
             fs::remove_file(&bad).unwrap()
         } else {
@@ -169,7 +175,13 @@ fn folders_match_python_including_equal_project_names() {
     );
     assert_eq!(
         persona_builder_ingest::mine::render_folders(
-            &folders(&f, &p, std::path::Path::new("/Users/p")).unwrap()
+            &folders(
+                &f,
+                &p,
+                std::path::Path::new("/Users/p"),
+                &DenyList::builtin()
+            )
+            .unwrap()
         )
         .as_bytes(),
         py.stdout
@@ -190,7 +202,7 @@ fn excluded_folders_are_not_listed_by_mine() {
             .excluded,
         1
     );
-    assert!(folders(&f, &s.0, &s.0).is_err());
+    assert!(folders(&f, &s.0, &s.0, &DenyList::builtin()).is_err());
 }
 
 #[test]

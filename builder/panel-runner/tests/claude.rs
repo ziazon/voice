@@ -288,6 +288,7 @@ fn filters() -> Vec<Filters> {
                 personal: personal.into(),
                 secret: secret.into(),
                 pasted_prefixes: Vec::new(),
+                denied_paths: Vec::new(),
                 extra: serde_json::Map::new(),
             })
             .unwrap()

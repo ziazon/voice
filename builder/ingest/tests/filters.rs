@@ -6,6 +6,7 @@ fn config() -> member::Filters {
         personal: r"\bmy doctor\b".into(),
         secret: "token".into(),
         pasted_prefixes: vec!["You are ".into()],
+        denied_paths: Vec::new(),
         extra: Default::default(),
     }
 }

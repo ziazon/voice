@@ -1,3 +1,4 @@
+use persona_builder::deny::DenyList;
 mod common;
 use common::{Scratch, parity_tools_available, repo};
 use persona_builder::member::read_member;
@@ -162,7 +163,7 @@ fn compare(name: &str) {
     let s = Scratch::new("claudeai-parity");
     let c = Case::new(name, &s);
     let export_path = c.path(c.spec["export"].as_str().unwrap());
-    let export = claudeai::read_export(Path::new(&export_path)).unwrap();
+    let export = claudeai::read_export(Path::new(&export_path), &DenyList::builtin()).unwrap();
     let inspection = claudeai::inspect(&export).unwrap();
     let py = ok(
         name,
@@ -186,8 +187,10 @@ fn compare(name: &str) {
         let broken = c.path(broken);
         let py = c.python(&["inspect", "--export", &broken]);
         assert_eq!(py.status.code(), Some(1), "{name} broken inspect");
-        let inspection =
-            claudeai::inspect(&claudeai::read_export(Path::new(&broken)).unwrap()).unwrap();
+        let inspection = claudeai::inspect(
+            &claudeai::read_export(Path::new(&broken), &DenyList::builtin()).unwrap(),
+        )
+        .unwrap();
         assert_eq!(inspection.text, String::from_utf8(py.stdout).unwrap());
         assert_eq!(
             inspection.missing.join(", "),
