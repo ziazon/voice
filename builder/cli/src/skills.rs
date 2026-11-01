@@ -110,13 +110,20 @@ fn manage(member_dir: PathBuf, action: Action) -> Result<ExitCode> {
             for id in ids {
                 println!("{id}: no longer copied.");
             }
-            if withdrew && private::private_folder_exists(&home, &member.slug, "mirror")? {
-                let mirror = private::private_folder(&home, &member.slug, "mirror")?;
+            if withdrew {
+                let exists = private::private_folder_exists(&home, &member.slug, "mirror");
+                if matches!(exists, Ok(false)) {
+                    return Ok(ExitCode::SUCCESS);
+                }
+                let mirror = home.join(".claude/state").join(&member.slug).join("mirror");
+                let removed = exists
+                    .and_then(|_| private::private_folder(&home, &member.slug, "mirror"))
+                    .and_then(|path| skills::remove_copy(&path));
                 let member_path = anonymize::report_path(
                     &PathBuf::from(skills::display_path(&member_dir, &home)),
                     &rules,
                 );
-                if matches!(skills::remove_copy(&mirror), Ok(true)) {
+                if matches!(removed, Ok(true)) {
                     println!(
                         "Your assistant's copy of your skills was removed, so nothing you withdrew stays in it. Make it again with: voice skills refresh {}",
                         member_path.display()

@@ -177,6 +177,12 @@ pub fn remove_copy(path: &Path) -> Result<bool> {
                 fs::remove_file(&child).map_err(|e| io(&child, e))?;
             }
         }
+        for entry in fs::read_dir(path).map_err(|e| io(path, e))? {
+            let entry = entry.map_err(|e| io(path, e))?;
+            if entry.file_name() != ".anonymized-copy" {
+                return Err(io(path, std::io::ErrorKind::DirectoryNotEmpty.into()));
+            }
+        }
         fs::remove_file(&stamp).map_err(|e| io(&stamp, e))?;
         fs::remove_dir(path).map_err(|e| io(path, e))?;
     }

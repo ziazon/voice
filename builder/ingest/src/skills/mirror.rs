@@ -10,7 +10,7 @@ use crate::{
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    fs::OpenOptions,
+    fs::{self, OpenOptions},
     io::Read,
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
@@ -106,30 +106,57 @@ impl From<Error> for Failure {
     }
 }
 
-fn output_error(error: Error) -> Failure {
+fn output_error(error: Error, mirror: &Path) -> Failure {
     match error {
         Error::Invalid(ref message) if matches!(super::output::output_bad(), Error::Invalid(own) if *message == own) => {
-            Failure::Foreign
+            if matches!(fs::symlink_metadata(mirror.join(".anonymized-copy")), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+                && fs::read_dir(mirror)
+                    .is_ok_and(|mut entries| matches!(entries.next(), Some(Ok(_))))
+            {
+                Failure::Foreign
+            } else {
+                Failure::Other(error)
+            }
         }
         other => Failure::Other(other),
     }
 }
 
+fn masked(error: Error, raw: &Path, shown: &str, home: &Path) -> Error {
+    let mut message = match error {
+        Error::Io { source, .. } => {
+            return Error::Invalid(format!("Voice couldn't change {shown}: {source}"));
+        }
+        Error::Invalid(message) => message,
+        other => other.to_string(),
+    };
+    if let (Ok(home), Ok(relative)) = (fs::canonicalize(home), raw.strip_prefix(home)) {
+        message = message.replace(&home.join(relative).display().to_string(), shown);
+    }
+    Error::Invalid(
+        message
+            .replace(&raw.display().to_string(), shown)
+            .replace(&display_path(raw, home), shown),
+    )
+}
+
 /// The caller holds `private::lock_state(home, &member.slug)`.
 pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
-    let mirror = private::private_folder(home, &member.slug, "mirror")?;
+    let mirror = home.join(".claude/state").join(&member.slug).join("mirror");
     let rules = Rules::for_member(member, home);
     let path = PathBuf::from(display_path(&mirror, home));
     let shown = match &rules {
         Ok(rules) => anonymize::report_path(&path, rules).display().to_string(),
         Err(_) => path.display().to_string(),
     };
+    let mirror = private::private_folder(home, &member.slug, "mirror")
+        .map_err(|error| masked(error, &mirror, &shown, home))?;
     let result = (|| {
         let rules = rules?;
         let (found, agreements, mut mapping) = load_agreed(home, member, &rules)?;
         let old = Manifest::read(&mirror.join(".manifest.json"));
         let out = prepare_output_with_projects(&mirror, home, &found.skills, rules.projects())
-            .map_err(output_error)?;
+            .map_err(|error| output_error(error, &mirror))?;
         let copied = copy_agreed(
             home,
             &member.slug,
@@ -172,10 +199,19 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
                     "{shown} holds files Voice didn't put there. Move them away, then run voice skills refresh again."
                 ));
             }
-            Failure::Other(error) => error,
+            Failure::Other(error) => masked(error, &mirror, &shown, home),
         };
         let removed = matches!(remove_copy(&mirror), Ok(true))
             || matches!(std::fs::symlink_metadata(&mirror), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        if !removed
+            && fs::symlink_metadata(&mirror).is_ok_and(|meta| meta.is_dir())
+            && fs::symlink_metadata(mirror.join(".anonymized-copy")).is_ok()
+        {
+            let manifest = mirror.join(".manifest.json");
+            if fs::symlink_metadata(&manifest).is_ok_and(|meta| meta.is_file()) {
+                let _ = fs::remove_file(manifest);
+            }
+        }
         let outcome = if removed {
             MIRROR_REMOVED.to_owned()
         } else {
@@ -204,20 +240,27 @@ mod tests {
     #[test]
     fn only_output_folder_refusals_are_reworded() {
         use voice_core::error::Error;
+        let home = Scratch::new("output-refusals");
+        let mirror = home.0.join("mirror");
+        fs::create_dir(&mirror).unwrap();
+        fs::write(mirror.join("notes.md"), "Keep this.").unwrap();
         let other = Error::Invalid("The stamp is a link".into());
         assert!(matches!(
-            super::output_error(other),
+            super::output_error(other, &mirror),
             super::Failure::Other(Error::Invalid(message)) if message == "The stamp is a link"
         ));
         let own = super::super::output::output_bad();
-        assert!(matches!(super::output_error(own), super::Failure::Foreign));
+        assert!(matches!(
+            super::output_error(own, &mirror),
+            super::Failure::Foreign
+        ));
         let error = Error::Io {
             path: "mirror".into(),
             source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
         };
         let message = error.to_string();
         assert!(matches!(
-            super::output_error(error),
+            super::output_error(error, &mirror),
             super::Failure::Other(error) if error.to_string() == message
         ));
     }

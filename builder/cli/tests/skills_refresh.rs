@@ -333,7 +333,8 @@ fn unreadable_stamp_reports_mirror_not_removed() {
             .ends_with(&not_removed("~/.claude/state/pebble/mirror")),
         "{stderr}"
     );
-    assert!(mirror(&home).join(".manifest.json").exists());
+    assert!(!mirror(&home).join(".manifest.json").exists());
+    assert!(mirror(&home).join(".anonymized-copy").exists());
 }
 
 #[test]
@@ -480,4 +481,96 @@ fn withdrawal_masks_private_paths() {
         assert!(!stdout.contains("pebble-freight"));
         assert!(output.stderr.is_empty());
     }
+}
+
+#[test]
+fn refresh_masks_errors_while_removing_or_opening_mirror() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    for removing in [false, true] {
+        let home = Scratch::new("mirror-masked-errors");
+        let path = private_slug(&home);
+        success(refresh(&home));
+        let _mode = if removing {
+            RestoreMode::set(path.join("notes"), 0o500)
+        } else {
+            RestoreMode::set(path.clone(), 0o755)
+        };
+        let output = refresh(&home);
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("~/.claude/state/*/mirror"), "{stderr}");
+        for private in ["pebble-freight", "notes", home.0.to_str().unwrap()] {
+            assert!(!stderr.contains(private), "{stderr}");
+        }
+        if removing {
+            assert!(
+                stderr
+                    .trim_end()
+                    .ends_with(&not_removed("~/.claude/state/*/mirror")),
+                "{stderr}"
+            );
+        } else {
+            assert!(
+                stderr.starts_with("voice: ~/.claude/state/*/mirror can be opened by others"),
+                "{stderr}"
+            );
+            assert!(!stderr.contains("/private"), "{stderr}");
+            assert!(!stderr.contains("couldn't remove"), "{stderr}");
+        }
+    }
+}
+
+#[test]
+fn withdrawal_reports_mirror_open_errors_without_stderr() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-withdraw-open-error");
+    let path = private_slug(&home);
+    success(refresh(&home));
+    let _mode = RestoreMode::set(path, 0o755);
+    let output = run(&home, &["skills", "withdraw", "member", "claude:notes"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "claude:notes: no longer copied.\nVoice couldn't remove your assistant's copy of your skills. Move anything you want to keep out of the folder ~/.claude/state/*/mirror, delete the folder, then run voice skills refresh member\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn unreadable_stamp_with_valid_rules_is_a_stale_copy() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-stale-stamp");
+    two(&home);
+    success(refresh(&home));
+    let _mode = RestoreMode::set(mirror(&home).join(".anonymized-copy"), 0o000);
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr
+            .trim_end()
+            .ends_with(&not_removed("~/.claude/state/pebble/mirror")),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("didn't put there"), "{stderr}");
+    assert!(!mirror(&home).join(".manifest.json").exists());
+    assert!(mirror(&home).join(".anonymized-copy").exists());
 }
