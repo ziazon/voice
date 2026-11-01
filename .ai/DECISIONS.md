@@ -169,6 +169,13 @@ The VO11 spike (`docs/spikes/VO11-os-sandbox.md`) decides how the broker is pack
   `LOCAL.md`, `LEARNINGS.md`, hidden, password and key files, links and files over 1 MiB are left
   out unread.
 - **The report names file, line and kind**, the line being the source file's, never the text.
+- **`skills list` shows ids and folders as they are**, numbered (`1. <id>…`): the person needs
+  them to agree. `anonymize`'s report never shows a found term; a skill whose name holds one is
+  named by its number in that list, and a file path's private parts print as `*`.
+- **A term is found inside longer words and through punctuation** (`mypebble-freight.com`), when it
+  has 4 or more letters or digits, and `ss` and `ß` match each other. An allow entry exempts a hit
+  only when one entry covers all of it; a file or folder that can't be read is left out as
+  `unreadable`, and the run goes on.
 - **No hashes yet.** Refreshing on change, and the review screen for new skills, are VO4.
 
 ## Recordings
