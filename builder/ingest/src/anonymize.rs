@@ -110,6 +110,7 @@ pub enum LeftOut {
     NotText,
     TooLarge,
     OddName,
+    Unreadable,
 }
 #[derive(Debug)]
 pub struct Finding {
@@ -282,6 +283,7 @@ pub fn skill(
                 crate::skills::Source::Bytes(bytes) => file(path, bytes, rules, mapping),
                 crate::skills::Source::Link => FileResult::LeftOut(LeftOut::Link),
                 crate::skills::Source::TooLarge => FileResult::LeftOut(LeftOut::TooLarge),
+                crate::skills::Source::Unreadable => FileResult::LeftOut(LeftOut::Unreadable),
             }
         };
         match outcome {
@@ -328,6 +330,7 @@ pub fn left_out_reason(reason: &LeftOut) -> &'static str {
         LeftOut::NotText => "not text",
         LeftOut::TooLarge => "too large",
         LeftOut::OddName => "odd name",
+        LeftOut::Unreadable => "unreadable",
     }
 }
 pub fn report(name: &str, result: &SkillResult) -> String {

@@ -44,9 +44,11 @@ pub enum Source {
     Bytes(Vec<u8>),
     Link,
     TooLarge,
+    Unreadable,
 }
 pub const SKILL_TOO_LARGE: &str =
     "it has more than 500 files, more than 20 MB or more than 8 folders inside each other";
+pub const SKILL_UNREADABLE: &str = "a folder in it couldn't be read";
 const PLUGIN_NOTE: &str =
     "Couldn't read Claude Code's list of plugins, so their skills aren't listed.";
 fn invalid(message: &str) -> Error {

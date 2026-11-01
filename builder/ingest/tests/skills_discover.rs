@@ -492,3 +492,69 @@ fn verifier_06_future_roots_are_protected_in_another_case() {
         );
     }
 }
+
+struct RestoreModes(Vec<(std::path::PathBuf, fs::Permissions)>);
+impl RestoreModes {
+    fn deny(paths: &[std::path::PathBuf]) -> Self {
+        let mut guard = Self(vec![]);
+        for path in paths {
+            guard
+                .0
+                .push((path.clone(), fs::metadata(path).unwrap().permissions()));
+            fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        guard
+    }
+}
+impl Drop for RestoreModes {
+    fn drop(&mut self) {
+        for (path, permissions) in self.0.iter().rev() {
+            fs::set_permissions(path, permissions.clone()).unwrap();
+        }
+    }
+}
+
+#[test]
+fn unreadable_entries_are_left_out_and_reading_continues() {
+    // SAFETY: geteuid has no preconditions and only reads the effective user id.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let scratch = Scratch::new("skills-unreadable");
+    skill(&scratch.0, ".codex/skills/notes");
+    let folder = scratch.0.join(".codex/skills/notes");
+    fs::write(folder.join("pebble-freight-notes.md"), "private").unwrap();
+    fs::create_dir(folder.join("pebble-freight-folder")).unwrap();
+    fs::write(folder.join("pebble-freight-folder/inside.md"), "private").unwrap();
+    let found = skills::discover(&scratch.0, &Rules::builtin()).unwrap();
+    let _restore = RestoreModes::deny(&[
+        folder.join("pebble-freight-notes.md"),
+        folder.join("pebble-freight-folder"),
+    ]);
+    let files = skills::read(&found.skills[0]);
+    assert!(
+        files.is_ok(),
+        "unreadable entries must not stop the walk: {files:?}"
+    );
+    let files = files.unwrap();
+    assert_eq!(files.len(), 3);
+    for name in ["pebble-freight-notes.md", "pebble-freight-folder"] {
+        let (_, source) = files
+            .iter()
+            .find(|(path, _)| path == Path::new(name))
+            .unwrap();
+        assert_eq!(format!("{source:?}"), "Unreadable");
+    }
+}
+
+#[test]
+fn unreadable_skill_root_reports_no_path() {
+    let scratch = Scratch::new("skills-unreadable-root");
+    skill(&scratch.0, ".codex/skills/pebble-freight");
+    let found = skills::discover(&scratch.0, &Rules::builtin()).unwrap();
+    fs::remove_dir_all(&found.skills[0].folder).unwrap();
+    assert_eq!(
+        skills::read(&found.skills[0]).unwrap_err().to_string(),
+        "a folder in it couldn't be read"
+    );
+}

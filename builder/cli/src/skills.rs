@@ -43,9 +43,10 @@ pub fn run(command: SkillsCommand) -> Result<()> {
             if found.skills.is_empty() {
                 println!("No skills found on this computer.");
             }
-            for skill in &found.skills {
+            for (index, skill) in found.skills.iter().enumerate() {
                 println!(
-                    "{}\t{}\t{}",
+                    "{}. {}\t{}\t{}",
+                    index + 1,
                     skill.id,
                     agreements.state(skill, &rules).words(),
                     skill.shown
@@ -158,8 +159,10 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
         names.insert(name_key, skill.id.clone());
         let files = match skills::read_with_rules(skill, &rules) {
             Ok(files) => files,
-            Err(Error::Invalid(message)) if message == skills::SKILL_TOO_LARGE => {
-                println!("{}: not copied, {}", skill.name, skills::SKILL_TOO_LARGE);
+            Err(Error::Invalid(message))
+                if message == skills::SKILL_TOO_LARGE || message == skills::SKILL_UNREADABLE =>
+            {
+                println!("{}: not copied, {}", skill.name, message);
                 continue;
             }
             Err(error) => return Err(error),

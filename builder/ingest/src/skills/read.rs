@@ -1,5 +1,5 @@
 //! Descriptor-anchored walks: a renamed folder cannot redirect a skill's reads.
-use super::{SKILL_TOO_LARGE, Skill, Source, invalid, io};
+use super::{SKILL_TOO_LARGE, SKILL_UNREADABLE, Skill, Source, invalid};
 use crate::anonymize::{self, Rules};
 use persona_builder::error::Result;
 use std::{
@@ -22,7 +22,7 @@ pub fn read_with_rules(skill: &Skill, rules: &Rules) -> Result<Vec<(PathBuf, Sou
         .read(true)
         .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(&skill.folder)
-        .map_err(|e| io(&skill.folder, e))?;
+        .map_err(|_| invalid(SKILL_UNREADABLE))?;
     let mut files = vec![];
     walk(root, Path::new(""), 0, &mut files, &mut 0, rules)?;
     files.sort_by(|a, b| a.0.cmp(&b.0));
@@ -45,7 +45,7 @@ fn errno() -> *mut libc::c_int {
     // SAFETY: __errno_location returns this thread's live errno pointer.
     unsafe { libc::__errno_location() }
 }
-fn open_at(fd: libc::c_int, name: &CStr, flags: libc::c_int, path: &Path) -> Result<File> {
+fn open_at(fd: libc::c_int, name: &CStr, flags: libc::c_int) -> std::io::Result<File> {
     // SAFETY: fd is retained by the caller; name is terminated and one directory entry.
     let child = unsafe {
         libc::openat(
@@ -55,7 +55,7 @@ fn open_at(fd: libc::c_int, name: &CStr, flags: libc::c_int, path: &Path) -> Res
         )
     };
     if child < 0 {
-        return Err(io(path, std::io::Error::last_os_error()));
+        return Err(std::io::Error::last_os_error());
     }
     // SAFETY: successful openat returns a new owned descriptor.
     Ok(unsafe { File::from_raw_fd(child) })
@@ -72,7 +72,7 @@ fn walk(
     // SAFETY: directory owns a live descriptor; success transfers ownership to the stream.
     let stream = unsafe { libc::fdopendir(fd) };
     if stream.is_null() {
-        return Err(io(relative, std::io::Error::last_os_error()));
+        return Err(invalid(SKILL_UNREADABLE));
     }
     let _ = directory.into_raw_fd();
     let stream = DirectoryStream(stream);
@@ -84,7 +84,7 @@ fn walk(
         if entry.is_null() {
             let error = std::io::Error::last_os_error();
             if error.raw_os_error() != Some(0) {
-                return Err(io(relative, error));
+                return Err(invalid(SKILL_UNREADABLE));
             }
             break;
         }
@@ -106,7 +106,8 @@ fn walk(
         // SAFETY: fd remains owned by stream; name and writable stat are live.
         if unsafe { libc::fstatat(fd, name.as_ptr(), &mut metadata, libc::AT_SYMLINK_NOFOLLOW) } < 0
         {
-            return Err(io(&relative, std::io::Error::last_os_error()));
+            unreadable(files, relative)?;
+            continue;
         }
         let mode = metadata.st_mode & libc::S_IFMT;
         if mode == libc::S_IFDIR {
@@ -116,14 +117,14 @@ fn walk(
             if depth >= 8 {
                 return Err(invalid(SKILL_TOO_LARGE));
             }
-            walk(
-                open_at(fd, &name, libc::O_RDONLY | libc::O_DIRECTORY, &relative)?,
-                &relative,
-                depth + 1,
-                files,
-                total,
-                rules,
-            )?;
+            let child = match open_at(fd, &name, libc::O_RDONLY | libc::O_DIRECTORY) {
+                Ok(child) => child,
+                Err(_) => {
+                    unreadable(files, relative)?;
+                    continue;
+                }
+            };
+            walk(child, &relative, depth + 1, files, total, rules)?;
         } else if matches!(mode, libc::S_IFREG | libc::S_IFLNK) {
             if files.len() >= 500 {
                 return Err(invalid(SKILL_TOO_LARGE));
@@ -137,16 +138,30 @@ fn walk(
                 } else if size > 1 << 20 {
                     Source::TooLarge
                 } else {
-                    let file = open_at(fd, &name, libc::O_RDONLY | libc::O_NONBLOCK, &relative)?;
-                    if !file.metadata().map_err(|e| io(&relative, e))?.is_file() {
+                    let file = match open_at(fd, &name, libc::O_RDONLY | libc::O_NONBLOCK) {
+                        Ok(file) => file,
+                        Err(_) => {
+                            unreadable(files, relative)?;
+                            continue;
+                        }
+                    };
+                    let metadata = match file.metadata() {
+                        Ok(metadata) => metadata,
+                        Err(_) => {
+                            unreadable(files, relative)?;
+                            continue;
+                        }
+                    };
+                    if !metadata.is_file() {
                         return Err(invalid(
                             "A skill file changed while it was being read. Run anonymize again.",
                         ));
                     }
                     let mut bytes = Vec::new();
-                    file.take((1 << 20) + 1)
-                        .read_to_end(&mut bytes)
-                        .map_err(|e| io(&relative, e))?;
+                    if file.take((1 << 20) + 1).read_to_end(&mut bytes).is_err() {
+                        unreadable(files, relative)?;
+                        continue;
+                    }
                     *total += bytes.len() as u64;
                     if *total > 20 << 20 {
                         return Err(invalid(SKILL_TOO_LARGE));
@@ -161,5 +176,13 @@ fn walk(
             files.push((relative, source));
         }
     }
+    Ok(())
+}
+
+fn unreadable(files: &mut Vec<(PathBuf, Source)>, relative: PathBuf) -> Result<()> {
+    if files.len() >= 500 {
+        return Err(invalid(SKILL_TOO_LARGE));
+    }
+    files.push((relative, Source::Unreadable));
     Ok(())
 }

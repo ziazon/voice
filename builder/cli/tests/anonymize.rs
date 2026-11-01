@@ -92,7 +92,20 @@ fn list_states_agreement_and_withdrawal() {
         "Useful notes\n",
     );
     let listed = success(run(&home, &["skills", "list", "member"]));
-    assert!(listed.contains("claude:notes\twaiting for your yes\t~/.claude/skills/notes"));
+    let lines = listed.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 3);
+    assert_eq!(
+        lines[0],
+        "1. claude:family-notes\tnever copied: on your never_copy list\t~/.claude/skills/family-notes"
+    );
+    assert_eq!(
+        lines[1],
+        "2. claude:notes\twaiting for your yes\t~/.claude/skills/notes"
+    );
+    assert_eq!(
+        lines[2],
+        "3. synced:synced-notes\ta claude.ai skill: not offered, agree by name to copy it\t~/.claude/skills/synced/account/synced-notes"
+    );
     assert!(listed.contains("never copied: on your never_copy list"));
     assert!(listed.contains("a claude.ai skill: not offered, agree by name to copy it"));
     let output = run(
@@ -111,17 +124,18 @@ fn list_states_agreement_and_withdrawal() {
             .exists()
     );
     agree(&home, &["claude:notes", "claude:family-notes"]);
-    assert!(success(run(&home, &["skills", "list", "member"])).contains("claude:notes\tagreed "));
+    assert!(
+        success(run(&home, &["skills", "list", "member"])).contains("2. claude:notes\tagreed ")
+    );
     success(anonymize(&home, "copy"));
     assert!(!home.0.join("copy/family-notes").exists());
     let state = home.0.join(".claude/state/pebble/anonymizer/skills.json");
     let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&state).unwrap()).unwrap();
     value["skills"]["claude:notes"]["folder"] = json!("~/old/notes");
     fs::write(&state, value.to_string()).unwrap();
-    assert!(
-        success(run(&home, &["skills", "list", "member"]))
-            .contains("moved since you agreed: agree again to copy it")
-    );
+    assert!(success(run(&home, &["skills", "list", "member"])).contains(
+        "2. claude:notes\tmoved since you agreed: agree again to copy it\t~/.claude/skills/notes"
+    ));
     assert!(success(anonymize(&home, "copy")).contains("2 skills wait for your yes"));
     assert!(!home.0.join("copy/notes").exists());
     assert_eq!(
@@ -273,10 +287,18 @@ fn verifier_03_private_skill_name_report_is_anonymous() {
     skill(&home, ".claude/skills/aaa", "Public");
     skill(&home, ".claude/skills/rowan-vale-helper", "Public");
     agree(&home, &["claude:rowan-vale-helper"]);
+    let listed = success(run(&home, &["skills", "list", "member"]));
+    let lines = listed.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 2);
+    assert!(lines[0].starts_with("1. claude:aaa\t"), "{listed}");
+    let (number, details) = lines[1].split_once(". ").expect("numbered skill line");
+    assert_eq!(number, "2");
+    assert!(details.starts_with("claude:rowan-vale-helper\tagreed "));
+    assert!(details.ends_with("\t~/.claude/skills/rowan-vale-helper"));
     let output = anonymize(&home, "copy");
     assert_eq!(output.status.code(), Some(1));
     let report = String::from_utf8(output.stdout).unwrap();
-    assert!(report.contains("A skill you agreed to: not copied, its name holds a private detail (number 2 in persona-builder skills list)"), "{report}");
+    assert!(report.contains(&format!("A skill you agreed to: not copied, its name holds a private detail (number {number} in persona-builder skills list)")), "{report}");
     assert!(!report.to_lowercase().contains("rowan"));
     assert!(!report.contains("SKILL.md"));
 }
@@ -374,4 +396,95 @@ fn verifier_03_duplicate_ids_and_output_paths_do_not_print_private_components() 
     assert_eq!(output.status.code(), Some(1));
     let report = String::from_utf8(output.stdout).unwrap();
     assert!(!report.to_lowercase().contains("rowan"), "{report}");
+}
+
+struct RestoreModes(Vec<(std::path::PathBuf, fs::Permissions)>);
+impl RestoreModes {
+    fn deny(paths: &[std::path::PathBuf]) -> Self {
+        let mut guard = Self(vec![]);
+        for path in paths {
+            guard
+                .0
+                .push((path.clone(), fs::metadata(path).unwrap().permissions()));
+            fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        guard
+    }
+}
+impl Drop for RestoreModes {
+    fn drop(&mut self) {
+        for (path, permissions) in self.0.iter().rev() {
+            fs::set_permissions(path, permissions.clone()).unwrap();
+        }
+    }
+}
+
+#[test]
+fn unreadable_private_paths_are_hidden_and_other_skills_still_copy() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid has no preconditions and only reads the effective user id.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("anonymize-unreadable");
+    setup(&home, json!({"terms":["Pebble Freight"]}));
+    skill(&home, ".claude/skills/aaa", "Public notes\n");
+    skill(&home, ".claude/skills/zzz", "Other public notes\n");
+    let folder = home.0.join(".claude/skills/aaa");
+    fs::write(folder.join("pebble-freight-notes.md"), "private").unwrap();
+    fs::create_dir(folder.join("pebble-freight-folder")).unwrap();
+    fs::write(folder.join("pebble-freight-folder/inside.md"), "private").unwrap();
+    agree(&home, &["claude:aaa", "claude:zzz"]);
+    let _restore = RestoreModes::deny(&[
+        folder.join("pebble-freight-notes.md"),
+        folder.join("pebble-freight-folder"),
+    ]);
+    let output = anonymize(&home, "copy");
+    let report = String::from_utf8_lossy(&output.stdout);
+    let errors = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{report}\n{errors}");
+    assert!(
+        report.contains("aaa: not copied, 2 things to fix"),
+        "{report}"
+    );
+    assert_eq!(report.matches("  aaa/* (file name)").count(), 2);
+    assert!(report.contains("Copied 1 of 2 skills into"), "{report}");
+    assert!(!report.to_lowercase().contains("pebble-freight"));
+    assert!(!errors.to_lowercase().contains("pebble-freight"));
+    assert!(home.0.join("copy/zzz/SKILL.md").is_file());
+    assert!(!home.0.join("copy/aaa").exists());
+}
+
+#[test]
+fn unreadable_file_without_private_name_is_left_out_and_skill_still_copies() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid has no preconditions and only reads the effective user id.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("anonymize-unreadable-public-name");
+    setup(&home, json!({"terms":["Pebble Freight"]}));
+    skill(&home, ".claude/skills/notes", "Public notes\n");
+    let extra = home.0.join(".claude/skills/notes/notes-extra.md");
+    fs::write(&extra, "private").unwrap();
+    agree(&home, &["claude:notes"]);
+    let _restore = RestoreModes::deny(&[extra]);
+    let output = anonymize(&home, "copy");
+    let report = String::from_utf8_lossy(&output.stdout);
+    let errors = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{report}\n{errors}");
+    assert!(
+        report.contains("notes: copied, 1 files, 1 left out"),
+        "{report}"
+    );
+    assert!(
+        report.contains("  notes/notes-extra.md (left out: unreadable)\n"),
+        "{report}"
+    );
+    assert!(home.0.join("copy/notes/SKILL.md").is_file());
+    assert!(!home.0.join("copy/notes/notes-extra.md").exists());
 }
