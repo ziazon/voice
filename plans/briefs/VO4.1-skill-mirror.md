@@ -441,6 +441,39 @@ guard):
 - Unit (`output.rs`): `check_output` refuses a project inside `out` and leaves it; `finish_output`
   still removes a stamped copy.
 
+### 8.8 Never empty the mirror before the overlap check has passed (V1, 2026-11-01)
+
+The delta Verifier (FAIL) and the security review (HIGH) on `50c7f40` both reproduced it: a
+refresh that fails **before** `check_output` runs (`rules?` with an unknown key in `private.json`,
+or `load_agreed` with `anonymizer/placeholders.json` at 0000 or `anonymizer/` at 0755) is
+`Failure::Other`, and the error path calls `remove_copy` with no containment check. With
+`"projects":["~/.claude/state/pebble-freight/mirror/proj"]` and `mirror/proj/work.txt`, `work.txt`
+is deleted. When the rules didn't load, the projects aren't even known.
+
+- `mirror.rs`: a new `Failure::Unchecked(Error)` for every error raised before `check_output`
+  returns `Ok` (`rules?` and `load_agreed`). Its error path never calls `remove_copy`: it calls
+  `drop_manifest(&mirror)` and returns `<masked message>. <MIRROR_STALE>`, with
+  `pub const MIRROR_STALE: &str = "Voice marked your assistant's copy of your skills as out of date and left its files alone. Fix this, then run voice skills refresh again.";`
+  (`masked` and the trailing-full-stop rule as in 8.1). `Failure::Other` (after the check passed)
+  keeps 8.1's path.
+- When the rules fail to load, `shown` is the mirror's `~` path with the slug replaced by `*`
+  (`~/.claude/state/*/mirror`), never the raw slug: the terms are unknown, so assume the slug holds
+  one. `masked` uses that `shown` too.
+- Tests (`builder/cli/tests/skills_refresh.rs`, skip when `geteuid() == 0`, modes restored in a
+  guard): slug `pebble-freight`, a refresh, then the project above with `work.txt`, and (a)
+  `placeholders.json` at 0000, (b) an unknown key in `private.json`: each refresh exits 1, stderr
+  ends with `MIRROR_STALE`, contains `~/.claude/state/*/mirror` wherever it names the mirror and no
+  `pebble-freight`, `work.txt` keeps its text, `.manifest.json` is gone, `.anonymized-copy` stays.
+  Every existing test that breaks `private.json` to force a failure (§ 7's "a failed refresh
+  removes the mirror", 8.1(a), 8.1(b)) now expects `MIRROR_STALE`, the copies left in place and
+  the manifest gone; 8.1's not-removed and removed sentences stay covered by the tests that fail
+  after the check (the 0500 skill folder and the stale stamp with valid rules).
+- Out of scope, recorded by V1 in `.ai/SECURITY.md` at the land: same-user races (the mirror
+  swapped for a link between `drop_manifest`'s check and its unlink, or between `check_output` and
+  `finish_output`); leaks before `skills::refresh` (`lock_state`, `checked_member`), in withdraw's
+  `agreements.save`, and `voice skills list` showing a skill linked into the state folder by its
+  real path.
+
 ### 8.4 Verify and report
 
 Run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
