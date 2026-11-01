@@ -256,3 +256,21 @@ the Save page shows the `Your skills` card. `src/screens/skills/words.test.ts` f
 `bash scripts/ci-local.sh` (its macOS sandbox tests can't run inside your own sandbox; say so if
 that is where it stops). Report each command and its result, the red output you saw before each
 fix, and every file you changed.
+
+## 10. The second pass: the screen (V1, 2026-11-01)
+
+The Rust side is built and committed (`2e368ed`). The UI tests are written but the screen isn't:
+the first pass had no `node_modules`. They are installed now (`pnpm -C builder/ui install
+--frozen-lockfile`), so `pnpm -C builder/ui exec vitest run <file> --maxWorkers=2` runs.
+
+- **10.1 Red first, at assertions.** Add only the § 6 plumbing (the four `Backend` methods,
+  `tauriBackend`, `fakeBackend`) and an empty `Skills.vue` (`<section class="card mt-4"></section>`)
+  plus an empty `words.ts` export, mounted on the Save page; run `Skills.test.ts`, `words.test.ts`,
+  `VoiceApp.test.ts` and `tauri-backend.test.ts` and show they fail at their assertions, not at an
+  import. Then build § 6 against those tests unchanged (fix a test only when it contradicts § 6,
+  and say which and why).
+- **10.2 One home for the notes.** In `builder/ingest/src/skills.rs`, make the two inline note
+  sentences `pub const` (`UNREADABLE_NOTE`, `SYNCED_TWICE_NOTE`), make `PLUGIN_NOTE` `pub`, use them
+  where the notes are pushed, and in `builder/api/src/skills.rs` keep a note only when it equals
+  one of the three consts (no copied strings). The CLI's output stays byte-for-byte the same.
+- Then § 9 in full.
