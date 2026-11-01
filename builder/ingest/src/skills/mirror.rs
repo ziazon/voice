@@ -96,6 +96,12 @@ pub fn mirror_not_removed(path: &str) -> String {
     )
 }
 
+pub fn mirror_not_marked(path: &str) -> String {
+    format!(
+        "Voice couldn't mark your assistant's copy of your skills as out of date, so it may be out of date. Make sure you can change the folder {path}, fix this, then run voice skills refresh again."
+    )
+}
+
 #[derive(Debug)]
 enum Failure {
     Foreign,
@@ -126,7 +132,7 @@ fn output_error(error: Error, mirror: &Path) -> Failure {
 }
 
 /// Invalidate only a stamped, real folder's regular manifest; never follow a link.
-pub fn drop_manifest(mirror: &Path) {
+pub fn drop_manifest(mirror: &Path) -> bool {
     if fs::symlink_metadata(mirror).is_ok_and(|meta| meta.is_dir())
         && fs::symlink_metadata(mirror.join(".anonymized-copy")).is_ok()
     {
@@ -135,6 +141,7 @@ pub fn drop_manifest(mirror: &Path) {
             let _ = fs::remove_file(manifest);
         }
     }
+    matches!(fs::symlink_metadata(mirror.join(".manifest.json")), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn masked(error: Error, raw: &Path, shown: &str, home: &Path) -> Error {
@@ -191,8 +198,14 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
         let (found, agreements, mut mapping) =
             load_agreed(home, member, &rules).map_err(Failure::Unchecked)?;
         let old = Manifest::read(&mirror.join(".manifest.json"));
-        let out = check_output(&mirror, home, &found.skills, rules.projects())
-            .map_err(|_| Failure::Overlap)?;
+        let out = check_output(
+            &mirror,
+            home,
+            &found.skills,
+            &found.protected,
+            rules.projects(),
+        )
+        .map_err(|_| Failure::Overlap)?;
         let out = finish_output(&out).map_err(|error| output_error(error, &mirror))?;
         let copied = copy_agreed(
             home,
@@ -237,14 +250,22 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
                 ));
             }
             Failure::Overlap => {
-                drop_manifest(&mirror);
-                return Error::Invalid(format!(
+                let mut message = format!(
                     "{shown} overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again."
-                ));
+                );
+                if !drop_manifest(&mirror) {
+                    message.push(' ');
+                    message.push_str(&mirror_not_marked(&shown));
+                }
+                return Error::Invalid(message);
             }
             Failure::Unchecked(error) => {
-                drop_manifest(&mirror);
-                (masked(error, &mirror, &shown, home), MIRROR_STALE.to_owned())
+                let outcome = if drop_manifest(&mirror) {
+                    MIRROR_STALE.to_owned()
+                } else {
+                    mirror_not_marked(&shown)
+                };
+                (masked(error, &mirror, &shown, home), outcome)
             }
             Failure::Other(error) => {
                 let error = masked(error, &mirror, &shown, home);
@@ -278,6 +299,24 @@ mod tests {
     use crate::skills::remove_copy;
     use serde_json::json;
     use std::{fs, os::unix::fs::symlink};
+
+    #[test]
+    fn drop_manifest_reports_absence_without_following_links() {
+        let home = Scratch::new("drop-manifest-result");
+        let mirror = crate::skills::prepare_output(&home.0.join("mirror"), &home.0, &[]).unwrap();
+        fs::write(mirror.join(".manifest.json"), "{}").unwrap();
+        let link = home.0.join("link");
+        symlink(&mirror, &link).unwrap();
+        assert!(!super::drop_manifest(&link));
+        assert!(mirror.join(".manifest.json").exists());
+        assert!(super::drop_manifest(&mirror));
+        assert!(!mirror.join(".manifest.json").exists());
+        assert!(super::drop_manifest(&mirror));
+        fs::remove_file(mirror.join(".anonymized-copy")).unwrap();
+        fs::write(mirror.join(".manifest.json"), "{}").unwrap();
+        assert!(!super::drop_manifest(&mirror));
+        assert!(mirror.join(".manifest.json").exists());
+    }
 
     #[test]
     fn finish_output_refusals_are_reworded() {

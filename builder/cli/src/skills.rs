@@ -119,7 +119,13 @@ fn manage(member_dir: PathBuf, action: Action) -> Result<ExitCode> {
                 let removed = exists
                     .and_then(|_| private::private_folder(&home, &member.slug, "mirror"))
                     .and_then(|path| {
-                        skills::check_output(&path, &home, &found.skills, rules.projects())
+                        skills::check_output(
+                            &path,
+                            &home,
+                            &found.skills,
+                            &found.protected,
+                            rules.projects(),
+                        )
                     })
                     .and_then(|path| skills::remove_copy(&path));
                 let member_path = anonymize::report_path(
@@ -201,6 +207,7 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
         &super::expand_home(out, &home),
         &home,
         &found.skills,
+        &found.protected,
         rules.projects(),
     )?;
     let copied = skills::copy_agreed(

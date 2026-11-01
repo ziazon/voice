@@ -791,3 +791,199 @@ fn invalid_rules_mask_slug_when_mirror_cannot_be_opened() {
     assert!(!path.join(".manifest.json").exists());
     assert!(path.join(".anonymized-copy").is_file());
 }
+
+fn not_marked(path: &str) -> String {
+    format!(
+        "Voice couldn't mark your assistant's copy of your skills as out of date, so it may be out of date. Make sure you can change the folder {path}, fix this, then run voice skills refresh again."
+    )
+}
+
+#[test]
+fn readonly_mirror_reports_unchecked_manifest_failure() {
+    readonly_mirror_reports_manifest_failure(false);
+}
+
+#[test]
+fn readonly_mirror_reports_overlap_manifest_failure() {
+    readonly_mirror_reports_manifest_failure(true);
+}
+
+fn readonly_mirror_reports_manifest_failure(overlap: bool) {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-not-marked");
+    two(&home);
+    success(refresh(&home));
+    if overlap {
+        fs::create_dir(mirror(&home).join("proj")).unwrap();
+        fs::write(mirror(&home).join("proj/work.txt"), "Keep this work.\n").unwrap();
+        rules(
+            &home,
+            json!({"projects":["~/.claude/state/pebble/mirror/proj"]}),
+        );
+    } else {
+        rules(&home, json!({"unknown":true}));
+    }
+    let _mode = RestoreMode::set(mirror(&home), 0o500);
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let shown = if overlap {
+        "~/.claude/state/pebble/mirror"
+    } else {
+        "~/.claude/state/*/mirror"
+    };
+    assert!(stderr.trim_end().ends_with(&not_marked(shown)), "{stderr}");
+    assert!(!stderr.trim_end().ends_with(STALE), "{stderr}");
+    if overlap {
+        assert!(stderr.starts_with("voice: ~/.claude/state/pebble/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again."), "{stderr}");
+        assert_eq!(
+            fs::read_to_string(mirror(&home).join("proj/work.txt")).unwrap(),
+            "Keep this work.\n"
+        );
+    }
+    assert!(mirror(&home).join(".manifest.json").is_file());
+}
+
+fn linked_root_entry(home: &Scratch, case: &str) -> PathBuf {
+    let (link, target, file) = match case {
+        "codex" => (".codex/skills", "codex", "README.md"),
+        "project" => {
+            rules(home, json!({"projects":["~/proj"]}));
+            ("proj/.claude/skills", "proj-skills", "wip/plan.md")
+        }
+        "denied" => (".claude/skills/release.key", "release.key", "SKILL.md"),
+        "drafts" => (".claude/skills/drafts", "drafts", "ideas.md"),
+        "hidden" => (".claude/skills/.wip", "wip", "notes.md"),
+        "denied-project" => {
+            rules(home, json!({"projects":["~/vault.key"]}));
+            ("vault.key/.claude/skills", "vault-skills", "plan.md")
+        }
+        "synced" => (".claude/skills/synced", "synced", "drafts/ideas.md"),
+        "plugin" => {
+            let install = home.0.join(".claude/plugins/cache/ink");
+            fs::create_dir_all(install.join("skills")).unwrap();
+            fs::write(
+                home.0.join(".claude/plugins/installed_plugins.json"),
+                json!({"plugins":{"ink@local":[{"installPath":install}]}}).to_string(),
+            )
+            .unwrap();
+            (
+                ".claude/plugins/cache/ink/skills/drafts",
+                "plugin-drafts",
+                "SKILL.md",
+            )
+        }
+        _ => panic!("unknown fixture"),
+    };
+    let target = mirror(home).join(target);
+    let file = target.join(file);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, "Keep this work.\n").unwrap();
+    let link = home.0.join(link);
+    fs::create_dir_all(link.parent().unwrap()).unwrap();
+    symlink(target, link).unwrap();
+    file
+}
+
+fn refresh_leaves_linked_root_entry(case: &str) {
+    let home = Scratch::new("mirror-linked-root");
+    two(&home);
+    success(refresh(&home));
+    let file = linked_root_entry(&home, case);
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "voice: ~/.claude/state/pebble/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again.\n"
+    );
+    assert_eq!(fs::read_to_string(file).unwrap(), "Keep this work.\n");
+    assert!(!mirror(&home).join(".manifest.json").exists());
+}
+
+#[test]
+fn refresh_protects_linked_codex_root() {
+    refresh_leaves_linked_root_entry("codex");
+}
+
+#[test]
+fn refresh_protects_linked_project_root() {
+    refresh_leaves_linked_root_entry("project");
+}
+
+#[test]
+fn refresh_protects_linked_denied_entry() {
+    refresh_leaves_linked_root_entry("denied");
+}
+
+#[test]
+fn refresh_protects_linked_draft_entry() {
+    refresh_leaves_linked_root_entry("drafts");
+}
+
+#[test]
+fn refresh_protects_linked_hidden_entry() {
+    refresh_leaves_linked_root_entry("hidden");
+}
+
+#[test]
+fn refresh_protects_linked_denied_project_root() {
+    refresh_leaves_linked_root_entry("denied-project");
+}
+
+#[test]
+fn refresh_protects_linked_synced_entry() {
+    refresh_leaves_linked_root_entry("synced");
+}
+
+#[test]
+fn refresh_protects_linked_plugin_entry() {
+    refresh_leaves_linked_root_entry("plugin");
+}
+
+#[test]
+fn withdrawal_protects_linked_denied_entry() {
+    let home = Scratch::new("mirror-linked-withdraw");
+    two(&home);
+    success(refresh(&home));
+    let file = linked_root_entry(&home, "denied");
+    let output = run(&home, &["skills", "withdraw", "member", "claude:notes"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "claude:notes: no longer copied.\nVoice couldn't remove your assistant's copy of your skills. Move anything you want to keep out of the folder ~/.claude/state/pebble/mirror, delete the folder, then run voice skills refresh member\n"
+    );
+    assert!(output.stderr.is_empty());
+    assert_eq!(fs::read_to_string(file).unwrap(), "Keep this work.\n");
+    assert!(!mirror(&home).join(".manifest.json").exists());
+}
+
+#[test]
+fn anonymize_fresh_output_with_linked_roots_still_works() {
+    let home = Scratch::new("mirror-linked-fresh-output");
+    two(&home);
+    success(refresh(&home));
+    let files = [
+        "codex",
+        "project",
+        "denied",
+        "drafts",
+        "synced",
+        "plugin",
+        "hidden",
+        "denied-project",
+    ]
+    .map(|case| linked_root_entry(&home, case));
+    success(run(&home, &["anonymize", "member", "--out", "fresh"]));
+    assert!(home.0.join("fresh/notes/SKILL.md").is_file());
+    assert!(home.0.join("fresh/writing/SKILL.md").is_file());
+    check_manifest(&home.0.join("fresh"));
+    for file in files {
+        assert_eq!(fs::read_to_string(file).unwrap(), "Keep this work.\n");
+    }
+}

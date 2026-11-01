@@ -44,6 +44,7 @@ pub struct Skill {
 #[derive(Debug, Default)]
 pub struct Found {
     pub skills: Vec<Skill>,
+    pub protected: Vec<PathBuf>,
     pub notes: Vec<String>,
 }
 #[derive(Debug)]
@@ -96,6 +97,20 @@ fn children(path: &Path) -> Result<Vec<(String, PathBuf)>> {
     paths.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(paths)
 }
+fn protect(protected: &mut Vec<PathBuf>, path: &Path) -> Result<()> {
+    let entries = match fs::read_dir(path) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(io(path, e)),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| io(path, e))?;
+        if let Ok(folder) = entry.path().canonicalize() {
+            protected.push(folder);
+        }
+    }
+    Ok(())
+}
 fn add(
     found: &mut BTreeMap<String, Skill>,
     notes: &mut Vec<String>,
@@ -134,12 +149,13 @@ fn add(
 }
 fn root_skills(
     found: &mut BTreeMap<String, Skill>,
-    notes: &mut Vec<String>,
+    details: &mut Found,
     home: &Path,
     root: Root,
     prefix: &str,
     path: &Path,
 ) -> Result<()> {
+    protect(&mut details.protected, path)?;
     for (name, path) in children(path)? {
         if root == Root::Claude && name == "synced" {
             continue;
@@ -159,7 +175,7 @@ fn root_skills(
                 continue;
             }
         }
-        add(found, notes, home, root, prefix, &name, &path);
+        add(found, &mut details.notes, home, root, prefix, &name, &path);
     }
     Ok(())
 }
@@ -217,25 +233,27 @@ fn plugin_roots(home: &Path) -> Result<Vec<(String, PathBuf)>> {
 }
 pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
     let mut skills = BTreeMap::new();
-    let mut notes = vec![];
+    let mut found = Found::default();
     root_skills(
         &mut skills,
-        &mut notes,
+        &mut found,
         home,
         Root::Claude,
         "claude",
         &home.join(".claude/skills"),
     )?;
+    protect(&mut found.protected, &home.join(".claude/skills/synced"))?;
     for (_, account) in children(&home.join(".claude/skills/synced"))? {
         if !account.is_dir() || DenyList::builtin().denied(&account) {
             continue;
         }
+        protect(&mut found.protected, &account)?;
         for (name, path) in children(&account)? {
             let id = format!("synced:{name}");
             let existed = skills.contains_key(&id);
             add(
                 &mut skills,
-                &mut notes,
+                &mut found.notes,
                 home,
                 Root::Synced,
                 "synced",
@@ -244,8 +262,8 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
             );
             if existed && path.join("SKILL.md").is_file() && !DenyList::builtin().denied(&path) {
                 let note = "Some claude.ai skills are in more than one synced folder; each is listed once, from the first folder by name.".to_owned();
-                if !notes.contains(&note) {
-                    notes.push(note);
+                if !found.notes.contains(&note) {
+                    found.notes.push(note);
                 }
             }
         }
@@ -255,7 +273,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
             for (name, path) in roots {
                 root_skills(
                     &mut skills,
-                    &mut notes,
+                    &mut found,
                     home,
                     Root::Plugin,
                     &format!("plugin:{name}"),
@@ -263,7 +281,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
                 )?
             }
         }
-        Err(_) => notes.push(PLUGIN_NOTE.into()),
+        Err(_) => found.notes.push(PLUGIN_NOTE.into()),
     }
     for project in rules.projects() {
         let Some(name) = project.file_name().and_then(|s| s.to_str()) else {
@@ -274,7 +292,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
         }
         root_skills(
             &mut skills,
-            &mut notes,
+            &mut found,
             home,
             Root::Project,
             &format!("project:{name}"),
@@ -283,16 +301,16 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
     }
     root_skills(
         &mut skills,
-        &mut notes,
+        &mut found,
         home,
         Root::Codex,
         "codex",
         &home.join(".codex/skills"),
     )?;
-    Ok(Found {
-        skills: skills.into_values().collect(),
-        notes,
-    })
+    found.skills = skills.into_values().collect();
+    found.protected.sort();
+    found.protected.dedup();
+    Ok(found)
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum State {

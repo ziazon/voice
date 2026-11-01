@@ -78,20 +78,22 @@ fn make_dirs(path: &Path) -> Result<()> {
     }
 }
 pub fn prepare_output(out: &Path, home: &Path, skills: &[Skill]) -> Result<PathBuf> {
-    prepare_output_with_projects(out, home, skills, &[])
+    prepare_output_with_projects(out, home, skills, &[], &[])
 }
 pub fn prepare_output_with_projects(
     out: &Path,
     home: &Path,
     skills: &[Skill],
+    protected: &[PathBuf],
     projects: &[PathBuf],
 ) -> Result<PathBuf> {
-    finish_output(&check_output(out, home, skills, projects)?)
+    finish_output(&check_output(out, home, skills, protected, projects)?)
 }
 pub fn check_output(
     out: &Path,
     home: &Path,
     skills: &[Skill],
+    protected: &[PathBuf],
     projects: &[PathBuf],
 ) -> Result<PathBuf> {
     if let Ok(meta) = fs::symlink_metadata(out)
@@ -107,13 +109,19 @@ pub fn check_output(
     ];
     roots.extend(projects.iter().map(|p| p.join(".claude/skills")));
     for root in roots {
-        if within(&out, &future_canonical(&root)?) {
+        let root = future_canonical(&root)?;
+        if within(&out, &root) || within(&root, &out) {
             return Err(output_bad());
         }
     }
     for skill in skills {
         let folder = future_canonical(&skill.folder)?;
         if within(&out, &folder) || within(&folder, &out) {
+            return Err(output_bad());
+        }
+    }
+    for path in protected {
+        if within(&out, path) || within(path, &out) {
             return Err(output_bad());
         }
     }
@@ -301,12 +309,12 @@ mod tests {
         let project = out.join("proj");
         fs::create_dir(&project).unwrap();
         fs::write(project.join("work.txt"), "Keep this work.").unwrap();
-        assert!(check_output(&out, &home.0, &[], std::slice::from_ref(&project)).is_err());
+        assert!(check_output(&out, &home.0, &[], &[], std::slice::from_ref(&project)).is_err());
         assert_eq!(
             fs::read_to_string(project.join("work.txt")).unwrap(),
             "Keep this work."
         );
-        check_output(&out, &home.0, &[], &[]).unwrap();
+        check_output(&out, &home.0, &[], &[], &[]).unwrap();
         assert!(
             project.join("work.txt").exists(),
             "checking output removed the project"
