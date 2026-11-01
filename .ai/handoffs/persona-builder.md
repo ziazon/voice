@@ -34,7 +34,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   mixed in one term; a skill folder that can't be read vanished silently) fixed in `1425860`.
   Delta pass (Opus, on `1425860`): PASS; should-fix (a term starting with a punctuation-only word,
   such as a sign-off dash, made the search quadratic: 77 s on a 40000-dash line) fixed in `9f77698`
-  (such words are dropped; a term with no letter or digit is refused; now 75 ms). Recorded, not
+  (such words are dropped; a term with no letter or digit is refused; now 75 ms). Final delta
+  pass (Opus, on `bc02aab`): PASS; should-fix (a word of only combining marks, which Rust counts
+  as letters and the separator class doesn't, kept it quadratic) fixed in the next commit: one
+  `[\p{L}\p{N}]` test for the words and the load check (8.6 s on 8000 marks before, 0.5 s on
+  20000 after). Recorded, not
   fixed: 2000 terms of 12 words take about 4 GB to load (better than before); a term of more than
   about 20 dot or dash pieces still fails as too complex (fails safe, names the term); the exact
   match swallows separators such as an empty table cell between a term's words.

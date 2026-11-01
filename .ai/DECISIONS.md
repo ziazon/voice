@@ -176,7 +176,8 @@ The VO11 spike (`docs/spikes/VO11-os-sandbox.md`) decides how the broker is pack
   has 4 or more letters or digits, and `ss` and `ß` match each other. An allow entry exempts a hit
   only when one entry covers all of it; a file or folder that can't be read is left out as
   `unreadable`, and the run goes on.
-- **A term needs a letter or a digit.** Words of only punctuation inside a term (a sign-off dash)
+- **A term needs a letter or a digit** (`\p{L}` or `\p{N}`, the classes the separator leaves out).
+  Words with neither inside a term (a sign-off dash)
   are left out of its search, and a term with no letter or digit at all is refused when the rules
   load. Separators between a term's words have no length cap.
 - **No hashes yet.** Refreshing on change, and the review screen for new skills, are VO4.
