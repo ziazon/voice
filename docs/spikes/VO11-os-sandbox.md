@@ -1,4 +1,4 @@
-# VO11 spike: an operating-system sandbox for Persona Builder (soon Voice)
+# VO11 spike: an operating-system sandbox for Voice
 
 Run 2026-10-31 on a Mac with macOS 27.0.1 and Claude Code 2.1.292. The question (VO plan,
 gate Q12): App Sandbox or a Seatbelt profile for the broker and the `claude` child; whether
@@ -75,7 +75,7 @@ From Apple's documentation and its developer forums (read 2026-10-31):
   using the entitlements to access user-selected files"; the same page names
   `com.apple.security.files.user-selected.executable` for running one the person picks
   (`https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox`).
-  Claude Code lives in Homebrew's folder or `~/.local/bin`, and PB-D9 is that Persona Builder
+  Claude Code lives in Homebrew's folder or `~/.local/bin`, and PB-D9 is that Voice
   drives the person's own install, so the person would pick it in an Open panel, and it would then
   run with the whole app's sandbox.
 - **Files outside the container need the person to pick them** in an Open panel, kept with a
@@ -102,7 +102,7 @@ children; that is for the release plan, not this spike.
   sandboxing child processes (the same forum thread). It needs Apple's Endpoint Security
   entitlement, so it waits for signing. Not read further.
 - **Hard links** inside an allowed folder reach the file they point to. The `claude` child is
-  allowed only its own program, profile and run folders, which Persona Builder makes; the risk
+  allowed only its own program, profile and run folders, which Voice makes; the risk
   matters for VO11.2, where the reader is allowed the person's consented folders.
 - **The proxy is the only network control.** A bug in it is a way out; VO11.1 builds it in Rust
   with tests, `CONNECT` to port 443 of a listed name only.
@@ -149,7 +149,7 @@ the person's own Claude Code under the profile, behind a small `CONNECT` proxy t
 nothing. It prints fixed lines: whether Claude Code runs, whether it is signed in, whether a one-word
 `ask` came back `ok` and what it cost, and which hosts it reached, with control characters
 removed from anything Claude Code printed. `--profile` is required and must be a new or empty
-folder (or one the probe made before), never the home folder, so the person's real Persona Builder
+folder (or one the probe made before), never the home folder, so the person's real Voice
 profile is never touched by accident.
 
 ## Next

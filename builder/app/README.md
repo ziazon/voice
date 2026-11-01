@@ -1,15 +1,15 @@
-# Persona Builder app
+# Voice app
 
 The Tauri shell opens the screens package and exposes only the commands listed in its capability.
 
-`dev.personabuilder.desktop` is a placeholder until signing. The app keeps no data under this
+`dev.voice.desktop` is a placeholder until signing. The app keeps no data under this
 identifier, so changing it later costs nothing.
 
 ## Making a copy for a Mac
 
 From the repo root, run `bash scripts/build-mac-app.sh`. Add `--universal` for a copy that runs
 on both chips; this needs both Mac Rust targets (`rustup target add aarch64-apple-darwin
-x86_64-apple-darwin`). It writes `dist/persona-builder-<version>-mac-<label>.zip` and its `.sha256`.
+x86_64-apple-darwin`). It writes `dist/voice-<version>-mac-<label>.zip` and its `.sha256`.
 
 The copy is ad-hoc signed, not by Apple, until the public release (PB-D3), so share it only with
 people you know. The build runs only from a git checkout and refuses uncommitted changes under

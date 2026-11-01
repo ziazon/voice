@@ -46,10 +46,10 @@ the spending commands through `Session::open`) already holds the lock.
 3. **A missing state folder on the eight** (`lock_existing_state` returns `Error::Io` whose
    `source.kind()` is `NotFound`; match it as `limit_set` does) becomes a fixed `Error::Invalid`:
    - `claudeai mark` and `claudeai mine`: exactly today's sentence for a missing review,
-     `there's no review file yet: run persona-builder claudeai titles first`.
+     `there's no review file yet: run voice claudeai titles first`.
    - `merge`, `split`, `chunk`, `distil-in`, `round`, `interview answer`: a new sentence, with the
      slug filled in:
-     `~/.claude/state/<slug> isn't there yet, so there's nothing to read. Start with persona-builder mine, persona-builder claudeai titles or persona-builder interview draft.`
+     `~/.claude/state/<slug> isn't there yet, so there's nothing to read. Start with voice mine, voice claudeai titles or voice interview draft.`
      Put it in one CLI helper, e.g. `fn nothing_yet(slug: &str) -> Error`, next to
      `checked_member`. Nothing is created in either case.
    Every other lock error (`BUSY` included) passes through unchanged, so the person sees the shared
@@ -81,10 +81,10 @@ A new file `builder/cli/tests/history_lock.rs`, using the `forget.rs` / `mine.rs
 (invented member, temp home, `env_clear` plus `HOME` and `PATH`, `Drop` cleanup). For each of the
 ten commands, with the smallest valid arguments its existing tests use (borrow their fixtures;
 write the input files the command reads into the state folder with `fs::write` and 0600/0700
-modes, or with `persona_builder_ingest::private::write_private`):
+modes, or with `voice_ingest::private::write_private`):
 
 1. **Busy while the lock is held.** The test takes `lock_state(&home, slug)` and runs the command:
-   exit code 1, stderr exactly `persona-builder: <BUSY>\n` (use `private::BUSY`), stdout empty, and
+   exit code 1, stderr exactly `voice: <BUSY>\n` (use `private::BUSY`), stdout empty, and
    the command's output file(s) not written (absent, or byte-for-byte unchanged where they existed).
    Drop the lock and run it again: it succeeds. One test per command (ten tests), or one
    table-driven test that names the failing command in its assert message.
@@ -101,7 +101,7 @@ report each red result:
 - make `history_lock` always creating: a test from item 2 goes red (the folder exists);
 - take the lock in `mine` even for a dry run: test 4 goes red.
 
-Then `cargo test -p persona-builder-cli -j 2`, `cargo clippy -p persona-builder-cli --all-targets -j 2 -- -D warnings`,
+Then `cargo test -p voice-cli -j 2`, `cargo clippy -p voice-cli --all-targets -j 2 -- -D warnings`,
 `cargo fmt --all --check`, and finally `bash scripts/ci-local.sh` from the repo root.
 
 ## Done means
@@ -140,6 +140,6 @@ commit.
 5. **`.ai/SECURITY.md`, the forget row:** replace the sentence added by this slice with:
    `The CLI's history commands (`mine`, `claudeai titles\|mark\|mine`, `merge`, `split`, `chunk`, `distil-in`, `round`, `interview answer`) hold the same lock while they read and write, so a forget is refused as busy until they finish, or they find nothing (of these, only `mine` and `claudeai titles` may make the state folder; a dry run takes no lock and writes nothing). Known limit (PB7.5d): the CLI's `build`, `interview draft` and `keep` read history before they take the creating lock, so a forget in between can leave a recreated state folder holding files made from it.`
 
-Then `cargo test -p persona-builder-cli -j 2`, `cargo clippy -p persona-builder-cli --all-targets
+Then `cargo test -p voice-cli -j 2`, `cargo clippy -p voice-cli --all-targets
 -j 2 -- -D warnings`, `cargo fmt --all --check`. Report the mutation result for item 2 and the red
 result for item 1.

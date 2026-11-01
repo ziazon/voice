@@ -87,7 +87,7 @@ suggestion that leads to a refusal is a dead end.
 7. **The report.**
    - The rule that adds `Strengthen::Interview` is unchanged.
    - `render`: with `report.answered >= THIN_BELOW` the interview item reads a new
-     `REPORT_STRENGTHEN_SHORT`, *"answer a few questions about it (persona-builder interview
+     `REPORT_STRENGTHEN_SHORT`, *"answer a few questions about it (voice interview
      draft)"*; below it, today's `REPORT_STRENGTHEN_INTERVIEW`.
 8. **The screens.**
    - `Report.vue`: the `interview` help item says *Answer a few questions about it* when
@@ -148,7 +148,7 @@ existing interview tests use.
   `for_answered` always `Full` (the CLI and api short tests fail); drop the left-out-kind check in
   `check` (its test fails); point the short form at `decisions-interview.jsonl` (the byte-for-byte test
   fails).
-- `cargo test -j 2` for `persona-builder-build`, `persona-builder-ingest`, `persona-builder-api` and
+- `cargo test -j 2` for `voice-build`, `voice-ingest`, `voice-api` and
   the CLI package (use the real package names), `cargo clippy` on each `--all-targets -- -D warnings`,
   `cargo fmt --check`, and `pnpm -C builder/ui test` plus `pnpm -C builder/ui typecheck` all pass.
 - Report the files you changed, the commands you ran and their results, and anything you could not do.
@@ -163,7 +163,7 @@ existing interview tests use.
    questions…"*). In that case say *"Your history holds {n} answers to Claude's questions, enough to
    build from. These questions are on kinds of decision that had few examples."* instead. Test it
    (red first).
-3. `persona-builder interview answer`: it reads the form from a hard-coded `decisions.jsonl`, while
+3. `voice interview answer`: it reads the form from a hard-coded `decisions.jsonl`, while
    `interview draft` takes `--corpus`. Give `answer` the same `--corpus` argument (same default and
    help text as `draft`'s) and use it. Test: with `--corpus other.jsonl` holding 150 answered
    questions and no `decisions.jsonl`, `answer` uses the short form.

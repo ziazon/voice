@@ -35,10 +35,10 @@ sentence is unchanged.
 2. **`screens/NewAssistant.vue`**: both labels `Its pronouns` (the select and the *Other…* input)
    → `Your assistant's pronouns`; both labels `Your pronouns` → `How your assistant refers to you`.
 3. **`screens/ConnectClaude.vue`**, first card:
-   - the lede becomes: `Persona Builder works through your own Claude Code, signed in to your own
+   - the lede becomes: `Voice works through your own Claude Code, signed in to your own
      Claude account. It checks that now, and you set how much it may use in a day.`
    - after the `<template v-else-if="status">` block (still inside the first card's body), add
-     `<p class="text-secondary mt-3 mb-0">Persona Builder never asks for your Claude password: you sign in to Claude Code yourself. Claude is the only choice for now. Other AI providers come later.</p>`
+     `<p class="text-secondary mt-3 mb-0">Voice never asks for your Claude password: you sign in to Claude Code yourself. Claude is the only choice for now. Other AI providers come later.</p>`
      shown always (not only once the status is loaded).
    - the second card (*How much it may use*) is not touched.
 4. **`screens/Sources.vue`**: the `h2` `Your history` → `What {name} learns from`. The step on the
@@ -52,12 +52,12 @@ sentence is unchanged.
 8. **`screens/build/Interview.vue`**:
    - every `answers to Claude's questions` → `answered questions` (three lines).
    - the full-interview line (`v-else`, under 150) becomes: `Your history holds {answered} answered
-     questions. It takes about {thinBelow} to know you well, so Persona Builder asks you twenty
+     questions. It takes about {thinBelow} to know you well, so Voice asks you twenty
      questions about your work to fill it out.`
    - `Questions {a}–{b} of {n}` → `Questions {a} to {b} of {n}`.
 9. **`screens/Build.vue`**:
    - the `h2` `Build your assistant` → `Build {name}`.
-   - the lede becomes: `Persona Builder sends your history to Claude through your own Claude Code, a
+   - the lede becomes: `Voice sends your history to Claude through your own Claude Code, a
      part at a time, and learns how you decide. It uses your own Claude plan, up to the daily limit
      you set on Connect Claude. You can leave it running, or stop and carry on later from where it
      got to.`
@@ -111,7 +111,7 @@ sentence is unchanged.
 
 - Every test that asserts an old string fails once the screen changes: find them with
   `rg -n "<old string>" builder/ui/src` for each "from" above, and change each assertion to the new
-  words. That includes `PersonaBuilder.test.ts`, which checks the `main h2` after a step click
+  words. That includes `VoiceApp.test.ts`, which checks the `main h2` after a step click
   (`Your history` becomes `What <the fixture's name> learns from`; `Connect Claude` stays).
 - Add, before changing each screen, one assertion per new sentence (3, 9, 10's help line, 12, 14,
   15's hint, 17) and one for the name in each heading (4, 9, 10, 11, 15), using the fixture
@@ -122,7 +122,7 @@ sentence is unchanged.
 ## Done when
 
 `pnpm -C builder/ui test -- --maxWorkers=2` and `pnpm -C builder/ui typecheck` both pass, and
-`git diff --stat` shows only files under `builder/ui/src/screens/` and `builder/ui/src/PersonaBuilder.test.ts`
+`git diff --stat` shows only files under `builder/ui/src/screens/` and `builder/ui/src/VoiceApp.test.ts`
 (plus `test-support.ts` only if a fixture needs a name). Report each file changed and each test added.
 
 ## Follow-up from the reviews (made, do not reopen)
@@ -131,7 +131,7 @@ The security review and the Verifier found two sentences that promise more than 
 three Rust messages that now disagree with the renamed build button. Fix all five; red first.
 
 1. **`screens/review/TeachIt.vue`**: the hint becomes `Leave out anything private, such as someone's
-   name. Persona Builder catches some private details, but not names.` (The filters match private
+   name. Voice catches some private details, but not names.` (The filters match private
    topics and secrets, not personal names.)
 2. **`screens/TurnOn.vue`**: the added sentence becomes `Turning {name} on adds a skill and a short
    block to your Claude Code instructions. Turning it off removes what it added, except anything
@@ -143,7 +143,7 @@ three Rust messages that now disagree with the renamed build button. Fix all fiv
 4. **`screens/build/Interview.vue`**: the button `Add them to your history and build again` → `Add
    them to your history and run the build again`, and its tests.
 
-Run `cargo test -p persona-builder-api -j 2` (offline, `CARGO_NET_OFFLINE=true`), `cargo fmt --check`,
+Run `cargo test -p voice-api -j 2` (offline, `CARGO_NET_OFFLINE=true`), `cargo fmt --check`,
 the screen tests and the type check. Do not commit.
 
 ## Second follow-up, from the delta Verifier (made, do not reopen)

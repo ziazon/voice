@@ -1,6 +1,6 @@
 # VO8.3 brief: the secrets deny list for paths
 
-Persona Builder (soon Voice) is the only part of the app that reads a person's own files: their
+Voice is the only part of the app that reads a person's own files: their
 Claude Code history, a claude.ai export they choose, a document they hand the CLI, and an
 assistant's folder when it is saved. Today it filters what it reads by **text** only
 (`builder/ingest/src/filters.rs`, `Kind::Secret`). This slice adds a **path** filter: a list of
@@ -18,7 +18,7 @@ real person, no fixed paths, and **no real secret in any fixture**: canary files
 `canary` and nothing else. Add no dependency. Commit nothing; leave every change in the working
 tree.
 
-## 1. The list: `builder/core/src/deny.rs`, `persona_builder::deny`
+## 1. The list: `builder/core/src/deny.rs`, `voice_core::deny`
 
 It lives in the core crate because every reader depends on core (`ingest`, `save`, `cli`, `api`)
 and the person's additions are parsed in `core/src/member.rs`. Add `pub mod deny;` to
@@ -124,14 +124,14 @@ Do **not** change `ingest/src/check.rs` (the privacy check is byte-compared with
 Put them in each crate's `text.rs` where one exists (core has none: put core's in `deny.rs` as
 `pub fn` or `pub const`).
 
-- `check`'s refusal: `"{shown} is a kind of file that holds passwords or keys, so Persona Builder
+- `check`'s refusal: `"{shown} is a kind of file that holds passwords or keys, so Voice
   never opens it. Choose another file."` (`shown`: the path with the home folder as `~`).
 - A bad entry: `"member config: filters.denied_paths: {entry:?} isn't a name or a path Persona
   Builder can use. Write a name like diary*, or a path starting with ~/ or /, with no . or ..
   parts, at most 255 characters."` Too many: `"member config: filters.denied_paths holds more
   than 200 entries."`
 - `save`'s `denied_in_folder(rel)`: `"{rel} is a kind of file that holds passwords or keys, so
-  Persona Builder won't save this folder. Move it out of the assistant's folder, then save
+  Voice won't save this folder. Move it out of the assistant's folder, then save
   again."`
 
 ## 5. Tests first
@@ -170,7 +170,7 @@ under `<home>/.aws/` is refused before it is opened, and of a folder export whos
 `builder/save/tests/`: saving a folder holding `.env` or `keys/site.pem` is refused with
 `denied_in_folder`; a folder holding `notes.md` saves as today.
 
-`builder/cli/tests/`: `persona-builder claudeai inspect <home>/.aws/export.zip` fails with the
+`builder/cli/tests/`: `voice claudeai inspect <home>/.aws/export.zip` fails with the
 sentence (exit non-zero, nothing else printed on stdout); `shingle` with a doc under `.ssh` fails
 the same way.
 

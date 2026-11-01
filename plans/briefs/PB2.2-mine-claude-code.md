@@ -1,7 +1,7 @@
 # PB2.2 brief: mine Claude Code transcripts, in Rust
 
 Written by Claude (lane V1) for Codex, 2026-10-24. Spec: lane V's `PB2.2` entry, split from PB2 of the
-Persona Builder plan. Read the repo's `AGENTS.md` first, then `plans/briefs/PB2.1-privacy-check.md` (the
+Voice plan. Read the repo's `AGENTS.md` first, then `plans/briefs/PB2.1-privacy-check.md` (the
 slice this one builds on: same crate, same parity-test style). Work test-first
 (`~/.codex/skills/tdd-skill/SKILL.md`): each test file goes red on its assertion before its code exists,
 then green. Security rules: `~/.codex/skills/security-and-hardening/SKILL.md`. Never commit; Claude
@@ -10,13 +10,13 @@ in the local registry).
 
 ## What this slice does
 
-1. `persona_builder_ingest` gains `mine` and `folders`, at parity with `scripts/crew_decisions.py`'s
+1. `voice_ingest` gains `mine` and `folders`, at parity with `scripts/crew_decisions.py`'s
    `cmd_mine` and `cmd_folders`: the same records, in the same order, written as the same bytes, and the
    same printed lines.
 2. The mined file is written into the member's state folder only, 0600 in 0700 folders, through
    `O_NOFOLLOW` directory descriptors and an atomic replace, as `private_write` does.
-3. The CLI gains `persona-builder mine <member_dir>` (with `--dry-run`) and
-   `persona-builder folders <member_dir>`.
+3. The CLI gains `voice mine <member_dir>` (with `--dry-run`) and
+   `voice folders <member_dir>`.
 4. One Python fix: `cmd_folders` sorts folders that share a project name by folder name, so its order no
    longer depends on the filesystem.
 
@@ -38,7 +38,7 @@ in the local registry).
   `answers` only once it reaches a question).
 - **Accepted differences, each pinned by a Rust-only test and listed in your report:**
   1. A link inside the projects folder (a folder link, or a session file link) is refused: error
-     `<path> is a link: Persona Builder doesn't follow links in your Claude Code history. Move it away and try again`.
+     `<path> is a link: Voice doesn't follow links in your Claude Code history. Move it away and try again`.
      The Python follows them. The projects folder itself may be a link (it is what the person named).
   2. A line `serde_json` cannot parse is skipped, as the Python skips a line `json.loads` cannot. So
      these, which `json.loads` accepts and `serde_json` refuses, are skipped by Rust: `NaN`, `Infinity`,
@@ -142,7 +142,7 @@ Port these functions one for one, with the same names, in `builder/ingest/src/mi
   `multiSelect`, `options` (each `{label, description}`), `recommended` (string or null),
   `<slug>_pick` (`member.pick_field()`, string or null), `picks`, `own_words`, `notes`, `outcome`. A
   message: `id`, `kind`, `timestamp`, `project`, `text`, `context`. `split` is appended last.
-- **Privacy:** each harvested record goes through `persona_builder_ingest::privacy::privacy` (PB2.1);
+- **Privacy:** each harvested record goes through `voice_ingest::privacy::privacy` (PB2.1);
   `secret` and `personal` are counted and dropped.
 - **Order and split:** sort kept records by `(timestamp, id)` with a stable sort. `mark_split`: question
   timestamps sorted; with no cutoff and at least one question,
@@ -163,7 +163,7 @@ Port these functions one for one, with the same names, in `builder/ingest/src/mi
   today (the path is exactly `<home>/.claude/state/<slug>`, absolute, no `.` or `..` parts, a one-part
   slug), moved there unchanged. `forget` calls it and keeps its own message and tests. `mine` calls it
   and, on `None`, fails with
-  `Persona Builder keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says <state_dir>: change it to ~/.claude/state/<slug> and try again`.
+  `Voice keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says <state_dir>: change it to ~/.claude/state/<slug> and try again`.
 - **`builder/ingest/src/private.rs`:** `pub fn write_private(home: &Path, slug: &str, name: &str, bytes: &[u8]) -> Result<PathBuf>`,
   the port of `private_directory` plus `private_write`:
   1. `fs::canonicalize(home)` (the home itself may sit behind a system link, `/tmp` on macOS).
@@ -171,7 +171,7 @@ Port these functions one for one, with the same names, in `builder/ingest/src/mi
      then `.claude`, `state` and the slug, each with `libc::openat` and those flags; a missing part of
      `.claude/state/<slug>` is made with `libc::mkdirat(…, 0o700)` first (`EEXIST` is fine). A part that
      is a link or not a folder (`ELOOP` or `ENOTDIR`) fails with
-     `<path> is a link or not a folder: Persona Builder writes your history only into a real folder. Move it away and try again`.
+     `<path> is a link or not a folder: Voice writes your history only into a real folder. Move it away and try again`.
      Existing folders keep their mode, as in Python.
   3. In the slug folder, `openat` a temporary `.<name>.<pid>-<nanos>-<counter>.tmp` with
      `O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC`, mode 0600 (retry a new name on `EEXIST`),
@@ -211,8 +211,8 @@ Put the Python-compatibility helpers (`truthy`, `py_space`, the decode, the line
 ### The CLI
 
 ```
-persona-builder mine <member_dir> [--projects DIR] [--out NAME] [--holdout F | --cutoff TS] [--dry-run]
-persona-builder folders <member_dir> [--projects DIR]
+voice mine <member_dir> [--projects DIR] [--out NAME] [--holdout F | --cutoff TS] [--dry-run]
+voice folders <member_dir> [--projects DIR]
 ```
 
 - `<member_dir>` is the assistant's folder, as `forget`, `pack` and `on` take it; the member is
@@ -237,7 +237,7 @@ name in reverse name order, and asserts `folders` prints them in name order.
 ### `.ai/PROJECT.md`
 
 The `builder/ingest/` row's description becomes "Reading histories into the corpus
-(persona_builder_ingest): the privacy filters, the privacy check, mining Claude Code transcripts".
+(voice_ingest): the privacy filters, the privacy check, mining Claude Code transcripts".
 
 ## Tests (each red first)
 
@@ -353,6 +353,6 @@ Each one gets a test that fails before the change (a parity case where the Pytho
    `const SPACE: &str = r"[\s\x1c-\x1f]";`, formatted normally (no one-line `let mark=Regex::new(…)`);
    `matches!(split, Split::Holdout(h) if …)` spaced as rustfmt would.
 
-Then run `cargo test -p persona-builder-ingest -p persona-builder -p persona-builder-cli`, fmt and
-clippy. Skip `persona-builder-save`'s `ureq_wire` (it needs sockets your sandbox refuses); Claude runs the
+Then run `cargo test -p voice-ingest -p voice-core -p voice-cli`, fmt and
+clippy. Skip `voice-save`'s `ureq_wire` (it needs sockets your sandbox refuses); Claude runs the
 full gate.

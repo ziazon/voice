@@ -11,11 +11,11 @@ implemented this brief at the same bar.
 
 ## What this slice does
 
-A new crate `builder/steps` (package `persona-builder-steps`, library `persona_builder_steps`) ports
+A new crate `builder/steps` (package `voice-steps`, library `voice_steps`) ports
 eight commands of `scripts/crew_decisions.py` that need no model: `chunk`, `check-labels`, `tally`,
 `distil-in`, `score`, `similar`, `shingle` and `round`. Each gives the same records, the same bytes and
 the same printed lines as the Python on every input the Python accepts and finishes on, and each is a
-`persona-builder` command. PB3.3 (the build) and PB3.4 (the interview) call the library directly.
+`voice` command. PB3.3 (the build) and PB3.4 (the interview) call the library directly.
 `similar` is here because the tool-less backtest (PB3.3) runs it in Rust and puts the precedents in the
 prompt.
 
@@ -59,7 +59,7 @@ Rust-only test:
 8. **`chunk` leaves older chunk files** beyond the ones it writes, as the Python does. PB3.3 reads
    the chunk list from the library, never from the folder.
 
-### Reading and writing (`persona_builder_ingest::private`)
+### Reading and writing (`voice_ingest::private`)
 
 - `.json` joins `.jsonl` and `.tsv` as a private file ending; `validate_json_name` checks a plain name
   ending `.json`.
@@ -70,7 +70,7 @@ Rust-only test:
 - `place(arg)` splits a CLI argument into an optional folder and a name: at most one `/`, both parts
   plain (no leading `.`, no `\0`, not empty).
 
-### Shared helpers made public in `persona_builder_ingest`
+### Shared helpers made public in `voice_ingest`
 
 `privacy::searchable(record)` (the Python's `searchable`, factored out of `filtered_text`);
 `mine::outcome`; `mine::Mark` (the gate-mark pattern, with `bare(label)`: the marks removed, then
@@ -81,7 +81,7 @@ Python's `strip()`); `corpus::exact_numbers`; the civil-date helpers move to `da
 - `tally --json` and `similar --json`: `json.dumps(indent=2, ensure_ascii=False)` is serde_json's
   pretty printer (same escapes, same `[]` and `{}`) plus a newline.
 - `score --json`: `json.dumps(indent=2)` escapes everything outside printable ASCII:
-  `persona_builder::json::to_python_json`.
+  `voice_core::json::to_python_json`.
 - Shares are `round(n / total, 4)`: `format!("{:.4}")` parsed back (both round the exact binary value
   half to even), written by serde_json, which writes `0.0`, `1.0` and four-place values as Python's
   `repr` does. `{:.0%}` is `format!("{:.0}%", x * 100.0)`: Python multiplies first, too. Unit tests pin
@@ -115,14 +115,14 @@ is fine in `similar`).
 ### The CLI
 
 ```
-persona-builder chunk <member_dir> [--corpus NAME] [--out-dir FOLDER] [--size N]
-persona-builder check-labels <member_dir> --chunk PLACE --labels PLACE --mode train|heldout
-persona-builder tally <member_dir> [--corpus PLACE] --labels PLACE [--json]
-persona-builder distil-in <member_dir> [--corpus PLACE] --labels PLACE [--out-dir FOLDER]
-persona-builder score <member_dir> [--answers PLACE] --labels PLACE --predictions PLACE [--json]
-persona-builder similar <member_dir> [--corpus PLACE] --query TEXT [--k N] [--json]
-persona-builder shingle <member_dir> --doc PATH --corpus PLACE... [--n N]
-persona-builder round <member_dir> --name NAME --questions PLACE --answers PLACE [--heldout] [--out NAME]
+voice chunk <member_dir> [--corpus NAME] [--out-dir FOLDER] [--size N]
+voice check-labels <member_dir> --chunk PLACE --labels PLACE --mode train|heldout
+voice tally <member_dir> [--corpus PLACE] --labels PLACE [--json]
+voice distil-in <member_dir> [--corpus PLACE] --labels PLACE [--out-dir FOLDER]
+voice score <member_dir> [--answers PLACE] --labels PLACE --predictions PLACE [--json]
+voice similar <member_dir> [--corpus PLACE] --query TEXT [--k N] [--json]
+voice shingle <member_dir> --doc PATH --corpus PLACE... [--n N]
+voice round <member_dir> --name NAME --questions PLACE --answers PLACE [--heldout] [--out NAME]
 ```
 
 Defaults: `--corpus decisions.jsonl`, `--answers heldout-answers.jsonl`, `--out-dir chunks` (chunk) and
@@ -139,7 +139,7 @@ by a red before its code):
    <case> <member> <state dir>` writes an invented member (ADA or ARI, with a codebook) and the case's
    files (`base`, `empty`, `shares`), and prints the runs to compare.
 2. **`builder/cli/tests/steps_parity.rs`**: every run through the real Python and the
-   `persona-builder` binary on the same files: the printed lines, the exit codes and every written
+   `voice` binary on the same files: the printed lines, the exit codes and every written
    file byte for byte, the files 0600 in 0700 folders. Both members, all three cases.
 3. **`builder/steps/tests/rules.rs`**: each accepted difference, each error's words and that no record
    text appears in it, the Python's own exit code asserted beside each refusal.
@@ -169,7 +169,7 @@ already there:
    the earlier note that the Python refuses other digits held only when every digit is another
    script's) and `score`'s
    `picks` as text, each pinned beside the Python's exit 0.
-5. **A link at a file says so** (Verifier 5): "… is a link: Persona Builder reads only real files,
+5. **A link at a file says so** (Verifier 5): "… is a link: Voice reads only real files,
    never links", in place of the folder message.
 6. **Fewer copies** (Verifier 6): `chunk` moves records into parts, `similar_json` takes the hits.
 

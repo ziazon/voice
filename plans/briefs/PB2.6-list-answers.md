@@ -61,7 +61,7 @@ first* fails on the whole history. `crew_decisions.py` parses `str(answer)`, the
 2. **A record of an unexpected shape is skipped and counted by the app's reader, not fatal.** In
    `mine_with_progress`, when `b.harvest(...)` returns an error (every error it returns is a shape
    error from `Builder::shape`; it does no I/O), skip that whole JSON record, add one to a new
-   `Mined` field `pub unreadable: usize` (doc comment: records of a shape Persona Builder can't read,
+   `Mined` field `pub unreadable: usize` (doc comment: records of a shape Voice can't read,
    left out whole), and carry on with the next record. Nothing from a skipped record is kept: a record
    with two questions whose second is malformed yields neither. The `context` carried between
    records is whatever it was before the skipped record. Lines that are not JSON at all are still
@@ -156,7 +156,7 @@ Add `"list_answers"` to `all_accepted_fixtures_match_python_bytes_and_summary`'s
 ## Done means
 
 - `bash scripts/ci-local.sh` passes (it runs the Python tests, `cargo fmt --check`, clippy with
-  `-D warnings`, `PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked`, the generated-types diff
+  `-D warnings`, `VOICE_REQUIRE_PARITY=1 cargo test --locked`, the generated-types diff
   check, and the screens' typecheck, tests and build).
 - Report each red you saw before the change and why it failed.
 
@@ -187,5 +187,5 @@ pass. The existing `mine_rules` and `history` skip tests must stay green unchang
 
 Skills: `~/.codex/skills/tdd-skill/SKILL.md`, `~/.codex/skills/code-quality/SKILL.md`. Match the
 module's style; no new dependency; no comments beyond one line on `unreadable` saying why it is
-narrow. Run `cargo fmt`, `cargo clippy -p persona-builder-ingest --all-targets -- -D warnings` and
-`cargo test -p persona-builder-ingest -- --test-threads=2` (the machine is loaded). Do not commit.
+narrow. Run `cargo fmt`, `cargo clippy -p voice-ingest --all-targets -- -D warnings` and
+`cargo test -p voice-ingest -- --test-threads=2` (the machine is loaded). Do not commit.

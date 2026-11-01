@@ -1,9 +1,9 @@
 # PB4.1 brief: "How well I know you", the plain report
 
-After every build, Persona Builder shows a plain report instead of raw numbers: **Strong**,
+After every build, Voice shows a plain report instead of raw numbers: **Strong**,
 **Getting there** or **Thin**, overall and per area of decision, what would strengthen each area that
 is not yet Strong, and an honest line when there were fewer than 30 held-out questions to test on.
-The report is kept as a private file, so `persona-builder report <member_dir>` shows it again and
+The report is kept as a private file, so `voice report <member_dir>` shows it again and
 the app (PB7) can read it.
 
 Read first: `AGENTS.md`, `.ai/SECURITY.md`, `builder/build/src/build.rs` (`Built`, `Counts`,
@@ -53,7 +53,7 @@ workspace's `Cargo.lock` through `builder/core`: no new crate).
 
 ```rust
 pub const REPORT: &str = "report.json";
-pub const SCHEMA: &str = "persona-builder/report/1";
+pub const SCHEMA: &str = "voice/report/1";
 pub const REPORT_MOST: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,7 +89,7 @@ Functions (all `pub`):
 
 - `report(book: &Book, built: &Built, answered: usize, day: &str) -> Report`: the rules above.
 - `render(report: &Report) -> Vec<String>`: the plain lines (below), one per line, no trailing
-  newline. Used by both the build and `persona-builder report`, so they print the same words.
+  newline. Used by both the build and `voice report`, so they print the same words.
 - `write(home: &Path, slug: &str, report: &Report) -> Result<PathBuf>`: `serde_json::to_vec_pretty`
   plus a final `\n`, through `private::write_private(home, slug, REPORT, …)` (0600 in the 0700 state
   folder, atomic, never through a link). Check `REPORT` passes the private name check; if
@@ -110,7 +110,7 @@ Add these, and use exactly these strings:
 pub const REPORT_UNREADABLE: &str = "Your last report couldn't be read, so it isn't shown. Build your assistant again to make a new one.";
 
 pub fn no_report(folder: &str) -> String {
-    format!("There's no report yet. Build your assistant first: persona-builder build {folder}")
+    format!("There's no report yet. Build your assistant first: voice build {folder}")
 }
 pub fn report_from(day: &str) -> String { format!("From the build on {day}:") }
 ```
@@ -125,7 +125,7 @@ pub fn report_from(day: &str) -> String { format!("From the build on {day}:") }
 3. When untested, the honest line:
    `Only {held} questions were kept back to test your assistant, fewer than 30, so there's too little to measure yet. Until it can be tested, it decides nothing on its own.`
    and, only when `answered < 150`, a second line:
-   `The interview fills out a thin history: persona-builder interview draft`
+   `The interview fills out a thin history: voice interview draft`
    (the interview command refuses at 150 or more, so it is not offered then).
 4. `By kind of decision:` then one line per area:
    - Strong: `- {area}: Strong.`
@@ -133,21 +133,21 @@ pub fn report_from(day: &str) -> String { format!("From the build on {day}:") }
    - Thin: `- {area}: Thin, {examples} examples so far. To strengthen it: {ways}.`
      (`1 example so far` when `examples == 1`.)
    `{ways}` joins, with `; `, in the order of `strengthen`:
-   - interview: `answer the interview (persona-builder interview draft)`
-   - claudeai: `add your claude.ai chats (persona-builder claudeai)`
+   - interview: `answer the interview (voice interview draft)`
+   - claudeai: `add your claude.ai chats (voice claudeai)`
    - time: `keep using Claude, since it learns from every answer`
    With no areas (cannot happen after a build, but `read` may meet it), print `By kind of decision: none yet.`
 
 ## The CLI
 
-- `persona-builder build`: after `draft::write` succeeds and the `text::written` line is printed,
+- `voice build`: after `draft::write` succeeds and the `text::written` line is printed,
   make the report (`report::report(&book, &built, answered, &local_day(now))`, the same day value
   the measurements entry uses: compute it once and pass it to both), `report::write` it, and print
   `render`'s lines. **Replace** the `text::live(...)` line with the report (the report's Strong
   areas say the same thing); remove `text::live` if nothing else uses it (grep first; also check
   the Python side never imports the string). A build that fails before `draft::write` leaves the
   last report as it was. The spend line stays last.
-- New `persona-builder report <member_dir>` (`Command::Report { member_dir: PathBuf }`, doc comment
+- New `voice report <member_dir>` (`Command::Report { member_dir: PathBuf }`, doc comment
   `/// Show how well your assistant knows you, from its last build.`): `member_and_home`, then
   `report::read`; `None` prints `text::no_report(<member_dir as given>)` and exits 0; else print
   `text::report_from(&report.built)` then `render`'s lines.
@@ -180,7 +180,7 @@ types and stub functions that `todo!()` first if you must), then make them pass.
    expected list with `How well your assistant knows you: Thin.` and
    `- scope: Strong.`; assert `report.json` exists in the state folder with mode 0600 and parses
    with `overall: "thin"`, `held: 32`.
-9. New `report_shows_the_last_build`: before a build, `persona-builder report <member>` prints
+9. New `report_shows_the_last_build`: before a build, `voice report <member>` prints
    `text::no_report`'s line and succeeds; after the build, it prints `From the build on ` and the
    same report lines the build printed.
 10. New `build_with_too_few_held_out_questions_says_so_honestly`: `corpus(10)` (fewer than 30 held
@@ -191,7 +191,7 @@ audio.
 
 ## Done when
 
-- `cargo test -p persona-builder-build -p persona-builder-cli` and
+- `cargo test -p voice-build -p voice-cli` and
   `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` are green, then
   `bash scripts/ci-local.sh` is green.
 - No new crate in `Cargo.lock` (`git diff --stat Cargo.lock` shows no added package).

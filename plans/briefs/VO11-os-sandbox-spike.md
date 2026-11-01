@@ -1,6 +1,6 @@
 # VO11 brief: the OS sandbox spike (a Seatbelt profile for Claude Code, and a probe)
 
-Persona Builder (soon Voice) calls the person's own Claude Code as a child process
+Voice calls the person's own Claude Code as a child process
 (`builder/agent/src/claude.rs`): a tool-less `claude -p` with its own profile folder
 (`CLAUDE_CONFIG_DIR`). Today nothing at the operating-system level stops that child from reading
 any file the person can read, or from connecting anywhere. This spike lands **a macOS Seatbelt
@@ -22,7 +22,7 @@ every change in the working tree.
 **Your own sandbox:** you run inside a Seatbelt sandbox, and macOS refuses a sandbox inside a
 sandbox (`sandbox-exec: sandbox_apply: Operation not permitted`, measured). The Rust tests in § 2
 therefore cannot run for you. Build them so they compile and pass `cargo clippy`, run
-`cargo test -p persona-builder-agent --test sandbox_profile` once to see the skip message (§ 2.1),
+`cargo test -p voice-agent --test sandbox_profile` once to see the skip message (§ 2.1),
 and say so in your summary. V1 runs them outside the sandbox. The Python tests in § 4 run anywhere.
 
 ## What was measured on macOS 27.0.1 (V1, 2026-10-31), so you don't re-derive it
@@ -116,9 +116,9 @@ folder".
 Before each test, run `/usr/bin/sandbox-exec -p "(version 1)(allow default)" /usr/bin/true`. If
 that fails, the test is already inside a sandbox: print `sandbox_profile: skipped, already inside a
 sandbox (macOS refuses a sandbox inside one)` to stderr and return, **unless**
-`PERSONA_BUILDER_REQUIRE_SANDBOX=1` is set, in which case panic with the same words. Add
-`PERSONA_BUILDER_REQUIRE_SANDBOX=1` to the `cargo test` line in `scripts/ci-local.sh` beside
-`PERSONA_BUILDER_REQUIRE_PARITY=1`, on macOS only (`[ "$(uname -s)" = Darwin ]`), and update its
+`VOICE_REQUIRE_SANDBOX=1` is set, in which case panic with the same words. Add
+`VOICE_REQUIRE_SANDBOX=1` to the `cargo test` line in `scripts/ci-local.sh` beside
+`VOICE_REQUIRE_PARITY=1`, on macOS only (`[ "$(uname -s)" = Darwin ]`), and update its
 `echo` line to match.
 
 ### 2.2 What the tests prove (one test per bullet; red first against an empty profile, then green)
@@ -133,8 +133,8 @@ sandbox (macOS refuses a sandbox inside one)` to stderr and return, **unless**
   upper case on disk (`.ENV.LOCAL`, `REAL.PEM`, `LIBRARY/KEYCHAINS/x`; macOS folders are
   case-insensitive, so create the upper-case spellings in a separate scratch folder). The list of
   canaries is a `const` in the test; a second test asserts that
-  `persona_builder::deny::DenyList::builtin().denied_relative(path)` is true for every canary, so
-  the two lists cannot drift apart silently (add `persona-builder` as a dev-dependency only if the
+  `voice_core::deny::DenyList::builtin().denied_relative(path)` is true for every canary, so
+  the two lists cannot drift apart silently (add `voice` as a dev-dependency only if the
   agent crate's normal dependency on it does not already make it usable from tests; it does).
 - The near misses stay readable: `monkey.txt`, `keys.md`, `a.keyring`, `docker/config.json`,
   `.docker/other.json`, `envelope.txt`.
@@ -167,7 +167,7 @@ python3 scripts/claude_sandbox_probe.py --profile <folder> ask
 python3 scripts/claude_sandbox_probe.py --profile <folder> sign-out
 ```
 
-- **`--profile` is required** (so the person's real Persona Builder profile is never touched by
+- **`--profile` is required** (so the person's real Voice profile is never touched by
   accident). It must be an absolute path; if it does not exist it is made with mode 0700; if it is
   a link, or not a folder, the probe stops with `That profile folder is a link or not a folder.`
   A folder with group or other bits is tightened to 0700. It is canonicalized before use.

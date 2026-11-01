@@ -1,6 +1,6 @@
 # PB6.1 brief: the GitHub sign-in's client ID
 
-Persona Builder signs in to GitHub with the device flow (PB6, `builder/save/src/github.rs`). Until
+Voice signs in to GitHub with the device flow (PB6, `builder/save/src/github.rs`). Until
 now `CLIENT_ID` was `None`, so every GitHub step stopped at `text::NOT_SET_UP`. The OAuth App is
 now registered (device flow on, expiring tokens off, no client secret made); its client ID is in
 the slice's tracker card, not in this brief.
@@ -26,7 +26,7 @@ GitHub, *Authorizing OAuth apps*, § Device flow,
      assertion, and expect `text::SIGN_IN_FIRST`; it still checks no `save.json` was written.
    Run them and see both fail on the assertion (they print `NOT_SET_UP`).
 2. Green: `const CLIENT_ID: Option<&str> = Some("<the card's client ID>");`, with its doc comment
-   citing the source above. Keep the `Option` and the `PERSONA_BUILDER_GITHUB_CLIENT_ID` build-time
+   citing the source above. Keep the `Option` and the `VOICE_GITHUB_CLIENT_ID` build-time
    override: a fork that has no app of its own sets `None` and gets the same plain refusal.
 3. The tests stay offline: they run with a temporary `HOME`, and `/usr/bin/security` then lists
    only the System keychain, so the token lookup finds nothing and no request reaches GitHub. Do

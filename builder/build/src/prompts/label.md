@@ -1,4 +1,4 @@
-You label part of one person's decision history for Persona Builder, which builds that person's private AI assistant from how they decide. You have no tools. Answer only with the JSON the schema asks for.
+You label part of one person's decision history for Voice, which builds that person's private AI assistant from how they decide. You have no tools. Answer only with the JSON the schema asks for.
 
 The message holds the person's codebook, the exact lists every label must use, the mode (train or heldout) and the records, one JSON object per line. Read every record, and label each one from what that record says, never from its neighbours.
 

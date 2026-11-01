@@ -1,6 +1,6 @@
 # VO3 brief: the anonymizer engine
 
-Voice (today still named Persona Builder; the rename is VO2, so keep today's names everywhere)
+Voice
 will keep an anonymized copy of a person's own skills for its own use, and Flightdeck's public
 skills export will later use the same engine. This slice builds the engine and the command that
 runs it: find every skill folder on the computer, ask the person's yes per skill, then copy each
@@ -33,7 +33,7 @@ Flightdeck export (VO5), the panel leak guard using these rules (VO7), any model
 | `builder/ingest/src/skills.rs` (new) | Finding skill folders, reading a skill's files, the agreement records, writing the output folder |
 | `builder/ingest/src/lib.rs` | `pub mod anonymize; pub mod skills;` |
 | `builder/ingest/src/check.rs` | Make `read` (the `O_NOFOLLOW` reader) `pub(crate)` and reuse it; no other change (the privacy check is byte-compared with Python's) |
-| `builder/panel-runner/src/guard.rs` | Move `INVISIBLE` and `scrub` into `anonymize` unchanged; here keep `pub use persona_builder_ingest::anonymize::scrub;` so every caller and test of `guard::scrub` is untouched |
+| `builder/panel-runner/src/guard.rs` | Move `INVISIBLE` and `scrub` into `anonymize` unchanged; here keep `pub use voice_ingest::anonymize::scrub;` so every caller and test of `guard::scrub` is untouched |
 | `builder/core/src/member.rs` `read_member` | Refuse an `anonymizer` key in `member.json` (§ 2) |
 | `builder/cli/src/main.rs` (+ a new `builder/cli/src/skills.rs` holding the handlers) | `skills list|agree|withdraw` and `anonymize` (§ 6) |
 
@@ -80,7 +80,7 @@ Every key is optional; an unknown key is refused. Each message starts
 | Key | Each entry | Limits and refusals |
 | --- | --- | --- |
 | `terms` | a string, or `{"term": <string>, "kind": <string>}`; a string's kind is `term` | at most 2,000; the term, trimmed, is 2 to 200 characters with no control character (newline included); `kind` matches `^[a-z][a-z-]{0,31}$`; two entries with the same normalized term (lower-cased with `str::to_lowercase`, whitespace runs made one space, trimmed) are refused (`anonymizer.terms[5] repeats anonymizer.terms[2]`); an object with any other key is refused |
-| `patterns` | a regex, matched without regard to case | at most 500; at most 1,000 bytes each; compiled with `RegexBuilder::new(p).case_insensitive(true).size_limit(1 << 20)`; a bad one: `anonymizer.patterns[2] is not a valid regex, or it uses look-around or a backreference, which Persona Builder can't read` |
+| `patterns` | a regex, matched without regard to case | at most 500; at most 1,000 bytes each; compiled with `RegexBuilder::new(p).case_insensitive(true).size_limit(1 << 20)`; a bad one: `anonymizer.patterns[2] is not a valid regex, or it uses look-around or a backreference, which Voice can't read` |
 | `allow` | a literal string that is never a finding (§ 4, masking) | at most 500; 3 to 200 characters, no control character |
 | `never_copy` | a skill name; `*` matches any run of characters; no other character is special; compared without regard to case | at most 500; matches `^[A-Za-z0-9._*-]{1,100}$` |
 | `drop_files` | a file name (no `/`), `*` as above, compared without regard to case; such files are left out of every skill | at most 100; 1 to 255 bytes, no `/`, no control character |
@@ -125,7 +125,7 @@ In this order:
    - `PrivateFile`: the file name is `LOCAL.md` or `LEARNINGS.md` (any letter case: private
      overlays and owner journals), or matches a `drop_files` entry;
    - `Hidden`: any component of `relative` starts with `.`;
-   - `Denied`: `persona_builder::deny::DenyList::builtin().denied_relative(relative)`;
+   - `Denied`: `voice_core::deny::DenyList::builtin().denied_relative(relative)`;
    - `TooLarge`: more than 1 MiB;
    - `NotText`: not UTF-8.
    (`Link` is set by the folder reader, § 5.)
@@ -232,7 +232,7 @@ state:
 | not offered | a `Synced` skill with no record | `a claude.ai skill: not offered, agree by name to copy it` |
 | waiting | otherwise | `waiting for your yes` |
 
-The date is `persona_builder_agent::ledger::local_day(SystemTime::now())`, computed in the CLI
+The date is `voice_agent::ledger::local_day(SystemTime::now())`, computed in the CLI
 and passed in (ingest does not depend on agent).
 
 ### Writing the copy
@@ -243,7 +243,7 @@ refuse an `--out` that is inside any discovered skill folder or inside `~/.claud
 next run would read it). An earlier run's folder is removed whole (`fs::remove_dir_all` after
 `symlink_metadata` shows a real folder) and made again. Create folders 0700 and files 0600 with
 `O_CREAT | O_EXCL | O_NOFOLLOW`; write `.anonymized-copy` (one line,
-`Made by persona-builder anonymize. Running it again replaces this folder.`) first. Each copied
+`Made by voice anonymize. Running it again replaces this folder.`) first. Each copied
 skill goes to `<out>/<name>/<relative path>`. Two agreed skills with the same name: the first by
 id is copied, the other is not (§ 6's line).
 
@@ -253,10 +253,10 @@ All take a member folder, as `consent agree` does (`checked_member`, `expand_hom
 `private::lock_state(home, slug)` for the whole command.
 
 ```
-persona-builder skills list <member_dir>
-persona-builder skills agree <member_dir> <id>...
-persona-builder skills withdraw <member_dir> <id>...
-persona-builder anonymize <member_dir> --out <dir>
+voice skills list <member_dir>
+voice skills agree <member_dir> <id>...
+voice skills withdraw <member_dir> <id>...
+voice anonymize <member_dir> --out <dir>
 ```
 
 Help lines: `Skills on this computer, and which ones your assistant may copy`;
@@ -266,7 +266,7 @@ Help lines: `Skills on this computer, and which ones your assistant may copy`;
 - `skills list`: one line per skill, `<id>\t<state words>\t<shown>`, then each note on its own
   line. With none: `No skills found on this computer.`
 - `skills agree`: an id that isn't listed today is refused before anything is written:
-  `<id> isn't one of the skills on this computer. See them with: persona-builder skills list <member_dir>`.
+  `<id> isn't one of the skills on this computer. See them with: voice skills list <member_dir>`.
   On success, one line per id: `<id>: agreed <date>.` A never-copied skill's line adds
   ` It is on your never_copy list, so it still won't be copied.`
 - `skills withdraw`: `<id>: no longer copied.` (also for an id with no record).
@@ -279,7 +279,7 @@ Help lines: `Skills on this computer, and which ones your assistant may copy`;
   - too big to read: `<name>: not copied, it has more than 500 files, more than 20 MB or more than 8 folders inside each other`;
   - same name: `<id>: not copied, another skill you agreed to has the same name (<other id>)`.
   Then `Copied <a> of <b> skills into <out, home as ~>.` and, when any wait (waiting, not offered
-  or moved), `<w> skills wait for your yes: persona-builder skills list <member_dir>`. Save the
+  or moved), `<w> skills wait for your yes: voice skills list <member_dir>`. Save the
   mapping after the run. Exit 0 when every agreed skill was copied, 1 otherwise (the copies made
   stay).
 
@@ -331,7 +331,7 @@ a non-empty unstamped folder, inside a skill folder, or inside `~/.claude/skills
 `anonymizer/skills.json` and `placeholders.json` are 0600 under `~/.claude/state/<slug>/`.
 
 Then run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
-`cargo test -p persona-builder-ingest -p persona-builder-cli -p voice-panel-runner`, `cargo test --manifest-path builder/core/Cargo.toml`,
+`cargo test -p voice-ingest -p voice-cli -p voice-panel-runner`, `cargo test --manifest-path builder/core/Cargo.toml`,
 and `bash scripts/ci-local.sh`, and report each result.
 
 ## 8. After the Verifier
@@ -407,7 +407,7 @@ Red test first for each; the repeat Verifier reproduced each one.
    too, whenever the term has 4 or more letters or digits.
 2. **Must-fix: a file the tool can't open or stat prints its name and stops the run.** An agreed
    skill holding a mode-000 `pebble-freight-notes.md` gives
-   `persona-builder: pebble-freight-notes.md: Permission denied (os error 13)` and no other skill is
+   `voice: pebble-freight-notes.md: Permission denied (os error 13)` and no other skill is
    copied. Fix: in `skills/read.rs`, a per-file `openat` or `fstatat` failure becomes a new
    `LeftOut::Unreadable` (`unreadable`), reported through the `*`-hiding path display; no
    `Error::Io` may carry a path from inside a skill.
@@ -416,7 +416,7 @@ Red test first for each; the repeat Verifier reproduced each one.
    term re-scan and pattern hits on the unmasked text too, and put back any hit only partly masked.
 4. **Nit: several allow entries together can exempt one hit** (`212 555 0199` with allow `212` and
    `555 0199`). Exempt a hit only when a single allow match covers all of it.
-5. **Nit: the skill-name line says "number N in persona-builder skills list" but `list` prints
+5. **Nit: the skill-name line says "number N in voice skills list" but `list` prints
    no numbers.** Number the `list` lines (`<n>. <id>…`) and keep the report's number in step.
    Record in DECISIONS that `skills list` shows ids and folders as they are (the person needs them
    to agree), while `anonymize`'s report never shows a found term.
@@ -507,7 +507,7 @@ the record is Claude's.
 
 ### 10.5 Verify and report
 
-Run `cargo test -p persona-builder-ingest`, `cargo test -p persona-builder-cli`,
+Run `cargo test -p voice-ingest`, `cargo test -p voice-cli`,
 `cargo clippy --workspace --all-targets -- -D warnings`,
 `cargo fmt --all -- --check`, then `bash scripts/ci-local.sh`. Report each command and its result,
 the red output you saw before each fix, and every file you changed.

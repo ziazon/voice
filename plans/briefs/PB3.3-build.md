@@ -14,7 +14,7 @@ joins), so it lands after PB3.4.
 
 ## What this slice does
 
-`persona-builder build <member_dir>`: `bootstrap/PROMPT.md` steps 8 to 11 without a Claude session,
+`voice build <member_dir>`: `bootstrap/PROMPT.md` steps 8 to 11 without a Claude session,
 sub-agents or tools. Every model call goes through `Claude::call` (the cap, the per-call budget, the
 ledger), one at a time, inside one `Session` (the state lock) held for the whole build.
 
@@ -75,13 +75,13 @@ ledger), one at a time, inside one `Session` (the state lock) held for the whole
   corpus has interview answers. The template's two placeholder entries are removed; new entries go
   before `## Reports` (else at the end); a missing file starts with the template's heading lines.
 - **Writing:** the new `decisions.md` text and the new entry pass the filters (any hit stops the build,
-  places only), then both files are staged beside themselves (`.<name>.persona-builder-<pid>`, created
+  places only), then both files are staged beside themselves (`.<name>.voice-<pid>`, created
   new, never through a link, the old file's mode or 0644, synced) and renamed last, `decisions.md`
   first. A link in the place of either file is refused. Any failure before the renames leaves the
   member as it was.
 - **Progress lines** (for the app, PB7): through a `&mut dyn FnMut(&str)` callback, in `text.rs`:
   reading, each part, each group, each batch (said "already done" when reused), checking, written.
-- **CLI:** `persona-builder build <member_dir> [--corpus] [--model] [--daily-cap-usd] [--call-cap-usd]`.
+- **CLI:** `voice build <member_dir> [--corpus] [--model] [--daily-cap-usd] [--call-cap-usd]`.
   Order: member, codebook, corpus, the cap flags, find and check Claude Code (signed out: the plain
   line, nothing spent), the session, the build, the write, the summary and today's spend. A thin
   history (under 150 answered questions) gets one line pointing at `interview draft`.
@@ -112,7 +112,7 @@ should-fixes, no must-fix. All seven are fixed, each with a test proved by a mut
 - **Hidden characters** (security L1): a point holding a control character, a line or paragraph
   separator, an invisible format character (zero-width, bidi, soft hyphen, BOM) or `<` is a misfit.
 - **Stale staged files** (security L2): staged names carry the pid, the time and a counter, and each
-  write first removes `.decisions.md.persona-builder-*` and `.measurements.md.persona-builder-*`
+  write first removes `.decisions.md.voice-*` and `.measurements.md.voice-*`
   regular files (never a link).
 - **A distil prompt's size** (security L3): a record's `msg`, `own` and `notes` are cut to 600
   characters in the distil prompt, and a group whose prompt is still over 700,000 bytes stops the

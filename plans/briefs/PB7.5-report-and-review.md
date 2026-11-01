@@ -1,6 +1,6 @@
 # PB7.5 brief: how well it knows you, and review
 
-Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.5` entry (PB7 of the Persona Builder
+Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.5` entry (PB7 of the Voice
 plan): the report (overall and per area, Strong / Getting there / Thin, what would help, the honest
 line under 30 kept-back questions), and review: keeping an answer, how many tests the answers have
 made, and a refresh: drafted, shown as a readable before-and-after with each reason, approved or
@@ -23,7 +23,7 @@ use them word for word); review bar: `~/.codex/skills/code-quality/SKILL.md`.
 
 Run cargo with `CARGO_NET_OFFLINE=true` and pnpm with `--offline`. **No new crate or package.**
 `builder/api/Cargo.toml` gains one path dependency already in the workspace,
-`persona-builder-grow = { path = "../grow" }`. If you think anything else is needed, stop and say so.
+`voice-grow = { path = "../grow" }`. If you think anything else is needed, stop and say so.
 
 ## What this slice does
 
@@ -104,20 +104,20 @@ a path or a record's words):
 
 | Name | Sentence |
 | --- | --- |
-| `REVIEW_SETTINGS` | Something in this assistant's settings stops the review. Use the persona-builder command to see what. |
-| `GROWTH_DAMAGED` | Your assistant's kept answers can't be read, so nothing was changed. Use the persona-builder command to see what's wrong. |
+| `REVIEW_SETTINGS` | Something in this assistant's settings stops the review. Use the voice command to see what. |
+| `GROWTH_DAMAGED` | Your assistant's kept answers can't be read, so nothing was changed. Use the voice command to see what's wrong. |
 | `KEEP_EMPTY` | Say what was being decided and what you'd want, then keep it. |
-| `KEEP_BAD` | Persona Builder couldn't keep that answer. Check it and try again. |
+| `KEEP_BAD` | Voice couldn't keep that answer. Check it and try again. |
 | `KEEP_PRIVATE` | That looked personal or secret, so it wasn't kept. Leave out names and private details, then try again. |
 | `NOT_BUILT_YET` | Build your assistant first: there's nothing to refresh yet. |
 | `ALREADY_OPEN` | A change is already waiting for your answer. Approve or reject it first. |
 | `REFRESH_FAILED` | Claude's draft didn't fit, twice, so nothing was saved. Try again. |
 | `CHANGE_GONE` | That change isn't waiting for your answer any more. Close it and open it again. |
 | `CHANGE_OLD` | Your assistant or your answers changed since this was drafted, so it can't be approved. Reject it, then draft a new one. |
-| `ANSWER_SAVE` | Persona Builder couldn't save your answer. Check there's space on this computer, then try again. |
-| `TEST_OLD` | Your assistant or your answers changed since you approved this change, so it wasn't tested and nothing changed. Use the persona-builder command to see what to do. |
+| `ANSWER_SAVE` | Voice couldn't save your answer. Check there's space on this computer, then try again. |
+| `TEST_OLD` | Your assistant or your answers changed since you approved this change, so it wasn't tested and nothing changed. Use the voice command to see what to do. |
 | `TEST_FAILED` | The test stopped before it finished, so your assistant is as it was. What was already finished is kept: test again to carry on. |
-| `APPLY_SAVE` | The change was tested, but the result couldn't be saved. Use the persona-builder command to finish it. |
+| `APPLY_SAVE` | The change was tested, but the result couldn't be saved. Use the voice command to finish it. |
 
 DTOs in `dto.rs` (answers camelCase; requests `deny_unknown_fields`; counts `u32` through `count`;
 enums `rename_all = "camelCase"` as `SaveKind` is; the ones holding `Spend` derive `PartialEq`
@@ -148,7 +148,7 @@ Private helpers:
   `store.cases()` (`GROWTH_DAMAGED`); `tests` counts every case by status (`new` waiting, `active`
   in use, `retired` retired); `by_area` the same per category, in the categories' order, only areas
   with at least one case; `refresh::waiting(store, dir)`: an `Error::Invalid` whose text equals
-  `persona_builder_grow::text::NOT_BUILT` gives `built: false` and no change, another error
+  `voice_grow::text::NOT_BUILT` gives `built: false` and no change, another error
   `GROWTH_DAMAGED`, else `built: true` and the change.
 - *change(proposal, approved)*: `id`; `drafted` the first 10 characters of `created`; `summary`;
   one `RefreshPoint` per `changes` entry: its `why`, `diff::removed_lines` as `before`,
@@ -176,7 +176,7 @@ Commands (`Result<T, dto::Failure>`):
 - `COMMANDS`, the capability's `allow-…` list and `generate_handler!` gain the six names in the
   order above (36 in all). No new permission, plugin or capability.
 - Each is `#[tauri::command(async)]`, one call into the api. `apply_refresh` takes `request` and
-  `on_progress: tauri::ipc::Channel<persona_builder_api::dto::BuildProgress>`, as `build_assistant`.
+  `on_progress: tauri::ipc::Channel<voice_api::dto::BuildProgress>`, as `build_assistant`.
 
 ### 4. The screens (`builder/ui`)
 
@@ -196,7 +196,7 @@ rest as the others. `index.ts` also exports `Report` and `Review`. Money and the
 PB7.4 ("Today, about $<spent> of the $<cap> daily limit, as Claude Code estimates it."). Numbers use
 `toLocaleString()`.
 
-**The frame (`PersonaBuilder.vue`).** Every step now has a screen. With an assistant open, every
+**The frame (`VoiceApp.vue`).** Every step now has a screen. With an assistant open, every
 step is a button (drop the per-id lists and the "Not here yet" text); `report` and `review` are
 enabled once permission is given, with the same disabled text as `build`. `view` gains `'report'`
 and `'review'`. `Report` is mounted with `v-else-if="view === 'report' && assistant"` (so it reads
@@ -242,7 +242,7 @@ On mount `showReport`; spinner with the visually hidden "Reading your report…"
   `next`).
 
 **`screens/Review.vue`** (prop `assistant`; emits `running`): heading "Review", the line "Teach
-your assistant from your own answers. Persona Builder turns what it learns into a change you can
+your assistant from your own answers. Voice turns what it learns into a change you can
 read, and keeps it only if your assistant does at least as well on every test." On mount
 `reviewStatus`; spinner with the visually hidden "Reading your answers…"; failure fallback
 `REVIEW_SETTINGS`. Then three Tabler cards in a column, each given the `slug` and the current
@@ -289,7 +289,7 @@ read, and keeps it only if your assistant does at least as well on every test." 
     approved). Reject → `alert alert-info` "Rejected. Nothing changed. Your answers stay saved for
     the next refresh." and emits `changed`. Failure fallback `ANSWER_SAVE`.
 - a change, approved:
-  - "You approved this change. Next, Persona Builder tests it on all your answers: it keeps the
+  - "You approved this change. Next, Voice tests it on all your answers: it keeps the
     change only if every new test passes and none of the others gets worse. It uses a little of
     your Claude plan." The points are shown as above, without the buttons.
   - the primary button "Test it" (`applyRefresh`); emits `running(true)` at the start and
@@ -379,7 +379,7 @@ Vitest:
   reason; a failure shows the fallback in `alert-danger` with the lines kept.
 - `Review.test.ts`: a child's `changed` replaces the status the others get.
 - `BuildRun.test.ts`: "See how well it knows you" emits `report` after a build.
-- `PersonaBuilder.test.ts`: `report` and `review` disabled until permission; "See how well it knows
+- `VoiceApp.test.ts`: `report` and `review` disabled until permission; "See how well it knows
   you" goes to the report and "Next: review what it learns" to review; while Review's `running` is
   true "Your assistants" is disabled with its line, and moving to another step and back keeps the
   test's lines.
@@ -398,7 +398,7 @@ and confirm with `cmp`; never `git checkout --`). Report each with its red resul
 7. stop sending the "with the change" progress line → the grow progress test red;
 8. swap `before` and `after` in *change* → the draft test red;
 9. add a command to `COMMANDS` only → lockdown red;
-10. enable `review` before permission → PersonaBuilder test red;
+10. enable `review` before permission → VoiceApp test red;
 11. mount `Review` with `v-if="view === 'review'"` → the keeps-the-lines test red.
 
 ## Not in this slice

@@ -1,7 +1,7 @@
 # PB4.3b brief: refresh, apply, re-measure, keep or revert
 
 Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB4.3b` entry, split from PB4.3 of the
-Persona Builder plan (PB-D5, PB-D13). Read the repo's `AGENTS.md`, then `docs/spec/growth-loop.md`
+Voice plan (PB-D5, PB-D13). Read the repo's `AGENTS.md`, then `docs/spec/growth-loop.md`
 (version 1: rules 2, 3, 4, 7, 8 and 9 are what this slice implements), then
 `plans/briefs/PB4.3a-refresh-propose.md` (the slice this finishes: `builder/grow/src/refresh.rs`,
 `diff.rs`, `edit.rs`, `version.rs`), then `builder/grow/src/rules.rs` and `store.rs`, and
@@ -14,7 +14,7 @@ dependency**: everything below uses crates already in `builder/grow/Cargo.toml` 
 
 ## What this slice does
 
-The second half of a refresh. `persona-builder refresh apply <member_dir> <CHANGE>` takes a change
+The second half of a refresh. `voice refresh apply <member_dir> <CHANGE>` takes a change
 the person approved, tests the assistant on every test from their answers before and after the
 change, and keeps the change only when every new test passes and nothing got worse. Otherwise the
 assistant stays as it was. Either way the result is written down, and the person sees it.
@@ -74,7 +74,7 @@ Fn() -> String) -> Result<Measured>`, `pub enum Measured { Done(Measurement), Al
    Then `draft::check_private(filters, &candidate, "")` on the whole candidate (its error as it is).
 8. `rules::to_measure(proposal, &cases)`: the list to run, `(case id, new)`, in that order. Its error
    (a named case no longer `new`) is told as `text::cases_moved(id)` ("Some of the tests this change
-   was meant to pass have changed since you approved it. Draft a new one with `persona-builder
+   was meant to pass have changed since you approved it. Draft a new one with `voice
    refresh propose`.").
 
 ### Step 2: the answers (one call per batch per version)
@@ -98,7 +98,7 @@ Fn() -> String) -> Result<Measured>`, `pub enum Measured { Done(Measurement), Al
   ours, never the person's words); what is shown is a count only ("{n} of its answers didn't fit").
 - `answer.md` (fixed text, it goes in argv; write exactly this):
 
-  > You are one person's AI assistant, built by Persona Builder to answer the way they would. The
+  > You are one person's AI assistant, built by Voice to answer the way they would. The
   > message gives how the person decides (their decisions.md), then tests, one JSON object per line.
   > Answer every test the way the person would, from how they decide. When a test has `options`,
   > answer with the exact text of one option, copied exactly. When it has none, answer in one or two
@@ -135,7 +135,7 @@ Fn() -> String) -> Result<Measured>`, `pub enum Measured { Done(Measurement), Al
 
 - Re-read `decisions.md`; if its version is no longer the base, save nothing and refuse with
   `text::DECISIONS_CHANGED_TESTING` ("Your assistant's decisions changed while the change was being
-  tested, so nothing was saved. Draft a new one with `persona-builder refresh propose`.").
+  tested, so nothing was saved. Draft a new one with `voice refresh propose`.").
 - `let at = now();` (called after the calls: `at` is when the run finished). The measurement:
   `schema` `MEASUREMENT_V1`, `id` `store.next_id(Prefix::Measurement, &at[..10])`, `proposal`,
   `approval` (the approval's id), `at`, `base` the proposal's base, `candidate`
@@ -174,7 +174,7 @@ The CLI's `apply` calls `measure` then `finish`; a `Measured::Already` goes stra
     first); when the entry is already there, `draft::write_decisions(member_dir, &candidate)` (add
     it beside `write_measurements`: `sweep`, then stage and rename `decisions.md` only). Neither base nor
     candidate: refuse with `text::DECISIONS_MOVED_AFTER` ("Your assistant's decisions.md changed
-    after this change was tested, so it wasn't applied. Draft a new one with `persona-builder
+    after this change was tested, so it wasn't applied. Draft a new one with `voice
     refresh propose`.") and write nothing.
   - The entry missing (the file already done): `draft::check_private(filters, "", &entry)`, then
     `draft::write_measurements`. The new `measurements.md` text is `draft::measurements(existing,
@@ -200,7 +200,7 @@ The CLI's `apply` calls `measure` then `finish`; a `Measured::Already` goes stra
   change(s) kept and {undone} undone. Your assistant passes {passing} of {of} tests from your
   answers." (singular/plural right; no "proposal", "case" or "measurement").
 - Printed after the report's lines (`report::read` then `report::render`, `since` its `built`) by
-  `refresh apply` and by the existing `persona-builder report` command. With no `report.json`,
+  `refresh apply` and by the existing `voice report` command. With no `report.json`,
   `refresh apply` prints the growth line alone and `report` keeps its no-report line, then the
   growth line when there is one. `report.json`'s schema is unchanged.
 
@@ -221,11 +221,11 @@ Plain, warm, no tooling words in what a person reads ("change", "tests", "your a
 "proposal", "case", "diff", "measurement", "candidate", "base"). Use the sentences above; adjust only
 for clarity. `TESTING` "Testing the change on your answers"; `GRADING` "Checking the written
 answers"; `not_answered(id)` "That change ({id}) is still waiting for your answer. Look at it with
-`persona-builder refresh show`, then approve or reject it."; `was_rejected(id)` "You rejected that
+`voice refresh show`, then approve or reject it."; `was_rejected(id)` "You rejected that
 change ({id}), so it can't be applied."; `CHANGE_DOES_NOT_FIT` "That saved change no longer fits your
-assistant, so nothing was changed. Draft a new one with `persona-builder refresh propose`.";
+assistant, so nothing was changed. Draft a new one with `voice refresh propose`.";
 `apply_misfit(what, problem)` "{what}: Claude's answers didn't fit twice, so nothing was saved
-({problem}). Run `persona-builder refresh apply` again."
+({problem}). Run `voice refresh apply` again."
 
 ## Tests (red first: each a failing assertion before its code)
 
@@ -279,7 +279,7 @@ as the refresh stub does.
   - **growth:** after one keep and one undo, the line counts 1 and 1 and the newest one's passing
     tests; `since` after both gives `None`.
 - `builder/cli/tests/refresh.rs`: on the invented member, `propose`, `approve`, then `refresh apply`
-  prints the kept line, the reason and the growth line; `persona-builder report` then shows the growth
+  prints the kept line, the reason and the growth line; `voice report` then shows the growth
   line; `refresh apply` again prints the nothing-left line and calls no Claude Code; `apply` on an
   unanswered change prints the waiting line.
 - The build's and PB4.3a's tests stay green (`batches` and the `check_words` move are

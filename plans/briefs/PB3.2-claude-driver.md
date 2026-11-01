@@ -1,7 +1,7 @@
 # PB3.2 brief: the Claude driver
 
 Written by Claude (lane V1) for Codex, 2026-10-24. Spec: lane V's `PB3.2` entry, split from PB3 of the
-Persona Builder plan (PB-D6: Claude only, behind an agent list; PB-D9: the user's own Claude Code,
+Voice plan (PB-D6: Claude only, behind an agent list; PB-D9: the user's own Claude Code,
 never a login of ours). Read the repo's `AGENTS.md` first, then `plans/briefs/PB2.2-mine-claude-code.md`
 for the crate and test style. Work test-first (`~/.codex/skills/tdd-skill/SKILL.md`): each test goes
 red on its assertion before its code exists, then green. Security rules:
@@ -17,17 +17,17 @@ just at its time limit is not counted as cut off.
 
 ## What this slice does
 
-A new crate `builder/agent` (package `persona-builder-agent`, library `persona_builder_agent`) that later
+A new crate `builder/agent` (package `voice-agent`, library `voice_agent`) that later
 slices (PB3.3, the build; PB3.4, the interview; PB7, the app) use for every model call:
 
-1. **The agent list:** the agents Persona Builder can drive. One entry now.
+1. **The agent list:** the agents Voice can drive. One entry now.
 2. **Check:** Claude Code is installed and signed in, in plain words when it is not.
 3. **One call:** a tool-less `claude -p` with a JSON schema, a time limit and a per-call budget.
 4. **The ledger:** one line per call (tokens, the estimated cost, the outcome), never any content.
 5. **The daily cap:** no call starts that could take today's estimated spend past the cap.
 
-Plus two small CLI commands, `persona-builder agents` and `persona-builder claude check`, and
-`persona-builder spend <member-dir>`. Nothing here labels, distils or interviews: that is PB3.3/PB3.4.
+Plus two small CLI commands, `voice agents` and `voice claude check`, and
+`voice spend <member-dir>`. Nothing here labels, distils or interviews: that is PB3.3/PB3.4.
 
 ## Sources (checked 2026-10-24, cite them in doc comments where the code relies on them)
 
@@ -55,13 +55,13 @@ Plus two small CLI commands, `persona-builder agents` and `persona-builder claud
 
 ### Crate layout
 
-- `builder/agent/Cargo.toml`: `persona-builder` (core, for `Error`/`Result`),
-  `persona-builder-ingest` (for the private state folder), `serde_json` (with `preserve_order`, as
+- `builder/agent/Cargo.toml`: `voice-core` (core, for `Error`/`Result`),
+  `voice-ingest` (for the private state folder), `serde_json` (with `preserve_order`, as
   the others), `libc = "=0.2.191"`. Add it to the workspace `members`, and add
-  `persona-builder-agent = { path = "../agent" }` to the CLI.
+  `voice-agent = { path = "../agent" }` to the CLI.
 - Modules: `agents.rs` (the list), `child.rs` (run a child with a time limit), `claude.rs` (find, check,
   call), `ledger.rs` (the ledger, the cap, the session), `text.rs` (every user-facing sentence, as
-  `builder/save/src/text.rs` keeps them). Errors are `persona_builder::error::Error::Invalid(<plain
+  `builder/save/src/text.rs` keeps them). Errors are `voice_core::error::Error::Invalid(<plain
   sentence>)` throughout, as the other crates do.
 
 ### 1. The agent list (`agents.rs`)
@@ -72,7 +72,7 @@ pub const AGENTS: &[Agent] = &[Agent { id: "claude-code", name: "Claude, through
 pub fn agent(id: &str) -> Option<&'static Agent>;
 ```
 
-`persona-builder agents` prints one line per agent: `claude-code  Claude, through your own Claude Code`
+`voice agents` prints one line per agent: `claude-code  Claude, through your own Claude Code`
 (id, two spaces, name). Exit 0.
 
 ### 2. Finding Claude Code (`claude.rs`)
@@ -106,9 +106,9 @@ pub(crate) fn run(command: &mut Command, input: Option<&[u8]>, timeout: Duration
 
 **The environment:** the child inherits the person's own environment (that is how their own login,
 proxy and config reach it), **minus `CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT`**, which mark a process as
-running inside a Claude Code session; Persona Builder may itself be started from one (the guided build),
+running inside a Claude Code session; Voice may itself be started from one (the guided build),
 and its calls must run as a fresh, top-level CLI. No variable is added. No token is ever read, set or
-passed by Persona Builder.
+passed by Voice.
 
 ### 4. Check (`Claude::check`)
 
@@ -121,7 +121,7 @@ passed by Persona Builder.
    `loggedIn`. `true`: ready. `false`, missing, or the command fails: `text::SIGNED_OUT`. **Never print,
    keep or log any other field** (the object can carry an email address).
 
-`persona-builder claude check` runs `find` then `check` and prints `text::READY` with the version
+`voice claude check` runs `find` then `check` and prints `text::READY` with the version
 (`Claude Code <version> is installed and signed in.`), exit 0; or the plain sentence on stderr, exit 1.
 
 ### 5. The session: the lock, the work folder and the cap (`ledger.rs`)
@@ -193,7 +193,7 @@ One compact JSON object per line, keys in this order:
 - A ledger line that does not parse, or whose `day` or `cost_usd` is missing or of the wrong type:
   `text::LEDGER_DAMAGED` (refuse to spend; the cap cannot be known). Lines are never rewritten or dropped.
 
-`persona-builder spend <member-dir> [--daily-cap-usd <n>]` reads the member's slug (the CLI's
+`voice spend <member-dir> [--daily-cap-usd <n>]` reads the member's slug (the CLI's
 `checked_member`), and prints `text::spend(spent_today, daily_usd)`, exit 0; it takes the lock like a
 build (so it says `BUSY` during one). Default cap 50.
 
@@ -238,16 +238,16 @@ The reply:
 ### 8. The sentences (`text.rs`, plain language, no tool words)
 
 ```
-NOT_INSTALLED   Persona Builder works through your own Claude Code, and it isn't on this Mac yet. Install it (https://code.claude.com/docs/en/setup), sign in with your own Claude account, then try again. Claude Code needs a paid Claude plan; the free plan doesn't include it.
+NOT_INSTALLED   Voice works through your own Claude Code, and it isn't on this Mac yet. Install it (https://code.claude.com/docs/en/setup), sign in with your own Claude account, then try again. Claude Code needs a paid Claude plan; the free plan doesn't include it.
 DOES_NOT_RUN    Claude Code is on this Mac but didn't start. Open it once on its own to check it works, then try again.
 SIGNED_OUT      Claude Code isn't signed in. Open Claude Code, sign in with your own Claude account, then try again.
 READY           Claude Code {version} is installed and signed in.
-BUSY            Persona Builder is already building this assistant. Wait for that to finish, then try again.
-WORK_FOLDER_NOT_EMPTY  Persona Builder's working folder for this assistant ({path}) has files in it that it didn't put there, so it stopped. Empty that folder, then try again.
-LEDGER_DAMAGED  Persona Builder's record of what it has spent for this assistant can't be read, so it won't spend anything more. The record is {path}.
+BUSY            Voice is already building this assistant. Wait for that to finish, then try again.
+WORK_FOLDER_NOT_EMPTY  Voice's working folder for this assistant ({path}) has files in it that it didn't put there, so it stopped. Empty that folder, then try again.
+LEDGER_DAMAGED  Voice's record of what it has spent for this assistant can't be read, so it won't spend anything more. The record is {path}.
 cap_reached     Today's spending limit for this assistant is reached: about ${spent:.2} of ${cap:.2}, as Claude Code estimates it. The build can carry on tomorrow, or you can raise the limit.
 spend           Today, about ${spent:.2} of the ${cap:.2} daily limit, as Claude Code estimates it.
-cut_off         Claude Code was still working on this step after {minutes} minutes, so Persona Builder stopped it. Try again; if it happens again, try a smaller step.
+cut_off         Claude Code was still working on this step after {minutes} minutes, so Voice stopped it. Try again; if it happens again, try a smaller step.
 FAILED          Claude Code couldn't finish this step. Open Claude Code and check it answers you, then try again.
 ```
 
@@ -298,7 +298,7 @@ option (PB-ANT); other agents. No live call to the real `claude` in the tests.
 ## Report back
 
 The files changed, the test count, `cargo clippy --all-targets -- -D warnings` and `cargo test -p
-persona-builder-agent -p persona-builder-ingest -p persona-builder-cli` results, and anything in this
+voice-agent -p voice-ingest -p voice-cli` results, and anything in this
 brief you could not do as written (with why).
 
 ## After the gates (as built, 2026-10-24)

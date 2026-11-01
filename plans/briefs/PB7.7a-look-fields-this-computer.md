@@ -26,7 +26,7 @@ sentence a person reads: `~/.codex/skills/plain-language/SKILL.md`. Run cargo wi
 1. **New file `builder/ui/src/theme.css`**, exactly this content:
 
    ```css
-   /* Persona Builder's look: the Navy & Amber palette, as awna.ai sets it, over Tabler. Load it after
+   /* Voice's look: the Navy & Amber palette, as awna.ai sets it, over Tabler. Load it after
       Tabler's CSS; Tabler reads data-bs-theme on <html>.
       Form fields get a literal colour per theme, never Tabler's light-dark(): its rules also match a
       host page's data-theme, so a dark host would otherwise put light-theme text on a dark field. */
@@ -80,7 +80,7 @@ sentence a person reads: `~/.codex/skills/plain-language/SKILL.md`. Run cargo wi
 3. **A host app can load it.** In `builder/ui/package.json`, `exports` becomes
    `{ ".": "./src/index.ts", "./theme.css": "./src/theme.css" }`. In `builder/ui/README.md`, replace the
    sentence "It loads Tabler's CSS and chooses its theme." with: "It loads Tabler's CSS, then
-   `@persona-builder/screens/theme.css` (the app's colours and readable form fields), and chooses its
+   `@voice/screens/theme.css` (the app's colours and readable form fields), and chooses its
    theme by setting `data-bs-theme` to `light` or `dark` on `<html>`."
 4. **The words.** Change only these strings:
    - `builder/agent/src/text.rs`: in `NOT_INSTALLED`, `DOES_NOT_RUN` and `API_KEY_SET`, "this Mac"
@@ -126,8 +126,8 @@ swap the two CSS imports, and confirm the matching test goes red; restore each w
 
 ## Done means
 
-- `cargo test -j 2 -p persona-builder-agent -p persona-builder-ingest -p persona-builder-api` passes,
-  and `cargo clippy -j 2 -p persona-builder-agent -p persona-builder-ingest --all-targets -- -D warnings`
+- `cargo test -j 2 -p voice-agent -p voice-ingest -p voice-api` passes,
+  and `cargo clippy -j 2 -p voice-agent -p voice-ingest --all-targets -- -D warnings`
   and `cargo fmt --check` are clean;
 - `pnpm -C builder/ui typecheck`, `pnpm -C builder/ui test -- --maxWorkers=2` and
   `pnpm -C builder/ui build` pass;

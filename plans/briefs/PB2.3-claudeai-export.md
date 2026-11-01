@@ -1,7 +1,7 @@
 # PB2.3 brief: mine the claude.ai export, in Rust
 
 Written by Claude (lane V1) for Codex, 2026-10-24. Spec: lane V's `PB2.3` entry, split from PB2 of the
-Persona Builder plan. Read the repo's `AGENTS.md` first, then `plans/briefs/PB2.2-mine-claude-code.md`
+Voice plan. Read the repo's `AGENTS.md` first, then `plans/briefs/PB2.2-mine-claude-code.md`
 and `plans/briefs/PB2.4-merge-and-split.md` (the slices this one builds on: same crate, same parity-test
 style, same Python-compatibility helpers in `builder/ingest/src/python.rs`). Work test-first
 (`~/.codex/skills/tdd-skill/SKILL.md`): each test file goes red on its assertion before its code
@@ -22,13 +22,13 @@ methods it reads; anything else is refused.
 
 ## What this slice does
 
-1. `persona_builder_ingest` gains a `claudeai` module: reading the export, and `inspect`, `titles`,
+1. `voice_ingest` gains a `claudeai` module: reading the export, and `inspect`, `titles`,
    `mark` and `mine`, at parity with `scripts/crew_decisions.py` lines 783–1004 (`export_files` to
    `cmd_claudeai_mine`): the same records, the same review file, the same JSONL bytes, the same
    printed lines.
 2. `private.rs`: `write_private` and `read_private` also take review files (a plain name ending
    `.tsv`).
-3. The CLI gains `persona-builder claudeai inspect | titles | mark | mine`.
+3. The CLI gains `voice claudeai inspect | titles | mark | mine`.
 
 ## Decisions (made, do not reopen)
 
@@ -55,7 +55,7 @@ methods it reads; anything else is refused.
      `chat_messages` that is not a list (Python iterates a string's characters; `""` gives no
      messages), a truthy `name` that is not a string (Python: `TypeError`, same exit).
   3. **A uuid holding a tab or a line break** (`\t`, or any character `python::splitlines` splits at)
-     is refused: `conversations.json: conversation <n> has a uuid Persona Builder can't list`.
+     is refused: `conversations.json: conversation <n> has a uuid Voice can't list`.
      Python writes it raw and corrupts the review file.
   4. **The export's form.** A link is never followed: at the export path itself, and at
      `conversations.json` inside an export folder (Python follows both). A path that is neither a
@@ -77,13 +77,13 @@ methods it reads; anything else is refused.
      overflows (`1e400`) even in a field nothing reads. An integer outside the 64-bit range, and
      `-0`, are reported by `inspect` as `float` (Python says `int`).
   6. **The review file must exist** for `mark` and `mine`:
-     `there's no review file yet: run persona-builder claudeai titles first`. Python treats a missing
+     `there's no review file yet: run voice claudeai titles first`. Python treats a missing
      file as empty (`mark` then writes a header-only file; `mine` mines nothing).
   7. **File names, not paths,** for the review and the output: plain names in the member's state
      folder, read and written through `read_private` and `write_private`. Python takes any path.
   8. **`--title` patterns** are compiled by the `regex` crate. A pattern it can't compile (a
      look-around, a backreference, `\Z`) is refused:
-     `--title is not a valid pattern, or it uses look-around or a backreference, which Persona Builder can't read`.
+     `--title is not a valid pattern, or it uses look-around or a backreference, which Voice can't read`.
      Some patterns compile in both and mean different things: `[[:alpha:]]` is a POSIX class in
      Rust and a plain set in Python, and so are the set operations `&&`, `--` and `~~` inside a
      class; `\p{L}` compiles only in Rust. Such patterns are read Rust's way.
@@ -106,7 +106,7 @@ pub fn read_export(path: &Path) -> Result<Export>;
 
 - Open `path` with `OpenOptions::new().read(true).custom_flags(O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)`
   (as `mine.rs`'s `open_session` does) and `fstat` the handle. `ELOOP` is
-  `<path> is a link: Persona Builder doesn't follow links. Use the export file itself`. `ENOENT` is
+  `<path> is a link: Voice doesn't follow links. Use the export file itself`. `ENOENT` is
   `<path> doesn't exist`. Neither a file nor a folder: `<path> is not a file or a folder`.
 - **A folder:** `files` counts the entries for which `fs::metadata` (following links, as Python's
   `is_file` does) says regular file. Then open `path/conversations.json` the same way (no link; must
@@ -124,7 +124,7 @@ pub fn read_export(path: &Path) -> Result<Export>;
     `the export zip should hold one conversations.json, and it holds <n>`.
   - Its declared size (`size()`) over `2 * 1024^3` is `the export's conversations.json is bigger than the 2 GB cap`;
     a declared size over `100 *` its `compressed_size()` (compute in `u128`) is
-    `the export's conversations.json is compressed more than 100:1, so Persona Builder won't open it`.
+    `the export's conversations.json is compressed more than 100:1, so Voice won't open it`.
     Both checks come before any decompression. Then `validate_header_consistency()` (zip 9.0.5 has
     no public duplicate check; this one refuses a repeated name and local headers that disagree with
     the central directory), as the "can't be read" error.
@@ -161,7 +161,7 @@ pub fn inspect(export: &Export) -> Result<Inspection>;
   `  <path>: <types sorted, joined by |> (<count>/<of>)`, plus ` values: <values sorted, joined by , >`
   when the value set is not empty; each line ends `\n`.
 - `missing` exactly as `missing_fields`. When it is not empty the CLI prints `text` and then fails
-  with `the export is missing fields Persona Builder reads: <missing joined by , >`; else it prints
+  with `the export is missing fields Voice reads: <missing joined by , >`; else it prints
   `text` and `ok: every field the adapter reads is present`.
 - A value that is not a list is the not-a-list error, before anything is printed.
 
@@ -178,7 +178,7 @@ seconds 00–59; offset hours 00–23, offset minutes 00–59. No time, or no zo
 fraction past the third are dropped (truncated, never rounded). Shift to UTC by the offset with your
 own days-from-civil arithmetic (no date crate); a result outside years 1–9999 is `None` (Python raises
 `OverflowError`, also exit 1). Output `YYYY-MM-DDTHH:MM:SS.mmmZ`. The error, wherever `utc` is
-`None`: `a date in the export isn't one Persona Builder can read: the export's shape changed, run persona-builder claudeai inspect`
+`None`: `a date in the export isn't one Voice can read: the export's shape changed, run voice claudeai inspect`
 (never the value). A non-string is `None` too.
 
 Measured at pickup on Python 3.12.14 (pin these in the tests): accepted by both, `2026-03-01T12:00:00.000000Z`
@@ -314,11 +314,11 @@ function before anything else.
 ### The CLI
 
 ```
-persona-builder claudeai inspect --export PATH
-persona-builder claudeai titles <member_dir> --export PATH [--review NAME] [--project-field KEY] [--dry-run]
-persona-builder claudeai mark <member_dir> --as y|n [--review NAME] [--uuid ID]... [--project P]
+voice claudeai inspect --export PATH
+voice claudeai titles <member_dir> --export PATH [--review NAME] [--project-field KEY] [--dry-run]
+voice claudeai mark <member_dir> --as y|n [--review NAME] [--uuid ID]... [--project P]
                               [--title PATTERN] [--before DATE] [--after DATE] [--unmarked] [--all]
-persona-builder claudeai mine <member_dir> --export PATH [--review NAME] [--out NAME]
+voice claudeai mine <member_dir> --export PATH [--review NAME] [--out NAME]
                               [--holdout F | --cutoff TS] [--dry-run]
 ```
 
@@ -336,7 +336,7 @@ persona-builder claudeai mine <member_dir> --export PATH [--review NAME] [--out 
   or folder created.
 - Doc comments (the `--help` lines), plain words: the group `/// Read your claude.ai chats: check the
   export, list the chats, mark which are yours, and read them.`; `inspect` `/// Check the export has
-  what Persona Builder reads (shows field names only, never your words).`; `titles` `/// List your
+  what Voice reads (shows field names only, never your words).`; `titles` `/// List your
   claude.ai chats in a review file, so you can mark which are yours.`; `mark` `/// Mark chats in the
   review file as yours (y) or not (n).`; `mine` `/// Read the chats you marked as yours into your
   assistant's private folder.`

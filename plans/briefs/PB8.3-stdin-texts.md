@@ -1,12 +1,12 @@
 # PB8.3 brief: the record and look-up texts can't run as shell code
 
-Persona Builder builds a person's AI assistant from their own Claude history. The assistant's
+Voice builds a person's AI assistant from their own Claude history. The assistant's
 `SKILL.md` (from `crew/_template/SKILL.md`) tells Claude Code to run two commands, through the
 placeholders `{{SIMILAR}}` and `{{RECORD}}`:
 
 - the guided build fills them with `python3 -I {{REPO}}/scripts/crew_decisions.py --member … similar`
   and `… record` (`bootstrap/install.sh`, and `builder/core/src/crew.rs` with `Decisions::Python`);
-- the app fills them with the shipped `"$HOME/…/persona-builder" similar <member dir>` and
+- the app fills them with the shipped `"$HOME/…/voice" similar <member dir>` and
   `… record <member dir>` (`Decisions::Cli`).
 
 Today the template has Claude write each text as a double-quoted shell word:
@@ -23,7 +23,7 @@ and spill into the shell either.
 
 Read first: `AGENTS.md`, `.ai/PROJECT.md`, `.ai/SECURITY.md`, `CONTRIBUTING.md`, then
 `plans/briefs/PB8.1-shipped-commands.md` (the slice that made `{{SIMILAR}}`, `{{RECORD}}` and
-`persona-builder record`). Skills: `~/.codex/skills/tdd-skill/SKILL.md`,
+`voice record`). Skills: `~/.codex/skills/tdd-skill/SKILL.md`,
 `~/.codex/skills/code-quality/SKILL.md`, `~/.codex/skills/security-and-hardening/SKILL.md`,
 `~/.codex/skills/plain-language/SKILL.md`.
 
@@ -48,7 +48,7 @@ tests use), no real person, no fixed paths. Commit nothing; leave the changes in
 
 ## The input: one JSON object on stdin
 
-Both programs (`scripts/crew_decisions.py` and the Rust `persona-builder`) read it the same way, and
+Both programs (`scripts/crew_decisions.py` and the Rust `voice`) read it the same way, and
 accept and refuse the same inputs. With `--stdin`:
 
 1. Read stdin as bytes, at most 64 KiB (65536 bytes): read up to 65537 bytes; more than 65536 is
@@ -278,7 +278,7 @@ and last character).
 
 ## Records
 
-- `.ai/SECURITY.md`: after the PB8.1 paragraph (`persona-builder record` writes only into an
+- `.ai/SECURITY.md`: after the PB8.1 paragraph (`voice record` writes only into an
   existing state folder…), add: "The texts an assistant records or looks up never pass through the
   shell: the SKILL.md (and the guided build's backtest brief) gives them to `--stdin` as one JSON
   object inside a quoted heredoc, which the shell does not expand and valid JSON cannot end early.
@@ -288,7 +288,7 @@ and last character).
 - `.ai/DECISIONS.md`: after the PB8.1 entry, in its format:
   `## 2026-10-26: texts go to the decision commands on stdin (PB8.3)` and the paragraph:
   "The SKILL.md's look-up and record commands take their texts as one JSON object on stdin
-  (`--stdin`, a quoted heredoc), never as shell words, in the app's `persona-builder` and the
+  (`--stdin`, a quoted heredoc), never as shell words, in the app's `voice` and the
   guided build's Python alike; the flags stay for people typing the commands. JSON over one field
   per line because a text can hold line breaks and a line that matches the heredoc's end. An
   assistant made before this keeps its old SKILL.md; make it again to get the new one."
@@ -296,6 +296,6 @@ and last character).
 ## Done means
 
 `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`,
-`PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked`, `python3 tests/crew_decisions_test.py`,
+`VOICE_REQUIRE_PARITY=1 cargo test --locked`, `python3 tests/crew_decisions_test.py`,
 `bash tests/crew_install_test.sh`, and `shellcheck tests/crew_install_test.sh` all pass. Then
 `bash scripts/ci-local.sh` passes. Commit nothing.

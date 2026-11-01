@@ -1,9 +1,9 @@
 # PB0 brief: the Rust workspace and its checks
 
-Persona Builder is a standalone app that builds a person's AI assistant from their own Claude
+Voice is a standalone app that builds a person's AI assistant from their own Claude
 history. This slice lays its foundation in this repo: an empty Cargo workspace with a core library
 and a CLI, and the Rust checks in `scripts/ci-local.sh`. No product behaviour yet beyond
-`persona-builder --version`.
+`voice --version`.
 
 Read first: `AGENTS.md`, `.ai/PROJECT.md`, `CONTRIBUTING.md`. Work test-first: the failing test
 before the code, and match the surrounding code.
@@ -33,24 +33,24 @@ before the code, and match the surrounding code.
    publish = false
    ```
 
-2. **`builder/core/Cargo.toml`**: package `persona-builder` (so the library is `persona_builder`),
+2. **`builder/core/Cargo.toml`**: package `voice-core` (so the library is `voice_core`),
    every package field from the workspace (`edition.workspace = true`, and so on), no dependencies.
-   **`builder/core/src/lib.rs`**: a crate doc comment saying this is the Persona Builder core
+   **`builder/core/src/lib.rs`**: a crate doc comment saying this is the Voice core
    library, that it does no I/O beyond the local filesystem, and that the CLI and the app are thin
    layers over it. One item: `pub const VERSION: &str = env!("CARGO_PKG_VERSION");` with a doc
    comment.
 
-3. **`builder/cli/Cargo.toml`**: package `persona-builder-cli`, workspace fields, a `[[bin]]` named
-   `persona-builder` at `src/main.rs`, depending on `clap` and on `persona-builder = { path =
+3. **`builder/cli/Cargo.toml`**: package `voice-cli`, workspace fields, a `[[bin]]` named
+   `voice` at `src/main.rs`, depending on `clap` and on `voice-core = { path =
    "../core" }`.
    **`builder/cli/src/main.rs`**: a clap derive parser,
-   `#[command(name = "persona-builder", version = persona_builder::VERSION, about = "Build your AI
+   `#[command(name = "voice", version = voice_core::VERSION, about = "Build your AI
    assistant from your own Claude history")]`, with no subcommands yet. `main` parses and returns.
 
 4. **`builder/cli/tests/version.rs`** — write this **first** and watch it fail before step 3's
-   `main.rs` exists or prints the version: run `env!("CARGO_BIN_EXE_persona-builder")` with
+   `main.rs` exists or prints the version: run `env!("CARGO_BIN_EXE_voice")` with
    `--version` through `std::process::Command`, assert it exits 0 and that stdout is exactly
-   `format!("persona-builder {}\n", env!("CARGO_PKG_VERSION"))`. No other crates.
+   `format!("voice {}\n", env!("CARGO_PKG_VERSION"))`. No other crates.
 
 5. **`scripts/ci-local.sh`**: after the existing shellcheck step and before `ci-local: all passed`,
    add:
@@ -71,12 +71,12 @@ before the code, and match the surrounding code.
    It must stay shellcheck-clean.
 
 6. **Docs**, plain words, one line each:
-   - `.ai/PROJECT.md`: two table rows, `builder/core/` (the Persona Builder core library,
-     `persona_builder`; test `cargo test`) and `builder/cli/` (the `persona-builder` command; test
+   - `.ai/PROJECT.md`: two table rows, `builder/core/` (the Voice core library,
+     `voice_core`; test `cargo test`) and `builder/cli/` (the `voice` command; test
      `builder/cli/tests/`). Change the "All of it runs with" line to say the Rust checks need stable
      Rust and are skipped when `cargo` is missing.
-   - `README.md` Layout table: one row, `builder/` (Persona Builder, a standalone app in progress:
-     the core library and the `persona-builder` command). In the `scripts/ci-local.sh` row, add that
+   - `README.md` Layout table: one row, `builder/` (Voice, a standalone app in progress:
+     the core library and the `voice` command). In the `scripts/ci-local.sh` row, add that
      it runs the Rust checks when `cargo` is installed.
    - `CONTRIBUTING.md`: after "It needs Python 3.9 or newer and `shellcheck`.", add that the Rust
      checks also need stable Rust and are skipped without it.

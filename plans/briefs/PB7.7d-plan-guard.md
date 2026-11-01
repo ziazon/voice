@@ -77,7 +77,7 @@ stream is a `result` message") and the TypeScript SDK's `SDKResultMessage`.
    over the ledger in `start` if you can (for example, `parse_line` returning a small struct or a
    tuple `(day, cost, stopped)`), and no copy of the day logic.
 6. **The sentence.** In `builder/agent/src/text.rs`:
-   `pub const PLAN_STOPPED: &str = "Your Claude plan is nearly used up, so Persona Builder has stopped for today and left the rest for you. Run the build again tomorrow to carry on.";`
+   `pub const PLAN_STOPPED: &str = "Your Claude plan is nearly used up, so Voice has stopped for today and left the rest for you. Run the build again tomorrow to carry on.";`
 7. **It reaches the screens.** In `builder/api/src/assistants.rs` `claude_message`, add
    `text::PLAN_STOPPED` to the list of agent sentences passed through as they are. Nothing else in
    the api changes: `call_failure` already falls through to `claude_message` when the dollar limit
@@ -125,7 +125,7 @@ for the reason its name says:
 In `builder/api/tests/building.rs`, one test,
 `a_build_stops_for_the_day_when_claude_code_says_the_plan_is_nearly_used`: patch the stub so every
 call prints `rate_limit_line`'s JSON (status `allowed_warning`) on its own line before its normal
-result; `build_assistant_in` fails with exactly `persona_builder_agent::text::PLAN_STOPPED`, and the
+result; `build_assistant_in` fails with exactly `voice_agent::text::PLAN_STOPPED`, and the
 stub ran once (count the calls the way the file's other tests do, or read `runs.jsonl`: one line,
 `"plan": "allowed_warning"`).
 

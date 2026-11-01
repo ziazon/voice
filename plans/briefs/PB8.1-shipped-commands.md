@@ -1,6 +1,6 @@
 # PB8.1 brief: the installed app ships the look-up and record commands
 
-Persona Builder is a standalone app that builds a person's AI assistant from their own Claude
+Voice is a standalone app that builds a person's AI assistant from their own Claude
 history. When the app turns an assistant on, it copies the assistant's `SKILL.md` into
 `~/.claude/skills/<slug>/`. That `SKILL.md` comes from `crew/_template/SKILL.md` and tells Claude
 Code to run two commands:
@@ -14,12 +14,12 @@ For an assistant the app makes, `{{REPO}}` is `~/.claude`, and there is no
 `~/.claude/scripts/crew_decisions.py`: the app ships no Python (decision PB-D2). So both commands
 fail in the person's Claude Code. This slice fixes that:
 
-1. **Part A:** `persona-builder record` (the Rust CLI gains the command `similar` already has a
+1. **Part A:** `voice record` (the Rust CLI gains the command `similar` already has a
    twin of), and the template names its commands through two new placeholders, `{{SIMILAR}}` and
    `{{RECORD}}`, which the guided build fills with the Python commands (unchanged behaviour) and
-   the app fills with the `persona-builder` command it ships.
-2. **Part B:** the Mac build puts that `persona-builder` command inside the app bundle, at
-   `Persona Builder.app/Contents/MacOS/persona-builder`, signed inside-out; the installer refuses
+   the app fills with the `voice` command it ships.
+2. **Part B:** the Mac build puts that `voice` command inside the app bundle, at
+   `Voice.app/Contents/MacOS/voice`, signed inside-out; the installer refuses
    a copy without it.
 
 You will be dispatched once per part. Do only the part your dispatch names, then stop.
@@ -42,13 +42,13 @@ as the existing tests use), no real person, no fixed paths.
 - Tauri's `bundle > externalBin` (<https://v2.tauri.app/develop/sidecar/>) is **not** used: its
   build script (`tauri-build` 2.7.0 `src/lib.rs` `copy_binaries`) copies the sidecar into the
   cargo target folder under its bare name, which is the CLI's own output name
-  (`target/release/persona-builder`), and it needs a `-<target triple>` copy that a universal
+  (`target/release/voice`), and it needs a `-<target triple>` copy that a universal
   build doesn't make. The build script copies and signs the CLI itself instead.
 - Python's `json.dumps(..., ensure_ascii=False)` is what `scripts/crew_decisions.py record` writes;
   `builder/ingest/src/mine.rs` `to_jsonl` already matches it byte for byte
   (`builder/ingest/tests/python_compat.rs`).
 
-## Part A: `persona-builder record`, and the template's two command placeholders
+## Part A: `voice record`, and the template's two command placeholders
 
 ### A1. The template
 
@@ -85,7 +85,7 @@ keys, so a member made by the guided build runs exactly the commands it ran befo
   pub enum Decisions<'a> {
       /// The guided build's `scripts/crew_decisions.py`, inside the repo.
       Python,
-      /// A `persona-builder` command, already written as one shell word (see `cli_word`).
+      /// A `voice` command, already written as one shell word (see `cli_word`).
       Cli(&'a str),
   }
   ```
@@ -106,24 +106,24 @@ keys, so a member made by the guided build runs exactly the commands it ran befo
 - New module `builder/core/src/cli_command.rs` (add it to `lib.rs`), two public functions:
 
   ```rust
-  /// The `persona-builder` command that ships with this program: this program itself when it is
-  /// that command, else the `persona-builder` beside it (the app's `Contents/MacOS`).
+  /// The `voice` command that ships with this program: this program itself when it is
+  /// that command, else the `voice` beside it (the app's `Contents/MacOS`).
   pub fn shipped_cli() -> Result<PathBuf>
   /// `path` as one shell word for a SKILL.md: `"$HOME/<rest>"` when under `home`, else `"<path>"`.
   pub fn cli_word(path: &Path, home: &Path) -> Result<String>
   ```
 
   - `shipped_cli`: `std::env::current_exe()`, then `canonicalize`; if its file name is
-    `persona-builder` return it; else return `parent.join("persona-builder")`. It does **not**
+    `voice` return it; else return `parent.join("voice")`. It does **not**
     check that the file exists (a `tauri dev` build has no CLI beside it; that is fine).
   - `cli_word`: canonicalize `home` (an error is `Error::Io`); `path` is used as given (the caller
     canonicalized it). Refuse with `Error::Invalid(CLI_FOLDER)` when the path is not valid UTF-8,
     or any character of it (the whole path, not only the part after home) is a control character
     or one of `"` `$` `` ` `` `\` `!` `{` `}`. `CLI_FOLDER` is a public const:
-    `"Persona Builder can't be used from a folder whose name has \" $ ` \\ ! { or } in it. Move Persona Builder to the Applications folder in your home folder, then try again."`
+    `"Voice can't be used from a folder whose name has \" $ ` \\ ! { or } in it. Move Voice to the Applications folder in your home folder, then try again."`
     Under home: `format!("\"$HOME/{rest}\"")`; elsewhere `format!("\"{path}\"")`. A space stays as
     it is (double quotes keep it one word).
-  - Unit tests in the module: under home with a space (`"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder"`),
+  - Unit tests in the module: under home with a space (`"$HOME/Applications/Voice.app/Contents/MacOS/voice"`),
     outside home, each refused character, and a non-UTF-8 path (`OsStr::from_bytes`).
 - `builder/core/src/assistants.rs` `make` gains a last parameter `cli: &str` (the shell word) and
   passes `Decisions::Cli(cli)`.
@@ -137,16 +137,16 @@ keys, so a member made by the guided build runs exactly the commands it ran befo
   and the lines `<word> similar ~/.claude/crew/<slug> --query` and `<word> record ~/.claude/crew/<slug> \`,
   where `<word>` is `cli_word(shipped_cli(), home)` computed in the test the same way.
   Then **run the command the SKILL.md names**: in the CLI test, take the `similar` line from the
-  made `SKILL.md`, replace the `<word>` with the built binary (`env!("CARGO_BIN_EXE_persona-builder")`),
+  made `SKILL.md`, replace the `<word>` with the built binary (`env!("CARGO_BIN_EXE_voice")`),
   and run it against an invented `decisions.jsonl` in the test home's state folder: it prints the
   invented precedent. Do the same with a `record` line: it writes the line in A5.
 
-### A5. `persona-builder record`
+### A5. `voice record`
 
 Same meaning as `scripts/crew_decisions.py record` (read `cmd_record` and its argparse lines),
 for one assistant's private folder only.
 
-- Usage: `persona-builder record <MEMBER_DIR> --work W --kind decided|escalated --category C
+- Usage: `voice record <MEMBER_DIR> --work W --kind decided|escalated --category C
   --tier high|medium|low --question Q --<slug>-pick P [--rule R] [--<principal_slug>-answer A]`.
   `<slug>` and `<principal_slug>` are the member's `slug` and `principal_slug`, as in Python, so
   the flag lines the template already writes work unchanged.
@@ -159,8 +159,8 @@ for one assistant's private folder only.
   `value_parser([...])` with exactly Python's choices. A clap error exits as clap's does
   (`error.exit()`), as the other commands' usage errors do. No `--log`: the line goes only to
   `live.jsonl` in the state folder.
-- The line, a JSON object in this key order, written with `persona_builder_ingest::mine::to_jsonl`:
-  `timestamp` (`persona_builder_grow::store::utc_now()`, `YYYY-MM-DDTHH:MM:SSZ`), `work`, `kind`,
+- The line, a JSON object in this key order, written with `voice_ingest::mine::to_jsonl`:
+  `timestamp` (`voice_grow::store::utc_now()`, `YYYY-MM-DDTHH:MM:SSZ`), `work`, `kind`,
   `category`, `tier`, `question`, `<slug>_pick` (`member.pick_field()`), `rule` (null when not
   given), `<principal_slug>_answer` (`member.answer_field()`, null when not given).
 - Refuse a line over 64 KiB, before writing:
@@ -177,7 +177,7 @@ for one assistant's private folder only.
   - It does **not** take the state folder's `lock_state` lock: that lock is held for a whole
     build, and recording during a build must still work.
 - When the state folder isn't there (never made, or removed by Forget), nothing is created:
-  `"<Name> has nowhere to keep this yet: ~/.claude/state/<slug> isn't there. Open Persona Builder and give <Name> permission, then try again."`
+  `"<Name> has nowhere to keep this yet: ~/.claude/state/<slug> isn't there. Open Voice and give <Name> permission, then try again."`
   (`<Name>` the member's name, `<slug>` its slug.)
 - On success print exactly what Python prints:
   `recorded a <kind> <category> decision (<tier>) for <work>`.
@@ -186,7 +186,7 @@ for one assistant's private folder only.
   - the line's bytes equal Python's for the same arguments, timestamp excepted: run
     `scripts/crew_decisions.py --member <member.json> record --log <tmp> …` as the parity tests in
     `builder/cli/tests/steps_parity.rs` run Python (skip when Python is missing unless
-    `PERSONA_BUILDER_REQUIRE_PARITY=1`), with non-ASCII text and a quote in `--question`, once with
+    `VOICE_REQUIRE_PARITY=1`), with non-ASCII text and a quote in `--question`, once with
     `--rule` and the answer flag and once without (both nulls);
   - two records append two lines; an existing `live.jsonl` keeps its lines;
   - a missing state folder: the sentence above, exit 1, and no `~/.claude/state/<slug>` afterwards;
@@ -208,7 +208,7 @@ for one assistant's private folder only.
   and has no `--log`; the SKILL.md's command is one double-quoted path the app checks for shell
   characters before writing it.
 - `.ai/DECISIONS.md`: one entry (match the file's format): "An app-made assistant's SKILL.md runs
-  the `persona-builder` shipped inside the app (`Contents/MacOS/persona-builder`), named as one
+  the `voice` shipped inside the app (`Contents/MacOS/voice`), named as one
   quoted path when the assistant is made; the guided build keeps `scripts/crew_decisions.py`. The
   template names both through `{{SIMILAR}}` and `{{RECORD}}`. An assistant made before this keeps
   its old SKILL.md; make it again to get the new one." Date it 2026-10-26, from PB8.1.
@@ -216,7 +216,7 @@ for one assistant's private folder only.
 ### Part A done means
 
 `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`,
-`PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked`, and `bash tests/crew_install_test.sh` all
+`VOICE_REQUIRE_PARITY=1 cargo test --locked`, and `bash tests/crew_install_test.sh` all
 pass. Commit nothing; leave the changes in the worktree.
 
 ## Part B: the Mac build ships the command; the installer checks it
@@ -226,37 +226,37 @@ pass. Commit nothing; leave the changes in the worktree.
 After `pnpm -C builder/ui tauri "${build_args[@]}"` and the existing `codesign --verify` of `$app`:
 
 - Build the CLI: without `--universal`,
-  `CARGO_NET_OFFLINE=true cargo build --release --locked -p persona-builder-cli`, binary at
-  `$target_dir/release/persona-builder`. With `--universal`, build it for
+  `CARGO_NET_OFFLINE=true cargo build --release --locked -p voice-cli`, binary at
+  `$target_dir/release/voice`. With `--universal`, build it for
   `aarch64-apple-darwin` and `x86_64-apple-darwin` (`--target …`, binaries at
-  `$target_dir/<triple>/release/persona-builder`) and join them with
+  `$target_dir/<triple>/release/voice`) and join them with
   `lipo -create -output "$staging_cli" <both>` into a file in the staging folder (removed by the
-  existing `trap`). Fail plainly (`fail 'the persona-builder command was not built'`) when the
+  existing `trap`). Fail plainly (`fail 'the voice command was not built'`) when the
   binary is missing.
-- After `ditto "$app" "$package/Persona Builder.app"`, on the staged copy only (never the bundle in
+- After `ditto "$app" "$package/Voice.app"`, on the staged copy only (never the bundle in
   the target folder):
-  1. `cp` the CLI to `"$package/Persona Builder.app/Contents/MacOS/persona-builder"`, `chmod 755`;
-  2. sign it: `codesign --force --sign - "$package/Persona Builder.app/Contents/MacOS/persona-builder"`;
+  1. `cp` the CLI to `"$package/Voice.app/Contents/MacOS/voice"`, `chmod 755`;
+  2. sign it: `codesign --force --sign - "$package/Voice.app/Contents/MacOS/voice"`;
   3. re-sign the app, outermost last and without `--deep`:
-     `codesign --force --sign - --preserve-metadata=identifier,entitlements,requirements,flags,runtime "$package/Persona Builder.app"`;
+     `codesign --force --sign - --preserve-metadata=identifier,entitlements,requirements,flags,runtime "$package/Voice.app"`;
   4. `codesign --verify --deep --strict` the staged app, else `fail "signature check failed: …"`.
 - `lipo -archs` of the copied CLI must include every architecture of the app's main executable
   (`CFBundleExecutable`, read as `builder/install/install.sh` reads it), else
-  `fail 'the persona-builder command was built for other Macs than the app'`.
+  `fail 'the voice command was built for other Macs than the app'`.
 
 ### B2. `builder/install/install.sh`
 
 Right after the `CFBundleExecutable` / `lipo` check of the main executable, check the shipped
-command: `"$source_app/Contents/MacOS/persona-builder"` must be a regular file (not a symlink) and
+command: `"$source_app/Contents/MacOS/voice"` must be a regular file (not a symlink) and
 executable, and `lipo -archs` of it must succeed and include `$mac_arch` (arm64e counts for arm64,
 as for the main executable); otherwise `fail "$damaged"`. Nothing else in the installer changes.
 
 ### B3. `tests/mac_install_test.sh`
 
-`fake_app` also compiles a tiny `persona-builder` for the given architecture into
+`fake_app` also compiles a tiny `voice` for the given architecture into
 `Contents/MacOS/` **before** it signs the bundle (inside-out, no `--deep` on the inner sign; the
 existing outer `codesign -s - --force --deep` may stay for the fake). New cases: a copy without
-`Contents/MacOS/persona-builder` and a copy whose `persona-builder` is a symlink are both refused
+`Contents/MacOS/voice` and a copy whose `voice` is a symlink are both refused
 with the damaged sentence and install nothing. Every existing case still passes.
 
 ### B4. `How to install.txt`

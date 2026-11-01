@@ -1,6 +1,6 @@
 # PB7.2 brief: your permission, a new assistant, connect Claude
 
-Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.2` entry (PB7 of the Persona Builder
+Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.2` entry (PB7 of the Voice
 plan, PB-D9) and V-Q5's answer: a new assistant's folder is `~/.claude/crew/<slug>/`, with a
 *Show in Finder* button. Read the repo's `AGENTS.md` and `.ai/PROJECT.md` first, then
 `plans/briefs/PB7.1-app-frame.md` (the frame and the bridge this slice grows),
@@ -22,7 +22,7 @@ stop and say so.
 
 A person opens the app, sees their assistants (or none), makes a new one, gives their permission
 for it to read their history, and checks that their own Claude Code is installed and signed in.
-The same four things work from the `persona-builder` command.
+The same four things work from the `voice` command.
 
 ## Decisions (made, do not reopen)
 
@@ -86,22 +86,22 @@ New `builder/core/src/consent.rs`, `pub mod consent;`. The wording, final:
 ```rust
 pub const VERSION: u32 = 1;
 pub struct Section { pub heading: &'static str, pub lines: &'static [&'static str] }
-pub const TITLE: &str = "Before Persona Builder reads anything";
+pub const TITLE: &str = "Before Voice reads anything";
 pub const SECTIONS: &[Section] = &[
     Section { heading: "What it reads", lines: &[
         "The messages you typed to Claude Code on this computer, including your answers to its questions.",
         "Your claude.ai chats, only if you download them and add them yourself.",
     ] },
     Section { heading: "What stays on this computer", lines: &[
-        "Your history, and everything Persona Builder makes from it, stays in your Claude folder on this computer.",
+        "Your history, and everything Voice makes from it, stays in your Claude folder on this computer.",
         "It leaves out messages that look private, such as health, family, legal or money matters and account numbers. It can miss some.",
     ] },
     Section { heading: "What goes to Claude", lines: &[
-        "To build your assistant, Persona Builder sends parts of your history to Claude through your own Claude Code, signed in to your own Claude account. The terms of your Claude account apply, as they do to anything else you send through Claude Code.",
-        "This uses your own Claude plan's usage, and a build can use a lot of it. Persona Builder stops for the day when it reaches a daily limit, and you can stop it at any time.",
+        "To build your assistant, Voice sends parts of your history to Claude through your own Claude Code, signed in to your own Claude account. The terms of your Claude account apply, as they do to anything else you send through Claude Code.",
+        "This uses your own Claude plan's usage, and a build can use a lot of it. Voice stops for the day when it reaches a daily limit, and you can stop it at any time.",
     ] },
     Section { heading: "Nothing else", lines: &[
-        "Persona Builder sends nothing anywhere else. A copy goes to GitHub only if you choose that later.",
+        "Voice sends nothing anywhere else. A copy goes to GitHub only if you choose that later.",
         "You can change your mind: Forget deletes the history it read and everything it made from it.",
     ] },
 ];
@@ -113,15 +113,15 @@ pub fn plain_text() -> String  // TITLE, a blank line, then each heading and its
 
 The record lives in the assistant's private state folder (`~/.claude/state/<slug>/`), never in its
 crew folder: `consent.json`, `{"version":1,"agreed_on":"YYYY-MM-DD"}` (the local date, from
-`persona_builder_agent::ledger::local_day(SystemTime::now())`), written with
-`persona_builder_ingest::private::write_private(home, slug, "consent.json", …)` and read with
+`voice_agent::ledger::local_day(SystemTime::now())`), written with
+`voice_ingest::private::write_private(home, slug, "consent.json", …)` and read with
 `read_private_optional`. It counts as agreed only when it parses with exactly those two keys,
 `version == consent::VERSION` and a `YYYY-MM-DD` date; anything else (missing, damaged, an older
 version) reads as not agreed, never as an error.
 
 ### 4. The api (`builder/api`)
 
-`Cargo.toml` gains path dependencies `persona-builder` (`../core`) and `persona-builder-ingest`
+`Cargo.toml` gains path dependencies `voice-core` (`../core`) and `voice-ingest`
 (`../ingest`). New module `src/assistants.rs` (or `src/lib.rs` if it stays short) with the commands.
 Each command has a testable form taking `home` (and `path` for Claude) and a zero-argument form the
 Tauri app calls, reading `HOME` (missing: the `Failure` below) and `PATH` from the environment.
@@ -144,11 +144,11 @@ never an error's own text and never a path):
 
 | Command | Does | Errors |
 | --- | --- | --- |
-| `list_assistants() -> Vec<Assistant>` | `assistants::list`, each with its consent | any error: "Persona Builder couldn't look for your assistants. Close it and open it again." |
-| `new_assistant(NewAssistantRequest) -> Assistant` | `assistants::make` with today's local date; `consent` not agreed | `Invalid` from a name check: "<Field> can be up to 64 characters on one line, without @ < > { } [ ] ( ) # \\ or `.", Field being "Your assistant's name", "Its pronouns", "Your name", "Your pronouns"; no letter or digit in the name: "Your assistant's name needs at least one letter or number."; `Exists`: "You already have an assistant called <name>. Pick another name, or open that one.", <name> being the existing assistant's `name` when its `member.json` reads, else the slug; anything else: "Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again." |
-| `show_assistant_folder(SlugRequest) -> ()` | `assistant_dir`, must be an existing folder; opens it with the system's file browser: macOS `/usr/bin/open <dir>`, Linux `xdg-open <dir>`, Windows `explorer <dir>` (fixed program, the folder the only argument, `cfg(target_os)`), not waited on beyond spawn | bad slug or no folder: "Persona Builder couldn't find that assistant. Close it and open it again."; spawn failure: "Persona Builder couldn't open the folder." |
+| `list_assistants() -> Vec<Assistant>` | `assistants::list`, each with its consent | any error: "Voice couldn't look for your assistants. Close it and open it again." |
+| `new_assistant(NewAssistantRequest) -> Assistant` | `assistants::make` with today's local date; `consent` not agreed | `Invalid` from a name check: "<Field> can be up to 64 characters on one line, without @ < > { } [ ] ( ) # \\ or `.", Field being "Your assistant's name", "Its pronouns", "Your name", "Your pronouns"; no letter or digit in the name: "Your assistant's name needs at least one letter or number."; `Exists`: "You already have an assistant called <name>. Pick another name, or open that one.", <name> being the existing assistant's `name` when its `member.json` reads, else the slug; anything else: "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again." |
+| `show_assistant_folder(SlugRequest) -> ()` | `assistant_dir`, must be an existing folder; opens it with the system's file browser: macOS `/usr/bin/open <dir>`, Linux `xdg-open <dir>`, Windows `explorer <dir>` (fixed program, the folder the only argument, `cfg(target_os)`), not waited on beyond spawn | bad slug or no folder: "Voice couldn't find that assistant. Close it and open it again."; spawn failure: "Voice couldn't open the folder." |
 | `consent_text() -> ConsentText` | the wording from `consent` | none |
-| `agree_consent(SlugRequest) -> Consent` | the slug must name a listed assistant; writes the record; returns it read back | bad slug or not listed: the "couldn't find that assistant" sentence; write failure: "Persona Builder couldn't keep your answer. Check there's space on this computer, then try again." |
+| `agree_consent(SlugRequest) -> Consent` | the slug must name a listed assistant; writes the record; returns it read back | bad slug or not listed: the "couldn't find that assistant" sentence; write failure: "Voice couldn't keep your answer. Check there's space on this computer, then try again." |
 | `claude_check() -> ClaudeStatus` | `claude::find(PATH, home)` then `check(home)` | never fails: ready gives `ready: true`, `message: text::ready(version)`, `note: Some(text::API_KEY_SET)` when the key is set; an `Error::Invalid` whose text is exactly `NOT_INSTALLED`, `DOES_NOT_RUN` or `SIGNED_OUT` gives `ready: false` and that text; anything else `ready: false` and `text::FAILED` |
 
 The testable forms take what the environment would give: `list_assistants_in(home)`, `new_assistant_in(home, request)`, `agree_consent_in(home, request)`, `show_assistant_folder_in(home, request, open: impl FnOnce(&Path) -> std::io::Result<()>)` (the opener injected) and `claude_check_in(home, path: Option<&OsStr>, fallbacks: &[PathBuf])` (through `claude::find_in`; the zero-argument form passes `claude::fallbacks(home)`).
@@ -161,28 +161,28 @@ The testable forms take what the environment would give: `list_assistants_in(hom
 
 ### 5. The CLI (`builder/cli`)
 
-- `persona-builder new <NAME> --principal <YOUR NAME> [--pronouns <P>] [--principal-pronouns <P>]`,
+- `voice new <NAME> --principal <YOUR NAME> [--pronouns <P>] [--principal-pronouns <P>]`,
   both pronouns defaulting to `they/them` (as `install.sh`). Help: "Make a new assistant in your
   Claude folder". Calls `assistants::make` with today's local date, then prints
   `Made <name> in ~/.claude/crew/<slug>/.` and
-  `Next: persona-builder consent show, then persona-builder consent agree ~/.claude/crew/<slug>`.
+  `Next: voice consent show, then voice consent agree ~/.claude/crew/<slug>`.
   `Exists`: `You already have an assistant in ~/.claude/crew/<slug>/.` and exit 1.
-- `persona-builder assistants`: help "List your assistants". One line each:
+- `voice assistants`: help "List your assistants". One line each:
   `<name> (<slug>): ~/.claude/crew/<slug>/ · permission given <date>` or
-  `… · permission not given yet`; none: `You have no assistants yet. Make one with: persona-builder new <name> --principal <your name>`.
-- `persona-builder consent show`: help "Show what you agree to before Persona Builder reads your
+  `… · permission not given yet`; none: `You have no assistants yet. Make one with: voice new <name> --principal <your name>`.
+- `voice consent show`: help "Show what you agree to before Voice reads your
   history"; prints `consent::plain_text()` then `Version <n>.`
-- `persona-builder consent agree <member_dir>`: help "Agree, for one assistant"; reads the member
+- `voice consent agree <member_dir>`: help "Agree, for one assistant"; reads the member
   (`checked_member`, as other commands) and writes the record as the api does; prints
   `Thank you. Permission given on <date>.`
-- `persona-builder claude check` exists; unchanged.
+- `voice claude check` exists; unchanged.
 
 ### 6. The Tauri app (`builder/app`)
 
 - `COMMANDS` becomes the seven names in the order above. The capability lists the seven
   `allow-…` entries; `generate_handler!` the seven `commands::…`; the lockdown test already holds
   all four lists together.
-- Each new command is `#[tauri::command(async)]` and one call into `persona_builder_api` (its
+- Each new command is `#[tauri::command(async)]` and one call into `voice_api` (its
   zero-argument form, or with the request): `async` keeps the 30-second Claude check and the file
   work off the main thread (tauri-macros 2.7.3 `src/command/wrapper.rs`: without it a command runs
   on the main thread; `async` on a sync function runs it on the async runtime). Requests are taken
@@ -204,7 +204,7 @@ returns `error.message` only when `error` is a plain object whose `message` is a
 `Failure` shape the bridge rejects with), else `fallback`. Every screen uses it; none shows
 anything else from an error.
 
-The frame (`PersonaBuilder.vue`) keeps the side column and gains a view state:
+The frame (`VoiceApp.vue`) keeps the side column and gains a view state:
 `view: 'home' | 'new' | 'consent' | 'connect'` and `assistant: Assistant | null`.
 
 - **Side column.** When an assistant is chosen, its name as a small heading above the list
@@ -223,7 +223,7 @@ The frame (`PersonaBuilder.vue`) keeps the side column and gains a view state:
 
 **`Assistants.vue`** (emits `open(assistant)` and `make`):
 - loading: spinner, visually hidden "Looking for your assistants…";
-- error: alert "Persona Builder couldn't look for your assistants. Close it and open it again." (via `failureMessage` with that fallback);
+- error: alert "Voice couldn't look for your assistants. Close it and open it again." (via `failureMessage` with that fallback);
 - heading "Your assistants";
 - none: "You haven't made an assistant yet.";
 - each assistant a Tabler list-group item: its name (strong), "Learns from <principal>", and a
@@ -242,14 +242,14 @@ Opening an assistant goes to `consent` when not agreed, else to `connect`.
 - "Your name" (text, required; help "Your assistant learns how you decide, from your own history.");
 - "Your pronouns" (same select and Other field, labelled "Your pronouns");
 - buttons "Make it" (primary; while waiting disabled and reading "Making it…") and "Back";
-- on failure, an alert with `failureMessage(error, "Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again.")`; the form keeps what was typed.
+- on failure, an alert with `failureMessage(error, "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.")`; the form keeps what was typed.
 - Leading and trailing spaces are trimmed before sending; the button stays disabled while a
   required field is empty.
 
 On `made`, the frame chooses that assistant and goes to `consent`.
 
 **`Consent.vue`** (prop `assistant`; emits `agreed(consent)` and `next`):
-- loads `consentText()`; loading spinner "Loading…"; error alert "Persona Builder couldn't show
+- loads `consentText()`; loading spinner "Loading…"; error alert "Voice couldn't show
   this. Close it and open it again.";
 - heading the wording's `title`; each section an `h3` and its lines as paragraphs;
 - when `assistant.consent.agreed`: a muted line "You agreed on <agreedOn>." and the primary
@@ -260,14 +260,14 @@ On `made`, the frame chooses that assistant and goes to `consent`.
   Builder couldn't keep your answer. Check there's space on this computer, then try again.")`.
 
 **`ConnectClaude.vue`**:
-- heading "Connect Claude"; the line "Persona Builder works through your own Claude Code, signed
+- heading "Connect Claude"; the line "Voice works through your own Claude Code, signed
   in to your own Claude account. It never asks for your Claude password.";
 - on mount calls `claudeCheck()`; loading spinner, visually hidden "Checking Claude Code…";
 - `ready`: a success alert with `message`, and `note` below it in a muted line when present;
 - not ready: a warning alert with `message`, and the button "Check again" (re-runs the check,
   showing the spinner); the alert's text is `message` only;
 - a rejected call (the bridge itself failing): the warning alert with
-  "Persona Builder couldn't check Claude Code. Close it and open it again." and "Check again".
+  "Voice couldn't check Claude Code. Close it and open it again." and "Check again".
 - Links in `message` (for example the setup page) are plain text, not links: the webview opens
   nothing.
 
@@ -326,7 +326,7 @@ Vitest:
   "Next: connect Claude"; failure shows its message.
 - `ConnectClaude.test.ts`: ready shows message and note; not ready shows message and "Check again",
   which calls the check again; a rejection shows the bridge sentence; no `<a>` in the screen.
-- `PersonaBuilder.test.ts` (updated): no assistant: steps show "Choose an assistant first" or "Not
+- `VoiceApp.test.ts` (updated): no assistant: steps show "Choose an assistant first" or "Not
   here yet", all `aria-disabled`; making one goes to the consent view with "Making <name>"; connect
   disabled until agreed; after agreeing the connect view shows; "Your assistants" returns home.
 - `failure.test.ts`: the `Failure` shape returns its message; a string, an `Error`, `null` and an
@@ -343,7 +343,7 @@ and confirm with `cmp`; never `git checkout --`). List each with its red result:
 5. accept a consent record with an older version → api test red;
 6. add a command to `COMMANDS` only → lockdown red;
 7. make `failureMessage` return `String(error)` → failure test red;
-8. enable the connect step before consent → PersonaBuilder test red.
+8. enable the connect step before consent → VoiceApp test red.
 
 ## Done when
 
@@ -357,10 +357,10 @@ Claude reviews, commits and runs the app.
 Claude's review of the first build:
 
 1. **One reader and one writer of the permission record.** `builder/cli/src/assistants.rs` copies
-   the api's `read_consent` and `valid_date`. Make `persona-builder-api` a normal dependency of
+   the api's `read_consent` and `valid_date`. Make `voice-api` a normal dependency of
    `builder/cli` (it stays a dev-dependency too only if a test needs it there; otherwise move it),
-   and have `assistants` and `consent agree` call `persona_builder_api::read_consent` and
-   `persona_builder_api::write_consent`. Delete the CLI's `agreed_on` and `valid_date`.
+   and have `assistants` and `consent agree` call `voice_api::read_consent` and
+   `voice_api::write_consent`. Delete the CLI's `agreed_on` and `valid_date`.
 2. **The wording hash without python3.** `consent.rs`'s test computes the SHA-1 with
    `sha1_smol` (`sha1_smol = "=1.0.1"`, already in the workspace through `builder/ingest`) as a
    dev-dependency of `builder/core`, not by running python3.
@@ -369,7 +369,7 @@ Claude's review of the first build:
    (Windows' `explorer` exits 1 even when it opened the folder) and fail only when it cannot be
    started. Say so in a one-line comment.
 4. **Help for `consent`.** The `Consent` variant of `Command` gets the doc comment
-   `/// Your permission for Persona Builder to read your history`.
+   `/// Your permission for Voice to read your history`.
 5. **`tauri-backend.test.ts`:** the request-row test calls the method once, without the
    `if (method === 'newAssistant') … else …` whose branches are the same; type the call through
    one cast instead, and drop the comment above it.
@@ -377,7 +377,7 @@ Claude's review of the first build:
 Mutation-check 1 again (make `read_consent` accept an older version → the api test and the CLI
 test both red) with `cp`/`cmp`. Run `CARGO_NET_OFFLINE=true cargo fmt --check`,
 `cargo clippy --workspace --all-targets --locked -- -D warnings`,
-`cargo test -p persona-builder -p persona-builder-api -p persona-builder-cli -p persona-builder-app --locked`,
+`cargo test -p voice-core -p voice-api -p voice-cli -p voice-app --locked`,
 and `pnpm -C builder/ui typecheck`, `test` (offline). Don't commit.
 
 ## Fix-up pass 2: from the security review and the Verifier (decided, do not reopen)
@@ -421,6 +421,6 @@ and `pnpm -C builder/ui typecheck`, `test` (offline). Don't commit.
 
 Mutation-check 1 (drop `-R`) and 2 (skip `clear_consent` in `new_assistant_in`) with `cp`/`cmp`.
 Run `CARGO_NET_OFFLINE=true cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
--- -D warnings`, `cargo test -p persona-builder -p persona-builder-ingest -p persona-builder-api
--p persona-builder-cli -p persona-builder-app --locked`, and `pnpm -C builder/ui typecheck` and
+-- -D warnings`, `cargo test -p voice-core -p voice-ingest -p voice-api
+-p voice-cli -p voice-app --locked`, and `pnpm -C builder/ui typecheck` and
 `pnpm -C builder/ui test`. Don't commit.

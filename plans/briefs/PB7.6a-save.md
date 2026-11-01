@@ -1,7 +1,7 @@
 # PB7.6a brief: save a copy, from the app
 
 Written by Claude (lane V2), 2026-10-25. Spec: lane V's `PB7.6a` entry, split from PB7.6 (PB7 of the
-Persona Builder plan, § Saving, PB-D7, PB-D11). Read the repo's `AGENTS.md` and `.ai/PROJECT.md`
+Voice plan, § Saving, PB-D7, PB-D11). Read the repo's `AGENTS.md` and `.ai/PROJECT.md`
 first, then `plans/briefs/PB7.2-consent-new-connect.md` (the bridge's rules this slice follows:
 DTOs, `Failure`, testable `_in` forms, the parity table, the lockdown test, the screens' style),
 `plans/briefs/PB6-saving.md`, `builder/save/src/` (all of it: `flow.rs`, `github.rs`, `text.rs`,
@@ -23,7 +23,7 @@ stop and say so.
 A person opens an assistant's last step, *Save*, and sees where it can be kept, the recommended
 place already picked. If they need GitHub, they sign in from the app: it shows GitHub's code,
 opens GitHub's page in their browser, and waits (they can cancel). They keep their choice, then
-save, and see the privacy check's result. They can sign out. The `persona-builder save …`
+save, and see the privacy check's result. They can sign out. The `voice save …`
 commands already do all of this; the app gains the same.
 
 ## Facts this rests on (checked)
@@ -63,7 +63,7 @@ commands already do all of this; the app gains the same.
 
 ### 2. The api (`builder/api`)
 
-`Cargo.toml` gains the path dependency `persona-builder-save` (`../save`). New module
+`Cargo.toml` gains the path dependency `voice-save` (`../save`). New module
 `src/save.rs`, `pub mod save; pub use save::*;` in `lib.rs`.
 
 **Move, don't copy:** `FolderPrivacy` (the `flow::PrivacyCheck` the CLI uses) and
@@ -147,16 +147,16 @@ sentence), then `flow::MemberPaths::load(&listed.dir.join("member.json"), home)`
 The api's own sentences, final:
 
 ```rust
-const OPTIONS: &str = "Persona Builder couldn't check where your assistant can be kept. Close it and open it again.";
+const OPTIONS: &str = "Voice couldn't check where your assistant can be kept. Close it and open it again.";
 const CHANGED: &str = "The places to keep your assistant have changed. Look at them again, then choose.";
 const SIGN_IN: &str = "GitHub sign-in didn't work. Try again later, or keep your assistant on this computer only.";
 const START: &str = "Start signing in to GitHub again.";
-const SIGN_OUT: &str = "Persona Builder couldn't sign you out of GitHub. Try again.";
-const CHOOSE: &str = "Persona Builder couldn't keep your choice. Close it and open it again, then try again.";
-const SAVE: &str = "Persona Builder couldn't save your assistant. Try again, or keep it on this computer only.";
+const SIGN_OUT: &str = "Voice couldn't sign you out of GitHub. Try again.";
+const CHOOSE: &str = "Voice couldn't keep your choice. Close it and open it again, then try again.";
+const SAVE: &str = "Voice couldn't save your assistant. Try again, or keep it on this computer only.";
 // LINK, one per page:
-"Persona Builder couldn't open your web browser. Go to https://github.com/signup yourself."
-"Persona Builder couldn't open your web browser. Go to https://github.com/login/device yourself."
+"Voice couldn't open your web browser. Go to https://github.com/signup yourself."
+"Voice couldn't open your web browser. Go to https://github.com/login/device yourself."
 ```
 
 Testable forms take what the environment would give, with no `HOME`, keychain, network or real
@@ -179,15 +179,15 @@ The zero-argument forms read `HOME` (missing: that command's fallback), use `Git
 
 ### 3. The CLI (`builder/cli`)
 
-Only the move in §2: `save_push` uses `persona_builder_api::FolderPrivacy` and
-`persona_builder_api::UnavailableRemotes`. Every `persona-builder save …` output stays byte for byte
+Only the move in §2: `save_push` uses `voice_api::FolderPrivacy` and
+`voice_api::UnavailableRemotes`. Every `voice save …` output stays byte for byte
 (the existing `save.rs` and `save_help.rs` tests prove it).
 
 ### 4. The Tauri app (`builder/app`)
 
 `COMMANDS`, the capability's `allow-…` list, `generate_handler!` and the parity table gain the
 eight names in the order above (15 in all). Each is `#[tauri::command(async)]` and one call into
-`persona_builder_api`'s zero-argument form, taking a request as one argument named `request`. No
+`voice_api`'s zero-argument form, taking a request as one argument named `request`. No
 new permission, plugin or capability: Rust opens the browser, not the webview.
 
 ### 5. The screens (`builder/ui`)
@@ -201,7 +201,7 @@ Commit every new file in `src/types/generated/` (cargo test writes them).
 `savePush(request: SlugRequest): Promise<Said>`. `tauri-backend.ts` maps each to
 `invoke('<snake name>', { request })` or `invoke('<snake name>')`.
 
-**The frame (`PersonaBuilder.vue`).** `view` gains `'save'`. The `save` step becomes a button like
+**The frame (`VoiceApp.vue`).** `view` gains `'save'`. The `save` step becomes a button like
 `consent` and `connect`, enabled as soon as an assistant is chosen (saving reads no history, so
 it does not wait for permission); with no assistant it shows "Choose an assistant first",
 `aria-disabled="true"`. Steps three to six stay "Not here yet". The save view shows
@@ -209,7 +209,7 @@ it does not wait for permission); with no assistant it shows "Choose an assistan
 
 **`Save.vue`** (prop `assistant`). One Tabler card:
 
-- heading "Keep a copy"; the line "Persona Builder can keep a copy of <name> somewhere safe, so you
+- heading "Keep a copy"; the line "Voice can keep a copy of <name> somewhere safe, so you
   don't lose it if something happens to this computer.";
 - on mount `saveOptions({ slug })`: spinner, visually hidden "Looking for places to keep <name>…";
   on failure a warning alert with `failureMessage(error, OPTIONS sentence)` and "Try again";
@@ -242,7 +242,7 @@ it does not wait for permission); with no assistant it shows "Choose an assistan
 - waiting: "Go to github.com/login/device and enter this code:", the code in large monospace
   text (`data-code`), the secondary button "Open GitHub's page" (`openLink({ link: 'githubDevice' })`,
   failure shown as for the signup link with the device `LINK` fallback), a spinner with
-  "Waiting for you to approve Persona Builder on GitHub…", and the link-style button "Cancel"
+  "Waiting for you to approve Voice on GitHub…", and the link-style button "Cancel"
   (`githubSignInCancel()`, then back to idle; the finish call's rejection that follows is not
   shown);
 - success: a success alert with `message`, then `signedIn` true (reload the options);
@@ -316,7 +316,7 @@ Vitest:
   shows its message and the panel goes; finish rejecting shows the `Failure` message; "Cancel"
   calls `githubSignInCancel` and the finish rejection that follows shows nothing; unmounting while
   waiting calls `githubSignInCancel`; no `<a>` anywhere in the screen.
-- `PersonaBuilder.test.ts` (updated): with no assistant, the save step is disabled with "Choose an
+- `VoiceApp.test.ts` (updated): with no assistant, the save step is disabled with "Choose an
   assistant first"; with one chosen (permission not given), save is enabled and opens the save
   view; steps three to six stay "Not here yet".
 - `tauri-backend.test.ts`: each new method invokes its snake-case command, with `{ request }` where
@@ -332,7 +332,7 @@ and confirm with `cmp`; never `git checkout --`). List each with its red result:
 6. open GitHub's `verification_uri` instead of `DEVICE_PAGE` (or any URL from a request) → the
    `open_link_in` test red;
 7. drop one new name from the capability only → lockdown red;
-8. enable the save step with no assistant chosen → PersonaBuilder test red.
+8. enable the save step with no assistant chosen → VoiceApp test red.
 
 ## Done when
 
@@ -392,7 +392,7 @@ Claude's review of the screens:
    `…'https://github.com/x/y.git/'…`.
 
 Run `CARGO_NET_OFFLINE=true cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
--- -D warnings`, `cargo test -p persona-builder-save -p persona-builder-api -p persona-builder-cli
--p persona-builder-app --locked` (socket tests may fail in your sandbox: say which), and
+-- -D warnings`, `cargo test -p voice-save -p voice-api -p voice-cli
+-p voice-app --locked` (socket tests may fail in your sandbox: say which), and
 `pnpm --offline -C builder/ui typecheck` and `test`. Mutation checks with `cp`/`cmp`: drop the
 post-token cancel check (red), drop the kind check (red), drop the userinfo strip (red). Don't commit.

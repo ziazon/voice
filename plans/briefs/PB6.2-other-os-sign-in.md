@@ -35,14 +35,14 @@ Read first: `AGENTS.md`, `.ai/PROJECT.md`, `.ai/SECURITY.md`, `builder/save/src/
   `keyring:{user}@{service}` unless the `label` modifier is given. Its docs warn about headless
   machines and WSL (no default collection).
 - `ring` 0.17 (under `ureq`'s rustls) builds C code that needs the target's libc headers, so
-  `cargo check --target <windows or linux> -p persona-builder-save` cannot run from a Mac with no
+  `cargo check --target <windows or linux> -p voice-save` cannot run from a Mac with no
   cross C toolchain. That is why the stores get their own small crate.
 
 ## Decisions
 
-1. **A new crate `builder/keystore`** (package `persona-builder-keystore`, library
-   `persona_builder_keystore`), the only code that differs by OS off a Mac, so
-   `cargo check -p persona-builder-keystore --target x86_64-pc-windows-msvc` and
+1. **A new crate `builder/keystore`** (package `voice-keystore`, library
+   `voice_keystore`), the only code that differs by OS off a Mac, so
+   `cargo check -p voice-keystore --target x86_64-pc-windows-msvc` and
    `--target x86_64-unknown-linux-gnu` run from a Mac. Dependencies, pinned `=`:
    `keyring-core =1.0.1` (all targets); on `cfg(windows)` `windows-native-keyring-store =1.1.0`
    with `default-features = false`; on `cfg(target_os = "linux")`
@@ -52,7 +52,7 @@ Read first: `AGENTS.md`, `.ai/PROJECT.md`, `.ai/SECURITY.md`, `builder/save/src/
    Secret Service, `NoStore` when it does not connect; any other OS: `NoStore`),
    `System::over(Arc<CredentialStore>)` (any store, no modifiers: tests use the mock), and
    `System::entry(service, user)`, which builds with the store's modifiers: Windows
-   `persistence = Local`; Linux `label = "Persona Builder: GitHub sign-in"`.
+   `persistence = Local`; Linux `label = "Voice: GitHub sign-in"`.
 2. **The save crate's `SystemStore`** (in `keychain.rs`, compiled on every OS so it is tested on a
    Mac against the mock): `SystemStore::open(service)` (the service checked as the Keychain does;
    `NoStore` becomes `text::NO_SAFE_STORE`) and `SystemStore::over(service, System)`. Its
@@ -67,7 +67,7 @@ Read first: `AGENTS.md`, `.ai/PROJECT.md`, `.ai/SECURITY.md`, `builder/save/src/
    *this computer*. `KEYCHAIN_FAILED` says "this computer's password store". `MAC_ONLY` is
    removed. `NEEDS_GIT` comes from `const fn needs_git(macos: bool)`: the `xcode-select --install`
    hint on macOS, `https://git-scm.com/downloads` elsewhere.
-5. **`scripts/ci-local.sh`** runs `cargo check --locked -p persona-builder-keystore --target <t>`
+5. **`scripts/ci-local.sh`** runs `cargo check --locked -p voice-keystore --target <t>`
    for each of the two targets that `rustup target list --installed` lists, and prints a skipped
    line naming the `rustup target add` command for each one missing.
 

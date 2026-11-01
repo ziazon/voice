@@ -1,7 +1,7 @@
 # PB4.3a brief: refresh, draft the change, then approve or reject it
 
 Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB4.3a` entry, split from PB4.3 of the
-Persona Builder plan (PB-D5, PB-D13). Read the repo's `AGENTS.md`, then `docs/spec/growth-loop.md`
+Voice plan (PB-D5, PB-D13). Read the repo's `AGENTS.md`, then `docs/spec/growth-loop.md`
 (version 1, the spec this implements) and its schemas, then `plans/briefs/PB4.2-kept-answers.md`
 (the slice this builds on: `builder/grow`'s records, rules and store) and `builder/build/src/build.rs`
 (the build's checked, cached, retry-once model calls, which this slice reuses). Work test-first
@@ -13,7 +13,7 @@ dependency**: `sha1_smol = "=1.0.1"` and the workspace crates are already in the
 ## What this slice does
 
 The first half of a refresh. The person's own Claude Code reads the tests their answers made (the
-`new` cases) and drafts a change to `decisions.md`; Persona Builder builds the diff itself, checks
+`new` cases) and drafts a change to `decisions.md`; Voice builds the diff itself, checks
 every new line, keeps the proposal privately and shows it; the person approves or rejects it. Nothing
 here changes the member's folder: applying, re-measuring and keep-or-revert are PB4.3b.
 
@@ -21,8 +21,8 @@ here changes the member's folder: applying, re-measuring and keep-or-revert are 
 
 ### Where the code goes
 
-- `builder/grow` gains the dependencies `persona-builder-agent = { path = "../agent" }`,
-  `persona-builder-build = { path = "../build" }` and `sha1_smol = "=1.0.1"` (build does not depend
+- `builder/grow` gains the dependencies `voice-agent = { path = "../agent" }`,
+  `voice-build = { path = "../build" }` and `sha1_smol = "=1.0.1"` (build does not depend
   on grow, so there is no cycle). New modules: `version.rs` (the persona's version), `diff.rs`
   (unified diffs), `edit.rs` (turning edits into a new `decisions.md`), `refresh.rs` (propose,
   show, approve, reject). The fixed system prompt is `builder/grow/src/prompts/refresh.md`,
@@ -42,7 +42,7 @@ here changes the member's folder: applying, re-measuring and keep-or-revert are 
   digits: SHA-1 of `blob <decimal length>\0` followed by the bytes (what `git hash-object` prints).
   A v1 proposal changes only `decisions.md`, so its version names the persona's state.
 - `pub const DECISIONS_MOST: u64 = 256 * 1024`. Read `decisions.md` with
-  `persona_builder_build::draft::read_text(path, DECISIONS_MOST)` (no link, a regular file, UTF-8).
+  `voice_build::draft::read_text(path, DECISIONS_MOST)` (no link, a regular file, UTF-8).
   A missing file refuses with `text::NOT_BUILT` ("Build your assistant first: there's nothing to
   refresh yet.").
 
@@ -69,7 +69,7 @@ The model never writes a diff. It answers edits; the code makes the new file.
 
 - `pub struct Edit { area, kind: EditKind, old: Option<String>, text, why, cases: Vec<String> }`,
   `pub enum EditKind { Add, Replace }`.
-- `decisions.md`'s shape (what `persona_builder_build::draft::decisions` writes): a `## By kind of
+- `decisions.md`'s shape (what `voice_build::draft::decisions` writes): a `## By kind of
   question` heading; under it one `### <area>` section per area; inside a section the lists
   `**The lean:**`, `**What flips it:**`, `**When they write their own answer:**` (the label text
   after `When ` varies: match any line starting `**When ` and ending `:**`), `**Standing rules:**`,
@@ -121,15 +121,15 @@ The model never writes a diff. It answers edits; the code makes the new file.
 - **The check** (`pub fn check_reply(...) -> std::result::Result<Vec<Edit>, Misfit>`), each failure
   a `Misfit` whose `shown` has no words from the reply or the cases (counts and places only):
   - `summary`, every `text`, `why` and `old`: trimmed non-empty, one line, at most `MOST_LINE`
-    characters, no `persona_builder_steps::text_check::hidden` character;
+    characters, no `voice_steps::text_check::hidden` character;
   - 1 to `MOST_EDITS` edits; `area` one of the codebook's categories; `old` null exactly when
     `kind` is `add`; `cases` non-empty, no repeat, each one of the cases asked; every asked case
     need not be named;
   - the edits apply (`apply_edit` in order), and no two edits replace the same item;
   - **the filters:** `filters.kind(...)` on the summary, every `text` and every `why` (the
     member's `Filters::compile(&member.filters)`), told back as places only;
-  - **paraphrase only:** `persona_builder_steps::shingle::overlaps` with `n = 6`
-    (`persona_builder_build::build::SHINGLE`) of the summary, texts and whys joined by `\n`, against
+  - **paraphrase only:** `voice_steps::shingle::overlaps` with `n = 6`
+    (`voice_build::build::SHINGLE`) of the summary, texts and whys joined by `\n`, against
     the cases asked and their signals as records: one record per case and per signal, the keys
     `overlaps` reads (`builder/steps/src/shingle.rs`'s `FIELDS`) filled as `question` ←
     `situation`, `text` ← the case's `expected` or the signal's `wanted`, `context` ←
@@ -160,7 +160,7 @@ again and refuse with `text::base_moved` if its version changed during the call.
 - `pub fn open(store, member_dir) -> Result<Option<Proposal>>` and `pub fn render(proposal,
   member) -> Vec<String>`: the lines `show` prints: a heading line with the date and id, the summary,
   then for each change `<n>. <why>` and its diff lines, then how many of the person's answers it
-  learned from, then the two commands (`persona-builder refresh approve <member_dir> <id>` and the
+  learned from, then the two commands (`voice refresh approve <member_dir> <id>` and the
   same with `reject`). A stored proposal whose `summary` or `why` holds a hidden character, or whose
   diff holds a control character other than `\n`, is refused with `text::DAMAGED_PROPOSAL`, never
   printed (it is untrusted on the way back in too).
@@ -176,14 +176,14 @@ again and refuse with `text::base_moved` if its version changed during the call.
 
 A `refresh` group (`#[command(subcommand)]`), doc lines in plain words:
 
-- `persona-builder refresh propose <member_dir> [--model] [--daily-cap-usd] [--call-cap-usd]`
+- `voice refresh propose <member_dir> [--model] [--daily-cap-usd] [--call-cap-usd]`
   ("Draft a change to how your assistant decides, from the answers you've given it"), the flags and
   defaults exactly as `build`'s. It finds and checks Claude Code as `build` does, opens the
   `Session`, prints `text::NOTHING_TO_REFRESH` for `Nothing`, else the `render` lines, then the spend
   line.
-- `persona-builder refresh show <member_dir> [<proposal>]` ("Show the change waiting for your
+- `voice refresh show <member_dir> [<proposal>]` ("Show the change waiting for your
   answer"): the named proposal, else the open one, else `text::NO_OPEN`.
-- `persona-builder refresh approve <member_dir> <proposal>` and `refresh reject ...`: print
+- `voice refresh approve <member_dir> <proposal>` and `refresh reject ...`: print
   `text::approved(id)` / `text::rejected(id)`.
 - `.ai/PROJECT.md`: the `builder/grow/` row says it also drafts refreshes and takes the person's
   answer, and its tests column gains `builder/cli/tests/refresh.rs`.
@@ -194,12 +194,12 @@ Plain, warm, no tooling words (no "proposal", "case", "diff" in what a person re
 "tests", "your answers"). Suggested, adjust only for clarity: `DRAFTING` "Drafting a change from your
 answers"; `NOTHING_TO_REFRESH` "There's nothing new to learn from yet. Keep answering your assistant,
 then try again."; `open_waiting` "A change is already waiting for your answer ({id}). Look at it with
-`persona-builder refresh show`, then approve or reject it."; `open_approved` "You approved a change
+`voice refresh show`, then approve or reject it."; `open_approved` "You approved a change
 ({id}) that hasn't been tested and applied yet."; `approved` "Approved. Your assistant changes only
 after the change is tested on all your answers and nothing gets worse."; `rejected` "Rejected. Nothing
 changed. Your answers stay saved for the next refresh."; `NO_OPEN` "No change is waiting for your
 answer."; `DAMAGED_PROPOSAL` "That saved change looks damaged, so it wasn't shown. Draft a new one
-with `persona-builder refresh propose`."
+with `voice refresh propose`."
 
 ## Tests (red first: each a failing assertion before its code)
 
@@ -265,7 +265,7 @@ test that goes red without it.
    String`, set to `crate::text::misfit` by `Asker::new`, and `pub fn with_misfit(self, misfit:
    fn(&str, &str) -> String) -> Self`; `ask` uses it for the final error. The build is unchanged.
    `propose` passes `text::refresh_misfit`: "{what}: Claude's draft didn't fit twice, so nothing
-   was saved ({problem}). Run `persona-builder refresh propose` again."
+   was saved ({problem}). Run `voice refresh propose` again."
 5. **Windows line endings.** `edit.rs` matches headings and items with a trailing `\r` removed
    (`plain` strips `\r\n` or `\n`), and every line it inserts uses the line ending of the line it
    follows (`\r\n` when that one has it). A test on a CRLF `decisions.md`: add, replace and a new

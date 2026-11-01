@@ -1,7 +1,7 @@
 # PB6 brief: saving an assistant (an existing repo, a private GitHub repo, or this Mac only)
 
-Persona Builder builds a person's AI assistant from their own Claude history. PB1 gave the core
-library (`builder/core`, `persona_builder`) the member format. This slice lets a person choose where
+Voice builds a person's AI assistant from their own Claude history. PB1 gave the core
+library (`builder/core`, `voice_core`) the member format. This slice lets a person choose where
 their assistant is kept and then save it there:
 
 - **Found:** their AI setup already sits in a git checkout with a GitHub remote (for example
@@ -52,13 +52,13 @@ Read first: `AGENTS.md`, `.ai/PROJECT.md`, `.ai/SECURITY.md`, `CONTRIBUTING.md`,
 
 ## Rules
 
-- **New crate `builder/save`** (package `persona-builder-save`, library `persona_builder_save`). The
+- **New crate `builder/save`** (package `voice-save`, library `voice_save`). The
   core library's rule is "no I/O beyond the filesystem", so the network, git and Keychain code lives
   here; core is not changed. The crate, its `Cargo.toml` and the workspace member are already added,
   with `ureq =3.4.2` (rustls), `base64 =0.23.1`, `zeroize =1.9.1`, `serde`, `serde_json` and
-  `persona-builder` fetched and in `Cargo.lock`. **Add no other dependency** and no
+  `voice-core` fetched and in `Cargo.lock`. **Add no other dependency** and no
   dev-dependency. Pass `--offline` to cargo if it tries the registry.
-- Reuse `persona_builder::error::{Error, Result}` everywhere: `Error::Io` for filesystem errors,
+- Reuse `voice_core::error::{Error, Result}` everywhere: `Error::Io` for filesystem errors,
   `Error::Invalid(<plain message>)` for everything else. Every message a person can see is one of
   the texts in §1, exactly.
 - Public repo: invented names only (`Wren` the assistant, `Rowan Vale` the principal, GitHub owner
@@ -83,35 +83,35 @@ pub const CHOICE_LOCAL: &str = "Keep it on this Mac only";
 pub fn choice_existing(shown: &str) -> String // "Save it in {shown}, with the rest of your AI setup"
 pub const NO_GITHUB_ACCOUNT: &str = "No GitHub account? A free one keeps a backup of your assistant: https://github.com/signup. Or keep it on this Mac only.";
 pub fn sign_in_prompt(uri: &str, code: &str) -> String // "Go to {uri} and enter this code: {code}"
-pub const SIGN_IN_WAITING: &str = "Waiting for you to approve Persona Builder on GitHub…";
+pub const SIGN_IN_WAITING: &str = "Waiting for you to approve Voice on GitHub…";
 pub fn signed_in(login: &str) -> String // "Signed in to GitHub as {login}."
-pub const SIGNED_OUT: &str = "Signed out of GitHub on this Mac. To remove Persona Builder's access completely, open Settings on GitHub, then Applications, then Authorized OAuth Apps.";
-pub const NOT_SET_UP: &str = "GitHub sign-in isn't set up in this copy of Persona Builder yet. You can keep your assistant on this Mac only for now.";
+pub const SIGNED_OUT: &str = "Signed out of GitHub on this Mac. To remove Voice's access completely, open Settings on GitHub, then Applications, then Authorized OAuth Apps.";
+pub const NOT_SET_UP: &str = "GitHub sign-in isn't set up in this copy of Voice yet. You can keep your assistant on this Mac only for now.";
 pub const SIGN_IN_CANCELLED: &str = "GitHub sign-in was cancelled. Nothing was changed.";
 pub const SIGN_IN_EXPIRED: &str = "The GitHub code ran out before it was used. Start signing in again for a new code.";
 pub fn sign_in_failed(code: &str) -> String // "GitHub sign-in didn't work (GitHub said: {code}). Try again later, or keep your assistant on this Mac only."
 pub const SIGN_IN_FIRST: &str = "Sign in to GitHub first.";
-pub const NO_REPO_PERMISSION: &str = "GitHub didn't give Persona Builder permission to make private repos, so it can't save there. Sign in again and allow it, or keep your assistant on this Mac only.";
-pub fn repo_public(full: &str) -> String // "{full} is public, so anyone could read your assistant. Persona Builder won't save it there. Make the repo private on GitHub, or keep your assistant on this Mac only."
-pub fn repo_unconfirmed(full: &str) -> String // "Persona Builder couldn't confirm that {full} is private, so it didn't save there. Check that you're signed in to the GitHub account that owns it."
-pub const NOT_ON_GITHUB: &str = "This repo isn't on GitHub. Persona Builder can only check that GitHub repos are private, so it won't save there. Keep your assistant on this Mac only, or save it to a private GitHub repo.";
+pub const NO_REPO_PERMISSION: &str = "GitHub didn't give Voice permission to make private repos, so it can't save there. Sign in again and allow it, or keep your assistant on this Mac only.";
+pub fn repo_public(full: &str) -> String // "{full} is public, so anyone could read your assistant. Voice won't save it there. Make the repo private on GitHub, or keep your assistant on this Mac only."
+pub fn repo_unconfirmed(full: &str) -> String // "Voice couldn't confirm that {full} is private, so it didn't save there. Check that you're signed in to the GitHub account that owns it."
+pub const NOT_ON_GITHUB: &str = "This repo isn't on GitHub. Voice can only check that GitHub repos are private, so it won't save there. Keep your assistant on this Mac only, or save it to a private GitHub repo.";
 pub fn repo_name_taken(name: &str) -> String // "GitHub wouldn't make a repo called {name}. You may already have one with that name: pick another."
 pub const BAD_REPO_NAME: &str = "A repo name can use letters, numbers, dots, dashes and underscores, up to 100 characters.";
-pub const NOT_OFFERED: &str = "Persona Builder can save only to a GitHub repo it found around your AI setup.";
+pub const NOT_OFFERED: &str = "Voice can save only to a GitHub repo it found around your AI setup.";
 pub const CHOOSE_FIRST: &str = "Choose where to save your assistant first.";
 pub const KEPT_LOCAL: &str = "Your assistant is kept on this Mac only, so there's nothing to send.";
 pub fn privacy_hits(places: &str) -> String // "The privacy check found something private, so nothing was sent. Look at: {places}"
-pub const PRIVACY_NOT_BUILT: &str = "This copy of Persona Builder can't run the privacy check yet, so nothing was sent.";
-pub fn links_in_folder(rel: &str) -> String // "Persona Builder won't save a folder that holds links to other places: {rel}"
+pub const PRIVACY_NOT_BUILT: &str = "This copy of Voice can't run the privacy check yet, so nothing was sent.";
+pub fn links_in_folder(rel: &str) -> String // "Voice won't save a folder that holds links to other places: {rel}"
 pub fn saved_github(full: &str) -> String // "Saved to {full} on GitHub."
 pub fn saved_existing(shown: &str, branch: &str) -> String // "Saved to {shown}, on the branch {branch}."
 pub const UP_TO_DATE: &str = "Nothing had changed, so the saved copy was already up to date.";
-pub const NEEDS_GIT: &str = "Persona Builder needs Git, which this Mac doesn't have yet. To get it, open the Terminal app and type: xcode-select --install";
-pub const GIT_TOO_OLD: &str = "Persona Builder needs Git 2.32 or later. Update Git, then try again.";
+pub const NEEDS_GIT: &str = "Voice needs Git, which this Mac doesn't have yet. To get it, open the Terminal app and type: xcode-select --install";
+pub const GIT_TOO_OLD: &str = "Voice needs Git 2.32 or later. Update Git, then try again.";
 pub fn push_failed(detail: &str) -> String // "GitHub didn't take the save: {detail}"
 pub const MAC_ONLY: &str = "Saving to GitHub works only on a Mac for now.";
-pub const KEYCHAIN_FAILED: &str = "Persona Builder couldn't use the Keychain on this Mac, so it didn't keep your GitHub sign-in.";
-pub const GITHUB_UNREACHABLE: &str = "Persona Builder couldn't reach GitHub. Check the internet connection, then try again.";
+pub const KEYCHAIN_FAILED: &str = "Voice couldn't use the Keychain on this Mac, so it didn't keep your GitHub sign-in.";
+pub const GITHUB_UNREACHABLE: &str = "Voice couldn't reach GitHub. Check the internet connection, then try again.";
 ```
 
 ## 2. `src/secret.rs`
@@ -142,7 +142,7 @@ impl Default for UreqHttp
 ```
 
 `UreqHttp`: `ureq::Agent::config_builder().http_status_as_error(false).max_redirects(0)
-.timeout_global(Some(30 s)).user_agent(format!("persona-builder/{}", persona_builder::VERSION))`.
+.timeout_global(Some(30 s)).user_agent(format!("voice/{}", voice_core::VERSION))`.
 Read the body with `.with_config().limit(1 MiB).read_to_vec()`. Any transport error (connect,
 timeout, body over the limit) → `Error::Invalid(GITHUB_UNREACHABLE)`; never put the URL or ureq's
 message in the error. A redirect comes back as its 3xx response, not followed.
@@ -157,9 +157,9 @@ impl Endpoints {
 }
 pub const SCOPE: &str = "repo";
 pub const API_VERSION: &str = "2026-03-10";
-/// Persona Builder's registered GitHub OAuth App (device flow on). None until it is registered.
+/// Voice's registered GitHub OAuth App (device flow on). None until it is registered.
 const CLIENT_ID: Option<&str> = None;
-pub fn client_id() -> Option<&'static str> // option_env!("PERSONA_BUILDER_GITHUB_CLIENT_ID").or(CLIENT_ID)
+pub fn client_id() -> Option<&'static str> // option_env!("VOICE_GITHUB_CLIENT_ID").or(CLIENT_ID)
 ```
 
 `Endpoints::new` accepts each base only as `https://<host>` (no userinfo, port, path, query or
@@ -211,7 +211,7 @@ impl<'a> Github<'a> {
   `NO_REPO_PERMISSION`; the body needs string `login` (GitHub's owner rule below) and integer `id`
   > 0. Anything else → `GITHUB_UNREACHABLE`.
 - `create_private_repo`: `valid_repo_name(name)` or `BAD_REPO_NAME`. `POST <api>/user/repos`, JSON
-  `{"name": name, "private": true, "description": "My AI assistant, saved by Persona Builder",
+  `{"name": name, "private": true, "description": "My AI assistant, saved by Voice",
   "auto_init": false, "has_issues": false, "has_projects": false, "has_wiki": false}`. 201 → owner
   from `owner.login` and name from `name` (both must pass the rules below) → then
   `confirm_private` on it, and return it only if that passes. 422 → `repo_name_taken(name)`. 401 →
@@ -265,7 +265,7 @@ form, JSON and exposed bearer. It is the only boundary mocked. Expected values a
    `application/x-www-form-urlencoded`; a JSON body is `application/json`; a 302 reply comes back as
    status 302 with no second request; a 404 comes back as a response, not an error; a body over
    1 MiB gives `GITHUB_UNREACHABLE`; a closed port gives `GITHUB_UNREACHABLE`; the user agent is
-   `persona-builder/<VERSION>`.
+   `voice/<VERSION>`.
 8. `Endpoints::new` refuses `http://example.com`, `https://github.com/path`,
    `https://user@github.com`, `https://github.com:8443`, and accepts `http://127.0.0.1:4567` and
    `https://github.com/`.
@@ -278,10 +278,10 @@ pub trait TokenStore {
     fn save(&self, token: &Secret) -> Result<()>;
     fn forget(&self) -> Result<()>;
 }
-pub const ACCOUNT: &str = "persona-builder";
+pub const ACCOUNT: &str = "voice";
 pub struct Keychain { service: String }
 impl Keychain {
-    pub fn github() -> Self;                               // service "persona-builder.github"
+    pub fn github() -> Self;                               // service "voice.github"
     pub fn with_service(service: &str) -> Result<Self>;    // 1–64 of a-z 0-9 . -
 }
 pub fn storable(token: &Secret) -> bool;                    // 1–1024 bytes of A-Za-z0-9._~:+/=-
@@ -292,21 +292,21 @@ impl MemoryStore { pub fn new() -> Self }                   // and Default
 
 - On macOS, `Keychain` runs `/usr/bin/security` with `env_clear()` (then only `HOME`), stderr to
   null:
-  - `load`: `find-generic-password -s <service> -a persona-builder -w`, stdin null. Exit 0 → stdout
+  - `load`: `find-generic-password -s <service> -a voice -w`, stdin null. Exit 0 → stdout
     with one trailing `\n` removed, as a `Secret`; exit 44 → `None`; else `KEYCHAIN_FAILED`.
   - `save`: refuse a token that is not `storable` (`KEYCHAIN_FAILED`); spawn `security -i` and write
     `store_line` to its stdin, never argv. `store_line` is
-    `add-generic-password -U -s <service> -a persona-builder -w "<token>"\n`, built in one
+    `add-generic-password -U -s <service> -a voice -w "<token>"\n`, built in one
     `String::with_capacity` of the exact size and returned as a `Secret`. Then `load` must return
     the same value, else `KEYCHAIN_FAILED`.
-  - `forget`: `delete-generic-password -s <service> -a persona-builder`; exit 0 or 44 → `Ok`.
+  - `forget`: `delete-generic-password -s <service> -a voice`; exit 0 or 44 → `Ok`.
 - Not on macOS: every method → `MAC_ONLY` (`#[cfg(target_os = "macos")]` split).
 - `MemoryStore` returns a fresh `Secret` copy on `load`.
 
 Seams under test (`tests/keychain.rs`): the exact `store_line` bytes for an invented token;
 `storable` refuses empty, 1025 bytes, a space, `"`, `\`, a newline; `with_service` refuses
 `Persona`, `a b`, 65 chars; `MemoryStore` round trip and forget. One `#[ignore]` test,
-`live_keychain_round_trip`, uses `Keychain::with_service("persona-builder.test")`: save, load,
+`live_keychain_round_trip`, uses `Keychain::with_service("voice.test")`: save, load,
 forget, load is `None`. Claude runs it by hand with `--ignored`.
 
 ## 5. `src/git.rs`: running git
@@ -419,7 +419,7 @@ pub fn write_record(state_dir: &Path, record: &SaveRecord) -> Result<()>;
 ```
 
 The file is `<state_dir>/save.json`, written as `{"version": 1, "mode": …}` with
-`persona_builder::json::to_python_json`. A missing `version`, a version other than 1, an unknown
+`voice_core::json::to_python_json`. A missing `version`, a version other than 1, an unknown
 key or a bad value → `Error::Invalid("save.json: not a save record")`. The state folder: a symlink
 is refused (`Error::Invalid("state folder is a link")`); missing → created with mode 0700 (parents
 with `create_dir_all`, the last one by `DirBuilder` with mode 0700). Write: a temp file
@@ -439,7 +439,7 @@ pub trait RemoteCheck { fn confirm(&self, token: &Secret, push_urls: &[String]) 
 pub struct GithubRemotes<'a> { pub github: &'a Github<'a> }
 // confirm: empty list → NOT_ON_GITHUB; every url: github_repo_of → None → NOT_ON_GITHUB; Some → confirm_private
 
-pub struct MemberPaths { pub member: persona_builder::member::Member, pub dir: PathBuf, pub state_dir: PathBuf }
+pub struct MemberPaths { pub member: voice_core::member::Member, pub dir: PathBuf, pub state_dir: PathBuf }
 impl MemberPaths { pub fn load(member_json: &Path, home: &Path) -> Result<Self>; }
 // read_member; dir = member.json's folder; state_dir = member.state_dir with a leading "~/" replaced by home
 
@@ -464,7 +464,7 @@ impl Saver<'_> {
   root; keep a repo only when it has a **usable remote**: `origin` if every one of its push URLs
   passes `github_repo_of`, else the first remote in order whose push URLs all pass. No network.
 - `options`: found repos → one `Existing` per repo (label `choice_existing(shown)`, `shown` from
-  `persona_builder::crew::shown_path(root, home)`, falling back to the absolute path), then `Local`;
+  `voice_core::crew::shown_path(root, home)`, falling back to the absolute path), then `Local`;
   `selected` 0; `note` `None`. None found → `[Github, Local]`, `selected` 0, `note`
   `Some(NO_GITHUB_ACCOUNT)`.
 - `choose_local`: writes `SaveRecord::Local`.
@@ -514,9 +514,9 @@ to show a `file://` push URL is refused with `NOT_ON_GITHUB`):
    `main` (the test points `backup.git`'s `pushInsteadOf` at a `file://` remote after
    `choose_github`); an `origin` edited to another URL gives `repo_unconfirmed`.
 
-## 8. The CLI: `persona-builder save …`
+## 8. The CLI: `voice save …`
 
-Add `persona-builder-save` to `builder/cli/Cargo.toml`. Subcommands under `save`, all using
+Add `voice-save` to `builder/cli/Cargo.toml`. Subcommands under `save`, all using
 `Git::system()`, `UreqHttp`, `Endpoints::github()`, `Keychain::github()`, `HOME` for home, and
 printing the §1 texts:
 
@@ -535,7 +535,7 @@ printing the §1 texts:
   check) and `GithubRemotes` (built only when there is a client id; without one, `Saver.github` is
   `None` and a `RemoteCheck` that is never reached). Prints `KEPT_LOCAL` or the message.
 
-Errors print as today (`persona-builder: <message>`, exit 1). CLI tests (`builder/cli/tests/save.rs`,
+Errors print as today (`voice: <message>`, exit 1). CLI tests (`builder/cli/tests/save.rs`,
 `HOME` set to a scratch folder; never `sign-in`, `sign-out` or a GitHub call): `save options` with
 nothing found prints the GitHub and Mac choices and the note; `save choose … local` then
 `save push …` prints `KEPT_LOCAL`; a `save.json` written as `Github` makes `save push` fail with

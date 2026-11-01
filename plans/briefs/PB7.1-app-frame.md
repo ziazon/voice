@@ -1,7 +1,7 @@
 # PB7.1 brief: the app's frame and its locked-down bridge
 
 Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.1` entry, split from PB7 of the
-Persona Builder plan (§ Shape, § Phases PB7, PB-D12). Read the repo's `AGENTS.md` and
+Voice plan (§ Shape, § Phases PB7, PB-D12). Read the repo's `AGENTS.md` and
 `.ai/PROJECT.md` first, then `builder/cli/src/main.rs` (`agents()` and the `--version` flag) and
 `builder/agent/src/agents.rs`. Work test-first (`~/.codex/skills/tdd-skill/SKILL.md`); security
 rules: `~/.codex/skills/security-and-hardening/SKILL.md`; structure: `~/.codex/skills/frontend/SKILL.md`
@@ -20,7 +20,7 @@ Run pnpm with `--offline`. If either says a package is missing, stop and name it
 
 ## What this slice does
 
-It starts the Persona Builder app: a window with the steps a person goes through, one Welcome screen
+It starts the Voice app: a window with the steps a person goes through, one Welcome screen
 that shows the app's version, and the bridge between the screens and the Rust code, locked down so
 the screens can call only the commands we list. Every later screen (PB7.2 to PB7.6) adds itself to
 this frame and its commands to this bridge.
@@ -29,17 +29,17 @@ this frame and its commands to this bridge.
 
 ### Three new parts
 
-1. **`builder/api/`**, package `persona-builder-api`, library `persona_builder_api`. The app's
+1. **`builder/api/`**, package `voice-api`, library `voice_api`. The app's
    commands as plain Rust functions over the existing crates. **No Tauri dependency**, so the Tauri
-   app and, later, another app's pane call the same code. Dependencies: `persona-builder-agent`
+   app and, later, another app's pane call the same code. Dependencies: `voice-agent`
    (path), `serde` (derive) and `serde_json` as the other crates pin them, and
    `ts-rs = { version = "=12.0.1", features = ["no-serde-warnings"] }` (as the reference app's
    `desktop/core`).
-2. **`builder/app/`**, package `persona-builder-app`, binary `persona-builder-app`. The Tauri 2 shell:
+2. **`builder/app/`**, package `voice-app`, binary `voice-app`. The Tauri 2 shell:
    `tauri = { version = "=2.12.0", features = [] }`, build-dependency
-   `tauri-build = { version = "=2.7.0", features = [] }`, plus `persona-builder-api` (path),
+   `tauri-build = { version = "=2.7.0", features = [] }`, plus `voice-api` (path),
    `serde_json`. No `tauri-plugin-*` crate, now or in this slice's tests.
-3. **`builder/ui/`**, the pnpm package `@persona-builder/screens` (`"private": true`,
+3. **`builder/ui/`**, the pnpm package `@voice/screens` (`"private": true`,
    `"version": "0.1.0"`, `"type": "module"`). Exact versions, as the reference app's `desktop/ui` pins them:
    dependencies `vue` `3.5.43`, `@tabler/core` `1.6.1`, `@tauri-apps/api` `2.12.0`; devDependencies
    `@tauri-apps/cli` `2.12.0`, `@vitejs/plugin-vue` `6.0.9`, `@vue/test-utils` `2.5.1`, `happy-dom`
@@ -60,7 +60,7 @@ Add `builder/api` and `builder/app` to the root `Cargo.toml`'s `members`. Root `
 - This slice's one command: `pub fn app_info() -> AppInfo`, where
   `AppInfo { version: String, agents: Vec<AgentInfo> }` and `AgentInfo { id: String, name: String }`.
   `version` is `env!("CARGO_PKG_VERSION")` (the workspace version, the same one
-  `persona-builder --version` prints); `agents` is `persona_builder_agent::agents::AGENTS` in order.
+  `voice --version` prints); `agents` is `voice_agent::agents::AGENTS` in order.
 - **Generated types.** A new root `.cargo/config.toml` with
   `[env] TS_RS_EXPORT_DIR = { value = "builder/ui/src/types/generated", relative = true }` and a
   comment saying why it is at the root (Cargo reads it from above its working directory). `cargo test`
@@ -68,20 +68,20 @@ Add `builder/api` and `builder/app` to the root `Cargo.toml`'s `members`. Root `
 - `src/parity.rs`, the CLI-parity table (the plan: the CLI does everything the app does):
 
   ```rust
-  /// Each app command and the `persona-builder` commands that do the same thing.
+  /// Each app command and the `voice` commands that do the same thing.
   pub struct Parity { pub app: &'static str, pub cli: &'static [&'static [&'static str]] }
   pub const PARITY: &[Parity] = &[Parity { app: "app_info", cli: &[&["--version"], &["agents"]] }];
   ```
 
-  A test in `builder/cli/tests/app_parity.rs` (the cli crate gains `persona-builder-api` as a
-  dev-dependency) runs, for each argv in each row, the built `persona-builder` with that argv and
+  A test in `builder/cli/tests/app_parity.rs` (the cli crate gains `voice-api` as a
+  dev-dependency) runs, for each argv in each row, the built `voice` with that argv and
   `--help` appended, and requires exit 0; a row with an empty `cli` fails the test.
 
 ### The Tauri crate
 
 - `src/commands.rs`: `pub const COMMANDS: &[&str] = &["app_info"];` and
-  `#[tauri::command] pub fn app_info() -> persona_builder_api::dto::AppInfo { persona_builder_api::app_info() }`.
-  Every command is exactly one call into `persona_builder_api`; no logic here.
+  `#[tauri::command] pub fn app_info() -> voice_api::dto::AppInfo { voice_api::app_info() }`.
+  Every command is exactly one call into `voice_api`; no logic here.
 - `build.rs`: `tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
   tauri_build::AppManifest::new().commands(&["app_info"])))`. Commit the generated
   `permissions/autogenerated/` files as the reference app does; `gen/` stays ignored.
@@ -92,14 +92,14 @@ Add `builder/api` and `builder/app` to the root `Cargo.toml`'s `members`. Root `
   `http://127.0.0.1:5180` (5173 is the reference app's; the two must not collide). `src/main.rs` installs it
   as a `nav-guard` plugin built with `tauri::plugin::Builder` exactly as the reference app's `main.rs` does,
   then `.invoke_handler(tauri::generate_handler![commands::app_info])` and
-  `.run(tauri::generate_context!())`. On error print `Persona Builder couldn't start: <error>` to
+  `.run(tauri::generate_context!())`. On error print `Voice couldn't start: <error>` to
   stderr and exit 1 (no panic, no `expect`).
-- `tauri.conf.json`: `productName` `Persona Builder`, `version` `0.1.0`, `identifier`
-  `dev.personabuilder.desktop` (a neutral placeholder until signing, PB-D3: the app keeps no data
+- `tauri.conf.json`: `productName` `Voice`, `version` `0.1.0`, `identifier`
+  `dev.voice.desktop` (a neutral placeholder until signing, PB-D3: the app keeps no data
   under it, so changing it later costs nothing; say so in a `README.md` line in `builder/app/`).
   `build`: `frontendDist` `../ui/dist`, `devUrl` `http://127.0.0.1:5180`, `beforeDevCommand`
   `{ "script": "pnpm dev", "cwd": "../ui" }`, `beforeBuildCommand` `{ "script": "pnpm build", "cwd":
-  "../ui" }`. `app.withGlobalTauri` `false`; one window, label `main`, title `Persona Builder`, width
+  "../ui" }`. `app.withGlobalTauri` `false`; one window, label `main`, title `Voice`, width
   1100, height 760, minWidth 860, minHeight 600, `dragDropEnabled` `false` (a dropped file would hand
   the webview a path). `app.security`: the reference app's `csp` and `devCsp` with its port changed to 5180,
   and its `dangerousDisableAssetCspModification: ["style-src"]`. No `plugins` key. `bundle`: `active`
@@ -113,7 +113,7 @@ Add `builder/api` and `builder/app` to the root `Cargo.toml`'s `members`. Root `
   `env!("CARGO_MANIFEST_DIR")`, no fixed path):
   1. `COMMANDS`, the capability's `allow-…` entries (each `allow-` plus the command with `_` as `-`),
      the `commands(&[…])` list in `build.rs`, the `generate_handler![…]` list in `src/main.rs` and
-     `persona_builder_api::parity::PARITY`'s `app` names are the same set, in the same order. Parse
+     `voice_api::parity::PARITY`'s `app` names are the same set, in the same order. Parse
      the two `.rs` lists by text: the bracketed list after `commands(&[` and after
      `generate_handler![`, entries stripped of `commands::`, quotes and spaces.
   2. The capability's `permissions` hold nothing but those `allow-…` entries.
@@ -127,14 +127,14 @@ Add `builder/api` and `builder/app` to the root `Cargo.toml`'s `members`. Root `
 
 ```
 builder/ui/
-  index.html            # title "Persona Builder", mounts src/app/main.ts
+  index.html            # title "Voice", mounts src/app/main.ts
   env.d.ts              # the .vue module shim
   package.json  pnpm-lock.yaml  pnpm-workspace.yaml  tsconfig.json  vite.config.ts
   src/
     index.ts            # the package's exports (below)
     backend.ts          # the Backend interface, provideBackend, useBackend
     steps.ts            # the step list
-    PersonaBuilder.vue  # the frame
+    VoiceApp.vue  # the frame
     screens/Welcome.vue
     types/generated/    # written by cargo test, never by hand
     app/
@@ -159,26 +159,26 @@ builder/ui/
   import type { AppInfo } from './types/generated/AppInfo'
   /** Everything the screens ask of the app. A host gives its own (the standalone app's is tauri-backend.ts). */
   export interface Backend { appInfo(): Promise<AppInfo> }
-  export const backendKey: InjectionKey<Backend> = Symbol('persona-builder-backend')
+  export const backendKey: InjectionKey<Backend> = Symbol('voice-backend')
   export function provideBackend(backend: Backend): void  // provide(backendKey, backend)
-  export function useBackend(): Backend                    // inject; throws "Persona Builder has no backend" when missing
+  export function useBackend(): Backend                    // inject; throws "Voice has no backend" when missing
   ```
 
   One method per api command, named in camelCase, typed only with generated types (`import type`).
-- `index.ts` exports `PersonaBuilder`, `Welcome`, `steps`, `provideBackend`, `useBackend`,
+- `index.ts` exports `VoiceApp`, `Welcome`, `steps`, `provideBackend`, `useBackend`,
   `backendKey`, and `type Backend`. Nothing from `src/app/`.
 - `steps.ts`: `export const steps` in this order, each `{ id, title }`, titles exactly:
   `consent` "Your permission", `connect` "Connect Claude", `sources` "Your history", `build` "Build",
   `report` "How well it knows you", `review` "Review", `save` "Save". No step has a screen yet.
-- `PersonaBuilder.vue` (the frame): a Tabler page with a narrow side column listing the steps as an
+- `VoiceApp.vue` (the frame): a Tabler page with a narrow side column listing the steps as an
   ordered list (number and title), each marked *Not here yet* in muted text with
   `aria-disabled="true"`, and the main column showing `Welcome`. Use Tabler classes only, no custom
   colors (light and dark both come from Tabler's theme variables), no Tabler JavaScript.
 - `screens/Welcome.vue`: on mount it calls `useBackend().appInfo()`. Three states:
   - loading: a Tabler spinner with the visually-hidden text "Starting…";
-  - error: an alert, "Persona Builder couldn't start properly. Close it and open it again." (never the
+  - error: an alert, "Voice couldn't start properly. Close it and open it again." (never the
     error's own text);
-  - loaded: the heading "Persona Builder", the line "Make an AI assistant that decides the way you do,
+  - loaded: the heading "Voice", the line "Make an AI assistant that decides the way you do,
     from your own Claude history.", the line "Your history stays on this computer. Nothing is saved
     anywhere else unless you choose it.", and a muted "Version <version>".
 - `app/tauri-backend.ts`: `export const tauriBackend: Backend = { appInfo: () => invoke<AppInfo>('app_info') }`
@@ -189,7 +189,7 @@ builder/ui/
   function that stops listening.
 - `app/main.ts`: imports `@tabler/core/dist/css/tabler.min.css` (CSS only, as the reference app: Tabler's
   JavaScript is never loaded), calls `followSystemTheme()`, then
-  `createApp(PersonaBuilder)` with `app.provide(backendKey, tauriBackend)`, mounted on `#app`.
+  `createApp(VoiceApp)` with `app.provide(backendKey, tauriBackend)`, mounted on `#app`.
 
 ### The rule every later screen keeps (write it in `builder/ui/README.md` and as a doc comment on `Backend`)
 
@@ -230,20 +230,20 @@ fi
 
 - `.ai/PROJECT.md`: three table rows, in the table's style: `builder/api/` (the app's commands, no
   Tauri, and the CLI-parity table; tested by `builder/api/tests/`, `builder/cli/tests/app_parity.rs`),
-  `builder/app/` (the Persona Builder app's window and its locked-down bridge;
+  `builder/app/` (the Voice app's window and its locked-down bridge;
   `builder/app/tests/lockdown.rs`), `builder/ui/` (the app's screens as a package another app can
   mount; `pnpm -C builder/ui test`). Update the "All of it runs with" paragraph: Node and pnpm for the
   screens, skipped with a printed line when missing.
 - `AGENTS.md`: its "(Python 3.9+ and shellcheck)" becomes "(Python 3.9+ and shellcheck; stable Rust,
   Node and pnpm for the rest, each skipped when missing)".
 - `builder/ui/README.md`: what the package is, how to run it (`pnpm -C builder/ui tauri dev`), the
-  webview rule above, and that a host mounts `PersonaBuilder` after `provideBackend`.
+  webview rule above, and that a host mounts `VoiceApp` after `provideBackend`.
 
 ## Tests (write each first and watch it fail on its assertion)
 
 Rust:
 - `builder/api/tests/app_info.rs`: `app_info()` gives the workspace version and the agent list in
-  order (compare with `persona_builder_agent::agents::AGENTS`); `AppInfo` serializes with camelCase
+  order (compare with `voice_agent::agents::AGENTS`); `AppInfo` serializes with camelCase
   keys (`{"version":…,"agents":[{"id":…,"name":…}]}`).
 - `builder/cli/tests/app_parity.rs` as above.
 - `builder/app/tests/lockdown.rs` as above; plus `navigation.rs`'s unit tests.
@@ -252,7 +252,7 @@ Vitest (`builder/ui/src/**/*.test.ts`, happy-dom):
 - `Welcome.test.ts`: with a fake backend given by `provide`, the loaded state shows the version and
   both lines; a backend that never resolves shows "Starting…"; one that rejects shows the error
   sentence and not the rejection's text.
-- `PersonaBuilder.test.ts`: the seven step titles in order, each marked *Not here yet* and
+- `VoiceApp.test.ts`: the seven step titles in order, each marked *Not here yet* and
   `aria-disabled`; the Welcome screen is shown.
 - `backend.test.ts`: `useBackend` outside a provider throws the plain message.
 - `theme.test.ts`: dark and light from a fake `matchMedia`, a `change` event flips it, the returned
@@ -298,8 +298,8 @@ Claude's review of the first build:
 2. **`serde_json` is a dev-dependency of `builder/app`**, not a dependency: only the tests use it.
 
 Mutation-check 1 again (add a command to `COMMANDS` only → lockdown 1 red) with `cp`/`cmp`. Run
-`cargo fmt --check`, `cargo clippy -p persona-builder-app --all-targets --locked -- -D warnings` and
-`cargo test -p persona-builder-app --locked`. Don't commit.
+`cargo fmt --check`, `cargo clippy -p voice-app --all-targets --locked -- -D warnings` and
+`cargo test -p voice-app --locked`. Don't commit.
 
 ## Fix-up pass 2: from the security review (decided, do not reopen)
 
@@ -318,8 +318,8 @@ Mutation-check 1 again (add a command to `COMMANDS` only → lockdown 1 red) wit
    by running the branch with a stub `pnpm` on `PATH` that prints `9.15.0` (in a temp folder,
    removed afterwards).
 
-Run `cargo fmt --check`, `cargo clippy -p persona-builder-app --all-targets --locked -- -D warnings`,
-`cargo test -p persona-builder-app --locked` and `shellcheck scripts/ci-local.sh`. Don't commit.
+Run `cargo fmt --check`, `cargo clippy -p voice-app --all-targets --locked -- -D warnings`,
+`cargo test -p voice-app --locked` and `shellcheck scripts/ci-local.sh`. Don't commit.
 
 ## Fix-up pass 3: from the Verifier (decided, do not reopen)
 
@@ -335,6 +335,6 @@ Run `cargo fmt --check`, `cargo clippy -p persona-builder-app --all-targets --lo
    pnpm's version, skipping the app screens (update pnpm: https://pnpm.io/installation)` and skip
    the pnpm steps. Check it with a stub `pnpm` printing `garbage` (temp folder, removed after).
 
-Mutation-check 1 and 2 (`cp`/`cmp`). Run `cargo fmt --check`, `cargo clippy -p persona-builder-app
--p persona-builder-api --all-targets --locked -- -D warnings`, `cargo test -p persona-builder-app -p
-persona-builder-api --locked` and `shellcheck scripts/ci-local.sh`. Don't commit.
+Mutation-check 1 and 2 (`cp`/`cmp`). Run `cargo fmt --check`, `cargo clippy -p voice-app
+-p voice-api --all-targets --locked -- -D warnings`, `cargo test -p voice-app -p
+voice-api --locked` and `shellcheck scripts/ci-local.sh`. Don't commit.

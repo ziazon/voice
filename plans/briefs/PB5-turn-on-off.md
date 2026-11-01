@@ -1,7 +1,7 @@
 # PB5 brief: turn it on and off, the claude.ai Project pack, forget
 
-Persona Builder is a standalone app that builds a person's AI assistant from their own Claude
-history. PB1 gave `builder/core` (library `persona_builder`) the member format: `crew/<slug>/`
+Voice is a standalone app that builds a person's AI assistant from their own Claude
+history. PB1 gave `builder/core` (library `voice_core`) the member format: `crew/<slug>/`
 with `member.json`, `IDENTITY.md`, `SKILL.md`, `autonomy.md` and `decisions.md`. This slice puts a
 built assistant to work and takes it away again:
 
@@ -74,13 +74,13 @@ You will be dispatched once per part; do only the part your dispatch names, then
 
 ### A1. `builder/core/src/block.rs`: a managed block in a file the user owns
 
-The marker is `<!-- persona-builder:`. Pure text in, text out:
+The marker is `<!-- voice:`. Pure text in, text out:
 
 - `pub fn upsert(text: &str, id: &str, body: &str) -> Result<String>` and
   `pub fn remove(text: &str, id: &str) -> Result<String>` (errors are `Error::Invalid`), plus
   `pub fn find(text: &str, id: &str) -> Result<Option<(usize, usize)>>`.
-- The block is `<!-- persona-builder:begin <id> -->`, the body's lines, then
-  `<!-- persona-builder:end <id> -->`, each on its own line. Markers are matched on a line's
+- The block is `<!-- voice:begin <id> -->`, the body's lines, then
+  `<!-- voice:end <id> -->`, each on its own line. Markers are matched on a line's
   trimmed text.
 - `upsert` replaces the block where it is, else appends it: to an empty text as the whole text,
   else after the existing text plus one line break. So `remove` after an append gives back the
@@ -90,8 +90,8 @@ The marker is `<!-- persona-builder:`. Pure text in, text out:
 - `remove` of a block that ends the text also takes the one line break before it (in the block's
   own line end); a block with text after it takes only its own lines. No block: the text as is.
 - Refused: an id that is not 1 to 64 bytes of `a-z`, `0-9`, `-` starting with a letter or digit;
-  a body holding `<!-- persona-builder:`; the same block twice; an end with no begin; a begin with
-  no end; any other `<!-- persona-builder:` marker inside the block.
+  a body holding `<!-- voice:`; the same block twice; an end with no begin; a begin with
+  no end; any other `<!-- voice:` marker inside the block.
 
 ### A2. Where things go
 
@@ -103,14 +103,17 @@ pub struct Places { pub home: PathBuf, pub claude_home: PathBuf }
 `CLAUDE_CONFIG_DIR` says otherwise). For a member with slug `<s>`, turning on adds:
 
 1. `<claude_home>/skills/<s>/SKILL.md`: the bytes of `crew/<s>/SKILL.md` (it is already filled).
-2. `<claude_home>/persona-builder/<s>/RULES.md`: the text in A4.
+2. `<claude_home>/voice/assistants/<s>/RULES.md`: the text in A4.
 3. A block with id `<s>` in `<claude_home>/CLAUDE.md` whose body is one line, `@<import path>`.
    The import path is the absolute path of the `RULES.md` in step 2; when it is under `home`, it
    is written `~/<the rest>` instead. Every space in it is written `\ ` (backslash, space).
-4. The record, `<claude_home>/persona-builder/installed.json` (A3), written last.
+4. The record, `<claude_home>/voice/installed.json` (A3), written last.
 
 plus whichever of the folders `<claude_home>/skills`, `<claude_home>/skills/<s>`,
-`<claude_home>/persona-builder` and `<claude_home>/persona-builder/<s>` did not exist before.
+`<claude_home>/voice/assistants` and `<claude_home>/voice/assistants/<s>` did not exist before.
+Create the shared `<claude_home>/voice` root when missing, mode 0700, refusing a symlink, but
+never record it as added: turning off keeps it, including any panels in it. Undo on a failed
+turn-on may remove it only if that turn-on created it.
 Only one assistant is on per Claude Code folder.
 
 ### A3. The record
@@ -132,10 +135,12 @@ Only one assistant is on per Claude Code folder.
 ```
 
 `added` lists, in creation order, every folder created and every file written by this turn-on
-(never `CLAUDE.md`, never the record itself). A `file` entry carries the exact text written, so
+(never `CLAUDE.md`, never the record itself, never the shared `<claude_home>/voice` root). A `file` entry carries the exact text written, so
 turning off can tell whether the user changed it. Make it a `#[derive(Serialize, Deserialize)]`
 struct with an `enum Added { Dir { path }, File { path, text } }` tagged by `kind` (lowercase).
 Reading a record refuses a symlink and names the file when it is not valid JSON in this shape.
+A missing shared root or record means nothing is on; a shared root that is a symlink or not a
+folder is refused.
 Every path in `added` must be under `claude_home`, or the record is refused (a hand-edited record
 must not make turning off delete files elsewhere).
 
@@ -161,19 +166,19 @@ question.
    `home`" test in A2 and the "under `claude_home`" test in A3 compare canonical paths;
    `turn_off` and `status` canonicalize the same way).
 3. Read the record if there is one. If its slug differs:
-   `Invalid("<record's name> is on. Turn <record's name> off first: persona-builder off")`, with
+   `Invalid("<record's name> is on. Turn <record's name> off first: voice off")`, with
    nothing changed. If its slug is the same, turn that one off first (A6) and carry on: turning
    on again refreshes the files.
 4. Check everything before writing anything:
-   - `skills/<s>` and `persona-builder/<s>` do not exist (`symlink_metadata`); otherwise
-     `Invalid("<path> exists and Persona Builder did not add it. Move it away, then turn <Name> on again")`;
+   - `skills/<s>` and `voice/assistants/<s>` do not exist (`symlink_metadata`); otherwise
+     `Invalid("<path> exists and Voice did not add it. Move it away, then turn <Name> on again")`;
    - `CLAUDE.md` is missing, a regular file, or a symlink whose target is a regular file (resolve
      it with `canonicalize`); its text is UTF-8; and `block::find` with id `<s>` finds no block
      and no error. A block already there that no record names:
-     `Invalid("<CLAUDE.md path> already has a Persona Builder line for <s>. Remove the lines between its persona-builder markers, then turn <Name> on again")`.
+     `Invalid("<CLAUDE.md path> already has a Voice line for <s>. Remove the lines between its voice markers, then turn <Name> on again")`.
 5. Write steps 1 to 3 of A2 in order, creating the missing folders, then the record. To change
    `CLAUDE.md`, write the new text to a temporary file beside the **resolved** target
-   (`.CLAUDE.md.persona-builder-<pid>`, `create_new`), give it the target's permission bits, and
+   (`.CLAUDE.md.voice-<pid>`, `create_new`), give it the target's permission bits, and
    rename it over the resolved target, so a symlinked `CLAUDE.md` stays a symlink. A missing
    `CLAUDE.md` is created 0600 with only the block, and `claude_md_created` is `true`.
 6. On any error after the first write, undo this call's writes newest first (restore the original
@@ -210,13 +215,13 @@ when `member_dir/SKILL.md` is missing or differs from the skill's recorded text.
 
 Add to `builder/cli/src/main.rs` (keep `member show` as it is):
 
-- `persona-builder on <MEMBER_DIR> [--claude-home <DIR>]`
-- `persona-builder off [--claude-home <DIR>]`
-- `persona-builder status [--claude-home <DIR>]`
+- `voice on <MEMBER_DIR> [--claude-home <DIR>]`
+- `voice off [--claude-home <DIR>]`
+- `voice status [--claude-home <DIR>]`
 
 `--claude-home` defaults to `$CLAUDE_CONFIG_DIR` when set and not empty, else `$HOME/.claude`.
-`home` is `$HOME`; when it is unset or empty, fail with `persona-builder: HOME is not set`.
-Errors print `persona-builder: <error>` on stderr and exit 1, as today. Output on stdout, word for
+`home` is `$HOME`; when it is unset or empty, fail with `voice: HOME is not set`.
+Errors print `voice: <error>` on stderr and exit 1, as today. Output on stdout, word for
 word (`<…>` filled in; paths printed with `display()`):
 
 - `on`:
@@ -225,10 +230,10 @@ word (`<…>` filled in; paths printed with `display()`):
   Added the skill /<slug> in <skill folder>.
   Added one line to <CLAUDE.md path>:
     @<import path>
-  Start a new Claude Code session to use <Name>. To turn <Name> off: persona-builder off
+  Start a new Claude Code session to use <Name>. To turn <Name> off: voice off
   ```
 - `off` with nothing on: `No assistant is on in Claude Code.` Otherwise
-  `<Name> is off. Everything Persona Builder added is removed.` or, when something was left,
+  `<Name> is off. Everything Voice added is removed.` or, when something was left,
   `<Name> is off. These were left in place:` followed by one line per item,
   `  <path>: <why>`.
 - `status` with nothing on: `No assistant is on in Claude Code.` Otherwise:
@@ -238,7 +243,7 @@ word (`<…>` filled in; paths printed with `display()`):
   <path>: there | changed | missing        (one line per recorded file)
   ```
   and, when `out_of_date`, a last line
-  `<Name> has changed since it was turned on. To update it: persona-builder on <member_dir>`.
+  `<Name> has changed since it was turned on. To update it: voice on <member_dir>`.
 
 ### A9. Tests (red first), `builder/core/src/` unit tests and `builder/cli/tests/turn_on.rs`
 
@@ -249,11 +254,12 @@ folder; the Claude Code folder is `<scratch>/home/.claude`.
    place; `remove` gives back the original bytes in each case; each refusal in A1.
 2. Turning on into an empty Claude Code folder: the skill's bytes equal `crew/ari/SKILL.md`;
    `RULES.md` is exactly A4's text; `CLAUDE.md` is exactly
-   `<!-- persona-builder:begin ari -->\n@~/.claude/persona-builder/ari/RULES.md\n<!-- persona-builder:end ari -->\n`;
+   `<!-- voice:begin ari -->\n@~/.claude/voice/assistants/ari/RULES.md\n<!-- voice:end ari -->\n`;
    the record parses; every created folder is 0700 and file 0600.
 3. On then off, with a `CLAUDE.md` holding user text (one case with a trailing newline, one
    without, one CRLF): `CLAUDE.md` is byte-identical to before, `skills/ari` and
-   `persona-builder` are gone, and a `skills/other/SKILL.md` that was there before is untouched.
+   `voice/assistants` are gone, the shared `voice` root stays with nothing reported left, and a
+   `skills/other/SKILL.md` that was there before is untouched.
 4. A `CLAUDE.md` that turning on created is deleted by turning off; if the user added a line to it
    meanwhile, it is kept with only their line.
 5. Mo Lee cannot be turned on while Ari is on; nothing changes on disk (compare a listing of the
@@ -266,7 +272,7 @@ folder; the Claude Code folder is `<scratch>/home/.claude`.
 9. A user-changed `SKILL.md` is left in place by off and reported with its `why`.
 10. Turning Ari on twice: one block, and the skill holds the member's new `SKILL.md` after it is
     edited between the two.
-11. Rollback: make `<claude_home>/persona-builder` a regular file, turn on, get an error, and find
+11. Rollback: make `<claude_home>/voice` a regular file, turn on, get an error, and find
     the disk exactly as before (no `skills/ari`, `CLAUDE.md` unchanged).
 12. A hand-edited record whose `added` names a file outside `claude_home` is refused by off, and
     that file is untouched.
@@ -353,7 +359,7 @@ When {{PRINCIPAL}} talks to you directly, answer in the first person, short and 
 
 ### B2. CLI
 
-`persona-builder pack <MEMBER_DIR> --out <DIR>`. Output, word for word:
+`voice pack <MEMBER_DIR> --out <DIR>`. Output, word for word:
 
 ```
 Made <Name>'s claude.ai Project pack in <out>:
@@ -395,7 +401,7 @@ drafts. The assistant's own files in `member_dir` are never touched.
 2. Expand `state_dir`: a leading `~/` becomes `home` joined with the rest; an absolute path is
    used as is; anything else is refused. The expanded path, compared component by component, must
    equal `<home>/.claude/state/<slug>` exactly (no `.` or `..` components anywhere). Otherwise
-   `Invalid("state_dir <state_dir as written> is not ~/.claude/state/<slug>, so Persona Builder will not delete it. Delete that folder yourself if you mean to")`.
+   `Invalid("state_dir <state_dir as written> is not ~/.claude/state/<slug>, so Voice will not delete it. Delete that folder yourself if you mean to")`.
 3. Missing: `Forgotten { path, files: 0, existed: false }`. A symlink: refused. Not a folder:
    refused.
 4. Count every entry that is not a folder, walking with `symlink_metadata` and never following a
@@ -405,14 +411,14 @@ drafts. The assistant's own files in `member_dir` are never touched.
 
 ### C2. CLI
 
-`persona-builder forget <MEMBER_DIR> [--yes]`. Output, word for word:
+`voice forget <MEMBER_DIR> [--yes]`. Output, word for word:
 
 - Missing folder: `Nothing to forget: <path> is not there.`
 - Without `--yes`:
   ```
   This deletes <N> files in <path>: the history <Name> learned from and the drafts of each build.
   <Name>'s own files in <member_dir> stay.
-  To go ahead: persona-builder forget <member_dir> --yes
+  To go ahead: voice forget <member_dir> --yes
   ```
   and nothing is deleted.
 - With `--yes`: `Deleted <N> files in <path>. <Name>'s own files in <member_dir> are untouched.`
@@ -434,8 +440,8 @@ Mutation check (part C): drop the component-by-component comparison. A named tes
 
 ## Docs (with part C)
 
-- `.ai/PROJECT.md` table: the `builder/core/` row's "what" becomes `The Persona Builder core
-  library (persona_builder): the member format, the dial, field packs, turning an assistant on and
+- `.ai/PROJECT.md` table: the `builder/core/` row's "what" becomes `The Voice core
+  library (voice_core): the member format, the dial, field packs, turning an assistant on and
   off in Claude Code, the claude.ai Project pack, forget`.
 - `README.md`: no change (the app's own words come in PB7).
 
@@ -468,8 +474,8 @@ Each fix test-first: write the test, see it red on its assertion, then fix.
    Messages (`<path>` is the member's `SKILL.md`):
    `Invalid("<path> has no front matter (the lines between ---)")`,
    `Invalid("<path> must be named <slug> (a line name: <slug>)")`,
-   `Invalid("<path> asks for <hooks|allowed-tools>, which can run commands without asking. Persona Builder turns on only a skill without them")`,
-   `Invalid("<path> runs a shell command (!`). Persona Builder turns on only a skill without one")`.
+   `Invalid("<path> asks for <hooks|allowed-tools>, which can run commands without asking. Voice turns on only a skill without them")`,
+   `Invalid("<path> runs a shell command (!`). Voice turns on only a skill without one")`.
    The template's `SKILL.md` passes. Tests: one per refusal, nothing written.
 3. **A symlinked `skills/` folder** (Verifier must-fix). In `install_record::check_path`, skip
    both the symlink refusal and the canonical-prefix test for the ancestor
@@ -485,7 +491,7 @@ Each fix test-first: write the test, see it red on its assertion, then fix.
    to `<claude_home>/CLAUDE.md` or to the record itself. Test: a record listing `CLAUDE.md` with its
    exact text is refused by `off`, and `CLAUDE.md` stays.
 6. Rename `failed_install_rolls_back_every_created_path` to
-   `persona_builder_file_is_refused_before_any_write`; it tests an early refusal, and the late
+   `voice_file_is_refused_before_any_write`; it tests an early refusal, and the late
    rollback tests already cover rollback.
 
 Not fixed, and recorded as known limits: `off` refuses (rather than reporting) when the user
@@ -503,7 +509,7 @@ Each test-first, as above.
    `claude_home.starts_with(&canonical_root) || canonical_root.starts_with(claude_home)` (the
    link resolves to `claude_home`, an ancestor of it, or a folder inside it; `claude_home` is
    already canonical, from `Places::canonical`), with the same `invalid()` message. Tests: a link
-   to `claude_home` and a link to `<claude_home>/persona-builder`, each with a hand-edited record
+   to `claude_home` and a link to `<claude_home>/voice`, each with a hand-edited record
    listing a file through the link; `off` is refused and the file stays. The test of fix 3 (a
    link to a folder outside `claude_home`) still passes.
 8. **Front-matter keys, by allowlist** (should-fix). The line-prefix test lets `hooks : …`,
@@ -512,7 +518,7 @@ Each test-first, as above.
    `*`; take the text before the first `:`, trim it and strip one pair of surrounding `"` or `'`;
    refuse any key outside `name, description, argument-hint, user-invocable,
    disable-model-invocation, model, context, agent, paths` with
-   `Invalid("<path> asks for <key>, which Persona Builder does not turn on. Remove it, then turn <Name> on again")`,
+   `Invalid("<path> asks for <key>, which Voice does not turn on. Remove it, then turn <Name> on again")`,
    keeping the existing message for `hooks` and `allowed-tools` in every spelling. Skip a line
    that is empty after trimming, or that starts with `#` (a comment). `check_skill` gains the
    member's name for the message. Tests: each spelling above is refused (`hooks : x`,
@@ -535,7 +541,7 @@ leading tab turned into two spaces when that fails.
     `check_skill`, before the front-matter test, refuse the whole file when it holds a `\r` not
     followed by `\n`, any of U+0085, U+2028, U+2029, or any other control character than `\t`,
     `\n` and the `\r` of a `\r\n`, with
-    `Invalid("<path> holds a character Persona Builder can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn <Name> on again")`.
+    `Invalid("<path> holds a character Voice can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn <Name> on again")`.
     Tests: that payload, `hooks:` after a lone `\r`, U+2028, U+0085 and a NUL are each refused with
     nothing written; a `SKILL.md` with `\r\n` line endings throughout passes.
 11. **A tab-indented front-matter line** (should-fix). YAML forbids tab indentation and parsers

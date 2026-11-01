@@ -1,6 +1,6 @@
 # PB7.4 brief: build, stop, spend and the interview
 
-Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.4` entry (PB7 of the Persona Builder
+Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.4` entry (PB7 of the Voice
 plan): `build` run in the background with its plain progress lines shown as they come, today's
 spend against the cap, a stop that leaves the assistant as it was, and, when the history is thin,
 the interview: drafted, shown four questions at a time, the answers kept, then put together and
@@ -24,7 +24,7 @@ use them word for word); review bar: `~/.codex/skills/code-quality/SKILL.md`.
 
 Run cargo with `CARGO_NET_OFFLINE=true` and pnpm with `--offline`. **No new crate or package.**
 `builder/api/Cargo.toml` gains two path dependencies already in the workspace,
-`persona-builder-build = { path = "../build" }` and `persona-builder-steps = { path = "../steps" }`.
+`voice-build = { path = "../build" }` and `voice-steps = { path = "../steps" }`.
 If you think anything else is needed, stop and say so.
 
 ## What this slice does
@@ -50,7 +50,7 @@ their answers are kept as they go, then added to their history, and the assistan
   to outcome `"stopped"`, no usage, `cost: None` (so the whole budget is counted: money may have
   been spent), result `Err(invalid(text::STOPPED))`. `ask` (the version and sign-in check) never
   stops.
-- `text.rs`: `pub const STOPPED: &str = "Persona Builder stopped Claude Code, as you asked.";`
+- `text.rs`: `pub const STOPPED: &str = "Voice stopped Claude Code, as you asked.";`
 - The CLI never sets a stop (Ctrl-C ends the CLI as before).
 
 ### 2. One build path for the CLI and the app (`builder/build`)
@@ -119,20 +119,20 @@ path):
 | --- | --- |
 | `STOPPED` | Stopped. Your assistant is as it was before this build. What was already finished is kept, so building again carries on from there. |
 | `NOTHING_YET` | There's nothing to build from yet. Read your history and put it together first, in Your history. |
-| `SETTINGS` | Something in this assistant's settings stops the build. Use the persona-builder command to see what. |
+| `SETTINGS` | Something in this assistant's settings stops the build. Use the voice command to see what. |
 | `BUILD_FAILED` | The build stopped before it finished, so your assistant is as it was. What it already finished is kept: build again to carry on. |
 | `PRIVATE` | The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Build again to try once more. |
-| `LEDGER` | Persona Builder's record of what this assistant has spent can't be read, so it won't spend anything more. Use the persona-builder command to see what's wrong. |
-| `BUILD_SAVE` | Persona Builder couldn't save your assistant. Check there's space on this computer, then try again. |
+| `LEDGER` | Voice's record of what this assistant has spent can't be read, so it won't spend anything more. Use the voice command to see what's wrong. |
+| `BUILD_SAVE` | Voice couldn't save your assistant. Check there's space on this computer, then try again. |
 | `cap_reached(spent, cap)` (a `fn`) | Today's spending limit for this assistant is reached: about ${spent:.2} of ${cap:.2}, as Claude Code estimates it. Build again tomorrow to carry on. |
 | `ENOUGH` | Your history already holds enough answers to build from. The interview is for a thinner history. |
 | `ALREADY_DRAFTED` | Your questions are already drafted. Answer them, or draft different ones. |
 | `DRAFT_FAILED` | Claude drafted questions that didn't fit, twice, so none were saved. Try again. |
 | `NO_QUESTIONS` | Draft the questions first. |
-| `ANSWER_BAD` | Persona Builder couldn't keep that answer. Close it and open it again. |
+| `ANSWER_BAD` | Voice couldn't keep that answer. Close it and open it again. |
 | `NO_ANSWERS` | Answer at least one question first. |
 | `ALL_LEFT_OUT` | Every answer looked personal or secret, so none was kept. Answer without names or private details, then try again. |
-| `ANSWERS_SAVE` | Persona Builder couldn't save your answers. Check there's space on this computer, then try again. |
+| `ANSWERS_SAVE` | Voice couldn't save your answers. Check there's space on this computer, then try again. |
 
 DTOs in `dto.rs` (answers camelCase; requests `deny_unknown_fields`; counts `u32` through `count`;
 the ones holding `f64` derive `PartialEq` without `Eq`):
@@ -183,7 +183,7 @@ Commands (`Result<T, dto::Failure>`):
 - `COMMANDS`, the capability's `allow-…` list and `generate_handler!` gain the seven names in the
   order above (30 in all). No new permission, plugin or capability.
 - Each is `#[tauri::command(async)]`, one call into the api. `build_assistant` takes `request` and
-  `on_progress: tauri::ipc::Channel<persona_builder_api::dto::BuildProgress>` and passes
+  `on_progress: tauri::ipc::Channel<voice_api::dto::BuildProgress>` and passes
   `&mut |p| { let _ = on_progress.send(p); }`, as the reads do.
 
 ### 5. The screens (`builder/ui`)
@@ -206,7 +206,7 @@ the others. `index.ts` also exports `Build`.
 A money amount is shown as `$` and the number with two decimals (`toFixed(2)`). The spend line,
 wherever it shows: "Today, about $<spent> of the $<cap> daily limit, as Claude Code estimates it."
 
-**The frame (`PersonaBuilder.vue`).** The `build` step is a button like `sources`, enabled once
+**The frame (`VoiceApp.vue`).** The `build` step is a button like `sources`, enabled once
 the chosen assistant's permission is given (same disabled text). `view` gains `'build'`.
 `Sources.vue` gains, under its three cards, the primary button "Next: build your assistant",
 emitting `next`; the frame goes to `build`. **The build keeps running while the person looks at
@@ -217,7 +217,7 @@ the "Your assistants" button is disabled and, under it, the muted line "Stop the
 choose another assistant." shows.
 
 **`screens/Build.vue`** (prop `assistant`; emits `running`): heading "Build your assistant", the
-line "Persona Builder sends your history to Claude through your own Claude Code, a part at a time,
+line "Voice sends your history to Claude through your own Claude Code, a part at a time,
 and writes how you decide into your assistant. It uses your own Claude plan and stops for the day
 at the limit below.", then two Tabler cards: `build/BuildRun.vue` and, below it,
 `build/Interview.vue` (each prop `slug`). `BuildRun` emits `finished` after a build that answered;
@@ -351,7 +351,7 @@ Vitest:
   `replace: true`; a failed save keeps the page.
 - `Build.test.ts`: `rebuild` from the interview starts the run's rebuild; `finished` reloads the
   interview.
-- `PersonaBuilder.test.ts`: `build` disabled until permission; "Next: build your assistant" from
+- `VoiceApp.test.ts`: `build` disabled until permission; "Next: build your assistant" from
   Sources goes to the build view; while `running` is true "Your assistants" is disabled with the
   line, and moving to another step and back keeps the build's lines.
 - `tauri-backend.test.ts`: each new method invokes its snake-case command; `buildAssistant` passes
@@ -368,7 +368,7 @@ and confirm with `cmp`; never `git checkout --`). Report each with its red resul
 6. let `save_interview_answers` take a pick past the last option → its `ANSWER_BAD` test red;
 7. drop the consent check from `readable` → api permission tests red;
 8. add a command to `COMMANDS` only → lockdown red;
-9. enable `build` before permission → PersonaBuilder test red;
+9. enable `build` before permission → VoiceApp test red;
 10. mount `Build` with `v-if="view === 'build'"` → the keeps-the-lines test red.
 
 ## Not in this slice

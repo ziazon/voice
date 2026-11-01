@@ -1,7 +1,7 @@
 # PB7.6b brief: turn it on, the claude.ai files, forget, from the app
 
 Written by Claude (lane V2), 2026-10-25. Spec: lane V's `PB7.6b` entry, split from PB7.6 (PB7 of the
-Persona Builder plan). Read the repo's `AGENTS.md` and `.ai/PROJECT.md` first, then
+Voice plan). Read the repo's `AGENTS.md` and `.ai/PROJECT.md` first, then
 `plans/briefs/PB7.6a-save.md` (the slice before this one: the bridge's rules this slice follows,
 DTOs, `Failure`, testable `_in` forms, the parity table, the lockdown test, the screens' style),
 `plans/briefs/PB5-turn-on-off.md` (what `on`, `off`, `status`, `pack` and `forget` do), then
@@ -33,7 +33,7 @@ The *Save* step gains three more cards under *Keep a copy*:
    private folder: the history, the working files (the claude.ai files with them), the permission
    and the saving choice. The assistant's own folder and any copy on GitHub stay.
 
-`persona-builder on|off|status|pack|forget` already do the work; the app gains the same.
+`voice on|off|status|pack|forget` already do the work; the app gains the same.
 
 ## Facts this rests on (checked in the code)
 
@@ -49,7 +49,7 @@ The *Save* step gains three more cards under *Keep a copy*:
   `decisions.md` has none, so a new assistant the app made gets that refusal.
 - `forget(member_dir, home, delete)` counts (and with `delete`, removes) the member's state folder,
   which must be exactly `~/.claude/state/<slug>`. That folder holds `consent.json`
-  (`read_consent`), `save.json` (`persona_builder_save::record`) and everything else Persona
+  (`read_consent`), `save.json` (`voice_save::record`) and everything else Persona
   Builder keeps for the assistant.
 - `lock_state(home, slug)` takes an exclusive `flock` on the state folder (creating it 0700) and
   refuses with a fixed sentence when another build holds it.
@@ -99,7 +99,7 @@ pub struct ForgetRequest { pub slug: String, pub files: u32 }  // the count the 
 is Other). `out_of_date` and `changed` are `false` unless This.
 
 **A shown name.** `fn shown_name(name: &str) -> Option<String>`: `Some(name)` when
-`persona_builder::crew::check_name("name", name)` passes, else `None`. Every record name that
+`voice_core::crew::check_name("name", name)` passes, else `None`. Every record name that
 reaches an answer or a sentence goes through it; `None` is written "Another assistant" at the start
 of a sentence and "the assistant" elsewhere (the sentences below say which).
 
@@ -118,7 +118,7 @@ with `assistants.rs`'s `listed(home, slug)` (any failure: `FIND`).
 | `forget_preview(SlugRequest) -> ForgetPreview` | `forget::forget(&listed.dir, home, false)`: its `files` (0 when it did not exist), as `u32` (saturating) | `FORGET` |
 | `forget(ForgetRequest) -> Said` | a preview count of 0 (not there): `nothing_to_forget(name)`, nothing locked or created. Else `lock_state`; count again with `forget(.., false)`; a count different from the request's `files`: `FORGET_CHANGED`, nothing deleted; else `forget(.., true)` and `forgotten(files, name)`; drop the lock after | `FORGET` |
 
-`lock_state`'s refusal (`Error::Invalid` equal to `persona_builder_ingest::private::BUSY`) answers
+`lock_state`'s refusal (`Error::Invalid` equal to `voice_ingest::private::BUSY`) answers
 `busy(name)` in `make_claude_ai_files` and `forget`. `pack`'s refusal equal to
 `pack::no_kinds_yet(&member.name)` answers `no_kinds(name)`.
 
@@ -140,28 +140,28 @@ The api's own sentences, final (`{name}` is the listed assistant's name; `{shown
 shown name):
 
 ```rust
-const STATUS: &str = "Persona Builder couldn't check Claude Code. Close it and open it again.";
+const STATUS: &str = "Voice couldn't check Claude Code. Close it and open it again.";
 const NOT_SET_UP: &str = "Claude Code isn't set up on this computer yet. Install it and sign in, then come back.";
 const NOTHING_ON: &str = "No assistant is on in Claude Code.";
 const CHANGED_ON: &str = "What's on in Claude Code has changed. Look again, then choose.";
-const OFF: &str = "Persona Builder couldn't turn the assistant off. Close it and open it again, then try again.";
-const FILES: &str = "Persona Builder couldn't look for the claude.ai files. Close it and open it again.";
-const PACK: &str = "Persona Builder couldn't make the claude.ai files. Check there's space on this computer, then try again.";
+const OFF: &str = "Voice couldn't turn the assistant off. Close it and open it again, then try again.";
+const FILES: &str = "Voice couldn't look for the claude.ai files. Close it and open it again.";
+const PACK: &str = "Voice couldn't make the claude.ai files. Check there's space on this computer, then try again.";
 const MAKE_FIRST: &str = "Make the claude.ai files first.";
-const SHOW: &str = "Persona Builder couldn't open the folder.";
-const FORGET: &str = "Persona Builder couldn't forget anything, and nothing was deleted. Close it and open it again, then try again.";
+const SHOW: &str = "Voice couldn't open the folder.";
+const FORGET: &str = "Voice couldn't forget anything, and nothing was deleted. Close it and open it again, then try again.";
 const FORGET_CHANGED: &str = "There's more to forget than when you looked. Look again, then confirm.";
 fn on(name) -> "{name} is on. Start a new Claude Code session to use {name}."
-fn on_failed(name) -> "Persona Builder couldn't turn {name} on, so nothing in your Claude folder was changed."
+fn on_failed(name) -> "Voice couldn't turn {name} on, so nothing in your Claude folder was changed."
 fn other_on(shown, name) -> "{shown} is on in Claude Code. Turn {shown} off first, then turn {name} on."
                           // shown None: "Another assistant is on in Claude Code. Turn it off first, then turn {name} on."
-fn off(shown) -> "{shown} is off. Everything Persona Builder added is gone."
-                // shown None: "The assistant is off. Everything Persona Builder added is gone."
-fn off_left(shown) -> "{shown} is off. A few things in your Claude folder were changed after {shown} was turned on, so Persona Builder left them where they are."
-                     // shown None: "The assistant is off. A few things in your Claude folder were changed after it was turned on, so Persona Builder left them where they are."
+fn off(shown) -> "{shown} is off. Everything Voice added is gone."
+                // shown None: "The assistant is off. Everything Voice added is gone."
+fn off_left(shown) -> "{shown} is off. A few things in your Claude folder were changed after {shown} was turned on, so Voice left them where they are."
+                     // shown None: "The assistant is off. A few things in your Claude folder were changed after it was turned on, so Voice left them where they are."
 fn no_kinds(name) -> "{name} doesn't know any kinds of question yet. Build {name} first, then make the claude.ai files."
-fn busy(name) -> "Persona Builder is already working on {name}. Wait for it to finish, then try again."
-fn nothing_to_forget(name) -> "There's nothing to forget: Persona Builder hasn't kept anything for {name} yet."
+fn busy(name) -> "Voice is already working on {name}. Wait for it to finish, then try again."
+fn nothing_to_forget(name) -> "There's nothing to forget: Voice hasn't kept anything for {name} yet."
 fn forgotten(files, name) -> "Deleted {count}. {name}'s own folder is untouched."
                              // {count}: "1 file" for 1, else "{files} files"
 ```
@@ -181,15 +181,15 @@ Testable forms, with no `HOME`, `CLAUDE_CONFIG_DIR`, real `~/.claude` or real Fi
 
 ### 3. The CLI (`builder/cli`)
 
-Only the move in §2: `places()` takes its default from `persona_builder_api::claude_home`. Every
-`persona-builder on|off|status|pack|forget` output stays byte for byte (the existing tests prove
+Only the move in §2: `places()` takes its default from `voice_api::claude_home`. Every
+`voice on|off|status|pack|forget` output stays byte for byte (the existing tests prove
 it).
 
 ### 4. The Tauri app (`builder/app`)
 
 `COMMANDS`, the capability's `allow-…` list, `generate_handler!`, the lockdown test's list and the
 parity table gain the eight names in the order above (23 in all). Each is
-`#[tauri::command(async)]` and one call into `persona_builder_api`'s zero-argument form, taking a
+`#[tauri::command(async)]` and one call into `voice_api`'s zero-argument form, taking a
 request as one argument named `request`. No new permission, plugin or capability.
 
 ### 5. The screens (`builder/ui`)
@@ -204,7 +204,7 @@ Promise<ClaudeAiFiles>`, `makeClaudeAiFiles(request: SlugRequest): Promise<Claud
 Promise<ForgetPreview>`, `forget(request: ForgetRequest): Promise<Said>`. `tauri-backend.ts` maps
 each to `invoke('<snake name>', { request })`.
 
-**The frame (`PersonaBuilder.vue`).** The save view shows, in this order, `Save`, `TurnOn`,
+**The frame (`VoiceApp.vue`).** The save view shows, in this order, `Save`, `TurnOn`,
 `ClaudeAiFiles` and `Forget`, each with the chosen assistant and keyed by its slug plus a counter
 `resets`. On `Forget`'s `forgotten` event the frame sets the assistant's `consent` to
 `{ agreed: false, agreedOn: null }` and adds one to `resets` (so every card reloads; *Connect
@@ -226,7 +226,7 @@ theme. `index.ts` exports all three.
   "Turning it on…") → `turnOn({ slug })`;
 - `this`: "{name} is on in Claude Code."; when `outOfDate`, "{name} has changed since you turned it
   on." and the primary button "Update {name} in Claude Code" (busy "Updating…") → `turnOn`; when
-  `changed`, the muted line "Something Persona Builder added for {name} in your Claude folder was
+  `changed`, the muted line "Something Voice added for {name} in your Claude folder was
   changed or removed."; the secondary outline button "Turn {name} off" (busy "Turning it off…") →
   `turnOff({ slug: onSlug })`;
 - `other`: "{onName} is on in Claude Code. Only one assistant can be on at a time." (no `onName`:
@@ -256,17 +256,17 @@ theme. `index.ts` exports all three.
 
 **`screens/Forget.vue`** (prop `assistant`, emits `forgotten`):
 - heading "Forget what {name} learned from"; the line "Forget deletes the history {name} learned
-  from and Persona Builder's working files. {name} itself stays.";
+  from and Voice's working files. {name} itself stays.";
 - the danger outline button "Forget…" → `forgetPreview({ slug })` (busy "Checking…"; failure: a
   warning alert, fallback `FORGET`);
-- preview of 0 files: "There's nothing to forget: Persona Builder hasn't kept anything for {name}
+- preview of 0 files: "There's nothing to forget: Voice hasn't kept anything for {name}
   yet." (Vue's own copy of the sentence) and the link-style button "Close";
 - preview of N > 0 files, the confirmation:
   - "This deletes {count} from your Claude folder:" (`{count}`: "1 file" or "N files"), then a list:
-    "the history {name} learned from"; "Persona Builder's working files, including the claude.ai
+    "the history {name} learned from"; "Voice's working files, including the claude.ai
     files"; "your permission to read your history"; "your choice of where to keep a copy of
     {name}";
-  - "These stay:", then a list: "{name}'s own folder, and everything Persona Builder wrote into
+  - "These stay:", then a list: "{name}'s own folder, and everything Voice wrote into
     it"; "any copy of {name} on GitHub"; "{name} in Claude Code, if it's on";
   - "You can't undo this.";
   - the danger button "Delete these files" (busy "Deleting…") → `forget({ slug, files: N })` with
@@ -290,14 +290,14 @@ Rust, `builder/api/tests/use_it.rs` (a temp home as in `tests/assistants.rs`; as
   appending a line to the assistant's own `SKILL.md` → `outOfDate` true; after removing the
   `CLAUDE.md` block's lines by hand → `changed` true; Mo Lee on, asked for Ari → `Other`, `onName`
   "Mo Lee", `outOfDate` false; **a copy of Ari's folder at `<home>/kit/crew/ari` turned on with
-  `persona_builder::install::turn_on`, asked for the listed Ari → `Other`** (same slug, other
+  `voice_core::install::turn_on`, asked for the listed Ari → `Other`** (same slug, other
   folder).
 - **on:** answers `on("Ari")`, the skill is in `<claude_home>/skills/ari/`; with Mo Lee on →
   `other_on("Mo Lee", "Ari")` and the Claude folder unchanged (compare a listing with file bytes
   before and after); with the kit copy on → `other_on` and unchanged; a `claude_home` that does not
   exist → `NOT_SET_UP`; turning on again after editing the assistant's `SKILL.md` refreshes it
   (`outOfDate` false after); a failure inside `turn_on` (make `<claude_home>/skills/ari` a folder
-  Persona Builder did not add) → `on_failed("Ari")`, never the core's text, and no path in it.
+  Voice did not add) → `on_failed("Ari")`, never the core's text, and no path in it.
 - **off:** nothing on → `NOTHING_ON`; on, request slug `ari` → `off("Ari")` and status `Off`; a
   request slug that differs from the record's → `CHANGED_ON` and still on; a changed installed
   `SKILL.md` → `off_left("Ari")`; `shown_name` unit test (in `use_it.rs`'s own `#[cfg(test)]`):
@@ -344,7 +344,7 @@ Vitest:
   "Delete these files" sends `{ slug, files: N }` with the previewed N; success shows the message
   and emits `forgotten`; "Cancel" sends nothing; a failure shows its message and closes the
   confirmation.
-- `PersonaBuilder.test.ts` (updated): the save view shows the four cards' headings; a `forgotten`
+- `VoiceApp.test.ts` (updated): the save view shows the four cards' headings; a `forgotten`
   from `Forget` sets *Connect Claude* back to "Needs your permission first".
 - `tauri-backend.test.ts`: each new method invokes its snake-case command with `{ request }`.
 
@@ -371,10 +371,10 @@ Claude reviews, commits and runs the app.
 
 Each test-first: write the test, see it red on its assertion, then fix.
 
-1. **Forget's success message must survive** (must-fix). `PersonaBuilder.vue` keys `Forget` by
+1. **Forget's success message must survive** (must-fix). `VoiceApp.vue` keys `Forget` by
    `forget-<slug>` only, without `resets` (it loads nothing on mount and resets its own state);
    `Save`, `TurnOn` and `ClaudeAiFiles` keep `resets` in their key. §5's "keyed by its slug plus a
-   counter `resets`" now excludes `Forget`. Test in `PersonaBuilder.test.ts`: after "Delete these
+   counter `resets`" now excludes `Forget`. Test in `VoiceApp.test.ts`: after "Delete these
    files" resolves, the frame shows the forget answer's `message` in `.alert-success` and *Connect
    Claude* says "Needs your permission first".
 2. **An assistant's name is checked before it enters a sentence** (should-fix). In
@@ -390,6 +390,6 @@ Each test-first: write the test, see it red on its assertion, then fix.
    folder.
 
 Run `CARGO_NET_OFFLINE=true cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
--- -D warnings`, `cargo test -p persona-builder-api --locked`, and `pnpm --offline -C builder/ui
+-- -D warnings`, `cargo test -p voice-api --locked`, and `pnpm --offline -C builder/ui
 typecheck` and `test`. Mutation checks with `cp`/`cmp`: put `resets` back in Forget's key (red),
 drop the name check (red), drop the zero-count check (red). Don't commit.

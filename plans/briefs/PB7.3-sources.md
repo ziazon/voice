@@ -1,6 +1,6 @@
 # PB7.3 brief: your history (Claude Code and claude.ai)
 
-Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.3` entry (PB7 of the Persona Builder
+Written by Claude (lane V1), 2026-10-25. Spec: lane V's `PB7.3` entry (PB7 of the Voice
 plan), plus the rule PB7.2 left: every app command that reads history refuses, in plain words, an
 assistant without a current agreement, checked in Rust and never only by the screens. Read the
 repo's `AGENTS.md` and `.ai/PROJECT.md` first, then `plans/briefs/PB7.1-app-frame.md` and
@@ -26,7 +26,7 @@ crate or package. If you think one is needed, stop and say so.
 ## What this slice does
 
 After giving permission, the person opens *Your history*. They see which Claude Code folders
-Persona Builder will read and which it leaves out, count first, then read. If they use claude.ai,
+Voice will read and which it leaves out, count first, then read. If they use claude.ai,
 they choose their downloaded export in a window the app opens, see that it can be read, mark which
 chats are theirs, and read those. Then they put it all together into the one history the build
 uses. Long reads show a progress bar.
@@ -84,18 +84,18 @@ path):
 
 | Name | Sentence |
 | --- | --- |
-| `FIND` | (PB7.2's) Persona Builder couldn't find that assistant. Close it and open it again. |
-| `PERMISSION` | Persona Builder needs your permission before it reads anything. Give it in the first step. |
-| `ELSEWHERE` | This assistant keeps its history outside your Claude folder. Use the persona-builder command for it. |
-| `BUSY` | Persona Builder is already working on this assistant. Wait for it to finish, then try again. |
-| `SAVE` | Persona Builder couldn't save what it read. Check there's space on this computer, then try again. |
-| `FOLDERS` | Persona Builder couldn't look through your Claude Code history. Close it and open it again. |
-| `READ` | Persona Builder couldn't read your Claude Code history. Close it and open it again. |
-| `EXPORT_GONE` | Persona Builder can't find your claude.ai download any more. Choose it again. |
-| `EXPORT_BAD` | Persona Builder couldn't read this download. Check it's the file claude.ai sent you, then choose it again. |
+| `FIND` | (PB7.2's) Voice couldn't find that assistant. Close it and open it again. |
+| `PERMISSION` | Voice needs your permission before it reads anything. Give it in the first step. |
+| `ELSEWHERE` | This assistant keeps its history outside your Claude folder. Use the voice command for it. |
+| `BUSY` | Voice is already working on this assistant. Wait for it to finish, then try again. |
+| `SAVE` | Voice couldn't save what it read. Check there's space on this computer, then try again. |
+| `FOLDERS` | Voice couldn't look through your Claude Code history. Close it and open it again. |
+| `READ` | Voice couldn't read your Claude Code history. Close it and open it again. |
+| `EXPORT_GONE` | Voice can't find your claude.ai download any more. Choose it again. |
+| `EXPORT_BAD` | Voice couldn't read this download. Check it's the file claude.ai sent you, then choose it again. |
 | `NO_CHATS` | Choose at least one chat first. |
 | `NOTHING` | There's nothing to put together yet. Read your Claude Code history or your claude.ai chats first. |
-| `MERGE` | Persona Builder couldn't put your history together. Close it and open it again. |
+| `MERGE` | Voice couldn't put your history together. Close it and open it again. |
 
 DTOs in `dto.rs` (answers camelCase; requests also `deny_unknown_fields`; counts are `u32`,
 saturating from `usize`):
@@ -153,16 +153,16 @@ differs from the last one sent, so a read sends at most 101 messages; the first 
 - `COMMANDS`, the capability's `allow-…` list and `generate_handler!` gain the eight names in the
   order above (15 in all). No new permission, plugin or capability: the progress channel's data
   fetch is exempt from the ACL in Tauri 2.12.0 (`webview/mod.rs`, `FETCH_CHANNEL_DATA_COMMAND`).
-- Each is `#[tauri::command(async)]`. Reads take `request` and `on_progress: tauri::ipc::Channel<persona_builder_api::dto::ReadProgress>`,
+- Each is `#[tauri::command(async)]`. Reads take `request` and `on_progress: tauri::ipc::Channel<voice_api::dto::ReadProgress>`,
   and pass `&mut |p| { let _ = on_progress.send(p); }` (a closed window must not fail the read).
 - `choose_claudeai_export(request: ChooseExportRequest) -> Result<Option<ExportStatus>, Failure>`:
-  `persona_builder_api::can_read(SlugRequest { slug })?` first, so no window opens for an assistant
+  `voice_api::can_read(SlugRequest { slug })?` first, so no window opens for an assistant
   that can't read; then, on this worker thread (rfd 0.17.2 hands the panel to the main thread
   itself when the app is running, `backend/macos/utils.rs` `run_on_main`), an `rfd::FileDialog`
   with the title "Choose your claude.ai download" and, when `home/Downloads` is a folder, that as
   its starting folder. `folder: false`: `.add_filter("claude.ai download", &["zip", "json"]).pick_file()`;
   `folder: true`: `.pick_folder()`. Cancelled → `Ok(None)`; a choice →
-  `persona_builder_api::use_claudeai_export(&slug, &path).map(Some)`. No parent window is set.
+  `voice_api::use_claudeai_export(&slug, &path).map(Some)`. No parent window is set.
   This is the only function that touches rfd; put it in `src/commands.rs` with the others.
 
 ### 5. The screens (`builder/ui`)
@@ -190,7 +190,7 @@ assistant's permission is given (same disabled text as `connect`); `view` gains 
 "Next: your history" under the alert; the frame goes to `sources`.
 
 **`screens/Sources.vue`** (prop `assistant`): heading "Your history", the line "Your assistant
-learns from what you've written to Claude. Persona Builder reads it on this computer and keeps it
+learns from what you've written to Claude. Voice reads it on this computer and keeps it
 here.", then three Tabler cards in order: `sources/ClaudeCode.vue`, `sources/Claudeai.vue`,
 `sources/PutTogether.vue`, each with prop `slug`. One shared `sources/ReadProgress.vue` (prop
 `progress: ReadProgress | null`, prop `label`): a Tabler `progress` with a `progress-bar` at the
@@ -202,7 +202,7 @@ that card. Numbers use `toLocaleString()`.
 **`ClaudeCode.vue`**, card title "Claude Code":
 - on mount `claudeCodeFolders`; spinner, visually hidden "Looking at your Claude Code history…";
   fallback the `FOLDERS` sentence.
-- `found: false` or no folders: "Persona Builder found no Claude Code history on this computer."
+- `found: false` or no folders: "Voice found no Claude Code history on this computer."
   and nothing else.
 - else the line "It will read <n> folders (<c> conversations) and leave out <m> (<d>
   conversations)." (the counts summed from the list), and a Tabler table (`table table-sm
@@ -229,9 +229,9 @@ that card. Numbers use `toLocaleString()`.
 - buttons "Choose the download" (`folder: false`) and "Choose a folder" (`folder: true`), both
   secondary, and the muted line "If your Mac unzipped the download, choose the folder it made." A
   `null` answer (cancelled) changes nothing.
-- a status: ready → "You chose <name>. Persona Builder can read it: <chats> chats." and the
+- a status: ready → "You chose <name>. Voice can read it: <chats> chats." and the
   primary button "List the chats"; not ready → warning alert "You chose <name>, but it's missing
-  parts Persona Builder reads. Download your data from claude.ai again, then choose the new file."
+  parts Voice reads. Download your data from claude.ai again, then choose the new file."
 - "List the chats" → `listClaudeaiChats`; then `sources/ChatList.vue` (props `slug`, `list`; emits
   `update(list)` with each new `ChatList`).
 - under the list, the primary button "Read the chats marked yours", disabled while
@@ -319,7 +319,7 @@ Vitest:
   `[filtered]` title shows "Title hidden: it looked private"; `aria-pressed` follows `mark`.
 - `PutTogether.test.ts`: success line; `NOTHING` shown from a `Failure`.
 - `ReadProgress.test.ts`: 40 of 80 renders 50%; `null` renders the indeterminate bar.
-- `PersonaBuilder.test.ts`: `sources` disabled until permission; "Next: your history" from a
+- `VoiceApp.test.ts`: `sources` disabled until permission; "Next: your history" from a
   ready connect check goes to the sources view.
 - `tauri-backend.test.ts`: each new method invokes its snake-case command; the two reads pass
   `{ request, onProgress }` with a `Channel` whose messages reach the callback (mock the module as
@@ -333,7 +333,7 @@ and confirm with `cmp`; never `git checkout --`). Report each with its red resul
 4. pass an ingest error's text to `Failure` in `claudeai_export_status` → the no-path test red;
 5. drop `lock_state` from `mark_claudeai_chats` → its `BUSY` test red (add one);
 6. add a command to `COMMANDS` only → lockdown red;
-7. enable `sources` before permission → PersonaBuilder test red;
+7. enable `sources` before permission → VoiceApp test red;
 8. make `ChatList` send every uuid on one "Yours" click → ChatList test red.
 
 ## Done when

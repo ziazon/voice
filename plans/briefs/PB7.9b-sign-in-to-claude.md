@@ -1,4 +1,4 @@
-# PB7.9b brief: *Sign in to Claude*, in Persona Builder's own Claude Code profile folder
+# PB7.9b brief: *Sign in to Claude*, in Voice's own Claude Code profile folder
 
 Written by Claude (lane V1), 2026-10-27. Spec: lane V's `PB7.9b` entry (split from PB7.9, an attended
 app review, F3). Read the repo's `AGENTS.md` first, then `builder/agent/src/claude.rs` (all of it),
@@ -26,12 +26,12 @@ uses a stub script, as the existing tests do). Do not commit.
 
 ## The problem
 
-Persona Builder checks the `claude` it finds with `claude auth status --json`. A person signed in to
+Voice checks the `claude` it finds with `claude auth status --json`. A person signed in to
 the Claude desktop app sees "Claude Code isn't signed in" because that app's sign-in is its own, and
 the screen offers no way to sign in. The fix (the person's ruling): a *Sign in to Claude* button that
-runs Claude Code's own login, and **Persona Builder's own Claude Code profile folder**
-(`CLAUDE_CONFIG_DIR`), used by the check, the sign-in and every call, so Persona Builder's runs never
-load the person's own `~/.claude` settings, plugins, MCP servers or history. Persona Builder still
+runs Claude Code's own login, and **Voice's own Claude Code profile folder**
+(`CLAUDE_CONFIG_DIR`), used by the check, the sign-in and every call, so Voice's runs never
+load the person's own `~/.claude` settings, plugins, MCP servers or history. Voice still
 never reads, sets or passes a credential: it only starts Claude Code's login, and the person signs in
 on Anthropic's page.
 
@@ -48,21 +48,21 @@ of stdin. So it completes **without a terminal** once the person approves in the
 1. **The profile folder.** In `builder/agent/src/claude.rs`:
 
    ```rust
-   /// Persona Builder's own Claude Code profile (`CLAUDE_CONFIG_DIR`): its sign-in and settings,
+   /// Voice's own Claude Code profile (`CLAUDE_CONFIG_DIR`): its sign-in and settings,
    /// apart from the person's own `~/.claude`.
    pub fn profile_folder(home: &Path) -> PathBuf
    ```
 
-   - macOS (`#[cfg(target_os = "macos")]`): `home/Library/Application Support/Persona Builder/claude-code`.
-   - any other target: `home/.local/share/persona-builder/claude-code`.
+   - macOS (`#[cfg(target_os = "macos")]`): `home/Library/Application Support/Voice/claude-code`.
+   - any other target: `home/.local/share/voice/claude-code`.
    - It is computed from `home` only (no environment read), so the CLI and the app use the same folder.
-     Persona Builder's own `CLAUDE_CONFIG_DIR` (the variable in its own environment) is **never** read
+     Voice's own `CLAUDE_CONFIG_DIR` (the variable in its own environment) is **never** read
      for this and never changed in-process: `claude_home` in `builder/api/src/use_it.rs` (where turning
      an assistant on writes) stays exactly as it is. The variable is set only on the `Command`s for
      `claude`.
 
 2. **Making it** (private to `claude.rs`, `fn ensure_profile(home: &Path) -> Result<PathBuf>`): the
-   app folder (`…/Persona Builder`, or `…/persona-builder`) and the profile folder inside it.
+   app folder (`…/Voice`, or `…/voice`) and the profile folder inside it.
    - Create missing ancestors of the app folder with `create_dir_all` (default mode).
    - For the app folder, then the profile folder: `symlink_metadata`; missing → create with
      `DirBuilder::new().mode(0o700)`; a symlink or anything but a directory → refuse; a directory whose
@@ -102,7 +102,7 @@ of stdin. So it completes **without a terminal** once the person approves in the
 5. **The sign-in** (`builder/agent/src/claude.rs`):
 
    ```rust
-   /// How long Persona Builder waits for the person to finish signing in.
+   /// How long Voice waits for the person to finish signing in.
    pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
    /// `claude auth login --claudeai`, ready to run: the profile, the session markers removed, in `cwd`.
    pub fn sign_in_command(&self, cwd: &Path) -> Command
@@ -119,23 +119,23 @@ of stdin. So it completes **without a terminal** once the person approves in the
      `Ok(())`; `Finished` otherwise → `SIGN_IN_FAILED`; `CutOff` → `SIGN_IN_TIMED_OUT`; `Stopped` →
      `SIGN_IN_STOPPED`; `NotStarted` → `DOES_NOT_RUN`. The stdout bytes are dropped unread.
 
-6. **Texts** in `builder/agent/src/text.rs` (plain language; Persona Builder is still the app's name):
-   - `SIGNED_OUT` becomes: "Claude Code isn't signed in for Persona Builder. Sign in on Connect Claude,
-     or with `persona-builder claude sign-in`, then try again."
+6. **Texts** in `builder/agent/src/text.rs` (plain language; Voice is still the app's name):
+   - `SIGNED_OUT` becomes: "Claude Code isn't signed in for Voice. Sign in on Connect Claude,
+     or with `voice claude sign-in`, then try again."
    - `pub fn signed_out_at(version: &str, program: &str) -> String`: "Claude Code {version} at {program}
-     isn't signed in for Persona Builder yet. Persona Builder keeps a sign-in of its own, separate from
+     isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from
      the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account."
    - `pub fn shown_program(program: &Path, home: &Path) -> String`: the path, with a leading `home`
      shown as `~` (`/Users/x/.local/bin/claude` → `~/.local/bin/claude`), so a screen never shows the
      account's folder name. Other paths as they are.
-   - `SIGN_IN_CLI`: "Run persona-builder claude sign-in to sign in."
+   - `SIGN_IN_CLI`: "Run voice claude sign-in to sign in."
    - `SIGN_IN_WAITING` (the CLI prints it before waiting): "Finish signing in on the Claude page that
-     opened in your browser. Persona Builder carries on when you're done."
+     opened in your browser. Voice carries on when you're done."
    - `SIGN_IN_FAILED`: "Claude Code didn't finish signing in. Try again. If no Claude page opened in your
      browser, check that this computer has a default browser."
-   - `SIGN_IN_TIMED_OUT`: "Signing in took more than 10 minutes, so Persona Builder stopped waiting. Try again."
-   - `SIGN_IN_STOPPED`: "You stopped signing in, so Claude Code still isn't signed in for Persona Builder."
-   - `PROFILE_FAILED`: "Persona Builder couldn't set up its own Claude Code folder. Check there's space
+   - `SIGN_IN_TIMED_OUT`: "Signing in took more than 10 minutes, so Voice stopped waiting. Try again."
+   - `SIGN_IN_STOPPED`: "You stopped signing in, so Claude Code still isn't signed in for Voice."
+   - `PROFILE_FAILED`: "Voice couldn't set up its own Claude Code folder. Check there's space
      on this computer, then try again."
    - Add `SIGN_IN_FAILED`, `SIGN_IN_TIMED_OUT`, `SIGN_IN_STOPPED` and `PROFILE_FAILED` to the fixed
      sentences `claude_message` in `builder/api/src/assistants.rs` lets through.
@@ -157,7 +157,7 @@ of stdin. So it completes **without a terminal** once the person approves in the
      &'static ClaudeSignIns` (a `OnceLock`), and an RAII guard that puts `None` back when the sign-in
      ends on every path (a panic included).
    - `pub fn claude_sign_in_in(home, path, fallbacks, sign_ins: &ClaudeSignIns) -> Result<dto::ClaudeStatus>`:
-     1. A sign-in already running → `Err(failure(SIGN_IN_BUSY))`, with `SIGN_IN_BUSY` = "Persona Builder
+     1. A sign-in already running → `Err(failure(SIGN_IN_BUSY))`, with `SIGN_IN_BUSY` = "Voice
         is already waiting for you to sign in on Claude's page in your browser." (an API constant).
      2. `find_in`, then `status`: an error → `Ok` with that status (`can_sign_in: false`), no login run;
         already signed in → `Ok` with the ready status, **no login run**.
@@ -183,14 +183,14 @@ of stdin. So it completes **without a terminal** once the person approves in the
    - Parity rows: both are `&[&["claude", "sign-in"]]`.
    - `main.rs`: switch to `tauri::Builder::…build(tauri::generate_context!())` then
      `.run(|_, event| if let tauri::RunEvent::Exit = event {
-     persona_builder_api::claude_sign_in_shutdown(Duration::from_secs(1)) })`, keeping today's
-     "Persona Builder couldn't start" message and exit code for a failed build. (Tauri 2.12.0's
+     voice_api::claude_sign_in_shutdown(Duration::from_secs(1)) })`, keeping today's
+     "Voice couldn't start" message and exit code for a failed build. (Tauri 2.12.0's
      `App::run<F: FnMut(&AppHandle<R>, RunEvent)>` and `RunEvent::Exit`, read in
      `~/.cargo/registry/src/*/tauri-2.12.0/src/app.rs`.) Why: the login child runs in a process group
      of its own, so without this a quit while waiting leaves `claude auth login` listening.
 
-10. **The CLI** (`builder/cli/src/main.rs`): `ClaudeCommand::SignIn` (`persona-builder claude
-    sign-in`, doc: "Sign in to Claude Code in Persona Builder's own profile folder, on Claude's page in
+10. **The CLI** (`builder/cli/src/main.rs`): `ClaudeCommand::SignIn` (`voice claude
+    sign-in`, doc: "Sign in to Claude Code in Voice's own profile folder, on Claude's page in
     your browser."). It finds Claude (with the profile), runs `status`: signed in → print `text::ready`
     (and the API-key line) and exit 0 without a login; otherwise print `SIGN_IN_WAITING`, run
     `sign_in_command(&home).status()` **with the terminal inherited** (so Ctrl-C reaches it and Claude
@@ -206,19 +206,19 @@ of stdin. So it completes **without a terminal** once the person approves in the
       *Check again* primary, as today.
     - While signing in: in place of the alert and buttons, a `role="status"` block with a small
       spinner (`spinner-border spinner-border-sm me-2`, `aria-hidden="true"`) and the text "Finish
-      signing in on the Claude page that opened in your browser. Persona Builder carries on when you're
+      signing in on the Claude page that opened in your browser. Voice carries on when you're
       done.", and a *Cancel* button (`btn btn-outline-secondary`) that calls `claudeSignInCancel()`
       (a failure there is ignored: the pending sign-in still ends).
     - `claudeSignIn()` resolving sets `status` to the answer; rejecting sets `status` to `{ ready:
-      false, message: failureMessage(failure, "Persona Builder couldn't start signing in to Claude. Close
+      false, message: failureMessage(failure, "Voice couldn't start signing in to Claude. Close
       it and open it again."), note: null, canSignIn: true }`. Either way `signingIn` goes false.
     - Leaving the screen while signing in (`onUnmounted`) calls `claudeSignInCancel()`.
-    - The help line under the card becomes: "Persona Builder never sees your Claude password: you sign
+    - The help line under the card becomes: "Voice never sees your Claude password: you sign
       in on Claude's own page. Its sign-in is separate from the Claude app and from the Claude Code you
       use yourself. Claude is the only choice for now. Other AI providers come later."
     - The `check()` failure fallback status gains `canSignIn: false`.
 
-12. **`builder/install/How to install.txt`**, line 3–4 become: "Persona Builder works with Claude
+12. **`builder/install/How to install.txt`**, line 3–4 become: "Voice works with Claude
     Code. If you don't have it yet, the app tells you how to get it; then you sign in to Claude from the
     app's *Connect Claude* step." Keep the file's line width.
 
@@ -270,9 +270,9 @@ names only, no real person or path.
 
 ## Done when
 
-`CARGO_NET_OFFLINE=true cargo test -j 2 -p persona-builder-agent -p persona-builder-api -p
-persona-builder-cli -p persona-builder-app -- --test-threads=2`, `cargo clippy -j 2 -p
-persona-builder-agent -p persona-builder-api -p persona-builder-cli -p persona-builder-app
+`CARGO_NET_OFFLINE=true cargo test -j 2 -p voice-agent -p voice-api -p
+voice-cli -p voice-app -- --test-threads=2`, `cargo clippy -j 2 -p
+voice-agent -p voice-api -p voice-cli -p voice-app
 --all-targets -- -D warnings`, `cargo fmt --check`, `pnpm -C builder/ui test` and
 `pnpm -C builder/ui build` pass, and `git status --short builder/ui/src/types/generated` shows the
 regenerated `ClaudeStatus.ts`. Report what you changed by file, the red you saw for each test, and

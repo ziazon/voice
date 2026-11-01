@@ -1,8 +1,8 @@
 # PB1 brief: the member format in Rust, the neutral base, one field pack
 
-Persona Builder is a standalone app that builds a person's AI assistant from their own Claude
-history. PB0 laid an empty Cargo workspace (`builder/core`, library `persona_builder`;
-`builder/cli`, binary `persona-builder`). This slice teaches the core library to read and write an
+Voice is a standalone app that builds a person's AI assistant from their own Claude
+history. PB0 laid an empty Cargo workspace (`builder/core`, library `voice_core`;
+`builder/cli`, binary `voice`). This slice teaches the core library to read and write an
 assistant's files exactly as the existing Python tooling does, rewrites the two template files a
 person reads into plain language, and adds the first field pack.
 
@@ -302,10 +302,10 @@ Set by {{PRINCIPAL}} on {{DATE}}.
 The four open lines are a suggested start; {{PRINCIPAL}} may close any of them, or open others.
 ```
 
-## 8. The CLI: `persona-builder member show <member.json>`
+## 8. The CLI: `voice member show <member.json>`
 
 A clap subcommand group `member` with one command `show <PATH>`: `read_member`, print
-`to_python_json` of the result on stdout, exit 0; on error print `persona-builder: <error>` on
+`to_python_json` of the result on stdout, exit 0; on error print `voice: <error>` on
 stderr and exit 1. `--version` keeps working.
 
 ## 9. Tests (all red first)
@@ -349,7 +349,7 @@ Unit tests beside each module, plus integration tests in `builder/core/tests/` a
 9. **`MemberDir::open`** on a `new_member` output works (`has_lens` false) and names the first
    missing required file when one is deleted.
 10. **CLI** (`builder/cli/tests/member_show.rs`): `member show` on a `new_member` output prints
-    exactly the file's bytes; on a missing path it exits 1 with `persona-builder: ` on stderr.
+    exactly the file's bytes; on a missing path it exits 1 with `voice: ` on stderr.
 
 Run a mutation check for each of: the `ensure_ascii` escaping, the private-filter join, the
 placeholder order (swap `PRINCIPAL` and `PRINCIPAL_SLUG`), and the skipped `README.md`. Back up the
@@ -358,8 +358,8 @@ Never use `git checkout --` or `git stash`.
 
 ## 10. Docs
 
-- `.ai/PROJECT.md` table: change the `builder/core/` row's "what" to `The Persona Builder core
-  library (persona_builder): the member format, the dial, field packs` and its tests to
+- `.ai/PROJECT.md` table: change the `builder/core/` row's "what" to `The Voice core
+  library (voice_core): the member format, the dial, field packs` and its tests to
   `builder/core/src/`, `builder/core/tests/`; add a row `crew/_fields/` | `Field packs: starter
   decisions and words per kind of work` | `builder/core/tests/`.
 - `README.md` folder table: after the `builder/` row add `| \`crew/_fields/\` | Field packs: a short

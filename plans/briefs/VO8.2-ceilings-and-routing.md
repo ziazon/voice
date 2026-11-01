@@ -1,6 +1,6 @@
 # VO8.2 brief: ceilings per source, and routing in the privacy guard
 
-Persona Builder (soon Voice) asks a model in five places, all through the `Provider` trait VO8.1
+Voice asks a model in five places, all through the `Provider` trait VO8.1
 added (`builder/agent/src/provider.rs`): the build's steps (`builder/build/src/build.rs`, `Asker`),
 the interview draft (`builder/build/src/interview.rs`, `draft`), `refresh` and `apply`
 (`builder/grow/src/refresh.rs`, `apply.rs`, through `Asker`) and panel turns
@@ -21,7 +21,7 @@ Read first: `AGENTS.md`, `.ai/PROJECT.md`, `.ai/SECURITY.md`, `CONTRIBUTING.md`,
 This is a public repo: invented names only, no real person, no fixed paths. Add no dependency.
 Commit nothing; leave every change in the working tree.
 
-## 1. Sources and ceilings: `builder/core/src/ceilings.rs`, `persona_builder::ceilings`
+## 1. Sources and ceilings: `builder/core/src/ceilings.rs`, `voice_core::ceilings`
 
 Add `pub mod ceilings;` to `builder/core/src/lib.rs`. Plain data, no I/O.
 
@@ -45,7 +45,7 @@ Exact table (id, `name()` for people, `default_ceiling()`, `read_today()`):
 |---|---|---|---|---|
 | ClaudeHistory | `claude-history` | `your Claude history (your Claude Code sessions and your claude.ai export)` | Anthropic | yes |
 | CrewFolder | `crew-folder` | `your assistant's own folder` | Anthropic | yes |
-| Typed | `typed` | `what you type into Persona Builder (interview answers, notes on answers, a panel's question)` | Anthropic | yes |
+| Typed | `typed` | `what you type into Voice (interview answers, notes on answers, a panel's question)` | Anthropic | yes |
 | SkillMirror | `skill-mirror` | `the copy of your skills` | Anthropic | no |
 | Mail | `mail` | `your mail` | LocalOnly | no |
 | Calendar | `calendar` | `your calendar` | LocalOnly | no |
@@ -89,13 +89,13 @@ parity depend on the struct). In `builder/core/src/member.rs`:
   loads member configs from a scratch folder) proving it; if it fails, make the Python loader
   ignore `ceilings` (it does not route model calls) and say so in the report.
 
-## 2. The guard: `builder/agent/src/guard.rs`, `persona_builder_agent::guard`
+## 2. The guard: `builder/agent/src/guard.rs`, `voice_agent::guard`
 
 Add `pub mod guard;` to `builder/agent/src/lib.rs`.
 
 ### The brief names its sources
 
-`Brief` (`provider.rs`) gains `pub sources: &'a [Source]` (from `persona_builder::ceilings`). Every
+`Brief` (`provider.rs`) gains `pub sources: &'a [Source]` (from `voice_core::ceilings`). Every
 caller sets it (section 4). The guard refuses a brief whose `sources` is empty, before anything
 else: `Error::Invalid("a step must name the sources of what it sends".into())`.
 
@@ -169,7 +169,7 @@ pub fn kept_home(source: Source, ceiling: Ceiling, provider: &str, reach: Reach)
 ```
 
 Exactly (one line):
-`Nothing was sent. This step uses {source.name()}, which you keep {ceiling.words()}, and {provider} sends what it's given to {reach words}. To let it go there, run: persona-builder ceilings set <assistant folder> {source.id()} {needed(reach).id()}`
+`Nothing was sent. This step uses {source.name()}, which you keep {ceiling.words()}, and {provider} sends what it's given to {reach words}. To let it go there, run: voice ceilings set <assistant folder> {source.id()} {needed(reach).id()}`
 
 Reach words: `OwnMachines` → `your own machines`, `Anthropic` → `Anthropic`, `ThirdParty` →
 `another company`.
@@ -227,15 +227,15 @@ When the ceiling is wide enough for that reach but the provider still isn't allo
   error with the guard's sentence, shown as today's errors are (extend `message`/`turn_error` so the
   `Nothing was sent.` sentence passes through instead of the generic failure).
 
-## 5. Where the person changes a ceiling: `persona-builder ceilings`
+## 5. Where the person changes a ceiling: `voice ceilings`
 
 In `builder/cli/src/main.rs`, a subcommand group beside the others:
 
-- `persona-builder ceilings show <member_dir>`: reads the member (`read_member`), prints one line
+- `voice ceilings show <member_dir>`: reads the member (`read_member`), prints one line
   per source in `Source::ALL` order, tab-separated: `{id}\t{ceiling id}\t{set|default}\t{name}`,
-  with ` (Persona Builder doesn't read this yet)` appended to the name when `read_today()` is false.
+  with ` (Voice doesn't read this yet)` appended to the name when `read_today()` is false.
   Then one line per entry in `AGENTS`: `{agent name} sends what it's given to {reach words}.`
-- `persona-builder ceilings set <member_dir> <source id> <ceiling id>`: an unknown source or
+- `voice ceilings set <member_dir> <source id> <ceiling id>`: an unknown source or
   ceiling id is refused with the same sentences as `validate_config` (with `{source}` the
   member.json path). It reads member.json **alone** (not merged with private.json, so nothing
   private is copied into it): refuse a link (`refuse_symlink`), parse, `Member::from_value`, set
@@ -270,7 +270,7 @@ records every sealed brief it gets; a counter):
   `[ClaudeHistory]` (default Anthropic) goes to the Anthropic fake; with `[Mail]` (LocalOnly) to the
   own-machines fake; with `[ClaudeHistory, Mail]` to the own-machines fake.
 - Refusal: only an Anthropic fake, a brief of `[CrewFolder, Mail]`: `call` fails with exactly
-  `Nothing was sent. This step uses your mail, which you keep on your own machines, and Fake sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> mail anthropic`,
+  `Nothing was sent. This step uses your mail, which you keep on your own machines, and Fake sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> mail anthropic`,
   the fake was never called, and the session's ledger has no line.
 - The person's setting counts: ceilings with `claude-history` set to `local-only` refuse a
   `[ClaudeHistory]` brief to the Anthropic fake.
@@ -328,7 +328,7 @@ which the app's `build` sends to Claude Code. Mail records carry no marker in th
 - **The build names Mail when mail can be in its corpus.** In `builder/build/src/build.rs`, add
   `pub fn sources(home: &Path, member: &Member) -> Result<Vec<Source>>`: `SOURCES`, plus
   `Source::Mail` (appended last) when either the member's state folder holds a file whose name
-  starts `decisions-src-` and ends `.jsonl` (list it with `persona_builder_ingest::private::list_private`,
+  starts `decisions-src-` and ends `.jsonl` (list it with `voice_ingest::private::list_private`,
   as `discover`'s callers do), or the member's merged config lists a source of kind `mbox` in
   `member.extra["sources"]` (consented or not). `build` uses it for its `Asker`. `refresh`,
   `apply` and the interview are unchanged: they send no corpus record (refresh and apply send
@@ -355,7 +355,7 @@ which the app's `build` sends to Claude Code. Mail records carry no marker in th
 - **The provider's name closes its aside** (the Verifier): Claude Code's name is
   `Claude, through your own Claude Code`, so `…, and {provider} sends…` leaves a dangling comma.
   The refusal becomes:
-  `Nothing was sent. This step uses {source.name()}, which you keep {ceiling.words()}, and the provider for this step, {provider}, sends what it's given to {reach words}. To let it go there, run: persona-builder ceilings set <assistant folder> {source.id()} {needed(reach).id()}`
+  `Nothing was sent. This step uses {source.name()}, which you keep {ceiling.words()}, and the provider for this step, {provider}, sends what it's given to {reach words}. To let it go there, run: voice ceilings set <assistant folder> {source.id()} {needed(reach).id()}`
   and the no-consent one:
   `Nothing was sent. This step uses {source.name()}, and the provider for this step, {provider}, sends what it's given to another company, which you haven't agreed to.`
   `ceilings show`'s provider line becomes `{agent name}: sends what it's given to {reach words}.`

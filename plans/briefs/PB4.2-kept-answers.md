@@ -22,16 +22,16 @@ the model calls and the member writes. Nothing here calls a model or writes in t
 
 ### The crate
 
-- **A new crate `builder/grow`** (package `persona-builder-grow`, library `persona_builder_grow`),
-  added to the workspace `members` in the root `Cargo.toml`. Dependencies: `persona-builder` (core:
-  `error`, `member`), `persona-builder-ingest` (the private readers and writers, `lock_state`, the
-  filters), `persona-builder-steps` (`book::book` for the member's categories), `serde = { version =
+- **A new crate `builder/grow`** (package `voice-grow`, library `voice_grow`),
+  added to the workspace `members` in the root `Cargo.toml`. Dependencies: `voice-core` (core:
+  `error`, `member`), `voice-ingest` (the private readers and writers, `lock_state`, the
+  filters), `voice-steps` (`book::book` for the member's categories), `serde = { version =
   "1", features = ["derive"] }`, `serde_json = { version = "1", features = ["preserve_order"] }`,
   `regex = "=1.13.1"`. `builder/cli` depends on it.
 - **Modules:** `record.rs` (the five records, parsing and the one-record checks), `rules.rs` (the
   rules that span records), `store.rs` (the private files), `keep.rs` (keeping an answer), `text.rs`
   (every sentence a person sees). `lib.rs` only declares them and documents the crate in one line.
-- `.ai/PROJECT.md`'s table gains a row for `builder/grow/` ("Kept answers (persona_builder_grow): the
+- `.ai/PROJECT.md`'s table gains a row for `builder/grow/` ("Kept answers (voice_grow): the
   growth loop's records, its rule checks and the private store of signals and cases"; tests
   `builder/grow/tests/`, `builder/cli/tests/keep.rs`), and the `docs/spec/growth-loop.md` row's test
   column also names `builder/grow/tests/`.
@@ -149,17 +149,17 @@ where a value is answered.
   with `pub struct Kept { pub signal: Signal, pub case: Case }`.
 - **The input** is the JSON object the app writes: `kind`, `area`, `situation`, `wanted` (required),
   `persona_said`, `verdict`, `source`, `given_by` (optional; `given_by` defaults to `subject`).
-  `schema`, `id`, `persona` and `at` are refused (`text::FILLED_IN`: Persona Builder fills those in);
+  `schema`, `id`, `persona` and `at` are refused (`text::FILLED_IN`: Voice fills those in);
   any other key is refused (`text::unknown_key(key)`; a key name is the app's, not the person's
   words, but cut it to 40 characters). The input is at most 64 KiB (`text::TOO_BIG`).
 - **Checks before anything is written,** each a plain refusal that never quotes the person's words:
-  - `area` is one of the member's categories (`persona_builder_steps::book::book(member)?.categories`),
+  - `area` is one of the member's categories (`voice_steps::book::book(member)?.categories`),
     else `text::unknown_area` listing the categories (these are the member's own settings, safe to
     show);
   - `situation`, `wanted`, `persona_said` at most 2,000 characters each, `source` at most 100, none
     empty or only white space; no control character other than `\n` and `\t`, and none of the
     invisible characters the build refuses in a model's points (reuse the same list: make
-    `builder/build/src/build.rs`'s hidden-character predicate a `pub fn` in `persona_builder_steps`
+    `builder/build/src/build.rs`'s hidden-character predicate a `pub fn` in `voice_steps`
     (new module `text_check.rs`, `pub fn hidden(c: char) -> bool`) and call it from both crates, so
     there is one list; move its tests with it);
   - the filters: `filters.kind(text)` on each of `area`, `situation`, `wanted`, `persona_said` and
@@ -178,11 +178,11 @@ where a value is answered.
 
 ### The CLI
 
-- `persona-builder keep <member_dir> --signal <file>`: `<file>` is `NAME` or `FOLDER/NAME` in the
+- `voice keep <member_dir> --signal <file>`: `<file>` is `NAME` or `FOLDER/NAME` in the
   state folder, ending `.json`, read with `json_at` exactly as `interview answer` reads `--answers`.
   Prints `text::kept(&kept)` (*"Kept your answer. It's now one of the tests your assistant is
   checked on at its next refresh."*) and `saved to ~/.claude/state/<slug>/growth/`.
-- `persona-builder cases <member_dir>`: prints `text::cases_summary` from `Store::cases()`: one line
+- `voice cases <member_dir>`: prints `text::cases_summary` from `Store::cases()`: one line
   overall (*"Tests made from your answers: 3 waiting for a refresh, 5 in use, 1 retired."*, or
   `text::NO_CASES` when there are none: *"You haven't given your assistant any answers to learn
   from yet."*), then one line per area that has any, in the member's category order. Counts and
@@ -274,7 +274,7 @@ test proved red first:
    unchanged. The CLI's `keep` reads the signal with `max` 64 KiB; the store reads `signals.jsonl` and
    `cases.jsonl` with `max` 64 MiB and each JSON record with `max` 16 MiB.
 7. **`unknown_key` shows a key only when it matches `^[a-z_]{1,40}$`** (security L3, Verifier 1);
-   otherwise *"The answer has a field Persona Builder doesn't know. Leave it out and try again."*
+   otherwise *"The answer has a field Voice doesn't know. Leave it out and try again."*
 8. **Rule 8 at write time** (Verifier 2): under the lock, `save_approval` refuses a second approval
    for a proposal (`rules::one_approval` over the stored ones plus the new one) and an approval for a
    proposal not on file; `save_measurement` refuses when the stored approval it names is missing or
@@ -283,7 +283,7 @@ test proved red first:
 9. **`save_*_unlocked` twins** (Verifier 3): `pub(crate) fn save_proposal_unlocked`,
    `save_approval_unlocked`, `save_measurement_unlocked`; the public ones take the lock and call them,
    as the append pair does. `Store::lock` stays `pub(crate)`.
-10. **The lock's message** (Verifier 4): *"Persona Builder is already working on this assistant in
+10. **The lock's message** (Verifier 4): *"Voice is already working on this assistant in
     another window. Wait for it to finish, then try again"*; the three tests that look for
     `already building` look for `already working on this assistant`.
 

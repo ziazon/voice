@@ -86,8 +86,8 @@ record.
 
 ## Done means
 
-- `cargo test -p persona-builder-api -p persona-builder-ingest` green, and
-  `cargo clippy -p persona-builder-api -p persona-builder-ingest --all-targets -- -D warnings` and
+- `cargo test -p voice-api -p voice-ingest` green, and
+  `cargo clippy -p voice-api -p voice-ingest --all-targets -- -D warnings` and
   `cargo fmt --check` clean, from the repo root (the workspace `Cargo.toml` is there).
 - `bash scripts/ci-local.sh` green from the repo root.
 - Commit nothing; leave the changes in the worktree. Report the red output you saw for each new

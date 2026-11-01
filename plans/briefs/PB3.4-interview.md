@@ -18,7 +18,7 @@ nothing), and the answers become training records that `merge` already picks up.
 
 ## Decisions (made, do not reopen)
 
-- **A new crate `builder/build`** (package `persona-builder-build`, library `persona_builder_build`):
+- **A new crate `builder/build`** (package `voice-build`, library `voice_build`):
   the build's steps that call a model. `steps` stays model-free and `agent` stays free of build logic;
   PB3.3's build joins this crate. Dependencies: core, ingest, steps, agent, `serde_json`
   (`preserve_order`). `.gitignore` ignores every `build/`, so it gains `!builder/build/`.
@@ -42,7 +42,7 @@ nothing), and the answers become training records that `merge` already picks up.
   organisation, no private matters. **No record goes in the prompt**: the history is thin, and
   nothing of the person's needs to leave the machine for this step.
 - **The check** (`check(weights, drafted)`): `round`'s own rules through a new
-  `persona_builder_steps::round::check_questions` (the same parsing `round` uses, no answers), then
+  `voice_steps::round::check_questions` (the same parsing `round` uses, no answers), then
   exactly 20 questions, numbered 1 to 20 in order, each `header` one of the kinds, a question at most
   400 characters, a label 100, a description 300. Answers the file rebuilt with only `round`'s keys
   (`n`, `header`, `question`, `multiSelect`, `recommended`, `options[{label, description}]`). Errors

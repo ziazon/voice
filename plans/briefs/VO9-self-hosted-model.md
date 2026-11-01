@@ -1,6 +1,6 @@
 # VO9 brief: one self-hosted model adapter
 
-Persona Builder (soon Voice) asks a model only through the privacy guard
+Voice asks a model only through the privacy guard
 (`builder/agent/src/guard.rs`), which hands a sealed brief to the first `Provider` whose reach every
 source's ceiling allows (VO8.1, VO8.2). Today there is one provider, the person's own Claude Code
 (`Reach::Anthropic`), so a step that carries data the person keeps on their own machines (mail, by
@@ -9,7 +9,7 @@ default) is refused.
 This slice adds the **second provider: a model server on the person's own machines or home
 network** (`Reach::OwnMachines`): Ollama, llama.cpp's `llama-server`, LM Studio, vLLM, or anything
 else that speaks the OpenAI-style `POST /v1/chat/completions` with a JSON-schema reply. The person
-sets it up per assistant with `persona-builder self-hosted set`; every place that builds a guard
+sets it up per assistant with `voice self-hosted set`; every place that builds a guard
 puts it after Claude Code, so steps that may go to Anthropic go where they go today and only steps
 with data kept home go to the server.
 
@@ -123,7 +123,7 @@ impl Server {
 ```
 
 Model `load`/`save` on `ledger::Cap::load`/`save` (`read_private_optional`, `write_private`,
-`remove_private` from `persona_builder_ingest::private`; a missing state folder reads as `None`
+`remove_private` from `voice_ingest::private`; a missing state folder reads as `None`
 the way `Cap::load` reads it as the default). The file is
 `{"url": "http://192.168.1.20:11434", "model": "qwen3:8b"}`, read with a `serde`
 `deny_unknown_fields` struct and checked again with `Server::new`; any failure is
@@ -171,7 +171,7 @@ let config = ureq::Agent::config_builder()
     .max_redirects(0)
     .proxy(None)
     .timeout_global(Some(timeout))
-    .user_agent(format!("persona-builder/{}", persona_builder::VERSION))
+    .user_agent(format!("voice/{}", voice_core::VERSION))
     .build();
 ureq::Agent::with_parts(config, DefaultConnector::default(), OwnNetworkOnly)
 ```
@@ -248,23 +248,23 @@ equal one object's `id` string. Not listed → `text::no_model(model)`; any othe
 Exact texts (plain language; no tool words):
 
 ```rust
-pub const SERVER_UNREACHABLE: &str = "Persona Builder couldn't reach your model server. Check it's running and that its address is right (`persona-builder self-hosted show`), then try again.";
-pub const SERVER_NOT_OWN: &str = "Nothing was sent. Your model server's address leads outside this computer and your own network, so Persona Builder won't use it. Give it the address of a computer on your own network.";
+pub const SERVER_UNREACHABLE: &str = "Voice couldn't reach your model server. Check it's running and that its address is right (`voice self-hosted show`), then try again.";
+pub const SERVER_NOT_OWN: &str = "Nothing was sent. Your model server's address leads outside this computer and your own network, so Voice won't use it. Give it the address of a computer on your own network.";
 pub const SERVER_FAILED: &str = "Your model server couldn't finish this step. Check it answers you and has the model loaded, then try again.";
-pub const SERVER_STOPPED: &str = "Persona Builder stopped before asking your model server, as you asked.";
+pub const SERVER_STOPPED: &str = "Voice stopped before asking your model server, as you asked.";
 pub const BAD_SERVER_URL: &str = "A model server's address looks like http://192.168.1.20:11434 or http://localhost:1234: http or https, a computer's name or address, and a port, with nothing after it.";
 pub const BAD_SERVER_MODEL: &str = "A model's name is letters and digits, and may have . _ - : / or @ in it, up to 128 in all, like qwen3:8b.";
-pub const NO_STATE_FOR_SERVER: &str = "This assistant has no private folder yet, so there's nowhere to keep its model server. Run `persona-builder consent agree` first.";
+pub const NO_STATE_FOR_SERVER: &str = "This assistant has no private folder yet, so there's nowhere to keep its model server. Run `voice consent agree` first.";
 pub const NO_SERVER: &str = "No model server is set up for this assistant, so a step with data you keep on your own machines doesn't run.";
-pub const SELF_HOSTED_HINT: &str = "To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`.";
+pub const SELF_HOSTED_HINT: &str = "To run it without the data leaving your machines, set up a model server with `voice self-hosted set`.";
 /// Every fixed sentence a model-server call can fail with, for callers that pass only known
 /// sentences on to a person.
 pub const SERVER_MESSAGES: [&str; 4] = [SERVER_UNREACHABLE, SERVER_NOT_OWN, SERVER_FAILED, SERVER_STOPPED];
-pub fn server_cut_off(minutes: u64) -> String  // "Your model server was still working on this step after {n} minute(s), so Persona Builder stopped waiting. Try again; if it happens again, try a smaller model or a smaller step."
+pub fn server_cut_off(minutes: u64) -> String  // "Your model server was still working on this step after {n} minute(s), so Voice stopped waiting. Try again; if it happens again, try a smaller model or a smaller step."
 pub const SERVER_CUT_OFF_START: &str = "Your model server was still working on this step after ";
-pub fn server_damaged(path: &Path) -> String   // "The model server settings saved at {path} can't be read, so Persona Builder won't use them. Set them again with `persona-builder self-hosted set`, or remove them with `persona-builder self-hosted off`."
+pub fn server_damaged(path: &Path) -> String   // "The model server settings saved at {path} can't be read, so Voice won't use them. Set them again with `voice self-hosted set`, or remove them with `voice self-hosted off`."
 pub fn no_model(model: &str) -> String         // "Your model server answers, but it doesn't list the model {model}. Load it on the server, or give the name the server lists."
-pub fn server(server: &Server) -> String       // "Model server: {url}, model {model}. Steps with data you keep on your own machines go to it. Before each step Persona Builder checks the address still leads to this computer or your own network."
+pub fn server(server: &Server) -> String       // "Model server: {url}, model {model}. Steps with data you keep on your own machines go to it. Before each step Voice checks the address still leads to this computer or your own network."
 ```
 
 `server_cut_off` uses "minute" for 1 and "minutes" otherwise, as `cut_off` does.
@@ -349,7 +349,7 @@ from it.
 `{id} (model {m})`. When `built.by` is empty, `who` is `the person's own Claude Code (model
 {model})`, exactly today's words, so a Claude-only build writes the same entry as today.
 
-## 7. The command line: `persona-builder self-hosted`
+## 7. The command line: `voice self-hosted`
 
 In `builder/cli/src/main.rs`, a `SelfHosted { #[command(subcommand)] command: SelfHostedCommand }`
 command beside `Limit`, documented "Use a model server on your own machines for this assistant":
@@ -371,7 +371,7 @@ enum SelfHostedCommand {
   `text::NO_STATE_FOR_SERVER`, as `limit_set` does), `save`, print `text::server`.
 - `off`: lock as `set` does, `Server::remove`, print `text::NO_SERVER`.
 
-`persona-builder agents` and `ceilings show` list the new provider through `AGENTS` already.
+`voice agents` and `ceilings show` list the new provider through `AGENTS` already.
 
 ## 8. Tests first (red, then green)
 
@@ -456,7 +456,7 @@ refused and saves nothing; `show` before and after; `off` removes it.
 ## 9. Done means
 
 - `bash scripts/ci-local.sh` passes (fmt, clippy with `-D warnings`, every test, the name guards).
-- `Cargo.lock` adds no package (only `persona-builder-agent`'s dependency list changes).
+- `Cargo.lock` adds no package (only `voice-agent`'s dependency list changes).
 - No real person, no fixed path, no network address outside `127.0.0.1` dialled by any test.
 - Report: each file changed, each test added, and the red failure you saw for each before green.
 
@@ -491,8 +491,8 @@ risks.
   ```
 
   `text::server(&server)`, two forms:
-  - not network: `Model server: {url}, model {model}, on this computer. Steps with data you keep on your own machines go to it, and before each step Persona Builder checks the address still leads to this computer.`
-  - network: `Model server: {url}, model {model}, on your network. Steps with data you keep on your own machines go to it. Before each step Persona Builder checks the address is on a private network, but it can't tell your network from someone else's: on other Wi-Fi, a stranger's computer could answer at the same address. Before you use other Wi-Fi, turn it off with persona-builder self-hosted off.`
+  - not network: `Model server: {url}, model {model}, on this computer. Steps with data you keep on your own machines go to it, and before each step Voice checks the address still leads to this computer.`
+  - network: `Model server: {url}, model {model}, on your network. Steps with data you keep on your own machines go to it. Before each step Voice checks the address is on a private network, but it can't tell your network from someone else's: on other Wi-Fi, a stranger's computer could answer at the same address. Before you use other Wi-Fi, turn it off with voice self-hosted off.`
 - Tests: `this_computer` table (true: `127.0.0.1`, `127.255.0.1`, `::1`, `::ffff:127.0.0.1`;
   false: `10.0.0.1`, `192.168.1.10`, `169.254.1.1`, `fd00::1`, `fe80::1`, `::ffff:192.168.1.10`,
   `8.8.8.8`); `Server::new("http://192.168.1.20:11434", m, false)` refused with

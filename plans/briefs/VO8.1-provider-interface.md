@@ -1,6 +1,6 @@
 # VO8.1 brief: the provider interface, Claude Code its first adapter
 
-Persona Builder (soon Voice) asks a model in five places: the build's steps
+Voice asks a model in five places: the build's steps
 (`builder/build/src/build.rs`, `Asker`), the interview draft (`builder/build/src/interview.rs`,
 `draft`), `refresh` and `apply` (`builder/grow/src/refresh.rs`, `apply.rs`, through `Asker`) and
 panel turns (`builder/panel-runner/src/turns.rs`, `ClaudeTurns`). Every one of them calls
@@ -16,10 +16,10 @@ Read first: `AGENTS.md`, `.ai/PROJECT.md`, `.ai/SECURITY.md`, `CONTRIBUTING.md`.
 This is a public repo: invented names only, no real person, no fixed paths. Add no dependency.
 Commit nothing; leave every change in the working tree.
 
-## 1. The trait: `builder/agent/src/provider.rs`, `persona_builder_agent::provider`
+## 1. The trait: `builder/agent/src/provider.rs`, `voice_agent::provider`
 
 Add `pub mod provider;` to `builder/agent/src/lib.rs`, and update that file's doc comment: the
-providers Persona Builder drives for its model calls, behind one tool-less trait; today one, the
+providers Voice drives for its model calls, behind one tool-less trait; today one, the
 person's own Claude Code.
 
 ```rust
@@ -87,10 +87,10 @@ builds one only changes the type's name). Move `Call`, `Usage` and `Reply` out o
 
 `Agent` gains `pub reach: Reach`. The one entry becomes
 `Agent { id: claude::AGENT_ID, name: claude::AGENT_NAME, reach: claude::REACH }`. Update its doc
-comment: the providers Persona Builder can drive, each with where its data goes.
+comment: the providers Voice can drive, each with where its data goes.
 
 Do **not** add `reach` to the app's DTO (`builder/api/src/dto.rs` `AgentInfo`, `app_info` in
-`builder/api/src/lib.rs`) or to `persona-builder agents`' output in `builder/cli/src/main.rs`:
+`builder/api/src/lib.rs`) or to `voice agents`' output in `builder/cli/src/main.rs`:
 both stay byte-identical. VO8.2 decides what the person sees.
 
 ## 4. Every model caller takes `&dyn Provider`

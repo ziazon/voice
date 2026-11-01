@@ -41,15 +41,15 @@
 
 ## 2026-10-26: shipped decision commands (PB8.1)
 
-An app-made assistant's SKILL.md runs the `persona-builder` shipped inside the app
-(`Contents/MacOS/persona-builder`), named as one quoted path when the assistant is made; the guided
+An app-made assistant's SKILL.md runs the `voice` shipped inside the app
+(`Contents/MacOS/voice`), named as one quoted path when the assistant is made; the guided
 build keeps `scripts/crew_decisions.py`. The template names both through `{{SIMILAR}}` and
 `{{RECORD}}`. An assistant made before this keeps its old SKILL.md; make it again to get the new one.
 
 ## 2026-10-26: texts go to the decision commands on stdin (PB8.3)
 
 The SKILL.md's look-up and record commands take their texts as one JSON object on stdin
-(`--stdin`, a quoted heredoc), never as shell words, in the app's `persona-builder` and the
+(`--stdin`, a quoted heredoc), never as shell words, in the app's `voice` and the
 guided build's Python alike; the flags stay for people typing the commands. JSON over one field
 per line because a text can hold line breaks and a line that matches the heredoc's end. An
 assistant made before this keeps its old SKILL.md; make it again to get the new one.
@@ -57,7 +57,7 @@ assistant made before this keeps its old SKILL.md; make it again to get the new 
 ## 2026-10-31: files the app never opens (VO8.3)
 
 The app checks every file of the person's it is about to read against a list of password and key
-files (`persona_builder::deny`), as given and with links resolved, without regard to letter case,
+files (`voice_core::deny`), as given and with links resolved, without regard to letter case,
 and never opens one that matches. The list is built in (the VO plan's list) plus the person's own
 `filters.denied_paths` in member.json or private.json: names, or `~/`/`/` paths, in plain
 letters only, because the app has no Unicode normalisation and macOS writes accented names
@@ -68,7 +68,7 @@ gets past a path list; the text filters still apply to what is read.
 
 ## 2026-10-31: one provider interface for every model call (VO8.1)
 
-Every place the app asks a model takes a `Provider` (`persona_builder_agent::provider`), not
+Every place the app asks a model takes a `Provider` (`voice_agent::provider`), not
 Claude Code itself: an id, a name, where its data goes (`Reach`: your own machines, Anthropic, a
 third party) and one tool-less call. A `Brief` has no tools field, so no provider can be handed
 one. The person's own Claude Code is the first provider, unchanged. Finding, checking and signing
@@ -77,7 +77,7 @@ in to Claude Code stay Claude Code's own, because a later provider will have non
 ## 2026-10-31: where each source's data may go (VO8.2)
 
 Every brief names the sources of what it carries, and every model call goes through the privacy
-guard (`persona_builder_agent::guard`): it hands the brief only to a provider whose reach every
+guard (`voice_agent::guard`): it hands the brief only to a provider whose reach every
 source's ceiling allows, seals it for that provider, and refuses in plain words when none is
 allowed, before anything is spent. A provider takes only a sealed brief and checks the seal again
 first. The ceilings (`local-only`, `anthropic`, `any-consented`) default to the VO plan's gate
@@ -85,11 +85,11 @@ answer Q6: the person's Claude history, the assistant's own folder and the copy 
 may go to Anthropic; mail, calendar, contacts, family and legal skills stay on their own
 machines. Two choices made at pickup:
 
-- **What the person types into Persona Builder is a source of its own** (`typed`: interview
+- **What the person types into Voice is a source of its own** (`typed`: interview
   answers, notes on answers, a panel's question and steers), defaulting to `anthropic` because
   it is typed into steps that run on Claude Code. The person can keep it home like any other.
 - **Ceilings live in member.json** (`"ceilings": {"<source>": "<ceiling>"}`), changed with
-  `persona-builder ceilings show|set`; private.json may not hold them, so one file is the only
+  `voice ceilings show|set`; private.json may not hold them, so one file is the only
   setting. The app gets its screen in a later slice.
 
 `any-consented` reaches no third party yet: there is no third-party provider and no record of
@@ -105,7 +105,7 @@ last build found, numbers but no record.
 The second provider is any model server on this computer or the person's own network that speaks
 the OpenAI-style `POST /v1/chat/completions` with a JSON-schema reply (Ollama, llama.cpp's
 `llama-server`, LM Studio, vLLM all do), set up per assistant with
-`persona-builder self-hosted set --url … --model …` and kept in the assistant's state folder
+`voice self-hosted set --url … --model …` and kept in the assistant's state folder
 (`self-hosted.json`, 0600), never in member.json, because the address belongs to this Mac.
 Choices made at pickup:
 
@@ -145,15 +145,15 @@ The VO11 spike (`docs/spikes/VO11-os-sandbox.md`) decides how the broker is pack
   `CONNECT` to port 443 of a listed name only. Claude Code follows `HTTPS_PROXY` and has no SOCKS
   support.
 - **The profile's own tests are part of the checks.** `builder/agent/tests/sandbox_profile.rs`
-  runs on every Mac in `scripts/ci-local.sh` (`PERSONA_BUILDER_REQUIRE_SANDBOX=1`), since Apple
+  runs on every Mac in `scripts/ci-local.sh` (`VOICE_REQUIRE_SANDBOX=1`), since Apple
   doesn't document the profile language and an update could change it.
 - **Not wired in yet.** Nothing runs under the profile until VO11.1, which waits on the owner's
   answer about where Claude Code's login lives inside it (the profile reaches no Keychain).
 
 ## 2026-10-31: the anonymizer copies a skill whole or not at all (VO3)
 
-`persona-builder anonymize` copies the skills a person agreed to, with private details taken out
-(`persona_builder_ingest::anonymize`, `::skills`; brief `plans/briefs/VO3-anonymizer.md`):
+`voice anonymize` copies the skills a person agreed to, with private details taken out
+(`voice_ingest::anonymize`, `::skills`; brief `plans/briefs/VO3-anonymizer.md`):
 
 - **A yes per skill, kept in private state** (`~/.claude/state/<slug>/anonymizer/skills.json`),
   with the folder it was given for: a skill that moves waits for a new yes. claude.ai's synced

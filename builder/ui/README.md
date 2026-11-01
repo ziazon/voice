@@ -1,6 +1,6 @@
-# Persona Builder screens
+# Voice screens
 
-`@persona-builder/screens` is the app's Vue screens as a source package that another app can mount.
+`@voice/screens` is the app's Vue screens as a source package that another app can mount.
 It uses Tabler's CSS and a host-provided `Backend` for the app's commands.
 
 The screens so far: assistants, a new one, permission, connect Claude, your history, build and the interview, the report and review, panels, save a copy, turn it on, the claude.ai files, forget.
@@ -12,8 +12,8 @@ pnpm -C builder/ui tauri dev
 ```
 
 A host calls `provideBackend(backend)` in its parent component's setup, then mounts
-`PersonaBuilder` as a child. It loads Tabler's CSS, then
-`@persona-builder/screens/theme.css` (the app's colours and readable form fields), and chooses its
+`VoiceApp` as a child. It loads Tabler's CSS, then
+`@voice/screens/theme.css` (the app's colours and readable form fields), and chooses its
 theme by setting `data-bs-theme` to `light` or `dark` on `<html>`. The standalone app
 provides the Tauri backend and follows the system's light or dark theme.
 

@@ -60,7 +60,7 @@ sentence a person reads: `~/.codex/skills/plain-language/SKILL.md`. Run cargo wi
    - step set, no daily: `Some(call)`, never `Reached`.
    - **no step, daily set: `Some(left)`, where `left` is what is left of today's limit, rounded down to
      whole cents** (`((daily - spent) * 100.0 + 1e-6).floor() / 100.0`); `Reached` when `left < 0.01`.
-     Why: the screen promises "Persona Builder checks the limit before every step, so it stops before it
+     Why: the screen promises "Voice checks the limit before every step, so it stops before it
      goes over", so a call with no step limit still never gets more than the day has left. Calls for
      one assistant never run at the same time (the state lock), so this costs nothing in parallelism.
    - neither set: `Ok(None)`, never `Reached`.
@@ -89,7 +89,7 @@ sentence a person reads: `~/.codex/skills/plain-language/SKILL.md`. Run cargo wi
      - no daily, step set: "No daily limit, and at most $Y for one step, as Claude Code estimates it."
      - daily set, no step: "Daily limit: about $X a day, and no separate limit for one step, as Claude
        Code estimates it."
-     - neither: "No limit: Persona Builder doesn't stop for the day or for one step."
+     - neither: "No limit: Voice doesn't stop for the day or for one step."
    - `spend(spent, cap)` with `cap == 0`: "Today, about $S, with no daily limit, as Claude Code estimates it."
 9. **CLI (`builder/cli/src/main.rs`):** every `daily_cap_usd`/`call_cap_usd`/`limit set` doc comment
    gains "0 for no limit". `cap_for`: when only the daily flag is given, the step is the saved step,
@@ -114,7 +114,7 @@ sentence a person reads: `~/.codex/skills/plain-language/SKILL.md`. Run cargo wi
       "Enter 0 in either box for no limit."
     - The saved message follows the four cases: both set, today's sentence; otherwise "Saved. Persona
       Builder doesn't stop for the day" / "has no limit for one step" in the same plain style, e.g.
-      "Saved. There's no daily limit, and one step may use at most $5.00." / "Saved. Persona Builder
+      "Saved. There's no daily limit, and one step may use at most $5.00." / "Saved. Voice
       stops for the day at about $50.00, with no separate limit for one step." / "Saved. There's no
       limit." Show amounts with `toFixed(2)` as today.
 11. **The spend line on `BuildRun.vue` and `Refresh.vue`:** when `spend.dailyCapUsd === 0`, "Today,
@@ -161,8 +161,8 @@ Write each failing test before its code, and see it fail on its assertion.
 
 ## Done when
 
-`CARGO_NET_OFFLINE=true cargo test -j 2 -p persona-builder-agent -p persona-builder-api -p
-persona-builder-cli -- --test-threads=2` (check the crate names in each `Cargo.toml`), `cargo clippy`
+`CARGO_NET_OFFLINE=true cargo test -j 2 -p voice-agent -p voice-api -p
+voice-cli -- --test-threads=2` (check the crate names in each `Cargo.toml`), `cargo clippy`
 on those crates with `--all-targets -- -D warnings`, `cargo fmt --check`, and
 `pnpm -C builder/ui test` and `pnpm -C builder/ui build` pass. Report what you changed by file, the
 red you saw for each test, and the mutation results. No real person, handle or path in any fixture

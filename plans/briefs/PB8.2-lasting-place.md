@@ -1,7 +1,7 @@
 # PB8.2 brief: the shipped command's path is only written from a lasting place
 
-Persona Builder is a standalone app that builds a person's AI assistant from their own Claude
-history. When it makes an assistant, it writes the path of the `persona-builder` command it ships
+Voice is a standalone app that builds a person's AI assistant from their own Claude
+history. When it makes an assistant, it writes the path of the `voice` command it ships
 into the assistant's `SKILL.md` (PB8.1), and Claude Code runs that path every time the assistant
 looks up or records a decision. `builder/core/src/cli_command.rs` turns the path into one shell
 word (`cli_word`), refusing shell characters, but it never asks *where* the path is. An app opened
@@ -23,7 +23,7 @@ Commit nothing; leave the changes in the working tree.
 
 ## Sources (checked 2026-10-27)
 
-- `builder/install/install.sh` installs into `$HOME/Applications/Persona Builder.app`, and
+- `builder/install/install.sh` installs into `$HOME/Applications/Voice.app`, and
   `scripts/build-mac-app.sh` builds the shipped CLI with `cargo build --release`. So every copy a
   person runs is a release build, and a correctly installed one sits under the home folder.
 - On macOS, `std::env::temp_dir()` is the per-user `/private/var/folders/<xx>/<id>/T`: every
@@ -36,7 +36,7 @@ Commit nothing; leave the changes in the working tree.
 
 Every integration test that makes an assistant (`builder/api/tests/*.rs`,
 `builder/cli/tests/assistants.rs`) runs with a scratch home in the temp folder, while the
-`persona-builder` it ships is the test build in `target/`, which is outside that scratch home.
+`voice` it ships is the test build in `target/`, which is outside that scratch home.
 A development build (`cargo test`, `tauri dev`) runs from its own build folder, wherever the clone
 is. So the place rule applies when `cfg!(debug_assertions)` is false, and the check itself is
 unit-tested directly with roots the test chooses. Do not add any environment variable or other
@@ -54,7 +54,7 @@ use; it is already in `Cargo.lock`, so `--locked` still passes). It is for `libc
 Keep `CLI_FOLDER`, `shipped_cli()` and `cli_word()` exactly as they are. Add:
 
 ```rust
-pub const CLI_PLACE: &str = "Persona Builder needs to be installed before it can make an assistant. Run install.sh from the folder you unzipped, then open Persona Builder from the Applications folder in your home folder.";
+pub const CLI_PLACE: &str = "Voice needs to be installed before it can make an assistant. Run install.sh from the folder you unzipped, then open Voice from the Applications folder in your home folder.";
 
 /// `shipped_cli()` as one shell word for a SKILL.md (see `cli_word`). A release build refuses
 /// with `CLI_PLACE` unless the command is in a place that lasts (see `lasting`); a development
@@ -120,18 +120,18 @@ make the command file with `fs::create_dir_all` and `fs::write`; set modes with
 `std::os::unix::fs::PermissionsExt`):
 
 1. `a_passing_disk_is_the_volumes_folder_or_a_translocated_copy`: pure, on `on_a_passing_disk`.
-   True for `/Volumes/Persona Builder/Persona Builder.app/Contents/MacOS/persona-builder`, for
-   `/Volumes` itself, and for `/private/var/folders/ab/cd/T/AppTranslocation/1234-ABCD/d/Persona Builder.app/Contents/MacOS/persona-builder`.
-   False for `/VolumesX/persona-builder`, for `/Applications/Persona Builder.app/Contents/MacOS/persona-builder`,
-   and for `/Users/robin/AppTranslocationNotes/persona-builder`.
+   True for `/Volumes/Voice/Voice.app/Contents/MacOS/voice`, for
+   `/Volumes` itself, and for `/private/var/folders/ab/cd/T/AppTranslocation/1234-ABCD/d/Voice.app/Contents/MacOS/voice`.
+   False for `/VolumesX/voice`, for `/Applications/Voice.app/Contents/MacOS/voice`,
+   and for `/Users/robin/AppTranslocationNotes/voice`.
 2. `outside_every_root_is_refused`: the command in one scratch folder, the only root another
    scratch folder: `lasting` answers `Error::Invalid(CLI_PLACE)`. (Portable: step 3 comes before
    step 4.)
 3. `a_translocated_copy_under_a_root_is_refused`: root = a scratch folder; the command at
-   `<root>/AppTranslocation/1234/d/Persona Builder.app/Contents/MacOS/persona-builder`: refused with
+   `<root>/AppTranslocation/1234/d/Voice.app/Contents/MacOS/voice`: refused with
    `CLI_PLACE`.
 4. `#[cfg(target_os = "macos")] a_root_folder_owned_by_the_person_is_lasting`: root = a scratch
-   folder; the command at `<root>/Applications/Persona Builder.app/Contents/MacOS/persona-builder`:
+   folder; the command at `<root>/Applications/Voice.app/Contents/MacOS/voice`:
    `lasting` is `Ok`, and `word_from(&command, root, true)` equals `cli_word(&command, root)`.
    Also make one folder on the way group-writable (`0o775`) and assert it is still `Ok`. Comment
    why it is macOS-only: the temp folder is per-user there, while Linux's `/tmp` is writable by
@@ -158,7 +158,7 @@ next to the existing `!skill.contains("crew_decisions.py")` assertion, read
 
 - Each new test was seen failing on its assertion before the code that makes it pass.
 - `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`,
-  `cargo test --locked -p persona-builder -p persona-builder-api -p persona-builder-cli` pass,
+  `cargo test --locked -p voice-core -p voice-api -p voice-cli` pass,
   and then `bash scripts/ci-local.sh` passes in full.
 - `git status` shows only: `builder/core/Cargo.toml`, `Cargo.lock` only if cargo changed it (it
   should not), `builder/core/src/cli_command.rs`, `builder/api/src/assistants.rs`,

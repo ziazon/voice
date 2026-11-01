@@ -1,6 +1,6 @@
 # PB2.7 brief: the state lock never reads busy just because another thread started a program
 
-Persona Builder holds one lock per assistant, so two builds (or a build and a forget) never run on
+Voice holds one lock per assistant, so two builds (or a build and a forget) never run on
 the same assistant at once. `lock_state_folder_after` in `builder/ingest/src/private.rs` takes it:
 it opens the state folder (`O_CLOEXEC`) and calls `flock(fd, LOCK_EX | LOCK_NB)`; `EWOULDBLOCK`
 answers `Error::Invalid(BUSY)`. Every caller goes through it: `lock_state`, `lock_existing_state`,
@@ -16,7 +16,7 @@ can see that refusal.
 
 **Proven (2026-10-26, on `main` `28fa5ea`).** A scratch program calling `lock_state` and dropping it
 20,000 times read busy 0 times on its own, and 1,402 and 1,487 times while a second thread ran
-`Command::new("true").status()` in a loop. `cargo test -p persona-builder-api --test use_it` failed 4
+`Command::new("true").status()` in a loop. `cargo test -p voice-api --test use_it` failed 4
 of 30 parallel runs (`pack_clears_leftover_and_busy_refuses`, `pack_private_sorted_and_replaced_whole`)
 and 0 of 30 with `--test-threads=1`. The same cause is behind the 2026-10-25 flake that moved
 `one_session_per_assistant_at_a_time` into `builder/agent/tests/lock.rs`.
@@ -86,10 +86,10 @@ Do not change `append_private` (it already blocks with `LOCK_EX`, so a child onl
 
 ## Check before you stop
 
-- `cargo test -p persona-builder-ingest` green, the new test seen red before the change.
-- `for i in $(seq 1 30); do cargo test -q -p persona-builder-api --test use_it || echo FAIL; done`
+- `cargo test -p voice-ingest` green, the new test seen red before the change.
+- `for i in $(seq 1 30); do cargo test -q -p voice-api --test use_it || echo FAIL; done`
   prints no `FAIL`.
-- `cargo test -p persona-builder-agent` green.
+- `cargo test -p voice-agent` green.
 - `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean (run from
   `builder/`, or wherever `scripts/ci-local.sh` runs them; read it).
 

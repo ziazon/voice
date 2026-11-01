@@ -1,17 +1,17 @@
 # PB2.1 brief: the privacy filters and the privacy check, in Rust
 
 Written by Claude (lane V1) for Codex, 2026-10-24. Spec: lane V's `PB2.1` entry, split from PB2 of the
-Persona Builder plan. Read the repo's `AGENTS.md` first. Work test-first
+Voice plan. Read the repo's `AGENTS.md` first. Work test-first
 (`~/.codex/skills/tdd-skill/SKILL.md`): each test file goes red on its assertion before its code
 exists, then green. Never commit; Claude commits.
 
 ## What this slice does
 
-1. A new crate, `builder/ingest` (package `persona-builder-ingest`, library `persona_builder_ingest`),
+1. A new crate, `builder/ingest` (package `voice-ingest`, library `voice_ingest`),
    holds a member's privacy filters, the record check `privacy`, and the folder check that
    `scripts/crew_decisions.py privacy-check` runs today, at parity with the Python.
-2. The CLI gains `persona-builder privacy-check <folder>`.
-3. `persona-builder save push` runs the real privacy check, over exactly the files the save would
+2. The CLI gains `voice privacy-check <folder>`.
+3. `voice save push` runs the real privacy check, over exactly the files the save would
    commit, in place of `NotBuiltYet`. `NotBuiltYet` and `text::PRIVACY_NOT_BUILT` are then deleted.
 
 It is a new crate, not part of `builder/core`, because core reads and writes files only, and this
@@ -28,15 +28,15 @@ crate runs `git ls-files` and `git check-ignore`.
   `re.I` of `compile_pattern`. If a template pattern is over the default size limit, raise
   `size_limit` to `64 * 1024 * 1024` and say so in your report; do not change any pattern.
 - **A pattern that does not compile is refused, never rewritten:**
-  `member config: filters.<key> is not a valid regex, or it uses look-around or a backreference, which Persona Builder can't read`
+  `member config: filters.<key> is not a valid regex, or it uses look-around or a backreference, which Voice can't read`
   (`<key>` is `excluded_folders`, `personal` or `secret`). Never put the regex crate's own error text
   in the message: it is several lines long and quotes the pattern.
-- **The filters come from `persona_builder::member::read_member`** (PB1), which already lays
+- **The filters come from `voice_core::member::read_member`** (PB1), which already lays
   `private.json` over `member.json` the way the Python does (patterns joined as `(?:a)|(?:b)`, prefixes
   appended). Do not re-implement that merge.
 - **The template's filters are compiled in:**
   `include_str!("../../../crew/_template/member.json")` (from `builder/ingest/src/check.rs`), parsed with
-  `serde_json` (`preserve_order`), never read from disk at run time. Persona Builder ships without the
+  `serde_json` (`preserve_order`), never read from disk at run time. Voice ships without the
   repo.
 - **Paths sort by component**, as Python's `sorted()` on `Path` objects does (`a/b` before `a-b`).
   Rust's `Path`/`PathBuf` `Ord` already compares by component: sort `PathBuf`s, never `String`s.
@@ -53,9 +53,9 @@ crate runs `git ls-files` and `git check-ignore`.
 ## The crate
 
 `builder/ingest/Cargo.toml`: workspace edition, version, license and publish, like `builder/save`.
-Dependencies: `persona-builder = { path = "../core" }`, `regex = "=1.13.1"`, `serde_json = { version = "1",
+Dependencies: `voice-core = { path = "../core" }`, `regex = "=1.13.1"`, `serde_json = { version = "1",
 features = ["preserve_order"] }`, `libc = "=0.2.191"`. Add `"builder/ingest"` to the root
-`Cargo.toml`'s members. Errors are `persona_builder::error::{Error, Result}`.
+`Cargo.toml`'s members. Errors are `voice_core::error::{Error, Result}`.
 
 ### `src/filters.rs`
 
@@ -67,7 +67,7 @@ impl Kind { pub fn as_str(self) -> &'static str }        // "personal" | "secret
 pub struct Filters { /* excluded, personal, secret: Regex; pasted: Vec<String> */ }
 impl Filters {
     /// compile_pattern for each of the three keys, in the order excluded_folders, personal, secret.
-    pub fn compile(filters: &persona_builder::member::Filters) -> Result<Self>;
+    pub fn compile(filters: &voice_core::member::Filters) -> Result<Self>;
     pub fn excluded(&self, folder_name: &str) -> bool;   // m.excluded.search(name)
     pub fn pasted_prefixes(&self) -> &[String];
     /// privacy(): secret is checked first and wins.
@@ -149,14 +149,14 @@ then `read_member`, `Filters::compile(&member.filters)`, and `scan`.
 
 ## The CLI (`builder/cli`)
 
-Add `persona-builder-ingest = { path = "../ingest" }`.
+Add `voice-ingest = { path = "../ingest" }`.
 
-- **`persona-builder privacy-check <folder>`** (a new top-level subcommand, doc comment
+- **`voice privacy-check <folder>`** (a new top-level subcommand, doc comment
   `Check an assistant's folder for anything private before it is shared.`): print `render(&report)`
-  as it is. Exit 1 when there are hits, else 0. Errors print as the CLI's do today (`persona-builder: <message>`, exit 1).
+  as it is. Exit 1 when there are hits, else 0. Errors print as the CLI's do today (`voice: <message>`, exit 1).
 - **`save push`**: a `FolderPrivacy` adapter in `main.rs` implements
-  `persona_builder_save::flow::PrivacyCheck`. Its `hits(folder)`:
-  `persona_builder_save::git::folder_files(folder)?` (below), then
+  `voice_save::flow::PrivacyCheck`. Its `hits(folder)`:
+  `voice_save::git::folder_files(folder)?` (below), then
   `read_member(&folder.join("member.json"))?`, `Filters::compile(&member.filters)?`, and
   `scan(folder, &files, &filters)?.hits`. Pass `&FolderPrivacy` to `save_now` instead of `&NotBuiltYet`.
 - **In `builder/save/src/git.rs`**, add
@@ -175,7 +175,7 @@ Fixtures are invented only: no real person's name, handle or address (`AGENTS.md
 already in the repo's fixtures (`Wren`, `Rowan Vale`, `example.org` addresses). Put a
 `tests/common/mod.rs` in `builder/ingest` with `Scratch`, `repo()` and `parity_tools_available()` as in
 `builder/core/tests/common/mod.rs`: copy them, and keep its rule that a missing `python3` or `git`
-skips the parity tests unless `PERSONA_BUILDER_REQUIRE_PARITY=1`, when it fails.
+skips the parity tests unless `VOICE_REQUIRE_PARITY=1`, when it fails.
 
 1. **`builder/ingest/tests/filters.rs`**: `compile` refuses `(unclosed`, `(?=x)` and `(a)\1` with the
    exact message above, for the right key. `kind` gives `Secret` when both match. `lines` counts lines
@@ -189,7 +189,7 @@ skips the parity tests unless `PERSONA_BUILDER_REQUIRE_PARITY=1`, when it fails.
    using a member built from the template's filters (`load_member`). Plus: a record lacking `kind` is
    `Error::Invalid("a record lacks kind")`.
 3. **`builder/ingest/tests/check_parity.rs`**: build a crew folder from the template with
-   `persona_builder::crew::new_member` (as `builder/cli/tests/save.rs` does), then compare
+   `voice_core::crew::new_member` (as `builder/cli/tests/save.rs` does), then compare
    `render(&privacy_check(folder)?)` with the stdout of
    `python3 -I scripts/crew_decisions.py --member <folder>/member.json privacy-check --dir <folder>`
    (run with `HOME` set to the scratch folder), and the Python's exit code with 1 when there are hits
@@ -205,7 +205,7 @@ skips the parity tests unless `PERSONA_BUILDER_REQUIRE_PARITY=1`, when it fails.
    Also: a path sort case, `a-b.md` and `a/b.md` both with a hit, in Python's order.
 4. **`builder/cli/tests/privacy_check.rs`**: the binary prints `clean` and exits 0 on the template
    folder; prints the hit lines, then `1 hits`, and exits 1 on a folder with one hit; prints the advice
-   line before the summary when filters differ; and prints `persona-builder: <folder>/member.json: no
+   line before the summary when filters differ; and prints `voice: <folder>/member.json: no
    member.json to check` on stderr, exit 1, for an empty folder. No matched text in stdout or stderr.
 5. **`builder/cli/tests/save.rs`**: replace `github_record_refuses_privacy_before_sign_in_or_network`
    with two tests. (a) A clean template folder with a GitHub `save.json`: `save push` fails with
@@ -232,7 +232,7 @@ could not do as written.
 1. **A plain crate root.** Add `builder/ingest/src/lib.rs` holding only `pub mod check;`,
    `pub mod filters;` and `pub mod privacy;`. Remove the `[lib] path` from
    `builder/ingest/Cargo.toml`, and the root-module lines and `pub use crate as filters;` from
-   `src/filters.rs`. Public paths stay `persona_builder_ingest::{filters, privacy, check}`.
+   `src/filters.rs`. Public paths stay `voice_ingest::{filters, privacy, check}`.
 2. **`Filters::lines` in one pass per pattern.** It counts every `'\n'` from the start of the text for
    each match, so a large file with many matches is quadratic. Keep a cursor per pattern (the byte
    offset and line reached so far) and count only the newlines between the previous match start and

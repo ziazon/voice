@@ -1,7 +1,7 @@
 # PB2.4 brief: merge and split the corpus, in Rust
 
 Written by Claude (lane V1) for Codex, 2026-10-24. Spec: lane V's `PB2.4` entry, split from PB2 of the
-Persona Builder plan. Read the repo's `AGENTS.md` first, then `plans/briefs/PB2.2-mine-claude-code.md`
+Voice plan. Read the repo's `AGENTS.md` first, then `plans/briefs/PB2.2-mine-claude-code.md`
 (the slice this one builds on: same crate, same parity-test style, same Python-compatibility helpers).
 Work test-first (`~/.codex/skills/tdd-skill/SKILL.md`): each test file goes red on its assertion before
 its code exists, then green. Security rules: `~/.codex/skills/security-and-hardening/SKILL.md`. Never
@@ -10,12 +10,12 @@ slice adds **no new dependency**.
 
 ## What this slice does
 
-1. `persona_builder_ingest` gains a `corpus` module: `merge` and `split`, at parity with
+1. `voice_ingest` gains a `corpus` module: `merge` and `split`, at parity with
    `scripts/crew_decisions.py`'s `cmd_merge` and `cmd_split`: the same records, in the same order,
    written as the same bytes, and the same printed lines.
 2. `private.rs` gains `read_private`, the reading twin of `write_private`: every corpus file is read
    from the member's state folder only, through `O_NOFOLLOW` directory descriptors.
-3. The CLI gains `persona-builder merge <member_dir>` and `persona-builder split <member_dir>`, both
+3. The CLI gains `voice merge <member_dir>` and `voice split <member_dir>`, both
    with `--dry-run`.
 4. One Python fix: `read_jsonl` splits lines at `\n` only. Today it uses `str.splitlines`, which also
    splits at U+2028, U+0085 and others. `json.dumps(ensure_ascii=False)` writes those characters raw,
@@ -37,7 +37,7 @@ slice adds **no new dependency**.
 - **Accepted differences, each pinned by a Rust-only test and listed in your report:**
   1. **Numbers.** A record holding a number that is not a whole number serde_json keeps exactly
      (`as_i64()` or `as_u64()` is `Some` and it is not an `f64`) is refused:
-     `<name>:<line>: a record holds a number Persona Builder can't copy exactly`. Python and serde_json
+     `<name>:<line>: a record holds a number Voice can't copy exactly`. Python and serde_json
      write floats differently (`1e16` is `1e+16` in Python). Mined records hold no numbers. Pin what
      `-0` does: refused, or written `0` as Python writes it; either is fine, the test says which.
   2. **JSON serde_json refuses** (`NaN`, `Infinity`, a lone surrogate escape, nesting deeper than 128)
@@ -156,9 +156,9 @@ each block with a `// SAFETY:` line.
 ### The CLI
 
 ```
-persona-builder merge <member_dir> [--in NAME...] [--train NAME...] [--rounds NAME...]
+voice merge <member_dir> [--in NAME...] [--train NAME...] [--rounds NAME...]
                       [--out NAME] [--holdout F | --cutoff TS] [--dry-run]
-persona-builder split <member_dir> [--corpus NAME] [--questions NAME] [--answers NAME] [--dry-run]
+voice split <member_dir> [--corpus NAME] [--questions NAME] [--answers NAME] [--dry-run]
 ```
 
 - `<member_dir>`, the member, the filters and the state folder check are exactly `mine`'s (same
@@ -228,7 +228,7 @@ All fixtures are invented: names like Ada, Ari, Robin, Sam, Wren; no real person
    `merge_summary(&merged)`. Then run the Python `split` on that output (`--corpus`, `--questions`,
    `--answers` absolute) and compare both files' bytes with `to_jsonl` of `Heldout`'s lists, and the
    stdout with `split_summary`. Members: the `ADA` and `ARI` configs, as `mine_parity.rs` has them.
-   Use `common::parity_tools_available()`, so `PERSONA_BUILDER_REQUIRE_PARITY=1` makes it fail rather
+   Use `common::parity_tools_available()`, so `VOICE_REQUIRE_PARITY=1` makes it fail rather
    than skip.
 3. **`builder/ingest/tests/corpus_rules.rs`** (Rust only):
    - every error above, each checked for its exact message and that no record text appears in it (use a
@@ -279,7 +279,7 @@ mode with universal newlines, so it turns `\r\n` and a lone `\r` into `\n` befor
 4. Leave `.ai/handoffs/persona-builder.md` alone: Claude writes the record.
 
 The sandbox refuses local sockets, so `builder/save/tests/ureq_wire.rs` fails there; that is expected.
-Run everything else (`cargo test` for `persona-builder-ingest` and `persona-builder-cli`, fmt, clippy,
+Run everything else (`cargo test` for `voice-ingest` and `voice-cli`, fmt, clippy,
 the Python suites) and report the red you saw for the new case and test.
 
 ## Fix 2 (Claude's gate run, 2026-10-24)

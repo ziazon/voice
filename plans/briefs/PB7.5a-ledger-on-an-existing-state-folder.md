@@ -79,7 +79,7 @@ before changing `ledger.rs` or `building.rs`.
    so the count is real after the delete.
 2. `builder/agent/tests/lock.rs`: `open_existing_creates_nothing_and_shares_the_lock`, on its own
    `Scratch`: with no state folder, `Session::open_existing(&home, "wren", Cap::default())` is an
-   `Err` whose `persona_builder::error::Error::Io` source kind is `NotFound`, and
+   `Err` whose `voice_core::error::Error::Io` source kind is `NotFound`, and
    `home/.claude/state/wren` still does not exist; then `Session::open(...)` for `wren` succeeds
    and, while it is held, `open_existing` for `wren` is refused with the busy sentence
    ("already working on this assistant"); after dropping it, `open_existing` succeeds and
@@ -105,7 +105,7 @@ Report each mutation and the failing assertion you saw.
 ## Done means
 
 - From `builder/`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
-  warnings`, `cargo test -p persona-builder-agent` and `cargo test -p persona-builder-api` green
+  warnings`, `cargo test -p voice-agent` and `cargo test -p voice-api` green
   (read the exit codes, not the summary). Then `bash scripts/ci-local.sh` from the repo root.
 - One commit, message in a file (`git commit -F`):
   `builder: PB7.5a app commands that spend open the ledger only on an existing state folder`,
@@ -171,8 +171,8 @@ Commit separately on top (never amend):
 `builder: PB7.5a the state lock checks it holds the folder at the path`, message in a file.
 If your sandbox refuses the commit, leave the change uncommitted and say so. Run from `builder/`:
 `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
-`cargo test -p persona-builder-ingest`, `cargo test -p persona-builder-agent`,
-`cargo test -p persona-builder-api` (the api's wire tests may not bind sockets in your sandbox:
+`cargo test -p voice-ingest`, `cargo test -p voice-agent`,
+`cargo test -p voice-api` (the api's wire tests may not bind sockets in your sandbox:
 say so, Claude runs the full gate).
 
 ## Rebase pass (PB7.5 landed on `main`)
@@ -197,7 +197,7 @@ Decisions (made, do not reopen):
 Commit separately on top (never amend), message in a file:
 `builder: PB7.5a the refresh forget tests check no state folder is left`. If your sandbox refuses
 the commit, leave it uncommitted and say so. Run from `builder/` with `CARGO_BUILD_JOBS=2`:
-`cargo fmt --all -- --check` and `cargo test -p persona-builder-api --test review -- --test-threads=2`.
+`cargo fmt --all -- --check` and `cargo test -p voice-api --test review -- --test-threads=2`.
 
 ## Second fix-up pass (the repeat Verifier's should-fix)
 
@@ -214,7 +214,7 @@ mutation (cp backup, `cmp -s` restore, never `git checkout --`), see the new tes
 `exists` assertion, restore, see it pass. Commit on top (never amend):
 `builder: PB7.5a a forgotten folder stays forgotten under the creating lock`. Run from `builder/`
 with `CARGO_BUILD_JOBS=2`: `cargo fmt --all -- --check`,
-`cargo test -p persona-builder-ingest --lib -- --test-threads=2`.
+`cargo test -p voice-ingest --lib -- --test-threads=2`.
 
 ## Third fix-up pass (the land's gate went red on a test race)
 
@@ -276,12 +276,12 @@ No product code change; no other file. Proofs, each with a cp backup and a `cmp 
 - Red for the new test: remove `libc::O_CLOEXEC` from `DIRECTORY_FLAGS` in `private.rs`; the new
   test fails on its assertion; restore; it passes.
 - The race is gone: from `builder/`, with `CARGO_BUILD_JOBS=2`, run
-  `cargo test -p persona-builder-ingest --lib` (the default thread count, no `--test-threads`) 40
+  `cargo test -p voice-ingest --lib` (the default thread count, no `--test-threads`) 40
   times in a loop and count failures: 0 of 40. Then make `serial_test` return a guard on a fresh
   local `Mutex` each call (`Box::leak(Box::new(std::sync::Mutex::new(()))).lock().unwrap()`), run
   the same loop 40 times and see failures again; restore.
 - `cargo fmt --all -- --check` and
-  `cargo clippy -p persona-builder-ingest --all-targets -- -D warnings`.
+  `cargo clippy -p voice-ingest --all-targets -- -D warnings`.
 
 Commit on top (never amend): `builder: PB7.5a the ingest lib tests that lock or start a child run
 one at a time`. If your sandbox refuses the commit, leave the change staged and say so.

@@ -41,7 +41,7 @@ A forget (app or CLI) in between succeeds, and the command then recreates
 2. **`interview draft`.** It may run on an assistant with no state folder yet (the corpus is
    optional), so:
    - Before the first state read, note whether the state folder exists:
-     `let existed = persona_builder::member::private_state_dir(&member, &home).is_some_and(|dir| dir.symlink_metadata().is_ok());`
+     `let existed = voice_core::member::private_state_dir(&member, &home).is_some_and(|dir| dir.symlink_metadata().is_ok());`
      (`checked_member` already refused a member whose state folder isn't the private one).
    - Move the reads and the plan (records, `answered`, `form`, the labels tally or report,
      `weights`, `weighted`, the short-form thinning) into one local function, e.g.
@@ -80,7 +80,7 @@ appends to a `calls` file next to the script, so a test can assert no Claude cal
 deletion is a forget landing between the first read and the lock.
 
 1. **`build`, forgotten during the Claude Code check:** seed a valid corpus (borrow `build.rs`'s
-   fixture), run `build`: exit 1, stderr exactly `persona-builder: <nothing_yet sentence>\n`,
+   fixture), run `build`: exit 1, stderr exactly `voice: <nothing_yet sentence>\n`,
    `~/.claude/state/<slug>` does not exist afterwards, no Claude call made, and the member folder's
    files unchanged. Red today (the folder is recreated).
 2. **`interview draft`, forgotten during the check, folder there at first look:** seed a corpus;
@@ -103,7 +103,7 @@ Mutation checks (cp backup, edit, run, restore, `cmp`; never `git checkout --`),
 - `interview draft` always `Session::open_existing`: test 3 red;
 - `keep` back to reading before the lock: test 4 red.
 
-Then `cargo test -p persona-builder-cli -j 2`, `cargo clippy -p persona-builder-cli --all-targets
+Then `cargo test -p voice-cli -j 2`, `cargo clippy -p voice-cli --all-targets
 -j 2 -- -D warnings`, `cargo fmt --all --check`.
 
 ## Done means
