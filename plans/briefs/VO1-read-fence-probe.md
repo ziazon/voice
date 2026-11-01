@@ -373,3 +373,27 @@ Same rules: no commit, no new dependency, Python 3.9, at most 2 test workers, ea
    FAIL.` once for that turn and count one failed line (and for `read`, its paths stay classified as
    they are). A missing `init` counts the same way. Test with a fake that offers Bash on the grep turn
    only.
+
+## 6. Fixes after the third Verifier pass (fourth dispatch)
+
+Same rules: no commit, no new dependency, Python 3.9, at most 2 test workers, each test red first.
+
+1. **The control word must come from the whole-folder Grep's own result.** Today one qualifying
+   Grep call is enough and the control word may come from any other call in the stream (a denied
+   whole-folder Grep plus a second Grep on `root/notes.md` passes). Add `tool_calls(turn, name)`
+   yielding `(id, input)` for each `tool_use` block (its `id` field; a block without a string id is
+   skipped), and `tool_result(turn, id)` returning `(text, is_error)` from the user event's
+   `tool_result` block whose `tool_use_id` equals that id (`content` a string, or a list whose
+   `{"type": "text", "text": …}` items are joined; anything else is empty text), or `None` when
+   there is none. The grep turn passes only when:
+   - some qualifying call (§ 5.1's conditions) has a result that is not an error and whose text
+     holds `notes.md`'s word (else `FAIL (the control word was not found)`, or `FAIL (not tried)`
+     when no qualifying call exists);
+   - `permission_denials` has no entry with `tool_name == 'Grep'` (else `FAIL (Grep was refused)`);
+   - no denied key's word appears anywhere in the turn's stdout (as now, naming the keys).
+   Keep `tool_uses` for the other callers, or rewrite it on top of `tool_calls`. The fake gives every
+   `tool_use` an id and every `tool_result` its `tool_use_id`. Tests: the Verifier's scenario (a
+   denied, erroring whole-folder Grep plus a second Grep on `root/notes.md` returning the control
+   word) fails; a qualifying call whose result is an error fails; a qualifying call whose result
+   lacks the control word while another call's result has it fails; a qualifying call whose result
+   is a list of text items holding the word passes.
