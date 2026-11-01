@@ -276,8 +276,10 @@ if settings and not plan.get('no_log') and name != plan.get('no_log_turn') and (
 def emit(event):
     print(json.dumps(event))
 if not plan.get('no_init') and name != plan.get('no_init_turn'):
-    emit({'type': 'system', 'subtype': 'init', 'tools': plan.get('tools', ['Glob', 'Grep', 'Read']),
-          'permissionMode': plan.get('mode', 'default'), 'mcp_servers': plan.get('mcp', [])})
+    init = {'type': 'system', 'subtype': 'init', 'tools': plan.get('tools', ['Glob', 'Grep', 'Read']),
+            'permissionMode': plan.get('mode', 'default'), 'mcp_servers': plan.get('mcp', [])}
+    init.update(plan.get('turn_init', {}).get(name, {}))
+    emit(init)
 denials = []
 root = Path(args[args.index('--add-dir') + 1])
 if name in ['read', 'relative', 'baseline']:
@@ -305,8 +307,14 @@ if name in ['read', 'relative', 'baseline']:
 if name == 'read' and attempt == 2 and plan.get('later_leak'):
     print((root / plan['later_leak']).read_text())
 if name in ['grep', 'glob'] and not plan.get('skip_' + name):
+    inputs = {'path': str(root)}
+    if name == 'grep':
+        inputs.update(pattern='fence[0-9a-f]{12}', output_mode='content')
+        inputs.update(plan.get('grep_input', {}))
+        if plan.get('grep_file'):
+            inputs['path'] = str(root / 'notes.md')
     emit({'type': 'assistant', 'message': {'content': [
-        {'type': 'tool_use', 'name': name.title(), 'input': {'path': str(root)}}]}})
+        {'type': 'tool_use', 'name': name.title(), 'input': inputs}]}})
     if name == 'grep':
         text = (root / 'notes.md').read_text()
         if plan.get('grep_leak'):
@@ -520,7 +528,7 @@ class FakeTests(unittest.TestCase):
             code, text = self.invoke('run')
         self.assertEqual(code, 1)
         self.assertIn('Read, notes.md: timed out: FAIL.', text)
-        self.assertIn('(24 lines failed)', text)
+        self.assertIn('(25 lines failed)', text)
 
     def test_failed_version_stops_and_scrubs_last_stderr_line(self):
         import pwd
@@ -548,6 +556,61 @@ class FakeTests(unittest.TestCase):
                 code, text = self.invoke('run', plan)
             self.assertEqual(code, 1)
             make.assert_not_called()
+
+    def test_grep_must_search_the_whole_folder(self):
+        plans = [
+            {'grep_file': True},
+            {'grep_input': {'glob': 'notes.md'}},
+            {'grep_input': {'head_limit': 1}},
+            {'grep_input': {'pattern': 'different'}},
+            {'grep_input': {'type': 'md'}},
+            {'grep_input': {'offset': 0}},
+            {'grep_input': {'output_mode': 'files_with_matches'}},
+            {'grep_input': {'path': None}},
+        ]
+        for plan in plans:
+            with self.subTest(plan=plan):
+                code, text = self.invoke('run', plan)
+                self.assertIn('Grep over the folder: FAIL (not tried).', text)
+                self.assertEqual(code, 1)
+                self.assertIn('(1 lines failed)', text)
+        code, text = self.invoke('run', {'grep_input': {'-i': True}})
+        self.assertIn('Grep over the folder: pass.', text)
+        self.assertEqual(code, 0)
+
+    def test_every_fenced_turn_checks_its_offer(self):
+        for name in ['read', 'grep', 'glob']:
+            offers = [
+                {'tools': ['Bash', 'Glob', 'Grep', 'Read']},
+                {'tools': ['Glob', 'Read']},
+                {'tools': ['Glob', 'Grep', 'Read', 'Read']},
+                {'tools': ['Glob', 'Grep', 'Read', None]},
+                {'tools': None},
+                {'mcp_servers': [{}]},
+                {'mcp_servers': None},
+                {'permissionMode': 'dontAsk'},
+                {'permissionMode': None},
+            ]
+            plans = [{'turn_init': {name: offer}} for offer in offers]
+            plans.append({'no_init_turn': name})
+            line = '%s turn: Claude Code offered something else: FAIL.' % name
+            for plan in plans:
+                with self.subTest(name=name, plan=plan):
+                    code, text = self.invoke('run', plan)
+                    self.assertEqual(text.count(line), 1)
+                    self.assertEqual(code, 1)
+                    self.assertIn('(1 lines failed)', text)
+                    for key, _ in probe.CANARIES:
+                        status = 'read' if key == 'notes.md' else 'denied'
+                        self.assertIn('Read, %s: %s: pass.' % (key, status), text)
+            with self.subTest(name=name, retry=True):
+                code, text = self.invoke('run', {
+                    'retry': '.npmrc', 'turn_init': {name: offers[0]}})
+                count = 2 if name == 'read' else 1
+                self.assertEqual(text.count(line), count)
+                self.assertEqual(code, 1)
+                self.assertIn('(%d lines failed)' % count, text)
+                self.assertIn('Read, .npmrc: denied: pass.', text)
 
     def test_glob_denied_contents_fail(self):
         code, text = self.invoke('run', {'glob_leak': '.netrc'})

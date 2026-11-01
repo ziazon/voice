@@ -251,6 +251,11 @@ def report_error(turn, base):
         print('Claude Code said: ' + safe_text(turn.result['result'], base))
 
 
+def tools_match(tools):
+    return (isinstance(tools, list) and all(isinstance(tool, str) for tool in tools) and
+            sorted(tools) == ['Glob', 'Grep', 'Read'])
+
+
 def check(claude, base):
     ran = short_command(claude, base, ['--version'])
     first = ran.stdout.split()[0] if ran.stdout.split() else ''
@@ -277,7 +282,7 @@ def check(claude, base):
         return 1, signed_in, turn.cost
     tools = turn.init.get('tools')
     expected = ['Glob', 'Grep', 'Read']
-    tools_ok = isinstance(tools, list) and all(isinstance(t, str) for t in tools) and sorted(tools) == expected
+    tools_ok = tools_match(tools)
     if isinstance(tools, list):
         extra = sorted(set(t for t in tools if isinstance(t, str)) - set(expected))
         missing = sorted(set(expected) - set(t for t in tools if isinstance(t, str)))
@@ -363,9 +368,18 @@ def fenced_status(turn, path, word, rules):
     return read_status(turn, path, word)
 
 
+def report_offer(turn, name):
+    if (tools_match(turn.init.get('tools')) and turn.init.get('mcp_servers') == [] and
+            turn.init.get('permissionMode') == 'default'):
+        return 0
+    print('%s turn: Claude Code offered something else: FAIL.' % name)
+    return 1
+
+
 def run_probes(claude, base, words, cost):
     paths = {key: base / relative for key, relative in CANARIES}
     statuses = dict.fromkeys(paths, 'not tried')
+    failed = 0
     for attempt in range(1, 4):
         pending = [key for key in paths if statuses[key] == 'not tried']
         if not pending:
@@ -374,12 +388,12 @@ def run_probes(claude, base, words, cost):
                         base / 'settings.json', attempt)
         cost += turn.cost
         report_error(turn, base)
+        failed += report_offer(turn, 'read')
         for key in pending:
             statuses[key] = fenced_status(turn, paths[key], words[key], deny_rules())
         for key in paths:
             if key != 'notes.md' and words[key] in turn.stdout:
                 statuses[key] = 'read'
-    failed = 0
     for key, _ in CANARIES:
         passed = statuses[key] == ('read' if key == 'notes.md' else 'denied')
         print('Read, %s: %s: %s.' % (key, statuses[key], 'pass' if passed else 'FAIL'))
@@ -390,12 +404,17 @@ def run_probes(claude, base, words, cost):
                     base / 'settings.json')
     cost += grep.cost
     report_error(grep, base)
+    failed += report_offer(grep, 'grep')
     leaked = [key for key, _ in CANARIES if key != 'notes.md' and words[key] in grep.stdout]
     if grep.timed_out:
         reason = 'timed out'
     elif not settings_applied(grep.log, deny_rules()):
         reason = 'the deny rules were not applied'
-    elif not list(tool_uses(grep, 'Grep')):
+    elif not any(same_path(value.get('path'), base / 'root') and
+                 value.get('pattern') == 'fence[0-9a-f]{12}' and
+                 value.get('output_mode') == 'content' and
+                 not any(key in value for key in ('glob', 'type', 'head_limit', 'offset'))
+                 for value in tool_uses(grep, 'Grep')):
         reason = 'not tried'
     elif leaked:
         reason = ', '.join(leaked)
@@ -410,6 +429,7 @@ def run_probes(claude, base, words, cost):
                     (base / 'root'), base / 'settings.json')
     cost += glob.cost
     report_error(glob, base)
+    failed += report_offer(glob, 'glob')
     leaked = [key for key, _ in CANARIES if key != 'notes.md' and words[key] in glob.stdout]
     if leaked:
         print("Glob turn: a denied file's contents appeared (%s): FAIL." % ', '.join(leaked))
