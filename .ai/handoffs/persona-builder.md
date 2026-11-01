@@ -13,12 +13,17 @@ One record per slice, newest first. Paraphrase only; no real person.
   <name>'s copy of your skills up to date, so the panel goes on without it. To see why, run voice
   skills refresh in a terminal." No panel turn reads the mirror yet. Brief
   `plans/briefs/VO4.2-refresh-at-convene.md`.
-- **Who built it:** Codex, test first (`533db1f`). Its own `ci-local.sh` stopped at the sandbox
+- **Who built it:** Codex, test first (`533db1f`), and the review fix (`c76d735`). Its own `ci-local.sh` stopped at the sandbox
   profile tests (a sandbox can't start inside Codex's sandbox); V1 ran it outside: all passed.
 - **Verified:** `bash scripts/ci-local.sh` all passed at `533db1f`. Mutations by V1 (`cp` backup, `cmp`
   restore), all caught: no refresh at convene (3 red), none at resume (1 red), resume's refresh
   before its checks (the refused resume, 1 red), `mirror_in_use` always true (2 red), a mirror
   folder that can't be checked counted as absent (1 red).
+- **Reviews:** security review (Opus): one LOW, fixed (brief § 5, `c76d735`): the line showed the
+  assistant's name raw, and nothing checks it when it is read (`private.json` can override it), so
+  escapes or a newline could fake progress lines. `skills_not_refreshed` now cleans it to one line
+  of at most 64 characters (V1's mutation, the newline kept, 1 red). Its note: a panel start can
+  now trigger the mirror's known deep-link limit, so the SECURITY row says so.
 - **Not verified:** Linux; running as root (the failed-refresh tests skip there); the line in the
   running app (the panel screen shows every progress line as it comes; no screen change).
 
