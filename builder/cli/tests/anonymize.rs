@@ -1,7 +1,7 @@
 #[path = "../../core/tests/common/mod.rs"]
 mod common;
 
-use common::{Scratch, repo};
+use common::Scratch;
 use serde_json::json;
 #[cfg(unix)]
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -11,49 +11,10 @@ use std::{
     process::{Command, Output},
 };
 
-fn run(home: &Scratch, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_voice"))
-        .env_clear()
-        .env("HOME", &home.0)
-        .current_dir(&home.0)
-        .args(args)
-        .output()
-        .unwrap()
-}
-fn success(output: Output) -> String {
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout).unwrap()
-}
-fn setup(home: &Scratch, rules: serde_json::Value) {
-    fs::create_dir(home.0.join("member")).unwrap();
-    let mut member: serde_json::Value =
-        serde_json::from_slice(&fs::read(repo().join("crew/_template/member.json")).unwrap())
-            .unwrap();
-    member["slug"] = json!("pebble");
-    member["name"] = json!("Pebble");
-    member["principal"] = json!("Rowan Vale");
-    member["state_dir"] = json!("~/.claude/state/pebble");
-    fs::write(home.0.join("member/member.json"), member.to_string()).unwrap();
-    fs::write(
-        home.0.join("member/private.json"),
-        json!({"anonymizer":rules}).to_string(),
-    )
-    .unwrap();
-}
-fn skill(home: &Scratch, relative: &str, text: &str) {
-    let folder = home.0.join(relative);
-    fs::create_dir_all(&folder).unwrap();
-    fs::write(folder.join("SKILL.md"), text).unwrap();
-}
-fn agree(home: &Scratch, ids: &[&str]) {
-    let mut args = vec!["skills", "agree", "member"];
-    args.extend(ids);
-    success(run(home, &args));
-}
+#[path = "common/skills.rs"]
+mod fixtures;
+use fixtures::{agree, run, setup, skill, success};
+
 fn anonymize(home: &Scratch, out: &str) -> Output {
     run(home, &["anonymize", "member", "--out", out])
 }
@@ -522,4 +483,25 @@ fn unreadable_agreed_skill_folder_is_noted_without_leaking_its_name() {
         fs::read_to_string(home.0.join("copy/fine/SKILL.md")).unwrap(),
         "Useful notes\n"
     );
+}
+
+#[test]
+fn anonymize_manifest_hashes_the_private_copies() {
+    let home = Scratch::new("anonymize-manifest");
+    setup(
+        &home,
+        json!({"terms":[{"term":"Pebble Freight","kind":"company"}]}),
+    );
+    skill(&home, ".claude/skills/notes", "Work for Pebble Freight.\n");
+    agree(&home, &["claude:notes"]);
+    assert_eq!(
+        success(anonymize(&home, "copy")),
+        "notes: copied, 1 files\nCopied 1 of 1 skills into ~/copy.\n"
+    );
+    let manifest = fixtures::check_manifest(&home.0.join("copy"));
+    assert_eq!(manifest["skills"].as_object().unwrap().len(), 1);
+    assert!(!manifest.to_string().contains(&fixtures::sha256(
+        &home.0.join(".claude/skills/notes/SKILL.md")
+    )));
+    assert_eq!(mode(&home.0.join("copy/.manifest.json")), 0o600);
 }

@@ -114,32 +114,59 @@ pub fn prepare_output_with_projects(
             return Err(output_bad());
         }
     }
-    if out.exists() {
-        let empty = fs::read_dir(&out)
-            .map_err(|e| io(&out, e))?
-            .next()
-            .is_none();
-        if !empty {
-            let stamp = out.join(".anonymized-copy");
-            let valid = fs::symlink_metadata(&stamp).is_ok_and(|m| {
-                m.is_file() && !m.file_type().is_symlink() && m.len() == STAMP.len() as u64
-            }) && check::read(&stamp).is_ok_and(|b| b == STAMP.as_bytes());
-            if !valid {
-                return Err(output_bad());
-            }
-            let metadata = fs::symlink_metadata(&out).map_err(|e| io(&out, e))?;
-            if !metadata.is_dir() || metadata.file_type().is_symlink() {
-                return Err(output_bad());
-            }
-            fs::remove_dir_all(&out).map_err(|e| io(&out, e))?;
-        } else {
-            fs::remove_dir(&out).map_err(|e| io(&out, e))?;
-        }
+    if out.exists() && !remove_copy(&out)? {
+        return Err(output_bad());
     }
     make_dirs(&out)?;
     write_file(&open_folder(&out)?, ".anonymized-copy", STAMP.as_bytes())?;
     Ok(out)
 }
+/// Remove only an empty folder or a copy bearing Voice's exact stamp, never a link.
+pub fn remove_copy(path: &Path) -> Result<bool> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(io(path, error)),
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Ok(false);
+    }
+    let empty = match fs::read_dir(path).map_err(|e| io(path, e))?.next() {
+        None => true,
+        Some(entry) => {
+            entry.map_err(|e| io(path, e))?;
+            false
+        }
+    };
+    if empty {
+        fs::remove_dir(path).map_err(|e| io(path, e))?;
+    } else {
+        let stamp = path.join(".anonymized-copy");
+        let metadata = match fs::symlink_metadata(&stamp) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(io(&stamp, error)),
+        };
+        if !metadata.is_file()
+            || metadata.file_type().is_symlink()
+            || metadata.len() != STAMP.len() as u64
+            || check::read(&stamp)? != STAMP.as_bytes()
+        {
+            return Ok(false);
+        }
+        let metadata = fs::symlink_metadata(path).map_err(|e| io(path, e))?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Ok(false);
+        }
+        fs::remove_dir_all(path).map_err(|e| io(path, e))?;
+    }
+    Ok(true)
+}
+
+pub fn write_manifest(out: &Path, bytes: &[u8]) -> Result<()> {
+    write_file(&open_folder(out)?, ".manifest.json", bytes)
+}
+
 fn open_folder(path: &Path) -> Result<File> {
     OpenOptions::new()
         .read(true)

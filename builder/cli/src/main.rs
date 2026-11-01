@@ -2229,7 +2229,7 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
 
 fn run(cli: Cli) -> Result<std::process::ExitCode> {
     let result = match cli.command {
-        Some(Command::Skills { command }) => skills::run(command),
+        Some(Command::Skills { command }) => return skills::run(command),
         Some(Command::Anonymize { member_dir, out }) => return skills::anonymize(member_dir, out),
         Some(Command::Ceilings { command }) => ceilings(command),
         Some(Command::Panel { command }) => return panel::run(command),

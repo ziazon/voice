@@ -1,10 +1,10 @@
 use clap::Subcommand;
-use std::{collections::BTreeMap, path::PathBuf, process::ExitCode, time::SystemTime};
+use std::{path::PathBuf, process::ExitCode, time::SystemTime};
 use voice_core::error::{Error, Result};
 use voice_ingest::{
-    anonymize::{self, Mapping, Rules},
+    anonymize::{self, Rules},
     private,
-    skills::{self, Agreements, State},
+    skills::{self, Agreements},
 };
 
 #[derive(Subcommand)]
@@ -17,6 +17,8 @@ pub enum SkillsCommand {
         #[arg(required = true, num_args = 1..)]
         ids: Vec<String>,
     },
+    /// Bring your assistant's copy of your skills up to date
+    Refresh { member_dir: PathBuf },
     /// Stop copying these skills
     Withdraw {
         member_dir: PathBuf,
@@ -25,20 +27,55 @@ pub enum SkillsCommand {
     },
 }
 
-pub fn run(command: SkillsCommand) -> Result<()> {
+pub fn run(command: SkillsCommand) -> Result<ExitCode> {
     let home = super::home()?;
     let member_dir = match &command {
         SkillsCommand::List { member_dir }
+        | SkillsCommand::Refresh { member_dir }
         | SkillsCommand::Agree { member_dir, .. }
         | SkillsCommand::Withdraw { member_dir, .. } => member_dir,
     };
     let member_dir = super::expand_home(member_dir.clone(), &home);
     let member = super::checked_member(&member_dir, &home)?;
     let _lock = private::lock_state(&home, &member.slug)?;
+    if let SkillsCommand::Refresh { .. } = command {
+        let date = voice_agent::ledger::local_day(SystemTime::now());
+        let refreshed = skills::refresh(&home, &member, &date)?;
+        let copied = &refreshed.copied;
+        print!("{}", copied.lines);
+        println!(
+            "Copied {} of {} skills into your assistant's copy, {}.",
+            copied.copied,
+            copied.agreed,
+            skills::display_path(&refreshed.mirror, &home)
+        );
+        println!(
+            "Since the last refresh: {} new, {} updated, {} unchanged, {} removed.",
+            refreshed.new, refreshed.updated, refreshed.unchanged, refreshed.removed
+        );
+        if copied.waiting > 0 {
+            let rules = Rules::for_member(&member, &home)?;
+            println!(
+                "{} skills wait for your yes: voice skills list {}",
+                copied.waiting,
+                anonymize::report_path(
+                    &PathBuf::from(skills::display_path(&member_dir, &home)),
+                    &rules
+                )
+                .display()
+            );
+        }
+        return Ok(if copied.copied == copied.agreed {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        });
+    }
     let rules = Rules::for_member(&member, &home)?;
     let found = skills::discover(&home, &rules)?;
     let mut agreements = Agreements::load(&home, &member.slug)?;
     match command {
+        SkillsCommand::Refresh { .. } => unreachable!("refresh handled above"),
         SkillsCommand::List { .. } => {
             if found.skills.is_empty() {
                 println!("No skills found on this computer.");
@@ -99,7 +136,7 @@ pub fn run(command: SkillsCommand) -> Result<()> {
             }
         }
     }
-    Ok(())
+    Ok(ExitCode::SUCCESS)
 }
 
 pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
@@ -107,90 +144,31 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
     let member_dir = super::expand_home(member_dir, &home);
     let member = super::checked_member(&member_dir, &home)?;
     let _lock = private::lock_state(&home, &member.slug)?;
-    let rules = Rules::for_member(&member, &home)?;
-    let found = skills::discover(&home, &rules)?;
-    let agreements = Agreements::load(&home, &member.slug)?;
-    let mut mapping = match private::read_private_optional_at_max(
-        &home,
-        &member.slug,
-        Some("anonymizer"),
-        "placeholders.json",
-        4 << 20,
-    )? {
-        Some(bytes) => Mapping::from_json(&bytes)?,
-        None => Mapping::default(),
-    };
+    let (rules, found, agreements, mut mapping) = skills::load_copy(&home, &member)?;
     let out = skills::prepare_output_with_projects(
         &super::expand_home(out, &home),
         &home,
         &found.skills,
         rules.projects(),
     )?;
-    let mut names: BTreeMap<String, String> = BTreeMap::new();
-    let mut agreed = 0;
-    let mut copied = 0;
-    let mut waiting = 0;
-    for (index, skill) in found.skills.iter().enumerate() {
-        match agreements.state(skill, &rules) {
-            State::Agreed(_) => {}
-            State::Waiting | State::NotOffered | State::Moved => {
-                waiting += 1;
-                continue;
-            }
-            State::NeverCopied => continue,
-        }
-        agreed += 1;
-        if anonymize::name_holds_private_detail(&skill.name, &rules) {
-            println!(
-                "A skill you agreed to: not copied, its name holds a private detail (number {} in voice skills list)",
-                index + 1
-            );
-            continue;
-        }
-        let name_key = skill.name.to_lowercase();
-        if let Some(other) = names.get(&name_key) {
-            println!(
-                "{}: not copied, another skill you agreed to has the same name ({})",
-                anonymize::report_id(&skill.id, &rules),
-                anonymize::report_id(other, &rules)
-            );
-            continue;
-        }
-        names.insert(name_key, skill.id.clone());
-        let files = match skills::read_with_rules(skill, &rules) {
-            Ok(files) => files,
-            Err(Error::Invalid(message))
-                if message == skills::SKILL_TOO_LARGE || message == skills::SKILL_UNREADABLE =>
-            {
-                println!("{}: not copied, {}", skill.name, message);
-                continue;
-            }
-            Err(error) => return Err(error),
-        };
-        let result = anonymize::skill(&files, &rules, &mut mapping);
-        private::write_private_at(
-            &home,
-            &member.slug,
-            Some("anonymizer"),
-            "placeholders.json",
-            &mapping.to_json(),
-        )?;
-        if result.refused.is_empty() {
-            skills::write_skill(&out, &skill.name, &result.kept)?;
-            copied += 1;
-        }
-        print!("{}", anonymize::report(&skill.name, &result));
-    }
-    private::write_private_at(
+    let copied = skills::copy_agreed(
         &home,
         &member.slug,
-        Some("anonymizer"),
-        "placeholders.json",
-        &mapping.to_json(),
+        &rules,
+        &found,
+        &agreements,
+        &mut mapping,
+        &out,
     )?;
-    for note in found.notes {
-        println!("{note}");
-    }
+    let date = voice_agent::ledger::local_day(SystemTime::now());
+    skills::write_manifest(&out, &copied.manifest.to_json(&date))?;
+    print!("{}", copied.lines);
+    let skills::Copied {
+        agreed,
+        copied,
+        waiting,
+        ..
+    } = copied;
     println!(
         "Copied {copied} of {agreed} skills into {}.",
         anonymize::report_path(&PathBuf::from(skills::display_path(&out, &home)), &rules).display()
