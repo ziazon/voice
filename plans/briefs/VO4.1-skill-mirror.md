@@ -289,6 +289,31 @@ else's file is left and the command exits 1.
 - `copy.rs`: the manifest path uses `to_string_lossy()` instead of `.expect("UTF-8 skill path")`
   (`write_skill` already refused a non-UTF-8 path), so this code has no panic path.
 
+### 8.5 Never tell someone to delete a folder holding their own files (V1's review of 8.1)
+
+After 8.1, a refresh refused because the mirror holds files Voice didn't put there (§ 4 step 5)
+ends with the not-removed sentence: "…so it may be out of date. Delete the folder … yourself".
+Both halves are wrong there: such a folder holds no copy of Voice's (a stamped one is emptied, not
+refused), and deleting it would delete the person's own files.
+
+- `mirror.rs`: when the closure's error is the § 4 step 5 refusal (the one `output_error`
+  rewrites), do not call `remove_copy`, and return exactly
+  `<shown> holds files Voice didn't put there. Move them away, then run voice skills refresh again.`
+  Carry that case out of the closure as its own variant (a small private `enum Failure { Foreign,
+  Other(Error) }`, or `output_error` returning a marker), never by comparing message text again.
+  Every other error keeps 8.1's behaviour.
+- The not-removed sentences (refresh's `mirror_not_removed` and withdraw's) say to move the
+  person's files out before deleting. Exact texts:
+  - refresh: `Voice couldn't remove your assistant's copy of your skills, so it may be out of date. Move anything you want to keep out of the folder <path>, delete the folder, then run voice skills refresh again.`
+  - withdraw: `Voice couldn't remove your assistant's copy of your skills. Move anything you want to keep out of the folder <mirror>, delete the folder, then run voice skills refresh <member_dir>`
+- Tests (`builder/cli/tests/skills_refresh.rs`): the not-Voice's-folder test and the
+  `pebble-freight` slug test expect the new whole message (`~/.claude/state/pebble/mirror` and
+  `~/.claude/state/*/mirror`), and that stderr does not contain `couldn't remove` or `Delete`;
+  `notes.md` is still there. The 8.1 and 8.2 not-removed tests expect the new texts.
+- Delete the test `refresh_uses_its_own_handler_and_loaded_rules_without_path_panics`: it reads
+  the source's text, not what the program does. 8.3's behaviour is covered by the `pebble-freight`
+  slug tests, and the absence of `unreachable!`/`expect` needs no test.
+
 ### 8.4 Verify and report
 
 Run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
