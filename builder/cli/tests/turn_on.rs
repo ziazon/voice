@@ -77,14 +77,14 @@ fn on_status_off_print_exact_text() {
     assert_eq!(
         f.run(&["on", f.member.to_str().unwrap()]),
         format!(
-            "Ari is on in Claude Code.\nAdded the skill /ari in {0}/skills/ari.\nAdded one line to {0}/CLAUDE.md:\n  @~/.claude/persona-builder/ari/RULES.md\nStart a new Claude Code session to use Ari. To turn Ari off: voice off\n",
+            "Ari is on in Claude Code.\nAdded the skill /ari in {0}/skills/ari.\nAdded one line to {0}/CLAUDE.md:\n  @~/.claude/voice/assistants/ari/RULES.md\nStart a new Claude Code session to use Ari. To turn Ari off: voice off\n",
             f.claude.display()
         )
     );
     assert_eq!(
         f.run(&["status"]),
         format!(
-            "Ari is on in Claude Code.\nThe line in CLAUDE.md: there\n{0}/skills/ari/SKILL.md: there\n{0}/persona-builder/ari/RULES.md: there\n",
+            "Ari is on in Claude Code.\nThe line in CLAUDE.md: there\n{0}/skills/ari/SKILL.md: there\n{0}/voice/assistants/ari/RULES.md: there\n",
             f.claude.display()
         )
     );
@@ -119,7 +119,7 @@ fn folder_option_and_environment_select_the_folder() {
         ])
         .output()
         .unwrap();
-    assert!(success(output).contains("@~/custom/persona-builder/ari/RULES.md"));
+    assert!(success(output).contains("@~/custom/voice/assistants/ari/RULES.md"));
     assert!(!other.join("CLAUDE.md").exists());
     assert!(!f.claude.join("CLAUDE.md").exists());
     assert!(
@@ -133,7 +133,7 @@ fn folder_option_and_environment_select_the_folder() {
         .args(["on", f.member.to_str().unwrap()])
         .output()
         .unwrap();
-    assert!(success(output).contains("@~/custom/persona-builder/ari/RULES.md"));
+    assert!(success(output).contains("@~/custom/voice/assistants/ari/RULES.md"));
     assert!(
         success(
             f.command()

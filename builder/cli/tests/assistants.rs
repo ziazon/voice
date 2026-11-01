@@ -102,7 +102,10 @@ fn new_list_and_agree_use_the_claude_folders_and_final_wording() {
     let record: serde_json::Value =
         serde_json::from_slice(&fs::read(home.0.join(".claude/state/wren/consent.json")).unwrap())
             .unwrap();
-    assert_eq!(record, serde_json::json!({"version": 1, "agreed_on": date}));
+    assert_eq!(
+        record,
+        serde_json::json!({"version": voice_core::consent::VERSION, "agreed_on": date})
+    );
     assert!(!home.0.join(".claude/crew/wren/consent.json").exists());
 }
 
@@ -129,11 +132,15 @@ fn consent_show_prints_the_final_wording_and_version() {
     let text = Home::new().success(&["consent", "show"]);
     assert_eq!(
         text,
-        format!("{}Version 1.\n", voice_core::consent::plain_text())
+        format!(
+            "{}Version {}.\n",
+            voice_core::consent::plain_text(),
+            voice_core::consent::VERSION
+        )
     );
     assert!(text.starts_with("Before Voice reads anything\n\nWhat it reads\n"));
     assert!(text.contains("You can change your mind: Forget deletes the history it read and its working files. What it wrote into your assistant's folder stays there until you delete that folder.\n"));
-    assert!(text.ends_with("Version 1.\n"));
+    assert!(text.ends_with(&format!("Version {}.\n", voice_core::consent::VERSION)));
 }
 
 #[test]
@@ -152,7 +159,11 @@ fn listing_does_not_count_bad_or_outdated_records_as_permission() {
         r#"{"version":1,"agreed_on":42}"#,
         "{broken",
     ] {
-        fs::write(&record, bad).unwrap();
+        let bad = bad.replace(
+            "\"version\":1",
+            &format!("\"version\":{}", voice_core::consent::VERSION),
+        );
+        fs::write(&record, &bad).unwrap();
         assert_eq!(
             home.success(&["assistants"]),
             "Wren (wren): ~/.claude/crew/wren/ · permission not given yet\n",
@@ -167,7 +178,7 @@ fn new_clears_old_permission_and_rolls_back_when_clearing_fails() {
     let state = home.0.join(".claude/state/wren");
     fs::create_dir_all(&state).unwrap();
     let record = state.join("consent.json");
-    fs::write(&record, r#"{"version":1,"agreed_on":"2026-10-25"}"#).unwrap();
+    fs::write(&record, serde_json::to_vec(&serde_json::json!({"version": voice_core::consent::VERSION, "agreed_on": "2026-10-25"})).unwrap()).unwrap();
     home.success(&["new", "Wren", "--principal", "Robin"]);
     assert!(!record.exists());
     assert!(

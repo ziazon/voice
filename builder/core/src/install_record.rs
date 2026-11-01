@@ -33,7 +33,7 @@ impl Added {
 }
 
 pub(super) fn record_path(claude_home: &Path) -> PathBuf {
-    claude_home.join("persona-builder/installed.json")
+    claude_home.join("voice/installed.json")
 }
 
 pub(super) fn check_path(path: &Path, claude_home: &Path) -> Result<()> {
@@ -84,7 +84,7 @@ pub(super) fn check_path(path: &Path, claude_home: &Path) -> Result<()> {
 }
 
 pub(super) fn read(claude_home: &Path) -> Result<Option<Record>> {
-    let folder = claude_home.join("persona-builder");
+    let folder = claude_home.join("voice");
     refuse_symlink(&folder)?;
     if !exists(&folder)? {
         return Ok(None);

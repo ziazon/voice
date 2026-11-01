@@ -1,4 +1,4 @@
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// The private permission record, shared by the app and CLI so both reject damaged records.
 #[derive(serde::Serialize, serde::Deserialize)]

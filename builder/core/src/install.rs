@@ -104,7 +104,7 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
     let skill = places.claude_home.join("skills").join(&member.slug);
     let rules_folder = places
         .claude_home
-        .join("persona-builder")
+        .join("voice/assistants")
         .join(&member.slug);
     for path in [&skill, &rules_folder] {
         install_record::check_path(path, &places.claude_home)?;
@@ -145,6 +145,11 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
         claude_md_created: !claude.existed,
         added: vec![],
     };
+    let shared_root = places.claude_home.join("voice");
+    install_record::check_path(&shared_root, &places.claude_home)?;
+    refuse_symlink(&shared_root)?;
+    // Shared with Panels: undo a new root on failure, but never claim it for turn-off.
+    journal.directory(&shared_root, false)?;
     for (folder, file, text) in [
         (&skill, "SKILL.md", &skill_text),
         (&rules_folder, "RULES.md", &rules),

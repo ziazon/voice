@@ -311,7 +311,7 @@ fn record_names_are_checked_before_shown() {
     for (name, shown) in [("Ari", Some("Ari")), ("Ari\n@~/.ssh/x", None), ("", None)] {
         let h = Home::new();
         h.on();
-        let path = h.claude().join("persona-builder/installed.json");
+        let path = h.claude().join("voice/installed.json");
         let mut record: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         record["name"] = name.into();
@@ -678,4 +678,17 @@ fn forget_empty_state_is_nothing_to_forget_and_removes_the_folder() {
         "There's nothing to forget: Voice hasn't kept anything for Ari yet."
     );
     assert!(!h.state().exists());
+}
+
+#[test]
+fn installation_record_is_in_shared_voice_root() {
+    let h = Home::new();
+    h.on();
+    assert!(h.claude().join("voice/installed.json").is_file());
+    assert_eq!(status(&h).on_name.as_deref(), Some("Ari"));
+    assert_eq!(
+        succeeds(turn_off_in(&h.0, &h.claude(), off("ari"))).message,
+        "Ari is off. Everything Voice added is gone."
+    );
+    assert!(!h.claude().join("voice/installed.json").exists());
 }

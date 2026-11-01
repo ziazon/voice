@@ -89,7 +89,7 @@ fn new_list_and_private_consent_round_trip() {
     let record: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     assert_eq!(
         record,
-        serde_json::json!({"version":1,"agreed_on":agreed.agreed_on})
+        serde_json::json!({"version":voice_core::consent::VERSION,"agreed_on":agreed.agreed_on})
     );
     for content in [
         r#"{"version":0,"version":1,"agreed_on":"2026-10-25"}"#,
@@ -102,7 +102,11 @@ fn new_list_and_private_consent_round_trip() {
         r#"{"version":1,"agreed_on":"2026-99-99"}"#,
         "bad JSON",
     ] {
-        fs::write(&path, content).unwrap();
+        let content = content.replace(
+            "\"version\":1",
+            &format!("\"version\":{}", voice_core::consent::VERSION),
+        );
+        fs::write(&path, &content).unwrap();
         assert_eq!(
             list_assistants_in(h).unwrap()[0].consent,
             Consent {
@@ -289,7 +293,7 @@ fn new_answer_does_not_reuse_orphaned_state() {
     let h = home.path();
     let path = h.join(".claude/state/ari/consent.json");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, r#"{"version":1,"agreed_on":"2026-10-25"}"#).unwrap();
+    fs::write(&path, serde_json::to_vec(&serde_json::json!({"version": voice_core::consent::VERSION, "agreed_on": "2026-10-25"})).unwrap()).unwrap();
     assert_eq!(
         new_assistant_in(h, request()).unwrap().consent,
         Consent {
@@ -390,5 +394,25 @@ fn unsafe_app_folder_shows_the_move_sentence() {
         "{}\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn version_one_consent_is_no_permission_given() {
+    let home = Home::new();
+    let h = home.path();
+    new_assistant_in(h, request()).unwrap();
+    agree_consent_in(h, slug("ari")).unwrap();
+    fs::write(
+        h.join(".claude/state/ari/consent.json"),
+        r#"{"version":1,"agreed_on":"2026-10-25"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        list_assistants_in(h).unwrap()[0].consent,
+        Consent {
+            agreed: false,
+            agreed_on: None
+        }
     );
 }

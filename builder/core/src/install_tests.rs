@@ -87,7 +87,7 @@ fn tree(path: &Path) -> BTreeMap<PathBuf, (u32, Vec<u8>)> {
     out
 }
 const BLOCK: &str =
-    "<!-- voice:begin ari -->\n@~/.claude/persona-builder/ari/RULES.md\n<!-- voice:end ari -->\n";
+    "<!-- voice:begin ari -->\n@~/.claude/voice/assistants/ari/RULES.md\n<!-- voice:end ari -->\n";
 const RULES: &str = "# Ari\n\nBefore you ask me a question (a choice between options, a go or no-go, a plan's open questions),\nask Ari first with the /ari skill. Ari says what I would likely pick and how sure\nthat answer is. Ask me only what Ari hands back, and show me Ari's answer beside the\nquestion.\n";
 
 #[test]
@@ -98,19 +98,18 @@ fn empty_install_has_exact_contents_record_and_private_modes() {
     assert_eq!(on.slug, "ari");
     assert_eq!(on.skill, f.path("skills/ari"));
     assert_eq!(on.claude_md, f.path("CLAUDE.md"));
-    assert_eq!(on.import_line, "@~/.claude/persona-builder/ari/RULES.md");
+    assert_eq!(on.import_line, "@~/.claude/voice/assistants/ari/RULES.md");
     assert_eq!(
         fs::read(f.path("skills/ari/SKILL.md")).unwrap(),
         fs::read(f.member.join("SKILL.md")).unwrap()
     );
     assert_eq!(
-        fs::read_to_string(f.path("persona-builder/ari/RULES.md")).unwrap(),
+        fs::read_to_string(f.path("voice/assistants/ari/RULES.md")).unwrap(),
         RULES
     );
     assert_eq!(fs::read_to_string(f.path("CLAUDE.md")).unwrap(), BLOCK);
     let record: serde_json::Value =
-        serde_json::from_slice(&fs::read(f.path("persona-builder/installed.json")).unwrap())
-            .unwrap();
+        serde_json::from_slice(&fs::read(f.path("voice/installed.json")).unwrap()).unwrap();
     assert_eq!(
         record["member_dir"],
         f.member.canonicalize().unwrap().display().to_string()
@@ -126,7 +125,7 @@ fn empty_install_has_exact_contents_record_and_private_modes() {
             assert_eq!(fs::read_to_string(path).unwrap(), entry["text"]);
         }
     }
-    for file in ["CLAUDE.md", "persona-builder/installed.json"] {
+    for file in ["CLAUDE.md", "voice/installed.json"] {
         assert_eq!(
             fs::metadata(f.path(file)).unwrap().permissions().mode() & 0o777,
             0o600
@@ -141,6 +140,7 @@ fn on_off_restores_user_bytes_and_other_skills() {
         fs::set_permissions(f.path("CLAUDE.md"), fs::Permissions::from_mode(0o640)).unwrap();
         fs::create_dir_all(f.path("skills/other")).unwrap();
         fs::write(f.path("skills/other/SKILL.md"), "other").unwrap();
+        fs::create_dir(f.path("voice")).unwrap();
         let before = tree(&f.places.claude_home);
         f.on();
         f.off();
@@ -160,7 +160,8 @@ fn removes_created_claude_file_but_keeps_user_additions() {
             assert_eq!(fs::read_to_string(f.path("CLAUDE.md")).unwrap(), addition);
         }
         assert!(!f.path("skills").exists());
-        assert!(!f.path("persona-builder").exists());
+        assert!(!f.path("voice/assistants").exists());
+        assert!(f.path("voice").is_dir());
         assert!(f.off().name.is_none());
     }
 }
@@ -194,7 +195,7 @@ fn unowned_skill_directory_is_refused_without_changes() {
 }
 #[test]
 fn refuses_symlink_skill_and_record_and_leaves_recorded_symlink() {
-    for item in ["skills/ari", "persona-builder/installed.json"] {
+    for item in ["skills/ari", "voice/installed.json"] {
         let f = Fixture::new();
         let target = f.scratch.path().join("target");
         fs::write(&target, "untouched").unwrap();
@@ -260,7 +261,7 @@ fn changed_skill_is_left_and_reported() {
             .any(|left| left.path == skill && left.why == "you changed it after it was turned on")
     );
     assert_eq!(fs::read_to_string(skill).unwrap(), "user edit");
-    assert!(!f.path("persona-builder/installed.json").exists());
+    assert!(!f.path("voice/installed.json").exists());
 }
 #[test]
 fn turning_on_twice_refreshes_one_block() {
@@ -279,13 +280,13 @@ fn turning_on_twice_refreshes_one_block() {
 fn voice_file_is_refused_before_any_write() {
     let f = Fixture::new();
     fs::write(f.path("CLAUDE.md"), "notes").unwrap();
-    fs::write(f.path("persona-builder"), "not a folder").unwrap();
+    fs::write(f.path("voice"), "not a folder").unwrap();
     let before = tree(&f.places.claude_home);
     assert!(
         turn_on(&f.member, &f.places)
             .unwrap_err()
             .to_string()
-            .contains(&f.path("persona-builder").display().to_string())
+            .contains(&f.path("voice").display().to_string())
     );
     assert_eq!(tree(&f.places.claude_home), before);
 }
@@ -295,7 +296,7 @@ fn edited_record_cannot_remove_outside_file() {
     f.on();
     let outside = f.scratch.path().join("outside");
     fs::write(&outside, "untouched").unwrap();
-    let path = f.path("persona-builder/installed.json");
+    let path = f.path("voice/installed.json");
     let mut record: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     record["added"]
         .as_array_mut()
@@ -324,7 +325,7 @@ fn status_tracks_missing_changed_line_and_outdated_member() {
             .iter()
             .all(|(_, state)| *state == FileState::Present)
     );
-    fs::remove_file(f.path("persona-builder/ari/RULES.md")).unwrap();
+    fs::remove_file(f.path("voice/assistants/ari/RULES.md")).unwrap();
     fs::write(f.path("skills/ari/SKILL.md"), "edit").unwrap();
     fs::write(f.path("CLAUDE.md"), "notes").unwrap();
     fs::write(f.member.join("SKILL.md"), "---\nname: ari\n---\nupdated").unwrap();
@@ -335,7 +336,7 @@ fn status_tracks_missing_changed_line_and_outdated_member() {
         current.files,
         vec![
             (f.path("skills/ari/SKILL.md"), FileState::Changed),
-            (f.path("persona-builder/ari/RULES.md"), FileState::Missing)
+            (f.path("voice/assistants/ari/RULES.md"), FileState::Missing)
         ]
     );
     fs::remove_file(f.member.join("SKILL.md")).unwrap();
@@ -353,13 +354,13 @@ fn import_paths_escape_spaces_and_use_absolute_path_outside_home() {
     };
     assert_eq!(
         f.on().import_line,
-        "@~/.claude\\ with\\ space/persona-builder/ari/RULES.md"
+        "@~/.claude\\ with\\ space/voice/assistants/ari/RULES.md"
     );
     f.off();
     f.places.claude_home = f.scratch.path().join("outside folder");
     fs::create_dir(&f.places.claude_home).unwrap();
     let expected = format!(
-        "@{}/persona-builder/ari/RULES.md",
+        "@{}/voice/assistants/ari/RULES.md",
         f.places.claude_home.canonicalize().unwrap().display()
     )
     .replace(' ', "\\ ");
@@ -371,10 +372,7 @@ fn refresh_failure_restores_previous_install_including_record() {
     let f = Fixture::new();
     f.on();
     fs::write(f.member.join("SKILL.md"), "---\nname: ari\n---\nupdated").unwrap();
-    let temporary = f.path(&format!(
-        "persona-builder/.installed.json.tmp-{}",
-        std::process::id()
-    ));
+    let temporary = f.path(&format!("voice/.installed.json.tmp-{}", std::process::id()));
     fs::write(&temporary, "leave this alone").unwrap();
     let before = tree(&f.places.claude_home);
     assert!(turn_on(&f.member, &f.places).is_err());
@@ -385,11 +383,8 @@ fn refresh_failure_restores_previous_install_including_record() {
 fn late_install_failure_restores_claude_and_keeps_existing_temporary() {
     let f = Fixture::new();
     fs::write(f.path("CLAUDE.md"), "notes").unwrap();
-    fs::create_dir(f.path("persona-builder")).unwrap();
-    let temporary = f.path(&format!(
-        "persona-builder/.installed.json.tmp-{}",
-        std::process::id()
-    ));
+    fs::create_dir(f.path("voice")).unwrap();
+    let temporary = f.path(&format!("voice/.installed.json.tmp-{}", std::process::id()));
     fs::write(&temporary, "leave this alone").unwrap();
     let before = tree(&f.places.claude_home);
     assert!(turn_on(&f.member, &f.places).is_err());
@@ -414,13 +409,14 @@ fn missing_claude_and_installed_files_are_fine_when_turning_off() {
     for path in [
         "CLAUDE.md",
         "skills/ari/SKILL.md",
-        "persona-builder/ari/RULES.md",
+        "voice/assistants/ari/RULES.md",
     ] {
         fs::remove_file(f.path(path)).unwrap();
     }
     let off = f.off();
     assert!(off.left.is_empty());
-    assert_eq!(tree(&f.places.claude_home).len(), 1);
+    assert_eq!(tree(&f.places.claude_home).len(), 2);
+    assert!(f.path("voice").is_dir());
 }
 
 #[test]
@@ -436,12 +432,9 @@ fn rollback_preserves_claude_write_kind_for_an_arbitrarily_named_target() {
         "user file",
     )
     .unwrap();
-    fs::create_dir(f.path("persona-builder")).unwrap();
+    fs::create_dir(f.path("voice")).unwrap();
     fs::write(
-        f.path(&format!(
-            "persona-builder/.installed.json.tmp-{}",
-            std::process::id()
-        )),
+        f.path(&format!("voice/.installed.json.tmp-{}", std::process::id())),
         "user file",
     )
     .unwrap();
@@ -627,6 +620,7 @@ fn symlinked_skills_outside_claude_home_supports_on_and_off() {
     fs::create_dir(&target).unwrap();
     fs::write(target.join("other.md"), "keep").unwrap();
     symlink(&target, f.path("skills")).unwrap();
+    fs::create_dir(f.path("voice")).unwrap();
     let before = tree(&f.places.claude_home);
     let target_before = tree(&target);
     f.on();
@@ -644,7 +638,7 @@ fn symlinked_skills_outside_claude_home_supports_on_and_off() {
 
 #[test]
 fn refresh_refuses_user_changes_and_restores_the_install() {
-    for changed in ["skills/ari/SKILL.md", "persona-builder/ari/RULES.md"] {
+    for changed in ["skills/ari/SKILL.md", "voice/assistants/ari/RULES.md"] {
         let f = Fixture::new();
         f.on();
         let path = f.path(changed);
@@ -668,11 +662,11 @@ fn refresh_refuses_user_changes_and_restores_the_install() {
 
 #[test]
 fn record_cannot_claim_claude_file_or_itself() {
-    for claimed in ["CLAUDE.md", "persona-builder/installed.json"] {
+    for claimed in ["CLAUDE.md", "voice/installed.json"] {
         for kind in ["file", "dir"] {
             let f = Fixture::new();
             f.on();
-            let record_path = f.path("persona-builder/installed.json");
+            let record_path = f.path("voice/installed.json");
             let mut record: serde_json::Value =
                 serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
             let path = f.path(claimed);
@@ -701,7 +695,7 @@ fn record_cannot_claim_claude_file_or_itself() {
 
 #[test]
 fn record_through_overlapping_skills_link_is_refused() {
-    for target_relative in ["", "persona-builder", ".."] {
+    for target_relative in ["", "voice", ".."] {
         let f = Fixture::new();
         f.on();
         fs::remove_file(f.path("skills/ari/SKILL.md")).unwrap();
@@ -712,7 +706,7 @@ fn record_through_overlapping_skills_link_is_refused() {
         let file = target.join("CLAUDE.md");
         fs::write(&file, "keep").unwrap();
         let claimed = f.path("skills/CLAUDE.md");
-        let record_path = f.path("persona-builder/installed.json");
+        let record_path = f.path("voice/installed.json");
         let mut record: serde_json::Value =
             serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
         record["added"] = serde_json::json!([
@@ -784,7 +778,7 @@ fn skill_front_matter_accepts_allowed_keys_comments_and_indented_lines() {
 fn refresh_reports_leftover_folder_reason_and_restores_the_install() {
     let f = Fixture::new();
     f.on();
-    let path = f.path("persona-builder/ari");
+    let path = f.path("voice/assistants/ari");
     fs::write(path.join("notes.md"), "keep").unwrap();
     let before = tree(&f.places.claude_home);
     let result = turn_on(&f.member, &f.places);
@@ -859,4 +853,105 @@ fn turning_on_through_overlapping_skills_link_is_refused() {
         )
     );
     assert_eq!(tree(&f.places.claude_home), before);
+}
+
+#[test]
+fn voice_install_keeps_shared_root_out_of_added() {
+    let f = Fixture::new();
+    f.on();
+    assert!(
+        f.path("voice").is_dir(),
+        "shared Voice root was not created"
+    );
+    assert_eq!(
+        fs::metadata(f.path("voice")).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    assert!(f.path("voice/assistants/ari/RULES.md").is_file());
+    let record = install_record::read(&f.places.claude_home)
+        .unwrap()
+        .unwrap();
+    assert!(f.path("voice/installed.json").is_file());
+    assert!(
+        !record
+            .added
+            .iter()
+            .any(|added| added.path() == f.path("voice"))
+    );
+    for folder in ["voice/assistants", "voice/assistants/ari"] {
+        assert!(
+            record
+                .added
+                .iter()
+                .any(|added| matches!(added, Added::Dir { path } if path == &f.path(folder)))
+        );
+        assert_eq!(
+            fs::metadata(f.path(folder)).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+}
+
+#[test]
+fn voice_off_removes_assistants_but_keeps_shared_root() {
+    let f = Fixture::new();
+    f.on();
+    let off = f.off();
+    assert!(off.left.is_empty());
+    assert!(!f.path("voice/assistants/ari").exists());
+    assert!(!f.path("voice/assistants").exists());
+    assert!(!f.path("voice/installed.json").exists());
+    assert!(
+        f.path("voice").is_dir(),
+        "turning off must retain the shared root"
+    );
+}
+
+#[test]
+fn voice_panels_survive_on_refresh_and_off() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.path("voice/panels/dl-x")).unwrap();
+    fs::write(f.path("voice/panels/dl-x/notes"), "keep").unwrap();
+    let before = tree(&f.path("voice/panels"));
+    f.on();
+    assert!(f.path("voice/assistants/ari/RULES.md").is_file());
+    assert_eq!(tree(&f.path("voice/panels")), before);
+    f.on();
+    assert_eq!(tree(&f.path("voice/panels")), before);
+    assert!(f.off().left.is_empty());
+    assert_eq!(tree(&f.path("voice/panels")), before);
+}
+
+#[test]
+fn voice_assistant_named_panels_has_separate_rules() {
+    let f = Fixture::new();
+    let member = f.scratch.path().join("crew/panels");
+    make_member(&member, "Panels");
+    fs::create_dir_all(f.path("voice/panels/dl-x")).unwrap();
+    fs::write(f.path("voice/panels/dl-x/notes"), "keep").unwrap();
+    let before = tree(&f.path("voice/panels"));
+    turn_on(&member, &f.places).unwrap();
+    assert!(f.path("voice/assistants/panels/RULES.md").is_file());
+    assert_eq!(tree(&f.path("voice/panels")), before);
+    assert!(f.off().left.is_empty());
+    assert_eq!(tree(&f.path("voice/panels")), before);
+}
+
+#[test]
+fn voice_root_symlink_is_refused_without_writes() {
+    let f = Fixture::new();
+    let target = f.scratch.path().join("target");
+    fs::create_dir(&target).unwrap();
+    symlink(&target, f.path("voice")).unwrap();
+    let before = tree(f.scratch.path());
+    let result = turn_on(&f.member, &f.places);
+    assert!(
+        result.is_err(),
+        "a symlink at the shared root must be refused"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!("{}: symlink refused", f.path("voice").display())
+    );
+    assert_eq!(tree(f.scratch.path()), before);
 }

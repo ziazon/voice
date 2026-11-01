@@ -1199,3 +1199,27 @@ fn list_is_newest_first_and_skips_invalid_ids_and_damaged_saved_files() {
     assert_eq!(listed[0].status.status, "stopped");
     assert_eq!(snapshot(&home.panels()), before);
 }
+
+#[test]
+fn turning_on_creates_a_root_the_panel_runner_accepts() {
+    let h = Home::new();
+    voice_core::install::turn_on(
+        &h.0.join(".claude/crew/pebble"),
+        &voice_core::install::Places {
+            home: h.0.clone(),
+            claude_home: h.0.join(".claude"),
+        },
+    )
+    .unwrap();
+    assert!(
+        h.0.join(".claude/voice").is_dir(),
+        "turning on must create the shared root before Panels opens it"
+    );
+    let room = voice_panel_runner::room::Room::open(&h.0, ID, true);
+    assert!(
+        room.is_ok(),
+        "Panels refused the install-created root: {err:?}",
+        err = room.err()
+    );
+    assert!(h.room(ID).is_dir());
+}
