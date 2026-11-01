@@ -8,11 +8,12 @@ use voice_core::{
 mod copy;
 mod mirror;
 pub use copy::{Copied, copy_agreed, load_copy};
-pub use mirror::{MIRROR_REMOVED, Manifest, Refreshed, refresh};
+pub use mirror::{MIRROR_REMOVED, Manifest, Refreshed, drop_manifest, refresh};
 mod output;
 mod read;
 pub use output::{
-    prepare_output, prepare_output_with_projects, remove_copy, write_manifest, write_skill,
+    check_output, finish_output, prepare_output, prepare_output_with_projects, remove_copy,
+    write_manifest, write_skill,
 };
 pub use read::{read, read_with_rules};
 

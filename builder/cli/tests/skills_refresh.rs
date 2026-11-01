@@ -522,6 +522,7 @@ fn refresh_masks_errors_while_removing_or_opening_mirror() {
             );
             assert!(!stderr.contains("/private"), "{stderr}");
             assert!(!stderr.contains("couldn't remove"), "{stderr}");
+            assert!(!path.join(".manifest.json").exists());
         }
     }
 }
@@ -538,7 +539,7 @@ fn withdrawal_reports_mirror_open_errors_without_stderr() {
     let home = Scratch::new("mirror-withdraw-open-error");
     let path = private_slug(&home);
     success(refresh(&home));
-    let _mode = RestoreMode::set(path, 0o755);
+    let _mode = RestoreMode::set(path.clone(), 0o755);
     let output = run(&home, &["skills", "withdraw", "member", "claude:notes"]);
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
@@ -546,6 +547,7 @@ fn withdrawal_reports_mirror_open_errors_without_stderr() {
         "claude:notes: no longer copied.\nVoice couldn't remove your assistant's copy of your skills. Move anything you want to keep out of the folder ~/.claude/state/*/mirror, delete the folder, then run voice skills refresh member\n"
     );
     assert!(output.stderr.is_empty());
+    assert!(!path.join(".manifest.json").exists());
 }
 
 #[test]
@@ -573,4 +575,106 @@ fn unreadable_stamp_with_valid_rules_is_a_stale_copy() {
     assert!(!stderr.contains("didn't put there"), "{stderr}");
     assert!(!mirror(&home).join(".manifest.json").exists());
     assert!(mirror(&home).join(".anonymized-copy").exists());
+}
+
+#[test]
+fn refresh_leaves_overlapping_project_and_drops_manifest() {
+    let home = Scratch::new("mirror-overlap-refresh");
+    let path = private_slug(&home);
+    success(refresh(&home));
+    fs::create_dir(path.join("proj")).unwrap();
+    fs::write(path.join("proj/work.txt"), "Keep this work.\n").unwrap();
+    rules(
+        &home,
+        json!({"terms":["Pebble Freight"], "projects":["~/.claude/state/pebble-freight/mirror/proj"]}),
+    );
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "voice: ~/.claude/state/*/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again.\n"
+    );
+    assert_eq!(
+        fs::read_to_string(path.join("proj/work.txt")).unwrap(),
+        "Keep this work.\n"
+    );
+    assert!(!path.join(".manifest.json").exists());
+}
+
+#[test]
+fn withdrawal_leaves_overlapping_project_and_drops_manifest() {
+    let home = Scratch::new("mirror-overlap-withdraw");
+    let path = private_slug(&home);
+    success(refresh(&home));
+    fs::create_dir(path.join("proj")).unwrap();
+    fs::write(path.join("proj/work.txt"), "Keep this work.\n").unwrap();
+    rules(
+        &home,
+        json!({"terms":["Pebble Freight"], "projects":["~/.claude/state/pebble-freight/mirror/proj"]}),
+    );
+    let output = run(&home, &["skills", "withdraw", "member", "claude:notes"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "claude:notes: no longer copied.\nVoice couldn't remove your assistant's copy of your skills. Move anything you want to keep out of the folder ~/.claude/state/*/mirror, delete the folder, then run voice skills refresh member\n"
+    );
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        fs::read_to_string(path.join("proj/work.txt")).unwrap(),
+        "Keep this work.\n"
+    );
+    assert!(!path.join(".manifest.json").exists());
+}
+
+#[test]
+fn refresh_masks_anonymizer_folder_errors_and_drops_manifest() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-anonymizer-mode");
+    let path = private_slug(&home);
+    success(refresh(&home));
+    let _mode = RestoreMode::set(path.parent().unwrap().join("anonymizer"), 0o755);
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("~/.claude/state/*/anonymizer"), "{stderr}");
+    for private in ["pebble-freight", "/private", home.0.to_str().unwrap()] {
+        assert!(!stderr.contains(private), "{stderr}");
+    }
+    assert!(!path.join(".manifest.json").exists());
+}
+
+#[test]
+fn refresh_names_unreadable_placeholders_file() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-placeholders-mode");
+    two(&home);
+    success(refresh(&home));
+    let _mode = RestoreMode::set(
+        home.0
+            .join(".claude/state/pebble/anonymizer/placeholders.json"),
+        0o000,
+    );
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("~/.claude/state/pebble/anonymizer/placeholders.json"),
+        "{stderr}"
+    );
+    assert!(
+        !stderr.contains("couldn't change ~/.claude/state/pebble/mirror:"),
+        "{stderr}"
+    );
 }

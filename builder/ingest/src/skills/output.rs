@@ -86,6 +86,14 @@ pub fn prepare_output_with_projects(
     skills: &[Skill],
     projects: &[PathBuf],
 ) -> Result<PathBuf> {
+    finish_output(&check_output(out, home, skills, projects)?)
+}
+pub fn check_output(
+    out: &Path,
+    home: &Path,
+    skills: &[Skill],
+    projects: &[PathBuf],
+) -> Result<PathBuf> {
     if let Ok(meta) = fs::symlink_metadata(out)
         && (meta.file_type().is_symlink() || !meta.is_dir())
     {
@@ -114,12 +122,15 @@ pub fn prepare_output_with_projects(
             return Err(output_bad());
         }
     }
-    if out.exists() && !remove_copy(&out)? {
+    Ok(out)
+}
+pub fn finish_output(out: &Path) -> Result<PathBuf> {
+    if out.exists() && !remove_copy(out)? {
         return Err(output_bad());
     }
-    make_dirs(&out)?;
-    write_file(&open_folder(&out)?, ".anonymized-copy", STAMP.as_bytes())?;
-    Ok(out)
+    make_dirs(out)?;
+    write_file(&open_folder(out)?, ".anonymized-copy", STAMP.as_bytes())?;
+    Ok(out.to_path_buf())
 }
 /// Remove only an empty folder or a copy bearing Voice's exact stamp, never a link.
 pub fn remove_copy(path: &Path) -> Result<bool> {
@@ -275,4 +286,36 @@ pub fn write_skill(out: &Path, name: &str, kept: &[(PathBuf, String)]) -> Result
         write().map_err(|_| failed(path))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{STAMP, check_output, finish_output, prepare_output};
+    use crate::skills::mirror::common::Scratch;
+    use std::fs;
+
+    #[test]
+    fn output_check_preserves_project_and_stamped_copy() {
+        let home = Scratch::new("output-check");
+        let out = prepare_output(&home.0.join("copy"), &home.0, &[]).unwrap();
+        let project = out.join("proj");
+        fs::create_dir(&project).unwrap();
+        fs::write(project.join("work.txt"), "Keep this work.").unwrap();
+        assert!(check_output(&out, &home.0, &[], std::slice::from_ref(&project)).is_err());
+        assert_eq!(
+            fs::read_to_string(project.join("work.txt")).unwrap(),
+            "Keep this work."
+        );
+        check_output(&out, &home.0, &[], &[]).unwrap();
+        assert!(
+            project.join("work.txt").exists(),
+            "checking output removed the project"
+        );
+        finish_output(&out).unwrap();
+        assert!(!project.exists());
+        assert_eq!(
+            fs::read_to_string(out.join(".anonymized-copy")).unwrap(),
+            STAMP
+        );
+    }
 }

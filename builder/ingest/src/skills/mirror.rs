@@ -1,7 +1,7 @@
 //! Fresh private skill copies and hashes of their written bytes.
 use super::{
-    Copied, copy::load_agreed, copy_agreed, display_path, prepare_output_with_projects,
-    remove_copy, write_manifest,
+    Copied, check_output, copy::load_agreed, copy_agreed, display_path, finish_output, remove_copy,
+    write_manifest,
 };
 use crate::{
     anonymize::{self, Rules},
@@ -98,6 +98,7 @@ pub fn mirror_not_removed(path: &str) -> String {
 #[derive(Debug)]
 enum Failure {
     Foreign,
+    Overlap,
     Other(Error),
 }
 impl From<Error> for Failure {
@@ -108,7 +109,7 @@ impl From<Error> for Failure {
 
 fn output_error(error: Error, mirror: &Path) -> Failure {
     match error {
-        Error::Invalid(ref message) if matches!(super::output::output_bad(), Error::Invalid(own) if *message == own) => {
+        Error::Invalid(_) => {
             if matches!(fs::symlink_metadata(mirror.join(".anonymized-copy")), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
                 && fs::read_dir(mirror)
                     .is_ok_and(|mut entries| matches!(entries.next(), Some(Ok(_))))
@@ -122,22 +123,52 @@ fn output_error(error: Error, mirror: &Path) -> Failure {
     }
 }
 
+/// Invalidate only a stamped, real folder's regular manifest; never follow a link.
+pub fn drop_manifest(mirror: &Path) {
+    if fs::symlink_metadata(mirror).is_ok_and(|meta| meta.is_dir())
+        && fs::symlink_metadata(mirror.join(".anonymized-copy")).is_ok()
+    {
+        let manifest = mirror.join(".manifest.json");
+        if fs::symlink_metadata(&manifest).is_ok_and(|meta| meta.is_file()) {
+            let _ = fs::remove_file(manifest);
+        }
+    }
+}
+
 fn masked(error: Error, raw: &Path, shown: &str, home: &Path) -> Error {
+    let state = raw.parent().unwrap_or(raw);
+    let shown_state = shown.strip_suffix("/mirror").unwrap_or(shown);
+    let home_path = PathBuf::from(display_path(state, home));
+    let mut forms = vec![state.to_path_buf(), home_path.clone()];
+    if let Ok(relative) = home_path.strip_prefix("~") {
+        forms.push(home.join(relative));
+        if let Ok(home) = fs::canonicalize(home) {
+            forms.push(home.join(relative));
+        }
+    }
+    forms.sort_by_key(|path| std::cmp::Reverse(path.as_os_str().len()));
     let mut message = match error {
-        Error::Io { source, .. } => {
-            return Error::Invalid(format!("Voice couldn't change {shown}: {source}"));
+        Error::Io { path, source } => {
+            let path = forms.iter().find_map(|state| path.strip_prefix(state).ok());
+            let message = match path {
+                Some(path) if path.starts_with("mirror") => {
+                    format!("Voice couldn't change {shown}: {source}")
+                }
+                Some(path) => {
+                    let path = Path::new(shown_state).join(path);
+                    format!("Voice couldn't change {}: {source}", path.display())
+                }
+                None => format!("Voice couldn't read or change a file: {source}"),
+            };
+            return Error::Invalid(message);
         }
         Error::Invalid(message) => message,
         other => other.to_string(),
     };
-    if let (Ok(home), Ok(relative)) = (fs::canonicalize(home), raw.strip_prefix(home)) {
-        message = message.replace(&home.join(relative).display().to_string(), shown);
+    for form in forms {
+        message = message.replace(&form.display().to_string(), shown_state);
     }
-    Error::Invalid(
-        message
-            .replace(&raw.display().to_string(), shown)
-            .replace(&display_path(raw, home), shown),
-    )
+    Error::Invalid(message)
 }
 
 /// The caller holds `private::lock_state(home, &member.slug)`.
@@ -149,14 +180,17 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
         Ok(rules) => anonymize::report_path(&path, rules).display().to_string(),
         Err(_) => path.display().to_string(),
     };
-    let mirror = private::private_folder(home, &member.slug, "mirror")
-        .map_err(|error| masked(error, &mirror, &shown, home))?;
+    let mirror = private::private_folder(home, &member.slug, "mirror").map_err(|error| {
+        drop_manifest(&mirror);
+        masked(error, &mirror, &shown, home)
+    })?;
     let result = (|| {
         let rules = rules?;
         let (found, agreements, mut mapping) = load_agreed(home, member, &rules)?;
         let old = Manifest::read(&mirror.join(".manifest.json"));
-        let out = prepare_output_with_projects(&mirror, home, &found.skills, rules.projects())
-            .map_err(|error| output_error(error, &mirror))?;
+        let out = check_output(&mirror, home, &found.skills, rules.projects())
+            .map_err(|_| Failure::Overlap)?;
+        let out = finish_output(&out).map_err(|error| output_error(error, &mirror))?;
         let copied = copy_agreed(
             home,
             &member.slug,
@@ -199,19 +233,17 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
                     "{shown} holds files Voice didn't put there. Move them away, then run voice skills refresh again."
                 ));
             }
+            Failure::Overlap => {
+                drop_manifest(&mirror);
+                return Error::Invalid(format!(
+                    "{shown} overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again."
+                ));
+            }
             Failure::Other(error) => masked(error, &mirror, &shown, home),
         };
         let removed = matches!(remove_copy(&mirror), Ok(true))
             || matches!(std::fs::symlink_metadata(&mirror), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
-        if !removed
-            && fs::symlink_metadata(&mirror).is_ok_and(|meta| meta.is_dir())
-            && fs::symlink_metadata(mirror.join(".anonymized-copy")).is_ok()
-        {
-            let manifest = mirror.join(".manifest.json");
-            if fs::symlink_metadata(&manifest).is_ok_and(|meta| meta.is_file()) {
-                let _ = fs::remove_file(manifest);
-            }
-        }
+        drop_manifest(&mirror);
         let outcome = if removed {
             MIRROR_REMOVED.to_owned()
         } else {
@@ -227,7 +259,7 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
 
 #[cfg(test)]
 #[path = "../../../core/tests/common/mod.rs"]
-mod common;
+pub(super) mod common;
 
 #[cfg(test)]
 mod tests {
@@ -238,17 +270,12 @@ mod tests {
     use std::{fs, os::unix::fs::symlink};
 
     #[test]
-    fn only_output_folder_refusals_are_reworded() {
+    fn finish_output_refusals_are_reworded() {
         use voice_core::error::Error;
         let home = Scratch::new("output-refusals");
         let mirror = home.0.join("mirror");
         fs::create_dir(&mirror).unwrap();
         fs::write(mirror.join("notes.md"), "Keep this.").unwrap();
-        let other = Error::Invalid("The stamp is a link".into());
-        assert!(matches!(
-            super::output_error(other, &mirror),
-            super::Failure::Other(Error::Invalid(message)) if message == "The stamp is a link"
-        ));
         let own = super::super::output::output_bad();
         assert!(matches!(
             super::output_error(own, &mirror),
@@ -263,6 +290,49 @@ mod tests {
             super::output_error(error, &mirror),
             super::Failure::Other(error) if error.to_string() == message
         ));
+    }
+
+    #[test]
+    fn io_errors_mask_all_state_path_forms_and_hide_outside_files() {
+        use voice_core::error::Error;
+        let scratch = Scratch::new("masked-state-forms");
+        let home = scratch.0.join("home");
+        fs::create_dir(&home).unwrap();
+        let alias = scratch.0.join("home-link");
+        symlink(&home, &alias).unwrap();
+        let state = ".claude/state/pebble-freight";
+        let mirror = home.canonicalize().unwrap().join(state).join("mirror");
+        let reason = std::io::Error::from(std::io::ErrorKind::PermissionDenied).to_string();
+        for root in [
+            alias.join(state),
+            home.canonicalize().unwrap().join(state),
+            std::path::PathBuf::from("~").join(state),
+        ] {
+            for (relative, shown) in [
+                (
+                    "anonymizer/placeholders.json",
+                    "~/.claude/state/*/anonymizer/placeholders.json",
+                ),
+                ("mirror/notes/SKILL.md", "~/.claude/state/*/mirror"),
+            ] {
+                let error = Error::Io {
+                    path: root.join(relative),
+                    source: std::io::ErrorKind::PermissionDenied.into(),
+                };
+                assert_eq!(
+                    super::masked(error, &mirror, "~/.claude/state/*/mirror", &alias).to_string(),
+                    format!("Voice couldn't change {shown}: {reason}")
+                );
+            }
+        }
+        let error = Error::Io {
+            path: scratch.0.join("outside.txt"),
+            source: std::io::ErrorKind::PermissionDenied.into(),
+        };
+        assert_eq!(
+            super::masked(error, &mirror, "~/.claude/state/*/mirror", &alias).to_string(),
+            format!("Voice couldn't read or change a file: {reason}")
+        );
     }
 
     #[test]

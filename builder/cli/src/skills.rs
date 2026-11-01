@@ -118,6 +118,9 @@ fn manage(member_dir: PathBuf, action: Action) -> Result<ExitCode> {
                 let mirror = home.join(".claude/state").join(&member.slug).join("mirror");
                 let removed = exists
                     .and_then(|_| private::private_folder(&home, &member.slug, "mirror"))
+                    .and_then(|path| {
+                        skills::check_output(&path, &home, &found.skills, rules.projects())
+                    })
                     .and_then(|path| skills::remove_copy(&path));
                 let member_path = anonymize::report_path(
                     &PathBuf::from(skills::display_path(&member_dir, &home)),
@@ -129,6 +132,7 @@ fn manage(member_dir: PathBuf, action: Action) -> Result<ExitCode> {
                         member_path.display()
                     );
                 } else {
+                    skills::drop_manifest(&mirror);
                     println!(
                         "Voice couldn't remove your assistant's copy of your skills. Move anything you want to keep out of the folder {}, delete the folder, then run voice skills refresh {}",
                         anonymize::report_path(
