@@ -536,6 +536,23 @@ withdraw, or `anonymize --out`) deletes what it points at.
   of a recorded id with (c): exits 1 with 8.5's line, the files kept. A control: `voice anonymize
   --out` into a fresh folder still works with these roots in place when nothing links into it.
 
+**8.9.5 Hidden entries too, and a test only the root check catches (V1's review of 8.9.2).**
+`children` leaves out names starting with `.`, so `~/.claude/skills/.wip` linked to `mirror/wip`
+is still emptied. And V1's mutation that put the roots back to one way survived: every root test
+also has an entry in `protected`.
+- A `fn protect(protected: &mut Vec<PathBuf>, path: &Path) -> Result<()>` in `skills.rs`: reads
+  `path` like `children` does (a missing folder is nothing; any other error is returned, as
+  `children` returns it) but keeps every entry, hidden ones included, and pushes each one's
+  canonical path when `canonicalize` succeeds. It replaces 8.9.2's inline pushes: call it on each
+  root `root_skills` walks, on `~/.claude/skills/synced`, and on each synced account, before their
+  `children` loops.
+- Tests (as 8.9.2's): (e) `~/.claude/skills/.wip` a link to `mirror/wip` holding `notes.md`;
+  (f) a project `~/vault.key` listed in `private.json` (discovery skips it: its name is deny-listed)
+  whose `.claude/skills` is a link to `mirror/vault-skills` holding `plan.md`. Each refresh exits 1
+  with the `Overlap` sentence and the file keeps its text. Add both to the fresh-output control.
+  Then show (f) fails when `check_output`'s roots go back to `within(&out, &root)` alone, and (e)
+  fails when `protect` skips hidden names (`cp` backup, `cmp` restore; never `git checkout`).
+
 **8.9.3 Accepted, not fixed (LOW 3), recorded by V1 in `.ai/SECURITY.md`.** When the rules load
 but `load_agreed` fails (an unreadable `placeholders.json` or `skills.json`), the old copies stay,
 even one a just-added term would now refuse. They are no worse than before the failed refresh,
