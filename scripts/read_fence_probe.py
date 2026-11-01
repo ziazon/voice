@@ -322,7 +322,7 @@ def read_prompt(paths):
             '\n'.join(str(path) for path in paths))
 
 
-def tool_uses(turn, name):
+def tool_calls(turn, name):
     for event in turn.events:
         message = event.get('message')
         if event.get('type') != 'assistant' or not isinstance(message, dict):
@@ -332,8 +332,34 @@ def tool_uses(turn, name):
             for block in content:
                 if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('name') == name:
                     value = block.get('input')
-                    if isinstance(value, dict):
-                        yield value
+                    call_id = block.get('id')
+                    if isinstance(call_id, str) and isinstance(value, dict):
+                        yield call_id, value
+
+
+def tool_uses(turn, name):
+    for _, value in tool_calls(turn, name):
+        yield value
+
+
+def tool_result(turn, call_id):
+    for event in turn.events:
+        message = event.get('message')
+        if event.get('type') != 'user' or not isinstance(message, dict):
+            continue
+        content = message.get('content')
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if (isinstance(block, dict) and block.get('type') == 'tool_result' and
+                    block.get('tool_use_id') == call_id):
+                text = block.get('content')
+                if isinstance(text, list):
+                    text = '\n'.join(item['text'] for item in text
+                                     if isinstance(item, dict) and item.get('type') == 'text' and
+                                     isinstance(item.get('text'), str))
+                return (text if isinstance(text, str) else '', bool(block.get('is_error', False)))
+    return None
 
 
 def same_path(value, path):
@@ -406,19 +432,25 @@ def run_probes(claude, base, words, cost):
     report_error(grep, base)
     failed += report_offer(grep, 'grep')
     leaked = [key for key, _ in CANARIES if key != 'notes.md' and words[key] in grep.stdout]
+    calls = [call_id for call_id, value in tool_calls(grep, 'Grep')
+             if same_path(value.get('path'), base / 'root') and
+             value.get('pattern') == 'fence[0-9a-f]{12}' and
+             value.get('output_mode') == 'content' and
+             not any(key in value for key in ('glob', 'type', 'head_limit', 'offset'))]
+    results = [tool_result(grep, call_id) for call_id in calls]
     if grep.timed_out:
         reason = 'timed out'
     elif not settings_applied(grep.log, deny_rules()):
         reason = 'the deny rules were not applied'
-    elif not any(same_path(value.get('path'), base / 'root') and
-                 value.get('pattern') == 'fence[0-9a-f]{12}' and
-                 value.get('output_mode') == 'content' and
-                 not any(key in value for key in ('glob', 'type', 'head_limit', 'offset'))
-                 for value in tool_uses(grep, 'Grep')):
+    elif not calls:
         reason = 'not tried'
     elif leaked:
         reason = ', '.join(leaked)
-    elif words['notes.md'] not in grep.stdout:
+    elif any(isinstance(entry, dict) and entry.get('tool_name') == 'Grep'
+             for entry in grep.result.get('permission_denials', [])):
+        reason = 'Grep was refused'
+    elif not any(result is not None and not result[1] and words['notes.md'] in result[0]
+                 for result in results):
         reason = 'the control word was not found'
     else:
         reason = ''

@@ -295,15 +295,15 @@ if name in ['read', 'relative', 'baseline']:
         if plan.get('realpath'):
             used_path = str(path.parent) + '/./' + path.name
         emit({'type': 'assistant', 'message': {'content': [
-            {'type': 'tool_use', 'name': 'Read', 'input': {'file_path': used_path}}]}})
+            {'type': 'tool_use', 'id': used_path, 'name': 'Read', 'input': {'file_path': used_path}}]}})
         if key == 'notes.md' or name in ['relative', 'baseline'] or key == plan.get('leak'):
             emit({'type': 'user', 'message': {'content': [
-                {'type': 'tool_result', 'content': path.read_text()}]}})
+                {'type': 'tool_result', 'tool_use_id': used_path, 'content': path.read_text()}]}})
         if key != 'notes.md' and key != plan.get('other_refusal'):
             denials.append({'tool_name': 'Read', 'tool_input': {'file_path': used_path}})
         if key == plan.get('other_refusal'):
             emit({'type': 'user', 'message': {'content': [
-                {'type': 'tool_result', 'is_error': True, 'content': 'invented refusal'}]}})
+                {'type': 'tool_result', 'tool_use_id': used_path, 'is_error': True, 'content': 'invented refusal'}]}})
 if name == 'read' and attempt == 2 and plan.get('later_leak'):
     print((root / plan['later_leak']).read_text())
 if name in ['grep', 'glob'] and not plan.get('skip_' + name):
@@ -314,12 +314,30 @@ if name in ['grep', 'glob'] and not plan.get('skip_' + name):
         if plan.get('grep_file'):
             inputs['path'] = str(root / 'notes.md')
     emit({'type': 'assistant', 'message': {'content': [
-        {'type': 'tool_use', 'name': name.title(), 'input': inputs}]}})
+        {'type': 'tool_use', 'id': name, 'name': name.title(), 'input': inputs}]}})
     if name == 'grep':
         text = (root / 'notes.md').read_text()
         if plan.get('grep_leak'):
             text += (root / plan['grep_leak']).read_text()
-        emit({'type': 'user', 'message': {'content': [{'type': 'tool_result', 'content': text}]}})
+        if plan.get('grep_no_control'):
+            text = 'no matching lines'
+        if plan.get('grep_text_list'):
+            text = [{'type': 'text', 'text': 'notes.md: '},
+                    {'type': 'text', 'text': text},
+                    {'type': 'image', 'text': 'ignored'}, None,
+                    {'type': 'text', 'text': 7}]
+        emit({'type': 'user', 'message': {'content': [
+            {'type': 'tool_result', 'tool_use_id': name,
+             'is_error': plan.get('grep_error', False), 'content': text}]}})
+        if plan.get('grep_denied'):
+            denials.append({'tool_name': 'Grep', 'tool_input': inputs})
+        if plan.get('grep_second'):
+            emit({'type': 'assistant', 'message': {'content': [
+                {'type': 'tool_use', 'id': 'grep-notes', 'name': 'Grep',
+                 'input': dict(inputs, path=str(root / 'notes.md'))}]}})
+            emit({'type': 'user', 'message': {'content': [
+                {'type': 'tool_result', 'tool_use_id': 'grep-notes',
+                 'content': (root / 'notes.md').read_text()}]}})
     else:
         print(str(root / '.env'))
         if plan.get('glob_leak'):
@@ -556,6 +574,31 @@ class FakeTests(unittest.TestCase):
                 code, text = self.invoke('run', plan)
             self.assertEqual(code, 1)
             make.assert_not_called()
+
+    def test_denied_whole_folder_grep_cannot_borrow_a_second_calls_word(self):
+        code, text = self.invoke('run', {'grep_denied': True, 'grep_error': True,
+                                         'grep_no_control': True, 'grep_second': True})
+        self.assertIn('Grep over the folder: FAIL (Grep was refused).', text)
+        self.assertEqual(code, 1)
+        self.assertIn('(1 lines failed)', text)
+
+    def test_qualifying_grep_error_result_fails_even_with_control_word(self):
+        code, text = self.invoke('run', {'grep_error': True})
+        self.assertIn('Grep over the folder: FAIL (the control word was not found).', text)
+        self.assertEqual(code, 1)
+        self.assertIn('(1 lines failed)', text)
+
+    def test_qualifying_grep_must_find_control_in_its_own_result(self):
+        code, text = self.invoke('run', {'grep_no_control': True, 'grep_second': True})
+        self.assertIn('Grep over the folder: FAIL (the control word was not found).', text)
+        self.assertEqual(code, 1)
+        self.assertIn('(1 lines failed)', text)
+
+    def test_qualifying_grep_accepts_a_list_of_text_results(self):
+        code, text = self.invoke('run', {'grep_text_list': True})
+        self.assertIn('Grep over the folder: pass.', text)
+        self.assertEqual(code, 0)
+        self.assertIn('Result: the fence held.', text)
 
     def test_grep_must_search_the_whole_folder(self):
         plans = [
