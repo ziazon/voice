@@ -95,6 +95,9 @@ impl Rules {
                     if term.split_whitespace().count() > 12 {
                         return Err(bad(format!("{at} must have at most 12 words")));
                     }
+                    if !term.chars().any(char::is_alphanumeric) {
+                        return Err(bad(format!("{at} must hold a letter or a digit")));
+                    }
                     if !valid_kind(kind) {
                         return Err(bad(format!("{at}.kind must match ^[a-z][a-z-]{{0,31}}$")));
                     }

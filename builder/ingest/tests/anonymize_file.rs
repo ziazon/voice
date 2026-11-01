@@ -648,6 +648,41 @@ fn twelve_word_term_loads_and_is_replaced() {
     assert_eq!(kept(term, &rules(json!({"terms":[term]}))), "<term-1>");
 }
 
+#[test]
+fn punctuation_only_term_words_do_not_cause_quadratic_search() {
+    let r = rules(json!({"terms":["- Rowan"]}));
+    let text = format!("x{}Rowany", "-".repeat(40_000));
+    let start = std::time::Instant::now();
+    let result = anonymize::file(
+        Path::new("SKILL.md"),
+        text.as_bytes(),
+        &r,
+        &mut Mapping::default(),
+    );
+    let elapsed = start.elapsed();
+    eprintln!("punctuation-only term word scan took {elapsed:?}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "took {elapsed:?}"
+    );
+    assert!(
+        matches!(result, FileResult::Refused(found) if found.iter().any(|f| f.kind == "your term"))
+    );
+}
+
+#[test]
+fn punctuation_only_term_words_are_kept_when_replacing() {
+    assert_eq!(
+        kept("Signed - Rowan", &rules(json!({"terms":["- Rowan"]}))),
+        "Signed - <term-1>"
+    );
+}
+
+#[test]
+fn punctuation_only_term_words_keep_the_run_rescan() {
+    refused_with("myrowan", json!({"terms":["— Rowan"]}), "your term", 1);
+}
+
 fn assert_mixed_sharp_s_refused(term: &str, text: &str) {
     let r = rules(json!({"terms":[term]}));
     assert!(

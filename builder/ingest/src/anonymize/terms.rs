@@ -24,6 +24,7 @@ impl Term {
         let words = |value: &str| {
             value
                 .split_whitespace()
+                .filter(|word| word.chars().any(char::is_alphanumeric))
                 .map(regex::escape)
                 .collect::<Vec<_>>()
         };
@@ -49,6 +50,7 @@ impl Term {
             };
             let pattern = variant
                 .split_whitespace()
+                .filter(|word| word.chars().any(char::is_alphanumeric))
                 .map(escape)
                 .collect::<Vec<_>>()
                 .join(r"[^\p{L}\p{N}]+");
