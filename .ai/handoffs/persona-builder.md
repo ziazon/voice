@@ -2,6 +2,52 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO3: the anonymizer engine (2026-10-31, lane: V1)
+
+- **What:** `persona-builder skills list|agree|withdraw` and `persona-builder anonymize`: find
+  every skill folder on the computer, keep a yes per skill (and the folder it was given for) in
+  private state, and copy each agreed skill with private details replaced or refused. The rules
+  are data: built-in detectors (emails, phones and long numbers, secrets, other people's home
+  folders, private hosts and addresses, ticket ids) plus the person's terms, patterns, allow and
+  never-copy lists in their gitignored `private.json`. Transform, re-scan, refuse: a term becomes
+  a numbered placeholder kept for good; anything still found refuses the whole skill. The report
+  names file, line and kind, never the text. Code in `builder/ingest/src/anonymize*` and
+  `skills*`, the CLI in `builder/cli/src/skills.rs`. Brief `plans/briefs/VO3-anonymizer.md`
+  (section 9 is the repeat Verifier's list, section 10 how each was fixed). DECISIONS has the
+  rules. Out of scope: hashes and refresh, the review screen (VO4), the export (VO5).
+- **Who built it:** Codex, in nine dispatches: the engine (`209b846`), the review fixes
+  (`0dff027`, `5a003ee`), section 10 in two runs (`07dabb9`; `d6043cd` with a follow-up that
+  put the private file-name check back on unreadable files), and the fixes after the security
+  review and the second repeat Verifier (`1425860`), the delta Verifier's (`9f77698`), and a VO11
+  test that read a non-blocking socket (`fa6533d`: on macOS an accepted socket inherits the
+  listener's non-blocking flag; it failed once in ci-local under load, then passed 10 of 10).
+- **Security review:** on the engine (Opus): with the first Verifier, 15 issues between them, all
+  fixed in `0dff027`. On the section-10 delta (Opus): one MEDIUM, fixed in `1425860`: counted
+  separators (`{1,8}`, `{0,8}`) over a large Unicode class pushed a term of 4 or more pieces over
+  the regex size limit, so the run refused (now `+` and `*`; a 5-piece host, a 12-word term and
+  200 terms load, tested). LOW (memory on long term lists): the class now appears once per join,
+  not measured again by V1. Nit (the test guard's `unwrap` in `Drop`) fixed. No disclosure or bypass found.
+- **Verifier:** first pass (Fable, on the engine): see above, fixed in `0dff027`. Repeat (Opus, on
+  `0dff027`): FAIL, 2 must-fixes (a term with punctuation inside or inside a longer word was kept;
+  a mode-000 file printed its name and stopped the run) and 4 smaller items. Repeat (Opus, on
+  `8d35218`): PASS, all six reproduced as fixed through the binary; should-fixes (`ss` and `ß`
+  mixed in one term; a skill folder that can't be read vanished silently) fixed in `1425860`.
+  Delta pass (Opus, on `1425860`): PASS; should-fix (a term starting with a punctuation-only word,
+  such as a sign-off dash, made the search quadratic: 77 s on a 40000-dash line) fixed in `9f77698`
+  (such words are dropped; a term with no letter or digit is refused; now 75 ms). Recorded, not
+  fixed: 2000 terms of 12 words take about 4 GB to load (better than before); a term of more than
+  about 20 dot or dash pieces still fails as too complex (fails safe, names the term); the exact
+  match swallows separators such as an empty table cell between a term's words.
+- **Accepted trade-off:** a term of 4 or more letters is found inside longer words (`Vale` in
+  "available"), so ordinary text can be refused; the report gives file and line, and one allow
+  entry for the whole word fixes it. Outside the design: look-alike letters, accents added to an
+  ASCII term, punctuation inside a term's own word.
+- **Verified:** `bash scripts/ci-local.sh` all passed at `5a003ee`, `8d35218`, `fa6533d` and the final head
+  (red once at `1425860`, on the VO11 socket test above; V1, outside Codex's sandbox, which can't open the `self_hosted` tests' listeners). Mutations
+  by V1 (`cp` backup, `cmp` restore): allow exemption by overlap instead of single cover (four
+  tests red); an unreadable file's open failure returning its path (red). **Not verified:** Linux,
+  running as root (the mode-000 tests skip there).
+
 ## VO11: the operating-system sandbox spike (2026-10-31, lane: V1)
 
 - **What:** the answer to gate Q12, in `docs/spikes/VO11-os-sandbox.md`: Seatbelt through
