@@ -29,16 +29,29 @@ impl Term {
         };
         let exact = compile(&words(text).join(r"[^\p{L}\p{N}\n]{1,8}"))?;
         let mut rescans = Vec::new();
-        let folded = text.to_lowercase().replace('ß', "ss");
+        let lowercase = text.to_lowercase();
+        let folded = lowercase.replace('ß', "ss");
+        let sharp_s = lowercase.replace("ss", "ß");
         let mut variants = vec![text];
-        if text.to_lowercase().contains('ß') {
+        if lowercase.contains('ß') {
             variants.push(&folded);
+        }
+        if lowercase.contains("ss") {
+            variants.push(&sharp_s);
         }
         for variant in variants {
             rescans.push((compile(&words(variant).join(r"[^\p{L}\p{N}]{1,8}"))?, true));
-            let compact: String = variant.chars().filter(|c| !c.is_whitespace()).collect();
-            if compact.chars().filter(|c| c.is_alphanumeric()).count() >= 4 {
-                rescans.push((compile(&regex::escape(&compact))?, false));
+            let runs: Vec<_> = variant
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|run| !run.is_empty())
+                .collect();
+            if runs.iter().map(|run| run.chars().count()).sum::<usize>() >= 4 {
+                let pattern = runs
+                    .iter()
+                    .map(|run| regex::escape(run))
+                    .collect::<Vec<_>>()
+                    .join(r"[^\p{L}\p{N}]{0,8}");
+                rescans.push((compile(&pattern)?, false));
             }
         }
         Ok(Self {

@@ -334,6 +334,103 @@ fn verifier_02_compact_and_punctuated_substrings() {
 }
 
 #[test]
+fn repeat_verifier_punctuation_rescans() {
+    let cases = [
+        ("Pebble Freight", "mypebble-freight.com"),
+        ("Pebble Freight", "xPebble_Freight"),
+        ("Rowan Vale", "github.com/xrowan-vale/x"),
+        ("pebble-io", "mypebble_io"),
+        ("pebble-io", "mypebbleio"),
+        ("Pebble Freight", "ｍｙｐｅｂｂｌｅ－ｆｒｅｉｇｈｔ"),
+    ];
+    let mut missed = Vec::new();
+    for (term, text) in cases {
+        let result = anonymize::file(
+            Path::new("SKILL.md"),
+            format!("Public\n{text}").as_bytes(),
+            &rules(json!({"terms":[term]})),
+            &mut Mapping::default(),
+        );
+        if !matches!(result, FileResult::Refused(ref found) if found.iter().any(|f| f.kind == "your term" && f.line == 2))
+        {
+            missed.push((text, result));
+        }
+    }
+    assert!(missed.is_empty(), "missed term rescans: {missed:?}");
+}
+
+#[test]
+fn repeat_verifier_sharp_s_rescans_both_ways() {
+    for (term, text) in [("Strasse", "Straße 5"), ("Straße", "myStrasse")] {
+        refused_with(text, json!({"terms":[term]}), "your term", 1);
+    }
+}
+
+#[test]
+fn short_terms_have_no_unbounded_rescan() {
+    assert_eq!(kept("xabx", &rules(json!({"terms":["ab"]}))), "xabx");
+    assert_eq!(kept("xabcx", &rules(json!({"terms":["abc"]}))), "xabcx");
+}
+
+#[test]
+fn repeat_verifier_partial_allow_cannot_hide_term() {
+    refused_with(
+        "Public\nRowan\nVale",
+        json!({"terms":["Rowan Vale"], "allow":["vale"]}),
+        "your term",
+        2,
+    );
+}
+
+#[test]
+fn repeat_verifier_partial_allow_cannot_hide_pattern() {
+    refused_with(
+        "Public\npebble-12",
+        json!({"patterns":["pebble-[0-9]+"], "allow":["pebble"]}),
+        "your pattern",
+        2,
+    );
+}
+
+#[test]
+fn repeat_verifier_multiple_allows_cannot_hide_phone() {
+    refused_with(
+        "212 555 0199",
+        json!({"allow":["212", "555 0199"]}),
+        "phone",
+        1,
+    );
+}
+
+#[test]
+fn whole_allow_and_builtin_masks_still_exempt_hits() {
+    let text = "212 555 0199";
+    assert_eq!(kept(text, &rules(json!({"allow":[text]}))), text);
+    let text = "git@github.com:example/repo";
+    assert_eq!(kept(text, &Rules::builtin()), text);
+}
+
+#[test]
+fn repeat_verifier_partial_allow_fullwidth_offsets() {
+    refused_with(
+        "é\nｍｙｐｅｂｂｌｅ－ｆｒｅｉｇｈｔ\nUseful",
+        json!({"terms":["Pebble Freight"], "allow":["ｆｒｅｉｇｈｔ"]}),
+        "your term",
+        2,
+    );
+    let text = "é\nｍｙｐｅｂｂｌｅ－ｆｒｅｉｇｈｔ\nUseful";
+    assert_eq!(
+        kept(
+            text,
+            &rules(
+                json!({"terms":["Pebble Freight"], "allow":["ｍｙｐｅｂｂｌｅ－ｆｒｅｉｇｈｔ"]})
+            )
+        ),
+        text
+    );
+}
+
+#[test]
 fn verifier_03_paths_are_scanned_and_report_redacts_components() {
     use persona_builder_ingest::skills::Source;
     for path in [

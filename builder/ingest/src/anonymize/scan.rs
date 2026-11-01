@@ -1,7 +1,7 @@
 //! Shared masks and scans, with one line index per scanned text.
 use super::{Rules, detect, terms};
 use regex::Regex;
-use std::{collections::BTreeSet, sync::LazyLock};
+use std::{collections::BTreeSet, ops::Range, sync::LazyLock};
 
 static BUILTIN_MASKS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     ["git@github.com", "git@gitlab.com", "git@bitbucket.org"]
@@ -10,24 +10,31 @@ static BUILTIN_MASKS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         .collect()
 });
 
-pub(super) fn mask(text: &str, rules: &Rules, inserted: &[std::ops::Range<usize>]) -> String {
+pub(super) fn mask(text: &str, rules: &Rules, inserted: &[Range<usize>]) -> String {
     let mut masked = text.as_bytes().to_vec();
     for range in inserted {
         masked[range.clone()].fill(b' ');
     }
-    let mut allowed = false;
+    let before = masked.clone();
+    let mut allowed = Vec::new();
     for pattern in rules.allow.iter().chain(BUILTIN_MASKS.iter()) {
         for (start, end) in terms::matches(text, pattern) {
             masked[start..end].fill(b' ');
-            allowed = true;
+            allowed.push(start..end);
         }
     }
-    if allowed {
-        // A suffix such as `com` has word boundaries but must not hide part of an email.
-        // Only a mask covering the entire detected identifier can exempt it.
-        for (range, _) in detect::find(text) {
-            if masked[range.clone()].iter().any(|b| *b != b' ') {
-                masked[range.clone()].copy_from_slice(&text.as_bytes()[range]);
+    if !allowed.is_empty() {
+        let mut hits: Vec<_> = detect::find(text).map(|(range, _)| range).collect();
+        for pattern in &rules.patterns {
+            hits.extend(pattern.find_iter(text).map(|m| m.range()));
+        }
+        hits.extend(term_hits(text, rules));
+        for hit in hits {
+            if !allowed
+                .iter()
+                .any(|allow| allow.start <= hit.start && hit.end <= allow.end)
+            {
+                masked[hit.clone()].copy_from_slice(&before[hit]);
             }
         }
     }
@@ -90,40 +97,54 @@ fn term_findings(
     eof: usize,
     found: &mut BTreeSet<(usize, &'static str)>,
 ) {
-    // Fullwidth ASCII has different byte offsets, so index this copy independently.
-    let narrowed: String = text
-        .chars()
-        .map(|c| {
-            if ('\u{ff01}'..='\u{ff5e}').contains(&c) {
-                char::from_u32(c as u32 - 0xfee0).expect("ASCII")
-            } else {
-                c
-            }
-        })
-        .collect();
-    let narrowed_starts = line_starts(&narrowed);
-    for (copy, starts) in [
-        (text, starts),
-        (narrowed.as_str(), narrowed_starts.as_slice()),
-    ] {
+    for hit in term_hits(text, rules) {
+        let index = starts.partition_point(|offset| *offset <= hit.start) - 1;
+        found.insert((lines.get(index).copied().unwrap_or(eof), "your term"));
+    }
+}
+
+fn narrow(text: &str) -> (String, Vec<usize>) {
+    let mut narrowed = String::with_capacity(text.len());
+    let mut offsets = Vec::with_capacity(text.len() + 1);
+    for (offset, c) in text.char_indices() {
+        if ('\u{ff01}'..='\u{ff5e}').contains(&c) {
+            narrowed.push(char::from_u32(c as u32 - 0xfee0).expect("ASCII"));
+            offsets.push(offset);
+        } else {
+            narrowed.push(c);
+            offsets.extend(offset..offset + c.len_utf8());
+        }
+    }
+    offsets.push(text.len());
+    (narrowed, offsets)
+}
+
+fn term_hits(text: &str, rules: &Rules) -> Vec<Range<usize>> {
+    let (narrowed, offsets) = narrow(text);
+    let mut hits = Vec::new();
+    for (copy, narrowed_copy) in [(text, false), (narrowed.as_str(), true)] {
         for term in &rules.terms {
             for (pattern, bounded) in &term.rescans {
-                let mut add = |start| {
-                    let index = starts.partition_point(|offset| *offset <= start) - 1;
-                    found.insert((lines.get(index).copied().unwrap_or(eof), "your term"));
+                let mut add = |start: usize, end: usize| {
+                    hits.push(if narrowed_copy {
+                        offsets[start]..offsets[end]
+                    } else {
+                        start..end
+                    });
                 };
                 if *bounded {
-                    for (start, _) in terms::matches(copy, pattern) {
-                        add(start);
+                    for (start, end) in terms::matches(copy, pattern) {
+                        add(start, end);
                     }
                 } else {
                     for m in pattern.find_iter(copy) {
-                        add(m.start());
+                        add(m.start(), m.end());
                     }
                 }
             }
         }
     }
+    hits
 }
 
 pub(super) fn private_name(text: &str, rules: &Rules) -> bool {

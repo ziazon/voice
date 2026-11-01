@@ -57,6 +57,24 @@ fn agree(home: &Scratch, ids: &[&str]) {
 fn anonymize(home: &Scratch, out: &str) -> Output {
     run(home, &["anonymize", "member", "--out", out])
 }
+
+#[test]
+fn repeat_verifier_punctuation_refuses_skill_end_to_end() {
+    let home = Scratch::new("anonymize-punctuation");
+    setup(&home, json!({"terms":["Pebble Freight"]}));
+    skill(
+        &home,
+        ".claude/skills/notes",
+        "Public\nmypebble-freight.com\n",
+    );
+    agree(&home, &["claude:notes"]);
+    let output = anonymize(&home, "copy");
+    assert_eq!(output.status.code(), Some(1));
+    let report = String::from_utf8(output.stdout).unwrap();
+    assert!(report.contains("notes/SKILL.md:2 (your term)"), "{report}");
+    assert!(!report.to_lowercase().contains("pebble-freight"));
+    assert!(!home.0.join("copy/notes").exists());
+}
 #[cfg(unix)]
 fn mode(path: &Path) -> u32 {
     fs::metadata(path).unwrap().permissions().mode() & 0o777
