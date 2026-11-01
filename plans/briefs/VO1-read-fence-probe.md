@@ -303,3 +303,53 @@ first:
   stops Claude Code from starting, say so and paste what it printed; V1 runs it outside. Do not run
   `run`.
 - Your summary lists each file and anything in § 1 you could not do as written.
+
+## 4. Fixes after the security review and the Verifier (second dispatch)
+
+Both found the same false pass, and a few smaller gaps. Same rules as before: no commit, no new
+dependency, Python 3.9, at most 2 test workers, each test red first.
+
+1. **A symlink canary must be tried itself.** `same_path` resolves the whole path, so a denial of
+   `root/.env` also satisfies `alias.md` (it points there), and `outside/far.md` satisfies
+   `out-link.md`, and the other way round: a canary the model never tried reads `denied: pass`.
+   Compare paths with only the parent folder resolved:
+   `os.path.join(os.path.realpath(os.path.dirname(p)), os.path.basename(p))` on both sides (this
+   keeps `/var/…` and `/private/var/…` equal without following the last link). Tests: with the
+   fake skipping `alias.md` (and, separately, `out-link.md`, `.env`, `outside/far.md`), that key is
+   `not tried: FAIL` and the result fails.
+2. **The broken-settings check must not be true by construction.** Today `caught` asks whether the
+   34 rules were applied, which `broken.json` can never satisfy. The Verifier measured (2.1.292,
+   signed out) that Claude Code drops a malformed rule and keeps the rest of a list (`["Read(//**/.env)",
+   "NotATool(x"]` logs `Adding 1 deny rule(s)`), so the exact-list check in `settings_applied`
+   stays as it is. Change `caught` to: Claude Code refused it (no `init`, non-zero exit), or it
+   started and its log holds **no** line containing `deny rule(s) to destination 'flagSettings'`
+   at all. Test: a fake that logs a one-rule `flagSettings` line for `broken.json` makes the line
+   `FAIL`.
+3. **The `relative` turn's settings file goes in a folder of its own.** A `--settings <file>` may
+   anchor its rules at the file's own folder, and `relative.json` sits in `base`, above `root/`, so
+   the line could say a `**/` rule held when it held only because of where the file was. Write it
+   as `base/elsewhere/relative.json` (`elsewhere/` 0700, beside `root/`, never above it), and
+   update the fixture test.
+4. **Scan the glob turn for denied words too.** If any denied key's word appears in the `glob`
+   turn's stdout, print `Glob turn: a denied file's contents appeared (<keys>): FAIL.` and count it
+   as a failed line (the glob count line stays information otherwise). The `relative` and
+   `baseline` turns stay information only, since their rules are not the fence. Test with a fake
+   that prints a denied word in the glob turn.
+5. **The report on this Mac's own settings** also names, as counts or names only and never values:
+   `<n> hooks` (the number of entries under `hooks`, any event), `<n> environment settings` (keys
+   under `env`), `a key helper` (`apiKeyHelper` set), `<n> plugins turned on` (`enabledPlugins`
+   entries whose value is `true`). The line becomes `This Mac's own settings widen reads: …` as now,
+   then a second line `This Mac's own settings also bring: <list>.` or `This Mac's own settings
+   also bring: nothing else.` These load into every turn the probe runs, as they will into a seat's
+   (VO6 decides whether to drop them). Tests: each counted, no value printed (a hook command, an
+   env value and a helper path in the fixture never appear in the output).
+6. **The second read after a timeout can hang.** After `kill_group`, call
+   `child.communicate(timeout=10)`; a second `TimeoutExpired` leaves stdout empty and the turn
+   `timed out`. Test with a mocked child.
+7. **Clean up on SIGTERM and SIGHUP.** In `main`, install handlers for both that raise
+   `KeyboardInterrupt` (restore the old handlers in the `finally`), so the fixture and logs are
+   removed and the child's group is killed. Test: a handler installed during `perform`, the old
+   one restored after.
+8. **`safe_text`** also removes the Unicode bidirectional controls (U+202A–U+202E, U+2066–U+2069)
+   and the zero-width ones (U+200B–U+200F, U+FEFF), and masks `base` written with `/var/` as well
+   as `/private/var/`. Test both.
