@@ -563,6 +563,66 @@ stale" is superseded by §§ 8.7–8.9: a failed refresh leaves the mirror fresh
 out of date (no manifest), and says which. A reader trusts the mirror only when it holds Voice's
 exact stamp and a regular, valid `.manifest.json`, and should refresh first anyway (VO4.2 does).
 
+### 8.10 The delta Verifier and security review on `4397690` (V1, 2026-11-01)
+
+The Verifier reproduced one case with the built binary, and both found the same root cause:
+`discover` skips a listed project whose name is deny-listed (or has no usable name) **before**
+`protect` sees its `.claude/skills`. So with `{"projects":["~/vault.key"]}` and a real
+`~/vault.key/.claude/skills/drafts` linked to `mirror/vd` holding `plan.md`, refresh, withdraw and
+`anonymize --out <the mirror>` all exit 0 and delete `vd/plan.md`. Same rules as before: red first,
+invented names, commit nothing, every existing test stays green except the sentence change in 8.10.3.
+
+**8.10.1 Protect every listed project, even one discovery skips.** In `discover`'s project loop
+(`builder/ingest/src/skills.rs`), call `protect(&mut found.protected, &project.join(".claude/skills"))?`
+as the loop's **first** statement, before the `file_name` skip and the deny-list skip. `protect` only
+lists names and canonicalizes them; it reads no file, so it is fine on a deny-listed folder. Its
+errors are returned as for every other root (a refusal is the safe side). Nothing else in
+`discover` changes.
+
+**8.10.2 Tests (`builder/cli/tests/skills_refresh.rs`).**
+- A new `linked_root_entry` case `"denied-project-entry"`: the project `~/notes.key` listed (a
+  deny-listed name, as `vault.key` is; its own name so it doesn't build inside `"denied-project"`'s
+  link; see the next bullet for how), `fs::create_dir_all(home/notes.key/.claude/skills)`, and the
+  link `notes.key/.claude/skills/drafts` → `mirror/vd` holding `plan.md`. Add
+  `refresh_protects_linked_denied_project_entry` (through `refresh_leaves_linked_root_entry`), and
+  add the case to the fresh-output control's list.
+- **The fixture nit:** today `"project"` and `"denied-project"` each overwrite `private.json`, so in
+  the control the later one drops the earlier project. Add `fn add_project(home: &Scratch, path: &str)`:
+  read `member/private.json` when it exists (else start from `{"anonymizer":{}}`), push `path` onto
+  `anonymizer.projects` unless it is already there, and write it back. The three project cases call
+  `add_project` instead of `rules`. In the control, assert after the loop that `private.json`'s
+  `anonymizer.projects` is exactly `["~/proj", "~/vault.key", "~/notes.key"]`.
+- A new case `"synced-entry"`: `fs::create_dir_all(home/.claude/skills/synced/acct)`, then the link
+  `.claude/skills/synced/acct/drafts` → `mirror/synced-drafts` holding `ideas.md`. Add
+  `refresh_protects_linked_synced_account_entry`. Leave it out of the control (it would build
+  inside the `"synced"` case's link).
+- `anonymize --out` into the stamped mirror: for each of `"denied"` and `"denied-project-entry"`
+  (two tests, sharing one helper), after one good refresh and the fixture, run
+  `anonymize member --out ~/.claude/state/pebble/mirror` (the literal `~` form, as the CLI expands
+  it). It exits 1, stderr is exactly
+  `voice: Choose an output folder that is empty or was made by voice anonymize, outside your skill folders.\n`
+  (check the real prefix the CLI prints for an `Invalid` error and match it), and the linked file
+  keeps its text.
+- Withdraw with `"denied-project-entry"`: as `withdrawal_protects_linked_denied_entry`, the same
+  stdout, the file kept. Share one helper with the existing withdraw test.
+
+**8.10.3 The overlap hint reads right both ways.** The mirror can be inside the linked folder as
+well as around it, so in `mirror.rs` the `Overlap` sentence's second half becomes
+`Move that folder, or the link to it, so neither is inside the other, then run voice skills refresh again.`
+(the first sentence is unchanged). Update every test that asserts it (`refresh_leaves_linked_root_entry`,
+8.7's and 8.9.1's overlap tests) to the new text.
+
+**8.10.4 Recorded, not fixed (V1, in `.ai/SECURITY.md`).** Plugins: `~/.claude/plugins` is a root
+checked both ways, but the entries of a plugin's `skills` folder are protected only when
+`installed_plugins.json` reads and lists that install. With that file broken, or an install path it
+skips (outside `~/.claude/plugins`, or deny-listed), a link inside that plugin's `skills` folder into
+the mirror is not protected. Recorded with the depth limit.
+
+**8.10.5 Mutation checks (V1 runs these after Codex, not Codex).** Each must make at least one test
+fail: (a) move the new `protect` call after the deny-list skip; (b) pass `&[]` for `protected` in
+`builder/cli/src/skills.rs` `anonymize`; (c) delete the `protect(&mut found.protected, &account)?`
+call on synced accounts.
+
 ### 8.4 Verify and report
 
 Run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
