@@ -251,7 +251,7 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
             }
             Failure::Overlap => {
                 let mut message = format!(
-                    "{shown} overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again."
+                    "{shown} overlaps one of your skill or project folders, so Voice left it as it is. Move that folder, or the link to it, so neither is inside the other, then run voice skills refresh again."
                 );
                 if !drop_manifest(&mirror) {
                     message.push(' ');

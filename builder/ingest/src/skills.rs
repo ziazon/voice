@@ -284,6 +284,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
         Err(_) => found.notes.push(PLUGIN_NOTE.into()),
     }
     for project in rules.projects() {
+        protect(&mut found.protected, &project.join(".claude/skills"))?;
         let Some(name) = project.file_name().and_then(|s| s.to_str()) else {
             continue;
         };

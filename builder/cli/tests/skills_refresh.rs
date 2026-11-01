@@ -589,7 +589,7 @@ fn refresh_leaves_overlapping_project_and_drops_manifest() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
-        "voice: ~/.claude/state/*/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again.\n"
+        "voice: ~/.claude/state/*/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder, or the link to it, so neither is inside the other, then run voice skills refresh again.\n"
     );
     assert_eq!(
         fs::read_to_string(path.join("proj/work.txt")).unwrap(),
@@ -841,7 +841,7 @@ fn readonly_mirror_reports_manifest_failure(overlap: bool) {
     assert!(stderr.trim_end().ends_with(&not_marked(shown)), "{stderr}");
     assert!(!stderr.trim_end().ends_with(STALE), "{stderr}");
     if overlap {
-        assert!(stderr.starts_with("voice: ~/.claude/state/pebble/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again."), "{stderr}");
+        assert!(stderr.starts_with("voice: ~/.claude/state/pebble/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder, or the link to it, so neither is inside the other, then run voice skills refresh again."), "{stderr}");
         assert_eq!(
             fs::read_to_string(mirror(&home).join("proj/work.txt")).unwrap(),
             "Keep this work.\n"
@@ -850,21 +850,54 @@ fn readonly_mirror_reports_manifest_failure(overlap: bool) {
     assert!(mirror(&home).join(".manifest.json").is_file());
 }
 
+fn add_project(home: &Scratch, path: &str) {
+    let file = home.0.join("member/private.json");
+    let mut value: serde_json::Value = match fs::read(&file) {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => json!({"anonymizer":{}}),
+        Err(error) => panic!("{error}"),
+    };
+    let projects = value["anonymizer"]
+        .as_object_mut()
+        .unwrap()
+        .entry("projects")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .unwrap();
+    if !projects.contains(&json!(path)) {
+        projects.push(json!(path));
+    }
+    fs::write(file, value.to_string()).unwrap();
+}
+
 fn linked_root_entry(home: &Scratch, case: &str) -> PathBuf {
     let (link, target, file) = match case {
         "codex" => (".codex/skills", "codex", "README.md"),
         "project" => {
-            rules(home, json!({"projects":["~/proj"]}));
+            add_project(home, "~/proj");
             ("proj/.claude/skills", "proj-skills", "wip/plan.md")
         }
         "denied" => (".claude/skills/release.key", "release.key", "SKILL.md"),
         "drafts" => (".claude/skills/drafts", "drafts", "ideas.md"),
         "hidden" => (".claude/skills/.wip", "wip", "notes.md"),
         "denied-project" => {
-            rules(home, json!({"projects":["~/vault.key"]}));
+            add_project(home, "~/vault.key");
             ("vault.key/.claude/skills", "vault-skills", "plan.md")
         }
+        "denied-project-entry" => {
+            add_project(home, "~/notes.key");
+            fs::create_dir_all(home.0.join("notes.key/.claude/skills")).unwrap();
+            ("notes.key/.claude/skills/drafts", "vd", "plan.md")
+        }
         "synced" => (".claude/skills/synced", "synced", "drafts/ideas.md"),
+        "synced-entry" => {
+            fs::create_dir_all(home.0.join(".claude/skills/synced/acct")).unwrap();
+            (
+                ".claude/skills/synced/acct/drafts",
+                "synced-drafts",
+                "ideas.md",
+            )
+        }
         "plugin" => {
             let install = home.0.join(".claude/plugins/cache/ink");
             fs::create_dir_all(install.join("skills")).unwrap();
@@ -900,7 +933,7 @@ fn refresh_leaves_linked_root_entry(case: &str) {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
-        "voice: ~/.claude/state/pebble/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again.\n"
+        "voice: ~/.claude/state/pebble/mirror overlaps one of your skill or project folders, so Voice left it as it is. Move that folder, or the link to it, so neither is inside the other, then run voice skills refresh again.\n"
     );
     assert_eq!(fs::read_to_string(file).unwrap(), "Keep this work.\n");
     assert!(!mirror(&home).join(".manifest.json").exists());
@@ -937,6 +970,16 @@ fn refresh_protects_linked_denied_project_root() {
 }
 
 #[test]
+fn refresh_protects_linked_denied_project_entry() {
+    refresh_leaves_linked_root_entry("denied-project-entry");
+}
+
+#[test]
+fn refresh_protects_linked_synced_account_entry() {
+    refresh_leaves_linked_root_entry("synced-entry");
+}
+
+#[test]
 fn refresh_protects_linked_synced_entry() {
     refresh_leaves_linked_root_entry("synced");
 }
@@ -948,10 +991,19 @@ fn refresh_protects_linked_plugin_entry() {
 
 #[test]
 fn withdrawal_protects_linked_denied_entry() {
+    withdrawal_leaves_linked_root_entry("denied");
+}
+
+#[test]
+fn withdrawal_protects_linked_denied_project_entry() {
+    withdrawal_leaves_linked_root_entry("denied-project-entry");
+}
+
+fn withdrawal_leaves_linked_root_entry(case: &str) {
     let home = Scratch::new("mirror-linked-withdraw");
     two(&home);
     success(refresh(&home));
-    let file = linked_root_entry(&home, "denied");
+    let file = linked_root_entry(&home, case);
     let output = run(&home, &["skills", "withdraw", "member", "claude:notes"]);
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
@@ -961,6 +1013,38 @@ fn withdrawal_protects_linked_denied_entry() {
     assert!(output.stderr.is_empty());
     assert_eq!(fs::read_to_string(file).unwrap(), "Keep this work.\n");
     assert!(!mirror(&home).join(".manifest.json").exists());
+}
+
+#[test]
+fn anonymize_protects_linked_denied_entry() {
+    anonymize_leaves_linked_root_entry("denied");
+}
+
+#[test]
+fn anonymize_protects_linked_denied_project_entry() {
+    anonymize_leaves_linked_root_entry("denied-project-entry");
+}
+
+fn anonymize_leaves_linked_root_entry(case: &str) {
+    let home = Scratch::new("mirror-linked-anonymize");
+    two(&home);
+    success(refresh(&home));
+    let file = linked_root_entry(&home, case);
+    let output = run(
+        &home,
+        &[
+            "anonymize",
+            "member",
+            "--out",
+            "~/.claude/state/pebble/mirror",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "voice: Choose an output folder that is empty or was made by voice anonymize, outside your skill folders.\n"
+    );
+    assert_eq!(fs::read_to_string(file).unwrap(), "Keep this work.\n");
 }
 
 #[test]
@@ -977,8 +1061,15 @@ fn anonymize_fresh_output_with_linked_roots_still_works() {
         "plugin",
         "hidden",
         "denied-project",
+        "denied-project-entry",
     ]
     .map(|case| linked_root_entry(&home, case));
+    let private: serde_json::Value =
+        serde_json::from_slice(&fs::read(home.0.join("member/private.json")).unwrap()).unwrap();
+    assert_eq!(
+        private["anonymizer"]["projects"],
+        json!(["~/proj", "~/vault.key", "~/notes.key"])
+    );
     success(run(&home, &["anonymize", "member", "--out", "fresh"]));
     assert!(home.0.join("fresh/notes/SKILL.md").is_file());
     assert!(home.0.join("fresh/writing/SKILL.md").is_file());
