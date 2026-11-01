@@ -199,3 +199,26 @@ each (red on its assertion, then green); keep each change minimal and in the fil
 
 Run `cargo test -p voice-core -p voice-cli --locked`, clippy on both, `cargo fmt --check`,
 `bash tests/mac_install_test.sh` and shellcheck; report each. Commit nothing.
+
+## 6. Dispatch E: the Verifier's fixes
+
+§ 2 to § 5 are done and committed. Two small fixes, test first, minimal, in the file's style.
+
+1. **The record's path refusals ignore letter case** (`builder/core/src/install_record.rs`, the
+   check over a read record's `added` entries: `CLAUDE.md`, the record itself, and the shared root
+   rule from § 5). A Mac's disk ignores letter case by default, so today an entry
+   `<claude_home>/Voice/panels/dl-x/f` or `<claude_home>/claude.md` passes and turning off deletes
+   it (reproduced). Compare the part of each entry's path below `claude_home` component by
+   component with `eq_ignore_ascii_case` against `CLAUDE.md`, `voice/installed.json`, `voice`, and
+   `voice/assistants` (an entry is allowed under the shared root only when its first two
+   components match `voice` and `assistants`, ignoring case). Same message as today. Tests in
+   `builder/core/src/install_tests.rs`, beside § 5's: a record listing `<claude_home>/Voice/panels/dl-x/f`
+   (a file with matching text) and one listing `<claude_home>/claude.md` are each refused, and
+   turning off removes nothing.
+2. **A leftover `~/.claude/voice/assistants` must be the person's own private folder too.** In
+   `builder/core/src/install.rs`, when turning on finds `assistants/` already there, check it with
+   the same `install_record::private_root` the shared root gets, before writing anything. Test: a
+   0755 `voice/assistants` left from before refuses turning on, writes nothing, and keeps its mode.
+
+Run `cargo test -p voice-core --locked`, clippy on it, and `cargo fmt --check`; report each.
+Commit nothing.
