@@ -21,9 +21,14 @@ One record per slice, newest first. Paraphrase only; no real person.
   folder that can't be checked counted as absent (1 red).
 - **Reviews:** security review (Opus): one LOW, fixed (brief § 5, `c76d735`): the line showed the
   assistant's name raw, and nothing checks it when it is read (`private.json` can override it), so
-  escapes or a newline could fake progress lines. `skills_not_refreshed` now cleans it to one line
-  of at most 64 characters (V1's mutation, the newline kept, 1 red). Its note: a panel start can
+  escapes or a newline could fake progress lines. `skills_not_refreshed` now cleans it to one line,
+  cut to 64 characters plus an ellipsis (V1's mutation, the newline kept, 1 red). Its note: a panel start can
   now trigger the mirror's known deep-link limit, so the SECURITY row says so.
+  Verifier (Fable, first pass, on `b806027`): PASS. One LOW accepted: only the `NEED_STEER`
+  refusal pins "a refused resume refreshes nothing"; the resume that only closes an expired panel
+  has no test (it needs a time box that has run out, which the app-level tests can't fake). Nits:
+  the 64-character wording (fixed here); the name shows a private term as-is, as
+  `assistant_problem` already does.
 - **Not verified:** Linux; running as root (the failed-refresh tests skip there); the line in the
   running app (the panel screen shows every progress line as it comes; no screen change).
 
