@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import signal
 import stat
 import subprocess
 import sys
@@ -109,8 +110,10 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(words['out-link.md'], words['outside/far.md'])
             self.assertEqual(json.loads((base / 'settings.json').read_text()),
                              {'permissions': {'deny': probe.deny_rules()}})
-            self.assertEqual(json.loads((base / 'relative.json').read_text()),
+            self.assertTrue((base / 'elsewhere/relative.json').is_file())
+            self.assertEqual(json.loads((base / 'elsewhere/relative.json').read_text()),
                              {'permissions': {'deny': probe.relative_rules()}})
+            self.assertFalse((base / 'relative.json').exists())
             self.assertIsInstance(json.loads((base / 'broken.json').read_text())['permissions']['deny'], str)
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)
@@ -142,6 +145,57 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(probe.main(['check']), 1)
         self.addCleanup(probe.shutil.rmtree, seen[0])
         self.assertTrue(output.getvalue().startswith("Printed before cleanup.\nThe probe's folder could not be removed: "))
+
+    def test_second_communicate_is_bounded_after_timeout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            probe.make_fixture(base, False)
+            child = MagicMock(returncode=-9)
+            child.communicate.side_effect = [subprocess.TimeoutExpired('fake', 180),
+                                             subprocess.TimeoutExpired('fake', 10)]
+            launch = MagicMock()
+            launch.__enter__.return_value = child
+            with patch.object(probe.subprocess, 'Popen', return_value=launch), \
+                    patch.object(probe, 'kill_group') as kill:
+                turn = probe.run_turn(Path('/fake'), base, 'read', 'prompt', None)
+            self.assertTrue(turn.timed_out)
+            self.assertEqual(turn.stdout, '')
+            self.assertEqual(child.communicate.call_args.kwargs, {'timeout': 10})
+            kill.assert_called_once_with(child)
+
+    def test_signal_handlers_interrupt_and_restore(self):
+        for sig in [signal.SIGTERM, signal.SIGHUP]:
+            with self.subTest(signal=sig):
+                previous = {s: signal.getsignal(s) for s in [signal.SIGTERM, signal.SIGHUP]}
+                seen = []
+                def interrupted(action, claude, base, words):
+                    seen.append(base)
+                    handler = signal.getsignal(sig)
+                    self.assertTrue(callable(handler))
+                    self.assertIsNot(handler, previous[sig])
+                    handler(sig, None)
+                    self.fail('the signal handler did not interrupt')
+                output = io.StringIO()
+                with patch.object(probe, 'find_claude', return_value=Path('/fake')), \
+                        patch.object(probe, 'perform', side_effect=interrupted), \
+                        contextlib.redirect_stdout(output):
+                    self.assertEqual(probe.main(['check']), 1)
+                self.assertEqual(output.getvalue(), 'The probe could not finish.\n')
+                self.assertFalse(seen[0].exists())
+                for restored, handler in previous.items():
+                    self.assertIs(signal.getsignal(restored), handler)
+
+    def test_safe_text_removes_unicode_controls_and_base_alias(self):
+        controls = ''.join(chr(n) for start, end in [(0x202a, 0x202e), (0x2066, 0x2069),
+                                                    (0x200b, 0x200f), (0xfeff, 0xfeff)]
+                           for n in range(start, end + 1))
+        base = Path('/private/var/tmp/voice-fence-invented')
+        for text, folder, expected in [
+                ('before' + controls + 'after', None, 'beforeafter'),
+                (str(base) + '/root /var/tmp/voice-fence-invented/logs', base,
+                 '<folder>/root <folder>/logs')]:
+            with self.subTest(expected=expected):
+                self.assertEqual(probe.safe_text(text, folder), expected)
 
     def test_turn_transport_timeout_and_cost(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -212,10 +266,12 @@ log = Path(args[args.index('--debug-file') + 1])
 name = log.stem.rsplit('-', 1)[0]
 attempt = int(log.stem.rsplit('-', 1)[1])
 settings = Path(args[args.index('--settings') + 1]) if '--settings' in args else None
-if settings and not plan.get('no_log') and name != plan.get('no_log_turn') and (settings.name != 'broken.json' or plan.get('broken_good')):
+if settings and not plan.get('no_log') and name != plan.get('no_log_turn') and (settings.name != 'broken.json' or plan.get('broken_good') or plan.get('broken_one_rule')):
     rules = json.loads(settings.read_text())['permissions']['deny']
     if settings.name == 'broken.json':
         rules = json.loads(settings.with_name('settings.json').read_text())['permissions']['deny']
+    if settings.name == 'broken.json' and plan.get('broken_one_rule'):
+        rules = ['Read(//**/.env)']
     log.write_text("[DEBUG] Applying permission update: Adding %d deny rule(s) to destination 'flagSettings': " % len(rules) + json.dumps(rules))
 def emit(event):
     print(json.dumps(event))
@@ -258,6 +314,8 @@ if name in ['grep', 'glob'] and not plan.get('skip_' + name):
         emit({'type': 'user', 'message': {'content': [{'type': 'tool_result', 'content': text}]}})
     else:
         print(str(root / '.env'))
+        if plan.get('glob_leak'):
+            print((root / plan['glob_leak']).read_text())
 result = {'type': 'result', 'permission_denials': denials, 'total_cost_usd': 0.001}
 if plan.get('error'):
     result.update(is_error=True, result=plan['error'].replace('<base>', str(root.parent)))
@@ -297,6 +355,11 @@ class FakeTests(unittest.TestCase):
         self.assertNotRegex(text, r'fence[0-9a-f]{12}')
         self.assertNotRegex(text, r'/[^\s]*voice-fence-')
         return code, text
+
+    def test_broken_settings_with_one_applied_rule_fails(self):
+        code, text = self.invoke(plan={'broken_one_rule': True})
+        self.assertIn('A broken settings file is caught: FAIL', text)
+        self.assertEqual(code, 1)
 
     def test_check_measured_contract(self):
         code, text = self.invoke()
@@ -339,6 +402,32 @@ class FakeTests(unittest.TestCase):
             code, text = self.invoke(plan={'version': version})
             self.assertEqual(code, 1)
             self.assertIn("Claude Code didn't start (exit 0).", text)
+
+    def test_settings_report_counts_extras_without_values(self):
+        cases = [
+            ({'hooks': {'PreToolUse': [{'hooks': [{'command': 'invented-command'}]}, {}],
+                        'Stop': [{}]}}, '3 hooks'),
+            ({'env': {'FIRST': 'invented-env-value', 'SECOND': 'other-value'}},
+             '2 environment settings'),
+            ({'apiKeyHelper': '/invented/helper'}, 'a key helper'),
+            ({'enabledPlugins': {'one': True, 'two': False, 'three': True, 'four': 1}},
+             '2 plugins turned on'),
+            ({}, 'nothing else'),
+        ]
+        combined = {}
+        for settings, expected in cases:
+            with self.subTest(expected=expected):
+                code, text = self.invoke(settings=settings)
+                self.assertEqual(code, 0)
+                self.assertIn("This Mac's own settings also bring: %s." % expected, text)
+                for private in ['invented-command', 'invented-env-value', 'other-value',
+                                '/invented/helper']:
+                    self.assertNotIn(private, text)
+            combined.update(settings)
+        code, text = self.invoke(settings=combined)
+        self.assertEqual(code, 0)
+        self.assertIn("This Mac's own settings also bring: 3 hooks, 2 environment settings, "
+                      "a key helper, 2 plugins turned on.", text)
 
     def test_settings_report_lists_only_allowed_values(self):
         for permissions, expected in [
@@ -459,6 +548,21 @@ class FakeTests(unittest.TestCase):
                 code, text = self.invoke('run', plan)
             self.assertEqual(code, 1)
             make.assert_not_called()
+
+    def test_glob_denied_contents_fail(self):
+        code, text = self.invoke('run', {'glob_leak': '.netrc'})
+        self.assertIn("Glob turn: a denied file's contents appeared (.netrc): FAIL.", text)
+        self.assertIn('Glob listed 1 of the 22 denied names (names only, no contents).', text)
+        self.assertEqual(code, 1)
+        self.assertIn('(1 lines failed)', text)
+
+    def test_each_symlink_and_target_must_be_tried(self):
+        for key in ['alias.md', 'out-link.md', '.env', 'outside/far.md']:
+            with self.subTest(key=key):
+                code, text = self.invoke('run', {'never': key})
+                self.assertIn('Read, %s: not tried: FAIL.' % key, text)
+                self.assertEqual(code, 1)
+                self.assertIn('(1 lines failed)', text)
 
     def test_later_try_cannot_hide_an_already_denied_words_leak(self):
         code, text = self.invoke('run', {'retry': '.npmrc', 'later_leak': '.netrc'})
