@@ -1,18 +1,18 @@
 [package]
-name = "persona-builder-api"
+name = "voice-api"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
-persona-builder-grow = { path = "../grow" }
-persona-builder-build = { path = "../build" }
-persona-builder-steps = { path = "../steps" }
-persona-builder = { path = "../core" }
-persona-builder-ingest = { path = "../ingest" }
-persona-builder-agent = { path = "../agent" }
-persona-builder-save = { path = "../save" }
+voice-grow = { path = "../grow" }
+voice-build = { path = "../build" }
+voice-steps = { path = "../steps" }
+voice-core = { path = "../core" }
+voice-ingest = { path = "../ingest" }
+voice-agent = { path = "../agent" }
+voice-save = { path = "../save" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 ts-rs = { version = "=12.0.1", features = ["no-serde-warnings"] }

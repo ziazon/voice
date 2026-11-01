@@ -1,13 +1,13 @@
 pub mod common;
 
 use common::{FakeHttp, reply};
-use persona_builder_save::github::{
+use serde_json::{Value, json};
+use std::time::Duration;
+use voice_save::github::{
     Endpoints, Github, HttpResponse, RepoRef, github_repo_of, suggested_repo_name, valid_owner,
     valid_repo_name,
 };
-use persona_builder_save::{secret::Secret, text};
-use serde_json::{Value, json};
-use std::time::Duration;
+use voice_save::{secret::Secret, text};
 
 fn client(http: &FakeHttp) -> Github<'_> {
     Github::new(http, Endpoints::github(), "Iv1.invented").unwrap()
@@ -429,7 +429,7 @@ fn create_private_repo_posts_exact_json_then_confirms() {
     assert_eq!(
         requests[0].json,
         Some(
-            json!({"name":"wren-assistant","private":true,"description":"My AI assistant, saved by Persona Builder","auto_init":false,"has_issues":false,"has_projects":false,"has_wiki":false})
+            json!({"name":"wren-assistant","private":true,"description":"My AI assistant, saved by Voice","auto_init":false,"has_issues":false,"has_projects":false,"has_wiki":false})
         )
     );
     assert_eq!(requests[1].method, "GET");
@@ -738,9 +738,7 @@ fn finish_sign_in_until_stops_on_wait_error_before_another_request() {
         if waits == 1 {
             Ok(())
         } else {
-            Err(persona_builder::error::Error::Invalid(
-                "stopped waiting".into(),
-            ))
+            Err(voice_core::error::Error::Invalid("stopped waiting".into()))
         }
     });
     assert_eq!(result.unwrap_err().to_string(), "stopped waiting");

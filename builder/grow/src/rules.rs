@@ -1,6 +1,6 @@
 use crate::{record::*, text};
-use persona_builder::error::{Error, Result};
 use std::collections::BTreeMap;
+use voice_core::error::{Error, Result};
 
 #[derive(Debug, Default)]
 pub struct CaseBook(BTreeMap<String, Case>);

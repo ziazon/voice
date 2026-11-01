@@ -1,13 +1,13 @@
-use persona_builder::{
-    crew::{NewMember, new_member},
-    member::{read_member, write_member},
-};
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
+};
+use voice_core::{
+    crew::{NewMember, new_member},
+    member::{read_member, write_member},
 };
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -30,7 +30,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Robin",
@@ -46,7 +46,7 @@ impl Fixture {
         Self { home, member }
     }
     fn run(&self, command: &str, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env_clear()
             .env("HOME", &self.home)
             .env("PATH", std::env::var_os("PATH").unwrap())
@@ -60,10 +60,7 @@ impl Fixture {
     fn refused(&self, args: &[&str], message: &str) {
         let output = self.run("mine", args);
         assert_eq!(output.status.code(), Some(1));
-        assert_eq!(
-            output.stderr,
-            format!("persona-builder: {message}\n").as_bytes()
-        );
+        assert_eq!(output.stderr, format!("voice: {message}\n").as_bytes());
         assert!(output.stdout.is_empty());
         assert!(!String::from_utf8_lossy(&output.stderr).contains(TEXT));
         assert!(!self.home.join(".claude/state").exists());
@@ -115,7 +112,7 @@ fn state_elsewhere_is_refused_even_in_dry_run() {
     let mut member = read_member(&config).unwrap();
     member.state_dir = "~/elsewhere".into();
     write_member(&config, &member).unwrap();
-    fixture.refused(&["--dry-run"], "Persona Builder keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says ~/elsewhere: change it to ~/.claude/state/<slug> and try again");
+    fixture.refused(&["--dry-run"], "Voice keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says ~/elsewhere: change it to ~/.claude/state/<slug> and try again");
     assert!(!fixture.home.join("elsewhere").exists());
 }
 #[test]
@@ -167,7 +164,7 @@ fn missing_history_has_a_plain_message() {
         assert_eq!(
             output.stderr,
             format!(
-                "persona-builder: {} doesn't exist: there is no Claude Code history there\n",
+                "voice: {} doesn't exist: there is no Claude Code history there\n",
                 fixture.home.join("missing").display()
             )
             .as_bytes()

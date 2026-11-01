@@ -1,4 +1,3 @@
-use persona_builder::crew::{NewMember, new_member};
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
@@ -6,11 +5,12 @@ use std::{
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 const TEXT: &str = "Keep the reading list short.";
 const REVIEW: &str = "~/.claude/state/wren/claudeai-review.tsv";
-const NO_REVIEW: &str = "there's no review file yet: run persona-builder claudeai titles first";
+const NO_REVIEW: &str = "there's no review file yet: run voice claudeai titles first";
 
 struct Fixture {
     home: PathBuf,
@@ -30,7 +30,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Robin",
@@ -56,7 +56,7 @@ impl Fixture {
         }
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env_clear()
             .env("HOME", &self.home)
             .env("PATH", std::env::var_os("PATH").unwrap())
@@ -90,7 +90,7 @@ impl Fixture {
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
-            format!("persona-builder: {message}\n")
+            format!("voice: {message}\n")
         );
         assert!(output.stdout.is_empty());
         assert!(!String::from_utf8_lossy(&output.stderr).contains(TEXT));
@@ -207,7 +207,7 @@ fn mark_needs_a_selector_and_a_readable_pattern() {
     f.refused(
         "mark",
         &["--title", "(?=x)", "--as", "y"],
-        "--title is not a valid pattern, or it uses look-around or a backreference, which Persona Builder can't read",
+        "--title is not a valid pattern, or it uses look-around or a backreference, which Voice can't read",
     );
     let usage = f.step("mark", &["--all", "--as", "maybe"]);
     assert_eq!(usage.status.code(), Some(2));
@@ -260,6 +260,6 @@ fn inspect_shows_the_shape_and_names_missing_fields() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "persona-builder: the export is missing fields Persona Builder reads: .name, .created_at, .chat_messages[].sender, .chat_messages[].created_at, .chat_messages[].text or .chat_messages[].content[].text\n"
+        "voice: the export is missing fields Voice reads: .name, .created_at, .chat_messages[].sender, .chat_messages[].created_at, .chat_messages[].text or .chat_messages[].content[].text\n"
     );
 }

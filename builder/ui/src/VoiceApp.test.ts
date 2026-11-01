@@ -1,11 +1,11 @@
 import { flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import { assistant, button, fakeBackend, screen } from './test-support'
-import PersonaBuilder from './PersonaBuilder.vue'
+import VoiceApp from './VoiceApp.vue'
 import Panels from './screens/Panels.vue'
 
 it('shows Welcome and disables all steps before choosing an assistant', async () => {
-  const wrapper = screen(PersonaBuilder)
+  const wrapper = screen(VoiceApp)
   await flushPromises()
   const items = wrapper.findAll('ol li')
   expect(items.map(item => item.get('[data-step-title]').text())).toEqual([
@@ -15,12 +15,12 @@ it('shows Welcome and disables all steps before choosing an assistant', async ()
     expect(item.attributes('aria-disabled')).toBe('true')
     expect(item.text()).toContain('Choose an assistant first')
   }
-  expect(wrapper.get('main h1').text()).toBe('Persona Builder')
+  expect(wrapper.get('main h1').text()).toBe('Voice')
   expect(wrapper.text()).toContain('Version 1.2.3')
 })
 it('makes an assistant, gates connect on consent, then returns home and reloads', async () => {
   const backend = fakeBackend()
-  const wrapper = screen(PersonaBuilder, backend)
+  const wrapper = screen(VoiceApp, backend)
   await flushPromises()
   await button(wrapper, 'Make a new one').trigger('click')
   await wrapper.get('#assistant-name').setValue('Example')
@@ -28,7 +28,7 @@ it('makes an assistant, gates connect on consent, then returns home and reloads'
   await wrapper.get('form').trigger('submit')
   await flushPromises()
   expect(wrapper.get('aside h2').text()).toBe('Making Example')
-  expect(wrapper.get('main h2').text()).toBe('Before Persona Builder reads anything')
+  expect(wrapper.get('main h2').text()).toBe('Before Voice reads anything')
   const connect = wrapper.findAll('ol li')[1]!
   expect(connect.attributes('aria-disabled')).toBe('true')
   expect(connect.text()).toContain('Needs your permission first')
@@ -49,28 +49,28 @@ it('makes an assistant, gates connect on consent, then returns home and reloads'
   expect(wrapper.get('main h2').text()).toBe('Connect Claude')
   await button(wrapper, 'Your assistants').trigger('click')
   await flushPromises()
-  expect(wrapper.get('main h1').text()).toBe('Persona Builder')
+  expect(wrapper.get('main h1').text()).toBe('Voice')
   expect(backend.listAssistants).toHaveBeenCalledTimes(2)
 })
 it.each([false, true])('opens an existing assistant with agreed=%s at its next step', async agreed => {
-  const wrapper = screen(PersonaBuilder, fakeBackend({ listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed, agreedOn: agreed ? '2026-10-25' : null } }]) }))
+  const wrapper = screen(VoiceApp, fakeBackend({ listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed, agreedOn: agreed ? '2026-10-25' : null } }]) }))
   await flushPromises()
   await button(wrapper, 'Open').trigger('click')
   await flushPromises()
-  expect(wrapper.get('main h2').text()).toBe(agreed ? 'Connect Claude' : 'Before Persona Builder reads anything')
+  expect(wrapper.get('main h2').text()).toBe(agreed ? 'Connect Claude' : 'Before Voice reads anything')
 })
 it('can go back from making a new assistant', async () => {
-  const wrapper = screen(PersonaBuilder)
+  const wrapper = screen(VoiceApp)
   await flushPromises()
   await button(wrapper, 'Make a new one').trigger('click')
   await button(wrapper, 'Back').trigger('click')
   await flushPromises()
-  expect(wrapper.get('main h1').text()).toBe('Persona Builder')
+  expect(wrapper.get('main h1').text()).toBe('Voice')
 })
 
 it('keeps your history disabled until permission and opens it from a ready connect check', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) })
-  const wrapper = screen(PersonaBuilder, backend)
+  const wrapper = screen(VoiceApp, backend)
   await flushPromises()
   await button(wrapper, 'Open').trigger('click')
   await flushPromises()
@@ -80,7 +80,7 @@ it('keeps your history disabled until permission and opens it from a ready conne
   expect(sources.get('button').attributes('disabled')).toBeDefined()
   await sources.get('button').trigger('click')
   expect(backend.claudeCodeFolders).not.toHaveBeenCalled()
-  expect(wrapper.get('main h2').text()).toBe('Before Persona Builder reads anything')
+  expect(wrapper.get('main h2').text()).toBe('Before Voice reads anything')
   await button(wrapper, 'Agree and continue').trigger('click')
   await flushPromises()
   expect(wrapper.findAll('ol li')[2]!.attributes('aria-disabled')).toBeUndefined()
@@ -95,7 +95,7 @@ it('keeps your history disabled until permission and opens it from a ready conne
 
 it('opens save without requiring permission and gates report and review', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) })
-  const wrapper = screen(PersonaBuilder, backend)
+  const wrapper = screen(VoiceApp, backend)
   await flushPromises()
   await button(wrapper, 'Open').trigger('click')
   await flushPromises()
@@ -118,7 +118,7 @@ it('opens save without requiring permission and gates report and review', async 
 
 it('shows four save cards and preserves the forget message while resetting permission', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed: true, agreedOn: '2026-10-25' } }]), forgetPreview: vi.fn().mockResolvedValue({ files: 7 }) })
-  const wrapper = screen(PersonaBuilder, backend)
+  const wrapper = screen(VoiceApp, backend)
   await flushPromises(); await button(wrapper, 'Open').trigger('click'); await flushPromises()
   await button(wrapper, 'Save').trigger('click'); await flushPromises()
   expect(wrapper.findAll('main h2').map(h => h.text())).toEqual([`Keep ${assistant.name} safe`, 'Use it in Claude Code', 'Use it in claude.ai', 'Forget what Example learned from'])
@@ -141,7 +141,7 @@ it('enables Your assistants after forgetting during an unsettled build', async (
     forgetPreview: vi.fn().mockResolvedValue({ files: 7 }),
     buildAssistant: vi.fn().mockImplementation(() => new Promise(() => {})),
   })
-  const wrapper = screen(PersonaBuilder, backend)
+  const wrapper = screen(VoiceApp, backend)
   await flushPromises()
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
   await button(wrapper, 'Build').trigger('click'); await flushPromises()
@@ -161,7 +161,7 @@ it('enables Your assistants after forgetting during an unsettled build', async (
 it('keeps build disabled until permission, opens from sources, and preserves running lines across steps', async () => {
   let progress: ((value: { line: string, spend: { spentUsd: number, dailyCapUsd: number } }) => void) | undefined
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]), buildAssistant: vi.fn().mockImplementation((_request, callback) => { progress = callback; return new Promise(() => {}) }) })
-  const wrapper = screen(PersonaBuilder, backend); await flushPromises()
+  const wrapper = screen(VoiceApp, backend); await flushPromises()
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
   const build = button(wrapper, 'Build')
   expect(build.attributes('disabled')).toBeDefined()
@@ -185,7 +185,7 @@ it('enables report and review only after permission and follows build to report 
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]), showReport: vi.fn()
     .mockResolvedValueOnce({ report: null, unreadable: false, growth: null })
     .mockResolvedValue({ report: { built: '2026-10-25', overall: 'thin', answered: 2, thinBelow: 150, heldOut: 0, test: null, areas: [] }, unreadable: false, growth: null }) })
-  const wrapper = screen(PersonaBuilder, backend); await flushPromises()
+  const wrapper = screen(VoiceApp, backend); await flushPromises()
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
   for (const title of ['How well it knows you', 'Review']) {
     expect(button(wrapper, title).attributes('disabled')).toBeDefined()
@@ -216,7 +216,7 @@ it('keeps review test lines across steps and blocks choosing another assistant u
     reviewStatus: vi.fn().mockResolvedValue(status),
     applyRefresh: vi.fn().mockImplementation((_request, callback) => { progress = callback; return new Promise(resolve => { finish = resolve }) }),
   })
-  const wrapper = screen(PersonaBuilder, backend); await flushPromises()
+  const wrapper = screen(VoiceApp, backend); await flushPromises()
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
   await button(wrapper, 'Review').trigger('click'); await flushPromises()
   await button(wrapper, 'Test it').trigger('click')
@@ -235,7 +235,7 @@ it('keeps review test lines across steps and blocks choosing another assistant u
 
 it('reloads review status after going to Build and back', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed: true, agreedOn: '2026-10-25' } }]) })
-  const wrapper = screen(PersonaBuilder, backend); await flushPromises()
+  const wrapper = screen(VoiceApp, backend); await flushPromises()
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
   await button(wrapper, 'Review').trigger('click'); await flushPromises()
   expect(wrapper.text()).toContain('Build your assistant first.')
@@ -250,7 +250,7 @@ it('reloads review status after going to Build and back', async () => {
 
 
 it('opens Panels from the home card after the assistants', async () => {
-  const wrapper = screen(PersonaBuilder)
+  const wrapper = screen(VoiceApp)
   await flushPromises()
   const ask = wrapper.findAll('button').find(item => item.text() === 'Ask a panel')
   expect(ask, 'home card has Ask a panel').toBeDefined()
@@ -263,7 +263,7 @@ it('opens Panels from the home card after the assistants', async () => {
 })
 
 it('blocks leaving Panels while running and enables Your assistants after it ends', async () => {
-  const wrapper = screen(PersonaBuilder)
+  const wrapper = screen(VoiceApp)
   await flushPromises()
   const ask = wrapper.findAll('button').find(item => item.text() === 'Ask a panel')
   expect(ask, 'home card has Ask a panel').toBeDefined()
@@ -283,11 +283,11 @@ it('blocks leaving Panels while running and enables Your assistants after it end
   expect(wrapper.text()).not.toContain('Stop the panel first to leave Panels.')
   await button(wrapper, 'Your assistants').trigger('click')
   await flushPromises()
-  expect(wrapper.get('main h1').text()).toBe('Persona Builder')
+  expect(wrapper.get('main h1').text()).toBe('Voice')
 })
 
 it('keeps step buttons absent on Panels and ignores opening an assistant while a panel runs', async () => {
-  const wrapper = screen(PersonaBuilder, fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) }))
+  const wrapper = screen(VoiceApp, fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) }))
   await flushPromises()
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
   expect(wrapper.findAll('aside button')).toHaveLength(7)

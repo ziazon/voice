@@ -1,13 +1,13 @@
 //! Load the assistants and check permission before a run.
 use crate::{text, turns::Turns};
-use persona_builder::{
+use std::{collections::BTreeSet, path::Path};
+use voice_agent::ledger::{Cap, Session};
+use voice_core::{
     assistants::assistant_dir,
     error::Error,
     member::{Member, read_member},
 };
-use persona_builder_agent::ledger::{Cap, Session};
-use persona_builder_ingest::{filters::Filters, private::BUSY};
-use std::{collections::BTreeSet, path::Path};
+use voice_ingest::{filters::Filters, private::BUSY};
 
 /// An assistant's checked identity, decision model and privacy filters.
 pub struct Seat {
@@ -57,11 +57,10 @@ fn load_checked(
         if !consented(home, name) {
             return Err(problem(text::PERMISSION));
         }
-        let decisions =
-            persona_builder_build::draft::read_text(&folder.join("decisions.md"), 256 * 1024)
-                .map_err(|_| problem(text::NOT_BUILT_ASSISTANT))?
-                .filter(|text| !text.trim().is_empty())
-                .ok_or_else(|| problem(text::NOT_BUILT_ASSISTANT))?;
+        let decisions = voice_build::draft::read_text(&folder.join("decisions.md"), 256 * 1024)
+            .map_err(|_| problem(text::NOT_BUILT_ASSISTANT))?
+            .filter(|text| !text.trim().is_empty())
+            .ok_or_else(|| problem(text::NOT_BUILT_ASSISTANT))?;
         let filters = Filters::compile(&member.filters).map_err(|_| problem(text::BAD_FILTERS))?;
         let cap = Cap::load(home, name).map_err(|_| problem(text::BAD_LIMIT))?;
         let session = if held(name) {

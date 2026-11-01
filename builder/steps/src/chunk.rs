@@ -1,8 +1,8 @@
 //! `chunk`: the corpus in parts small enough to label, the held-out questions without answers.
 use crate::input::{Record, Records};
-use persona_builder::error::{Error, Result};
-use persona_builder_ingest::mine::to_jsonl;
 use serde_json::{Map, Value};
+use voice_core::error::{Error, Result};
+use voice_ingest::mine::to_jsonl;
 
 /// The held-out question fields a labeller sees (the Python's `QUESTION_FIELDS`).
 pub const QUESTION_FIELDS: [&str; 8] = [

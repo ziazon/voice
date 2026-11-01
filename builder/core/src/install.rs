@@ -85,7 +85,7 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
     if let Some(record) = install_record::read(&places.claude_home)? {
         if record.slug != member.slug {
             return Err(Error::Invalid(format!(
-                "{0} is on. Turn {0} off first: persona-builder off",
+                "{0} is on. Turn {0} off first: voice off",
                 record.name
             )));
         }
@@ -111,7 +111,7 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
         refuse_symlink(path)?;
         if exists(path)? {
             return Err(Error::Invalid(format!(
-                "{} exists and Persona Builder did not add it. Move it away, then turn {} on again",
+                "{} exists and Voice did not add it. Move it away, then turn {} on again",
                 path.display(),
                 member.name
             )));
@@ -124,7 +124,7 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
         .is_some()
     {
         return Err(Error::Invalid(format!(
-            "{} already has a Persona Builder line for {}. Remove the lines between its persona-builder markers, then turn {} on again",
+            "{} already has a Voice line for {}. Remove the lines between its voice markers, then turn {} on again",
             claude_md.display(),
             member.slug,
             member.name
@@ -194,7 +194,7 @@ fn check_skill(path: &Path, text: &str, slug: &str, name: &str) -> Result<()> {
                 && !(character == '\r' && characters.peek() == Some(&'\n')))
         {
             return Err(Error::Invalid(format!(
-                "{} holds a character Persona Builder can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn {name} on again",
+                "{} holds a character Voice can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn {name} on again",
                 path.display()
             )));
         }
@@ -243,7 +243,7 @@ fn check_skill(path: &Path, text: &str, slug: &str, name: &str) -> Result<()> {
             .unwrap_or(key);
         if matches!(key, "hooks" | "allowed-tools") {
             return Err(Error::Invalid(format!(
-                "{} asks for {key}, which can run commands without asking. Persona Builder turns on only a skill without them",
+                "{} asks for {key}, which can run commands without asking. Voice turns on only a skill without them",
                 path.display()
             )));
         }
@@ -264,14 +264,14 @@ fn check_skill(path: &Path, text: &str, slug: &str, name: &str) -> Result<()> {
             )
         {
             return Err(Error::Invalid(format!(
-                "{} asks for {key}, which Persona Builder does not turn on. Remove it, then turn {name} on again",
+                "{} asks for {key}, which Voice does not turn on. Remove it, then turn {name} on again",
                 path.display()
             )));
         }
     }
     if text.contains("!`") {
         return Err(Error::Invalid(format!(
-            "{} runs a shell command (!`). Persona Builder turns on only a skill without one",
+            "{} runs a shell command (!`). Voice turns on only a skill without one",
             path.display()
         )));
     }

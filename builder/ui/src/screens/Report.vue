@@ -31,7 +31,7 @@ onMounted(async () => {
   try {
     view.value = await backend.showReport({ slug: props.assistant.slug })
   } catch (failure) {
-    error.value = failureMessage(failure, "Something in this assistant's settings stops the review. Use the persona-builder command to see what.")
+    error.value = failureMessage(failure, "Something in this assistant's settings stops the review. Use the voice command to see what.")
   } finally {
     loading.value = false
   }

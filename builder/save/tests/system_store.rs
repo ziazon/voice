@@ -1,4 +1,9 @@
-use persona_builder_keystore::{
+use std::{
+    any::Any,
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+use voice_keystore::{
     System,
     keyring_core::{
         self, Credential, CredentialStore, Entry, Error,
@@ -6,18 +11,13 @@ use persona_builder_keystore::{
         mock,
     },
 };
-use persona_builder_save::{
+use voice_save::{
     keychain::{ACCOUNT, SystemStore, TokenStore},
     secret::Secret,
     text,
 };
-use std::{
-    any::Any,
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
 
-const SERVICE: &str = "persona-builder.test";
+const SERVICE: &str = "voice.test";
 
 fn mock_store() -> Arc<CredentialStore> {
     mock::Store::new().unwrap()
@@ -208,7 +208,7 @@ fn service_is_checked_as_the_keychain_checks_it() {
             .expect("invalid service");
         assert_eq!(error.to_string(), text::KEYCHAIN_FAILED);
     }
-    assert!(SystemStore::over("persona-builder.github", System::over(mock_store())).is_ok());
+    assert!(SystemStore::over("voice.github", System::over(mock_store())).is_ok());
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]

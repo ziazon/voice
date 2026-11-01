@@ -4,19 +4,19 @@
 mod common;
 
 use common::{Scratch, parity_tools_available, repo};
-use persona_builder::deny::DenyList;
-use persona_builder::member::read_member;
-use persona_builder_ingest::{
-    claudeai::{self, Export, ReviewRow},
-    filters::Filters,
-    mine::Split,
-};
 use serde_json::{Value, json};
 use std::{
     fs,
     os::unix::fs::symlink,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
+};
+use voice_core::deny::DenyList;
+use voice_core::member::read_member;
+use voice_ingest::{
+    claudeai::{self, Export, ReviewRow},
+    filters::Filters,
+    mine::Split,
 };
 
 const SENTINEL: &str = "zebracorn";
@@ -133,7 +133,7 @@ fn export(value: Value) -> Export {
         conversations: value,
     }
 }
-fn error<T>(result: persona_builder::error::Result<T>) -> String {
+fn error<T>(result: voice_core::error::Result<T>) -> String {
     let Err(e) = result else {
         panic!("expected an error")
     };
@@ -164,7 +164,7 @@ fn all_marked(conversations: &Value) -> String {
 fn titles_error(k: &Kit, value: Value) -> String {
     error(claudeai::titles(&k.filters, &export(value), &[], None))
 }
-fn rust_mine(k: &Kit, value: Value) -> persona_builder::error::Result<claudeai::MinedExport> {
+fn rust_mine(k: &Kit, value: Value) -> voice_core::error::Result<claudeai::MinedExport> {
     let rows = claudeai::read_review("r.tsv", all_marked(&value).as_bytes()).unwrap();
     claudeai::mine(&k.filters, &export(value), &rows, &Split::Holdout(0.15))
 }
@@ -173,7 +173,7 @@ fn rust_mine(k: &Kit, value: Value) -> persona_builder::error::Result<claudeai::
 fn shape_errors_name_the_place_and_never_the_words() {
     let k = Kit::new("claudeai-shapes");
     let parity = parity_tools_available();
-    let date = "a date in the export isn't one Persona Builder can read: the export's shape changed, run persona-builder claudeai inspect";
+    let date = "a date in the export isn't one Voice can read: the export's shape changed, run voice claudeai inspect";
     let cases: Vec<(&str, Value, &str)> = vec![
         (
             "not a list",
@@ -325,7 +325,7 @@ fn mine_errors_where_the_python_does() {
                 json!("x"),
                 json!([{"sender": "human", "text": "fine", "created_at": SENTINEL}])
             )]),
-            "a date in the export isn't one Persona Builder can read: the export's shape changed, run persona-builder claudeai inspect",
+            "a date in the export isn't one Voice can read: the export's shape changed, run voice claudeai inspect",
         ),
         (
             "assistant numeric content",
@@ -420,7 +420,7 @@ fn odd_types_the_python_tolerates_are_refused() {
         )]);
         assert_eq!(
             titles_error(&k, value.clone()),
-            "conversations.json: conversation 1 has a uuid Persona Builder can't list"
+            "conversations.json: conversation 1 has a uuid Voice can't list"
         );
     }
     if parity_tools_available() {
@@ -529,7 +529,7 @@ fn zip_caps_and_odd_archives() {
     );
     assert_eq!(
         read(&bomb),
-        "the export's conversations.json is compressed more than 100:1, so Persona Builder won't open it"
+        "the export's conversations.json is compressed more than 100:1, so Voice won't open it"
     );
     python_fails(&bomb);
     // A central directory forged to declare more than 2 GB.
@@ -670,7 +670,7 @@ fn links_pipes_and_missing_paths() {
     assert_eq!(
         error(claudeai::read_export(&link, &DenyList::builtin())),
         format!(
-            "{} is a link: Persona Builder doesn't follow links. Use the export file itself",
+            "{} is a link: Voice doesn't follow links. Use the export file itself",
             link.display()
         )
     );
@@ -680,7 +680,7 @@ fn links_pipes_and_missing_paths() {
     assert_eq!(
         error(claudeai::read_export(&folder, &DenyList::builtin())),
         format!(
-            "{} is a link: Persona Builder doesn't follow links. Use the export file itself",
+            "{} is a link: Voice doesn't follow links. Use the export file itself",
             folder.join("conversations.json").display()
         )
     );
@@ -811,7 +811,7 @@ fn title_patterns_the_regex_crate_cannot_read_are_refused() {
     for pattern in ["(?=x)", r"(a)\1", r"x\Z", "("] {
         assert_eq!(
             error(claudeai::title_pattern(pattern)),
-            "--title is not a valid pattern, or it uses look-around or a backreference, which Persona Builder can't read"
+            "--title is not a valid pattern, or it uses look-around or a backreference, which Voice can't read"
         );
     }
     assert!(claudeai::title_pattern("(?i)acme").is_ok());
@@ -868,6 +868,6 @@ fn the_zip_itself_is_capped() {
     assert!(out.status.success());
     assert_eq!(
         error(claudeai::read_export(&many, &DenyList::builtin())),
-        "the export zip holds more than 100,000 files, so Persona Builder won't open it"
+        "the export zip holds more than 100,000 files, so Voice won't open it"
     );
 }

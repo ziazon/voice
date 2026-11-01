@@ -1,14 +1,14 @@
 mod common;
 
 use common::{Scratch, repo};
-use persona_builder::member::read_member;
-use persona_builder_ingest::{
+use serde_json::json;
+use std::fs;
+use voice_core::member::read_member;
+use voice_ingest::{
     claudeai,
     filters::Filters,
     mine::{self, Split},
 };
-use serde_json::json;
-use std::fs;
 
 #[test]
 fn claude_code_progress_counts_every_folder_including_excluded() {

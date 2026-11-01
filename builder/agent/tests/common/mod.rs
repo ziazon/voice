@@ -1,10 +1,5 @@
 #![allow(dead_code)]
 
-use persona_builder_agent::{
-    claude::Claude,
-    ledger::{Cap, Clock, Session},
-    provider::Brief,
-};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -12,6 +7,11 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
+};
+use voice_agent::{
+    claude::Claude,
+    ledger::{Cap, Clock, Session},
+    provider::Brief,
 };
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -22,7 +22,7 @@ impl Scratch {
     pub fn new(label: &str) -> Self {
         loop {
             let path = std::env::temp_dir().join(format!(
-                "persona-builder-agent-{label}-{}-{}",
+                "voice-agent-{label}-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -143,7 +143,7 @@ pub fn call<'a>(prompt: &'a str, schema: &'a Value) -> Brief<'a> {
         prompt,
         model: "sonnet",
         schema,
-        sources: &[persona_builder::ceilings::Source::ClaudeHistory],
+        sources: &[voice_core::ceilings::Source::ClaudeHistory],
     }
 }
 

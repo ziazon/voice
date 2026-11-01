@@ -1,4 +1,4 @@
-/* Persona Builder's look: the Navy & Amber palette, as awna.ai sets it, over Tabler. Load it after
+/* Voice's look: the Navy & Amber palette, as awna.ai sets it, over Tabler. Load it after
    Tabler's CSS; Tabler reads data-bs-theme on <html>.
    Form fields get a literal colour per theme, never Tabler's light-dark(): its rules also match a
    host page's data-theme, so a dark host would otherwise put light-theme text on a dark field. */

@@ -48,7 +48,7 @@ fn available() -> bool {
         return true;
     }
     assert!(
-        std::env::var("PERSONA_BUILDER_REQUIRE_SANDBOX").as_deref() != Ok("1"),
+        std::env::var("VOICE_REQUIRE_SANDBOX").as_deref() != Ok("1"),
         "{SKIP}"
     );
     eprintln!("{SKIP}");
@@ -248,7 +248,7 @@ fn denies_every_secret_in_both_letter_cases() {
             let path = canary(&sb.run.0, &name);
             sb.cat(&path, false);
             sb.touch(&path, false);
-            if persona_builder::deny::DenyList::builtin()
+            if voice_core::deny::DenyList::builtin()
                 .denied_relative(path.parent().unwrap().strip_prefix(&sb.run.0).unwrap())
             {
                 sb.touch(
@@ -268,7 +268,7 @@ fn canaries_match_the_core_deny_list() {
     if !available() {
         return;
     }
-    let deny = persona_builder::deny::DenyList::builtin();
+    let deny = voice_core::deny::DenyList::builtin();
     for name in CANARIES {
         for spelling in [(*name).to_owned(), name.to_uppercase()] {
             assert!(deny.denied_relative(Path::new(&spelling)), "{spelling}");

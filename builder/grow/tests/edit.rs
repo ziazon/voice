@@ -1,11 +1,11 @@
-use persona_builder::member::Member;
-use persona_builder_build::{
+use serde_json::json;
+use voice_build::{
     build::{Built, Counts},
     draft,
 };
-use persona_builder_grow::edit::{Edit, EditKind, apply_edit};
-use persona_builder_steps::book::Book;
-use serde_json::json;
+use voice_core::member::Member;
+use voice_grow::edit::{Edit, EditKind, apply_edit};
+use voice_steps::book::Book;
 
 fn decisions() -> String {
     let member = Member::from_value(json!({"name":"Robin", "slug":"robin", "principal":"Morgan", "principal_slug":"morgan", "state_dir":"~/.claude/state/robin", "mark_word":"Robin", "filters":{"excluded_folders":"^private$", "personal":"private", "secret":"secret", "pasted_prefixes":["You are "]}}), "member.json").unwrap();
@@ -87,7 +87,7 @@ fn replaces_any_point_except_precedents_or_placeholder() {
 
 #[test]
 fn edits_preserve_windows_line_endings_and_their_diffs_apply() {
-    use persona_builder_grow::diff::{apply, unified};
+    use voice_grow::diff::{apply, unified};
     let mut current = decisions().replace("\n", "\r\n");
     for edit in [
         add("scope", "Start with a small trial."),

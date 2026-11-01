@@ -26,25 +26,25 @@ fake_app() {  # path architecture
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>persona-builder-app</string>
-<key>CFBundleIdentifier</key><string>dev.personabuilder.test</string>
+<key>CFBundleExecutable</key><string>voice-app</string>
+<key>CFBundleIdentifier</key><string>dev.voice.test</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 </dict></plist>
 PLIST
-  printf 'int main(void){return 0;}\n' | cc -arch "$2" -x c - -o "$1/Contents/MacOS/persona-builder-app"
-  printf 'int main(void){return 0;}\n' | cc -arch "$2" -x c - -o "$1/Contents/MacOS/persona-builder"
-  codesign -s - --force "$1/Contents/MacOS/persona-builder" >/dev/null 2>&1
+  printf 'int main(void){return 0;}\n' | cc -arch "$2" -x c - -o "$1/Contents/MacOS/voice-app"
+  printf 'int main(void){return 0;}\n' | cc -arch "$2" -x c - -o "$1/Contents/MacOS/voice"
+  codesign -s - --force "$1/Contents/MacOS/voice" >/dev/null 2>&1
   codesign -s - --force --deep "$1" >/dev/null 2>&1
 }
 
 kit() {  # case architecture (empty for no app)
   kit_dir="$scratch/kit folder/$1"
   home="$scratch/home/$1"
-  installed="$home/Applications/Persona Builder.app"
+  installed="$home/Applications/Voice.app"
   mkdir -p "$kit_dir" "$home"
   cp "$here/builder/install/install.sh" "$kit_dir/install.sh"
   if [ -n "$2" ]; then
-    fake_app "$kit_dir/Persona Builder.app" "$2"
+    fake_app "$kit_dir/Voice.app" "$2"
   fi
 }
 
@@ -59,9 +59,9 @@ not_installed() {
 
 # Installs, leaving the downloaded original alone and cleaning its staging folder.
 kit installs "$arch"
-source_app="$kit_dir/Persona Builder.app"
+source_app="$kit_dir/Voice.app"
 xattr -w com.apple.quarantine '0081;00000000;Test;' "$source_app"
-xattr -w com.apple.quarantine '0081;00000000;Test;' "$source_app/Contents/MacOS/persona-builder-app"
+xattr -w com.apple.quarantine '0081;00000000;Test;' "$source_app/Contents/MacOS/voice-app"
 run --no-open
 [ "$status" = 0 ] || { cat "$scratch/err" >&2; fail 'install failed'; }
 [ -d "$installed" ] || fail 'installed app is missing'
@@ -69,9 +69,9 @@ attributes=$(xattr -lr "$installed")
 [[ "$attributes" != *com.apple.quarantine* ]] || fail 'installed copy is quarantined'
 codesign --verify --deep --strict "$installed" || fail 'installed signature is invalid'
 xattr -p com.apple.quarantine "$source_app" >/dev/null || fail 'source quarantine was removed'
-xattr -p com.apple.quarantine "$source_app/Contents/MacOS/persona-builder-app" >/dev/null || fail 'source executable quarantine was removed'
-check "$scratch/out" "Persona Builder is installed in your Applications folder: $installed" 'installed path not printed'
-[ -z "$(find "$home/Applications" -name '.persona-builder-install.*' -print)" ] || fail 'staging folder remains'
+xattr -p com.apple.quarantine "$source_app/Contents/MacOS/voice-app" >/dev/null || fail 'source executable quarantine was removed'
+check "$scratch/out" "Voice is installed in your Applications folder: $installed" 'installed path not printed'
+[ -z "$(find "$home/Applications" -name '.voice-install.*' -print)" ] || fail 'staging folder remains'
 echo 'mac_install_test: installs passed'
 
 # Replaces an old app, including files that the new app no longer contains.
@@ -82,7 +82,7 @@ printf 'old\n' > "$installed/old-marker"
 run --no-open
 [ "$status" = 0 ] || fail 'replacement failed'
 [ ! -e "$installed/old-marker" ] || fail 'old copy was not replaced'
-[ -x "$installed/Contents/MacOS/persona-builder-app" ] || fail 'new executable is missing'
+[ -x "$installed/Contents/MacOS/voice-app" ] || fail 'new executable is missing'
 echo 'mac_install_test: replaces passed'
 
 kit wrong-chip "$other_arch"
@@ -94,27 +94,27 @@ echo 'mac_install_test: wrong chip passed'
 
 # Re-sign each incomplete copy so the command check, not a broken signature, refuses it.
 kit missing-command "$arch"
-rm "$kit_dir/Persona Builder.app/Contents/MacOS/persona-builder"
-codesign -s - --force --deep "$kit_dir/Persona Builder.app" >/dev/null 2>&1
+rm "$kit_dir/Voice.app/Contents/MacOS/voice"
+codesign -s - --force --deep "$kit_dir/Voice.app" >/dev/null 2>&1
 run --no-open
 [ "$status" = 1 ] || fail 'missing command was not refused'
-check "$scratch/err" 'This copy of Persona Builder looks damaged. Ask for a new copy.' 'missing-command explanation missing'
+check "$scratch/err" 'This copy of Voice looks damaged. Ask for a new copy.' 'missing-command explanation missing'
 not_installed
 echo 'mac_install_test: missing command passed'
 
 kit symlinked-command "$arch"
-rm "$kit_dir/Persona Builder.app/Contents/MacOS/persona-builder"
-ln -s persona-builder-app "$kit_dir/Persona Builder.app/Contents/MacOS/persona-builder"
-codesign -s - --force --deep "$kit_dir/Persona Builder.app" >/dev/null 2>&1
+rm "$kit_dir/Voice.app/Contents/MacOS/voice"
+ln -s voice-app "$kit_dir/Voice.app/Contents/MacOS/voice"
+codesign -s - --force --deep "$kit_dir/Voice.app" >/dev/null 2>&1
 run --no-open
 [ "$status" = 1 ] || fail 'symlinked command was not refused'
-check "$scratch/err" 'This copy of Persona Builder looks damaged. Ask for a new copy.' 'symlinked-command explanation missing'
+check "$scratch/err" 'This copy of Voice looks damaged. Ask for a new copy.' 'symlinked-command explanation missing'
 not_installed
 echo 'mac_install_test: symlinked command passed'
 
 # The two signature checks and the quarantine re-check are belt and braces, so breaking only one of them does not fail this test.
 kit damaged "$arch"
-printf x >> "$kit_dir/Persona Builder.app/Contents/MacOS/persona-builder-app"
+printf x >> "$kit_dir/Voice.app/Contents/MacOS/voice-app"
 run --no-open
 [ "$status" = 1 ] || fail 'damaged app was not refused'
 check "$scratch/err" 'looks damaged' 'damage explanation missing'
@@ -136,8 +136,8 @@ not_installed
 echo 'mac_install_test: no app passed'
 
 kit symlinked ''
-fake_app "$scratch/real app/Persona Builder.app" "$arch"
-ln -s "$scratch/real app/Persona Builder.app" "$kit_dir/Persona Builder.app"
+fake_app "$scratch/real app/Voice.app" "$arch"
+ln -s "$scratch/real app/Voice.app" "$kit_dir/Voice.app"
 run --no-open
 [ "$status" = 1 ] || fail 'symlinked app was not refused'
 check "$scratch/err" "isn't next to this installer" 'symlink explanation missing'
@@ -156,9 +156,9 @@ kit symlink-outside "$arch"
 outside="$scratch/outside"
 printf 'keep\n' > "$outside"
 xattr -w com.apple.quarantine '0081;00000000;Test;' "$outside"
-mkdir -p "$kit_dir/Persona Builder.app/Contents/Resources"
-ln -s "$outside" "$kit_dir/Persona Builder.app/Contents/Resources/outside"
-codesign -s - --force --deep "$kit_dir/Persona Builder.app" >/dev/null 2>&1
+mkdir -p "$kit_dir/Voice.app/Contents/Resources"
+ln -s "$outside" "$kit_dir/Voice.app/Contents/Resources/outside"
+codesign -s - --force --deep "$kit_dir/Voice.app" >/dev/null 2>&1
 run --no-open
 [ "$status" = 1 ] || fail 'symlink out of the bundle was not refused'
 check "$scratch/err" 'looks damaged' 'outside-symlink damage explanation missing'

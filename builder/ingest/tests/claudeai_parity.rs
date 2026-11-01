@@ -1,17 +1,17 @@
-use persona_builder::deny::DenyList;
+use voice_core::deny::DenyList;
 mod common;
 use common::{Scratch, parity_tools_available, repo};
-use persona_builder::member::read_member;
-use persona_builder_ingest::{
-    claudeai::{self, ReviewRow, Selector},
-    filters::Filters,
-    mine::{Split, to_jsonl},
-};
 use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Output},
+};
+use voice_core::member::read_member;
+use voice_ingest::{
+    claudeai::{self, ReviewRow, Selector},
+    filters::Filters,
+    mine::{Split, to_jsonl},
 };
 
 struct Case {

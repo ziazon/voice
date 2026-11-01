@@ -1,8 +1,8 @@
 //! Panels through the app's public boundary, with invented assistants only.
 mod panel_support;
 use panel_support::Home;
-use persona_builder_api::{dto::*, *};
 use std::fs;
+use voice_api::{dto::*, *};
 
 #[test]
 fn convene_streams_rounds_and_closes_through_claude_code() {
@@ -108,9 +108,7 @@ fn a_panel_requires_each_assistants_permission_before_writing() {
     );
     assert_eq!(
         result.err().map(|e| e.message).as_deref(),
-        Some(
-            "Persona Builder needs your permission before it reads anything. Give it in the first step."
-        )
+        Some("Voice needs your permission before it reads anything. Give it in the first step.")
     );
     assert!(progress.is_empty());
     assert!(!h.path.join(".claude/voice/panels").exists());

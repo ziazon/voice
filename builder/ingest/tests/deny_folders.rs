@@ -1,12 +1,12 @@
 mod common;
 
 use common::{Scratch, repo};
-use persona_builder::{deny::DenyList, member::read_member};
-use persona_builder_ingest::{
+use std::fs;
+use voice_core::{deny::DenyList, member::read_member};
+use voice_ingest::{
     filters::Filters,
     mine::{Split, folders, mine},
 };
-use std::fs;
 
 #[test]
 fn denied_real_project_is_excluded_without_listing_its_sessions() {

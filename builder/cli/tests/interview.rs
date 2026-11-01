@@ -1,5 +1,4 @@
-//! `persona-builder interview draft|answer` against a stub `claude` on `PATH`, on an invented member.
-use persona_builder::crew::{NewMember, new_member};
+//! `voice interview draft|answer` against a stub `claude` on `PATH`, on an invented member.
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -8,6 +7,7 @@ use std::{
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -31,7 +31,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Robin",
@@ -63,7 +63,7 @@ impl Fixture {
             .unwrap_or(0)
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &self.home)
             .env("PATH", format!("{}:/usr/bin:/bin", self.bin.display()))
             .env_remove("ANTHROPIC_API_KEY")
@@ -171,9 +171,9 @@ fn draft_saves_twenty_questions_for_a_thin_history() {
         text(&out.stdout),
         format!(
             "{}\nsaved to ~/.claude/state/wren/interview-questions.json\n{}\n{}\n",
-            persona_builder_build::text::drafted(20, false),
-            persona_builder_build::text::swap(&member),
-            persona_builder_agent::text::spend(0.02, 50.0)
+            voice_build::text::drafted(20, false),
+            voice_build::text::swap(&member),
+            voice_agent::text::spend(0.02, 50.0)
         )
     );
 }
@@ -187,10 +187,7 @@ fn draft_never_replaces_waiting_questions_unless_asked() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        format!(
-            "persona-builder: {}\n",
-            persona_builder_build::text::ALREADY_DRAFTED
-        )
+        format!("voice: {}\n", voice_build::text::ALREADY_DRAFTED)
     );
     assert_eq!(f.calls(), 0);
     let out = f.run(&["interview", "draft", &f.member(), "--replace"]);
@@ -206,10 +203,7 @@ fn draft_says_how_to_sign_in_and_spends_nothing() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        format!(
-            "persona-builder: {}\n",
-            persona_builder_agent::text::SIGNED_OUT
-        )
+        format!("voice: {}\n", voice_agent::text::SIGNED_OUT)
     );
     assert_eq!(f.calls(), 0);
     assert!(!f.state().join("interview-questions.json").exists());
@@ -227,7 +221,7 @@ fn draft_weights_by_an_earlier_builds_labels() {
     let out = f.run(&["interview", "draft", &f.member(), "--labels", "labels.json"]);
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert!(
-        text(&out.stdout).starts_with(&persona_builder_build::text::drafted(20, true)),
+        text(&out.stdout).starts_with(&voice_build::text::drafted(20, true)),
         "{}",
         text(&out.stdout)
     );
@@ -262,7 +256,7 @@ fn answer_keeps_the_answers_as_training_and_merge_picks_them_up() {
         text(&out.stdout),
         format!(
             "kept 2 interview answers, always for training; 18 unanswered\nleft out 0 that looked personal and 0 that looked secret\nsaved to ~/.claude/state/wren/decisions-interview.jsonl\n{}\n",
-            persona_builder_build::text::merge_next(&member)
+            voice_build::text::merge_next(&member)
         )
     );
     let saved = f.state().join("decisions-interview.jsonl");
@@ -292,10 +286,7 @@ fn answer_keeps_the_answers_as_training_and_merge_picks_them_up() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        format!(
-            "persona-builder: {}\n",
-            persona_builder_build::text::ALREADY_ANSWERED
-        )
+        format!("voice: {}\n", voice_build::text::ALREADY_ANSWERED)
     );
     let out = f.run(&[&again[..], &["--replace"]].concat());
     assert!(out.status.success(), "{}", text(&out.stderr));
@@ -328,10 +319,7 @@ fn answer_with_nothing_answered_writes_nothing() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        format!(
-            "persona-builder: {}\n",
-            persona_builder_build::text::NO_ANSWERS
-        )
+        format!("voice: {}\n", voice_build::text::NO_ANSWERS)
     );
     assert!(!f.state().join("decisions-interview.jsonl").exists());
 }
@@ -340,7 +328,7 @@ fn answer_with_nothing_answered_writes_nothing() {
 fn draft_weights_by_the_last_report_without_labels() {
     let f = Fixture::new();
     f.signed_in(&ok_reply(&draft()));
-    f.write_state("report.json", r#"{"schema":"persona-builder/report/1","built":"2026-10-24","overall":"thin","answered":3,"held":0,"test":null,"areas":[{"area":"scope","level":"thin","examples":3,"strengthen":[]}]}"#);
+    f.write_state("report.json", r#"{"schema":"voice/report/1","built":"2026-10-24","overall":"thin","answered":3,"held":0,"test":null,"areas":[{"area":"scope","level":"thin","examples":3,"strengthen":[]}]}"#);
     let out = f.run(&["interview", "draft", &f.member()]);
     assert!(out.status.success(), "{}", text(&out.stderr));
     let asked = fs::read_to_string(f.bin.join("stdin")).unwrap();
@@ -349,7 +337,7 @@ fn draft_weights_by_the_last_report_without_labels() {
         asked.contains("- sequencing: 0 past decisions\n"),
         "{asked}"
     );
-    assert!(text(&out.stdout).starts_with(&persona_builder_build::text::drafted(20, true)));
+    assert!(text(&out.stdout).starts_with(&voice_build::text::drafted(20, true)));
 }
 
 fn long_history_report(thin: bool) -> String {
@@ -367,9 +355,9 @@ fn long_history_report(thin: bool) -> String {
         "placement-naming",
         "go-no-go",
     ];
-    let report = json!({"schema":"persona-builder/report/1","built":"2026-10-24","overall":"thin","answered":150,"held":0,"test":null,
+    let report = json!({"schema":"voice/report/1","built":"2026-10-24","overall":"thin","answered":150,"held":0,"test":null,
         "areas":kinds.iter().enumerate().map(|(n, kind)|json!({"area":kind,"level":if thin && n < 2 {"thin"} else {"strong"},"examples":if thin && n < 2 {n * 3} else {40},"strengthen":[]})).collect::<Vec<_>>()}).to_string();
-    serde_json::from_str::<persona_builder_build::report::Report>(&report).unwrap();
+    serde_json::from_str::<voice_build::report::Report>(&report).unwrap();
     report
 }
 
@@ -457,7 +445,7 @@ fn long_history_answers_use_the_short_round_without_replacing_full_answers() {
         "interview-short-answers.json",
     ]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).contains(persona_builder_build::text::ALREADY_ANSWERED));
+    assert!(text(&out.stderr).contains(voice_build::text::ALREADY_ANSWERED));
     let out = f.run(&[
         "interview",
         "answer",
@@ -506,7 +494,7 @@ fn answer_uses_the_short_form_from_a_custom_corpus() {
     assert_eq!(f.calls(), 0);
 }
 
-const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`.";
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`.";
 
 fn keep_folder_local(member: &std::path::Path) {
     let path = member.join("member.json");
@@ -524,10 +512,7 @@ fn interview_draft_honors_the_members_local_folder_ceiling() {
     keep_folder_local(&f.member);
     let out = f.run(&["interview", "draft", &f.member()]);
     assert!(!out.status.success());
-    assert_eq!(
-        text(&out.stderr),
-        format!("persona-builder: {FOLDER_KEPT_HOME}\n")
-    );
+    assert_eq!(text(&out.stderr), format!("voice: {FOLDER_KEPT_HOME}\n"));
     assert_eq!(f.calls(), 0);
     assert!(!f.state().join("runs.jsonl").exists());
 }

@@ -1,4 +1,4 @@
-//! The providers Persona Builder can drive, each with where its data goes.
+//! The providers Voice can drive, each with where its data goes.
 use crate::{claude, provider::Reach, self_hosted};
 
 /// One provider: its id (for the CLI and the app), name (for people), and where its data goes.

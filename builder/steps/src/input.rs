@@ -1,9 +1,9 @@
 //! Reading the step files: every one is untrusted and checked whole before it is used.
-use persona_builder::error::{Error, Result};
-use persona_builder_ingest::corpus::exact_numbers;
 use serde_json::{Map, Value};
+use voice_core::error::{Error, Result};
+use voice_ingest::corpus::exact_numbers;
 
-/// A corpus as `persona_builder_ingest::corpus::read_records` reads it: line numbers and records.
+/// A corpus as `voice_ingest::corpus::read_records` reads it: line numbers and records.
 pub type Records = [(usize, Map<String, Value>)];
 /// The same, owned.
 pub type RecordList = Vec<(usize, Map<String, Value>)>;
@@ -16,7 +16,7 @@ pub fn read_json(name: &str, bytes: &[u8]) -> Result<Value> {
         .map_err(|_| Error::Invalid(format!("{name} is not valid JSON")))?;
     if !exact_numbers(&value) {
         return Err(Error::Invalid(format!(
-            "{name} holds a number Persona Builder can't copy exactly"
+            "{name} holds a number Voice can't copy exactly"
         )));
     }
     Ok(value)

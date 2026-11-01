@@ -1,8 +1,6 @@
 //! Public-API regressions for forwarded posts and saved member names.
 #![cfg(unix)]
 
-use persona_builder::crew::{Decisions, NewMember, new_member_embedded};
-use persona_builder_agent::ledger::{Cap, Session};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -14,6 +12,8 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
+use voice_agent::ledger::{Cap, Session};
+use voice_core::crew::{Decisions, NewMember, new_member_embedded};
 use voice_panel_runner::{Clock, Convene, Resume, Turn, Turns, convene, detail, resume, status};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -40,7 +40,7 @@ impl Home {
                     principal_pronouns: "they/them",
                     repo_shown: "~/.claude",
                     date: "2026-10-30",
-                    decisions: Decisions::Cli("persona-builder"),
+                    decisions: Decisions::Cli("voice"),
                 },
             )
             .unwrap();
@@ -323,11 +323,11 @@ fn text_guard_checks_forwarded_controls() {
 
 #[test]
 fn decoded_block_values_check_forwarded_forms() {
-    use persona_builder_ingest::filters::Filters;
+    use voice_ingest::filters::Filters;
     use voice_panel_runner::guard::{post_findings, post_findings_refs};
     use voice_panels::{Block, Position};
 
-    let member = persona_builder::member::read_member(
+    let member = voice_core::member::read_member(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template/member.json"),
     )
     .unwrap();

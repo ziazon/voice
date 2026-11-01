@@ -1,6 +1,4 @@
 //! Record invented decisions only in the assistant's existing private state.
-use persona_builder::crew::{Decisions, NewMember, new_member};
-use persona_builder_ingest::{mine::to_jsonl, private};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -10,6 +8,8 @@ use std::{
     process::{Command, Output, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{Decisions, NewMember, new_member};
+use voice_ingest::{mine::to_jsonl, private};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 const TOO_LONG: &str = "That is too long to keep (over 64 KiB). Shorten it, then record it again.";
 struct Fixture {
@@ -49,7 +49,7 @@ impl Fixture {
         drop(private::lock_state(&self.home, "ari").unwrap());
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &self.home)
             .arg("record")
             .arg(&self.member)
@@ -61,7 +61,7 @@ impl Fixture {
         self.state().join("live.jsonl")
     }
     fn stdin(&self, args: &[&str], input: &[u8]) -> Output {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &self.home)
             .arg("record")
             .arg(&self.member)
@@ -120,7 +120,7 @@ fn without_timestamp(line: &str) -> String {
 fn stdin_records_match_flags_and_python_bytes() {
     if Command::new("python3").arg("--version").output().is_err() {
         assert_ne!(
-            std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref(),
+            std::env::var("VOICE_REQUIRE_PARITY").as_deref(),
             Ok("1"),
             "python3 required for parity"
         );
@@ -296,7 +296,7 @@ fn stdin_record_accepts_null_optional_fields() {
 fn records_match_python_bytes_with_and_without_optional_fields() {
     if Command::new("python3").arg("--version").output().is_err() {
         assert_ne!(
-            std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref(),
+            std::env::var("VOICE_REQUIRE_PARITY").as_deref(),
             Ok("1"),
             "python3 required for parity"
         );
@@ -418,7 +418,7 @@ fn missing_state_is_not_recreated() {
     let f = Fixture::new();
     let out = f.run(&args());
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).contains("Ari has nowhere to keep this yet: ~/.claude/state/ari isn't there. Open Persona Builder and give Ari permission, then try again."), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("Ari has nowhere to keep this yet: ~/.claude/state/ari isn't there. Open Voice and give Ari permission, then try again."), "{}", text(&out.stderr));
     assert!(!f.state().exists());
 }
 #[test]
@@ -626,7 +626,7 @@ fn work_without_value_before_unknown_short_flag() {
 #[test]
 fn record_long_help_without_member() {
     let f = Fixture::new();
-    let out = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    let out = Command::new(env!("CARGO_BIN_EXE_voice"))
         .env("HOME", &f.home)
         .args(["record", "--help"])
         .output()
@@ -653,7 +653,7 @@ fn record_long_help_without_member() {
 #[test]
 fn record_short_help_without_member() {
     let f = Fixture::new();
-    let out = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    let out = Command::new(env!("CARGO_BIN_EXE_voice"))
         .env("HOME", &f.home)
         .args(["record", "-h"])
         .output()

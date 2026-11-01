@@ -43,7 +43,7 @@ async function openPage() {
   try {
     await backend.openLink({ link: 'githubDevice' })
   } catch (failure) {
-    linkError.value = failureMessage(failure, "Persona Builder couldn't open your web browser. Go to https://github.com/login/device yourself.")
+    linkError.value = failureMessage(failure, "Voice couldn't open your web browser. Go to https://github.com/login/device yourself.")
   }
 }
 async function cancel() {
@@ -73,7 +73,7 @@ onBeforeUnmount(() => {
       <div v-if="linkError" class="alert alert-warning small" role="alert">{{ linkError }}</div>
       <div class="d-flex align-items-center gap-2 mb-3" role="status">
         <span class="spinner-border spinner-border-sm" aria-hidden="true" />
-        <span>Waiting for you to approve Persona Builder on GitHub…</span>
+        <span>Waiting for you to approve Voice on GitHub…</span>
       </div>
       <button type="button" class="btn btn-link p-0" @click="cancel">Cancel</button>
     </template>

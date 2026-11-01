@@ -13,7 +13,7 @@ impl Scratch {
     pub fn new(label: &str) -> Self {
         loop {
             let path = std::env::temp_dir().join(format!(
-                "persona-builder-{label}-{}-{}",
+                "voice-{label}-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -44,7 +44,7 @@ pub fn parity_tools_available() -> bool {
         .iter()
         .any(|tool| Command::new(tool).arg("--version").output().is_err())
     {
-        if std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref() == Ok("1") {
+        if std::env::var("VOICE_REQUIRE_PARITY").as_deref() == Ok("1") {
             panic!("parity tools missing: python3, git or bash not on PATH");
         }
         eprintln!("skipped: python3, git or bash not found");

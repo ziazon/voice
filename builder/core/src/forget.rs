@@ -29,7 +29,7 @@ fn count_files(path: &Path) -> Result<usize> {
 pub fn forget(member_dir: &Path, home: &Path, delete: bool) -> Result<Forgotten> {
     let member = read_member(&member_dir.join("member.json"))?;
     let path = private_state_dir(&member, home).ok_or_else(|| Error::Invalid(format!(
-        "state_dir {} is not ~/.claude/state/{}, so Persona Builder will not delete it. Delete that folder yourself if you mean to",
+        "state_dir {} is not ~/.claude/state/{}, so Voice will not delete it. Delete that folder yourself if you mean to",
         member.state_dir, member.slug
     )))?;
     refuse_symlink(&home.join(".claude/state"))?;
@@ -177,7 +177,7 @@ mod tests {
             let result = forget(&member, &home, true);
             assert!(
                 matches!(result, Err(Error::Invalid(ref message)) if message == &format!(
-                    "state_dir {written} is not ~/.claude/state/ari, so Persona Builder will not delete it. Delete that folder yourself if you mean to"
+                    "state_dir {written} is not ~/.claude/state/ari, so Voice will not delete it. Delete that folder yourself if you mean to"
                 )),
                 "{written}: {result:?}"
             );

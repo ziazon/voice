@@ -109,7 +109,7 @@ export function button(wrapper: ReturnType<typeof mount>, text: string) {
 
 export const consentText = {
   "version": 1,
-  "title": "Before Persona Builder reads anything",
+  "title": "Before Voice reads anything",
   "sections": [
     {
       "heading": "What it reads",
@@ -121,21 +121,21 @@ export const consentText = {
     {
       "heading": "What stays on this computer",
       "lines": [
-        "Your history, and everything Persona Builder makes from it, stays in your Claude folder on this computer.",
+        "Your history, and everything Voice makes from it, stays in your Claude folder on this computer.",
         "It leaves out messages that look private, such as health, family, legal or money matters and account numbers. It can miss some."
       ]
     },
     {
       "heading": "What goes to Claude",
       "lines": [
-        "To build your assistant, Persona Builder sends parts of your history to Claude through your own Claude Code, signed in to your own Claude account. The terms of your Claude account apply, as they do to anything else you send through Claude Code.",
-        "This uses your own Claude plan's usage, and a build can use a lot of it. Persona Builder stops for the day when it reaches a daily limit, and you can stop it at any time."
+        "To build your assistant, Voice sends parts of your history to Claude through your own Claude Code, signed in to your own Claude account. The terms of your Claude account apply, as they do to anything else you send through Claude Code.",
+        "This uses your own Claude plan's usage, and a build can use a lot of it. Voice stops for the day when it reaches a daily limit, and you can stop it at any time."
       ]
     },
     {
       "heading": "Nothing else",
       "lines": [
-        "Persona Builder sends nothing anywhere else. A copy goes to GitHub only if you choose that later.",
+        "Voice sends nothing anywhere else. A copy goes to GitHub only if you choose that later.",
         "You can change your mind: Forget deletes the history it read and everything it made from it."
       ]
     }

@@ -6,11 +6,11 @@ use crate::{
     secret::Secret,
     text,
 };
-use persona_builder::{
+use std::path::{Path, PathBuf};
+use voice_core::{
     error::{Error, Result},
     member::read_member,
 };
-use std::path::{Path, PathBuf};
 
 pub trait PrivacyCheck {
     fn hits(&self, folder: &Path) -> Result<Vec<String>>;
@@ -35,7 +35,7 @@ impl RemoteCheck for GithubRemotes<'_> {
     }
 }
 pub struct MemberPaths {
-    pub member: persona_builder::member::Member,
+    pub member: voice_core::member::Member,
     pub dir: PathBuf,
     pub state_dir: PathBuf,
 }
@@ -110,7 +110,7 @@ pub fn detect(git: &Git, home: &Path, member_dir: &Path) -> Result<Vec<FoundRepo
     Ok(found)
 }
 pub fn shown(root: &Path, home: &Path) -> String {
-    persona_builder::crew::shown_path(root, home).unwrap_or_else(|_| root.display().to_string())
+    voice_core::crew::shown_path(root, home).unwrap_or_else(|_| root.display().to_string())
 }
 pub fn options(found: &[FoundRepo], home: &Path) -> SaveOptions {
     let mut choices: Vec<Choice> = found

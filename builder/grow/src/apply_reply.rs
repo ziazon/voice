@@ -2,10 +2,10 @@ use crate::{
     record::{Case, Grade},
     text,
 };
-use persona_builder_build::build::Misfit;
-use persona_builder_steps::text_check::hidden;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use voice_build::build::Misfit;
+use voice_steps::text_check::hidden;
 
 pub const ANSWER_SYSTEM: &str = include_str!("prompts/answer.md");
 pub const GRADE_SYSTEM: &str = include_str!("prompts/grade.md");

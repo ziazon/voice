@@ -1,7 +1,6 @@
 //! Private, no-follow output folders for anonymized skill copies.
 use super::{Skill, invalid, io};
 use crate::check;
-use persona_builder::error::{Error, Result};
 use std::{
     ffi::CString,
     fs::{self, File, OpenOptions},
@@ -12,11 +11,12 @@ use std::{
     },
     path::{Component, Path, PathBuf},
 };
+use voice_core::error::{Error, Result};
 
-const STAMP: &str = "Made by persona-builder anonymize. Running it again replaces this folder.\n";
+const STAMP: &str = "Made by voice anonymize. Running it again replaces this folder.\n";
 fn output_bad() -> Error {
     invalid(
-        "Choose an output folder that is empty or was made by persona-builder anonymize, outside your skill folders.",
+        "Choose an output folder that is empty or was made by voice anonymize, outside your skill folders.",
     )
 }
 fn safe_relative(path: &Path) -> bool {

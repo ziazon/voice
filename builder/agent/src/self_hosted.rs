@@ -12,8 +12,6 @@ use crate::{
     provider::{Provider, Reach, Reply, Usage, check_brief},
     text,
 };
-use persona_builder::error::{Error, Result};
-use persona_builder_ingest::private::{read_private_optional, remove_private, write_private};
 use serde_json::{Value, json};
 use std::{
     net::{IpAddr, Ipv4Addr},
@@ -28,6 +26,8 @@ use ureq::unversioned::{
     resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver},
     transport::{DefaultConnector, NextTimeout},
 };
+use voice_core::error::{Error, Result};
+use voice_ingest::private::{read_private_optional, remove_private, write_private};
 
 pub const AGENT_ID: &str = "self-hosted";
 pub const AGENT_NAME: &str = "A model server on your own machines";
@@ -255,7 +255,7 @@ fn agent(timeout: Duration, network: bool) -> ureq::Agent {
         .proxy(None)
         .timeout_global(Some(timeout))
         .timeout_connect(Some(Duration::from_secs(10).min(timeout)))
-        .user_agent(format!("persona-builder/{}", persona_builder::VERSION))
+        .user_agent(format!("voice/{}", voice_core::VERSION))
         .build();
     ureq::Agent::with_parts(
         config,
@@ -479,8 +479,8 @@ impl Provider for SelfHosted {
 mod tests {
     use super::*;
     use crate::{guard::Guard, ledger::Cap, provider::Brief};
-    use persona_builder::ceilings::Ceilings;
     use ureq::unversioned::transport::time::Duration as UreqDuration;
+    use voice_core::ceilings::Ceilings;
 
     #[test]
     fn this_computer_accepts_only_loopback() {
@@ -600,10 +600,8 @@ mod tests {
 
     #[test]
     fn a_public_literal_bypassing_saved_validation_is_refused_and_recorded() {
-        let home = std::env::temp_dir().join(format!(
-            "persona-builder-public-literal-{}",
-            std::process::id()
-        ));
+        let home =
+            std::env::temp_dir().join(format!("voice-public-literal-{}", std::process::id()));
         std::fs::create_dir(&home).unwrap();
         let server = SelfHosted::new(Server {
             url: "http://8.8.8.8:9".into(),
@@ -613,7 +611,7 @@ mod tests {
         let session = Session::open(&home, "wren", Cap::default()).unwrap();
         let schema = json!({"type":"object"});
         let brief = Brief {
-            sources: &[persona_builder::ceilings::Source::Mail],
+            sources: &[voice_core::ceilings::Source::Mail],
             step: "label",
             system: "Label records.",
             prompt: "records",

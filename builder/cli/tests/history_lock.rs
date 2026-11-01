@@ -1,5 +1,3 @@
-use persona_builder::crew::{NewMember, new_member};
-use persona_builder_ingest::private::{self, lock_state, write_private};
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -7,10 +5,12 @@ use std::{
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
+use voice_ingest::private::{self, lock_state, write_private};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
-const NO_REVIEW: &str = "there's no review file yet: run persona-builder claudeai titles first";
-const NOTHING_YET: &str = "~/.claude/state/wren isn't there yet, so there's nothing to read. Start with persona-builder mine, persona-builder claudeai titles or persona-builder interview draft.";
+const NO_REVIEW: &str = "there's no review file yet: run voice claudeai titles first";
+const NOTHING_YET: &str = "~/.claude/state/wren isn't there yet, so there's nothing to read. Start with voice mine, voice claudeai titles or voice interview draft.";
 const COMMANDS: &[(&[&str], &[&str])] = &[
     (&["mine"], &[]),
     (&["claudeai", "titles"], &["--export", "export.json"]),
@@ -54,7 +54,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Robin",
@@ -74,7 +74,7 @@ impl Fixture {
         self.home.join(".claude/state/wren")
     }
     fn run(&self, command: &[&str], args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env_clear()
             .env("HOME", &self.home)
             .env(
@@ -109,17 +109,15 @@ impl Fixture {
             write_private(&self.home, "wren", name, text.as_bytes()).unwrap();
         }
         // Use the same review format the titles command writes, without running that command.
-        let review = persona_builder_ingest::claudeai::review_text(&[
-            persona_builder_ingest::claudeai::ReviewRow {
-                uuid: "c-1".into(),
-                title: "Reading list".into(),
-                created: "2026-03-01T09:00:00Z".into(),
-                project: String::new(),
-                mine: "y".into(),
-                updated: String::new(),
-                messages: "1".into(),
-            },
-        ]);
+        let review = voice_ingest::claudeai::review_text(&[voice_ingest::claudeai::ReviewRow {
+            uuid: "c-1".into(),
+            title: "Reading list".into(),
+            created: "2026-03-01T09:00:00Z".into(),
+            project: String::new(),
+            mine: "y".into(),
+            updated: String::new(),
+            messages: "1".into(),
+        }]);
         write_private(&self.home, "wren", "claudeai-review.tsv", review.as_bytes()).unwrap();
     }
 }
@@ -147,7 +145,7 @@ fn refused(output: &Output, message: &str, command: &[&str]) {
     assert_eq!(output.status.code(), Some(1), "{command:?}");
     assert_eq!(
         output.stderr,
-        format!("persona-builder: {message}\n").as_bytes(),
+        format!("voice: {message}\n").as_bytes(),
         "{command:?}"
     );
     assert!(output.stdout.is_empty(), "{command:?}");

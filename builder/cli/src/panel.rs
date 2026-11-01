@@ -1,7 +1,7 @@
 //! Arguments for asking a panel of your assistants.
 use clap::Subcommand;
-use persona_builder::error::{Error, Result};
 use std::path::PathBuf;
+use voice_core::error::{Error, Result};
 
 #[derive(Subcommand)]
 pub enum PanelCommand {
@@ -43,15 +43,15 @@ fn kind(value: &str) -> std::result::Result<String, String> {
     {
         Ok(value.into())
     } else {
-        Err(persona_builder_api::panels::BAD_KIND.into())
+        Err(voice_api::panels::BAD_KIND.into())
     }
 }
 fn read(path: &std::path::Path) -> Result<String> {
     let home = crate::home()?;
-    persona_builder::deny::DenyList::new(&home, &[])?.check(path)?;
-    persona_builder_build::draft::read_text(path, 8 * 1024 * 1024)
-        .map_err(|_| Error::Invalid(persona_builder_api::panels::text::READ_INPUT.into()))?
-        .ok_or_else(|| Error::Invalid(persona_builder_api::panels::text::READ_INPUT.into()))
+    voice_core::deny::DenyList::new(&home, &[])?.check(path)?;
+    voice_build::draft::read_text(path, 8 * 1024 * 1024)
+        .map_err(|_| Error::Invalid(voice_api::panels::text::READ_INPUT.into()))?
+        .ok_or_else(|| Error::Invalid(voice_api::panels::text::READ_INPUT.into()))
 }
 fn question(path: &std::path::Path) -> Result<(String, String)> {
     let text = read(path)?;
@@ -62,11 +62,8 @@ fn question(path: &std::path::Path) -> Result<(String, String)> {
         lines.collect::<Vec<_>>().join("\n").trim().to_owned(),
     ))
 }
-fn finish(
-    result: persona_builder_api::dto::PanelRan,
-    printed: bool,
-) -> Result<std::process::ExitCode> {
-    use persona_builder_api::panels::text;
+fn finish(result: voice_api::dto::PanelRan, printed: bool) -> Result<std::process::ExitCode> {
+    use voice_api::panels::text;
     if !printed {
         println!("{}", result.id);
     }
@@ -104,7 +101,7 @@ fn finish(
     Ok(std::process::ExitCode::from(code))
 }
 fn execute(command: PanelCommand) -> Result<std::process::ExitCode> {
-    use persona_builder_api::{self as api, dto::*, panels::text};
+    use voice_api::{self as api, dto::*, panels::text};
     let mut printed = false;
     let mut progress = |progress: PanelProgress| {
         if !printed {
@@ -183,8 +180,8 @@ pub fn run(command: PanelCommand) -> Result<std::process::ExitCode> {
     match execute(command) {
         Err(Error::Invalid(message))
             if [
-                persona_builder_api::panels::text::READ_INPUT,
-                persona_builder_api::panels::text::BAD_ID,
+                voice_api::panels::text::READ_INPUT,
+                voice_api::panels::text::BAD_ID,
             ]
             .contains(&message.as_str()) =>
         {
@@ -196,7 +193,7 @@ pub fn run(command: PanelCommand) -> Result<std::process::ExitCode> {
 }
 
 fn failure_code(message: &str) -> u8 {
-    use persona_builder_api::panels::text;
+    use voice_api::panels::text;
     if [text::BUSY, text::ANSWER_FIRST].contains(&message)
         || message.ends_with(text::ASSISTANT_BUSY)
     {
@@ -231,7 +228,7 @@ fn failure_code(message: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::failure_code;
-    use persona_builder_api::panels::text;
+    use voice_api::panels::text;
 
     #[test]
     fn failure_codes_separate_waiting_bad_input_and_a_failed_call() {
@@ -240,6 +237,6 @@ mod tests {
         assert_eq!(failure_code(text::BAD_KIND), 2);
         assert_eq!(failure_code(text::NEED_STEER), 2);
         assert_eq!(failure_code(text::FAILED), 1);
-        assert_eq!(failure_code(persona_builder_agent::text::DOES_NOT_RUN), 1);
+        assert_eq!(failure_code(voice_agent::text::DOES_NOT_RUN), 1);
     }
 }

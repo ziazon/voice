@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn make_uses_claude_crew_without_creating_private_state() {
         let home = Scratch::new();
-        let made = make(home.path(), &input("Ari"), "2026-10-25", "persona-builder").unwrap();
+        let made = make(home.path(), &input("Ari"), "2026-10-25", "voice").unwrap();
         assert_eq!(made.dir, home.path().join(".claude/crew/ari"));
         assert_eq!(
             read_member(&made.dir.join("member.json")).unwrap(),
@@ -140,7 +140,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("keep"), "untouched").unwrap();
         assert!(
-            matches!(make(home.path(), &input("Ari"), "2026-10-25", "persona-builder"), Err(Error::Exists(slug)) if slug == "ari")
+            matches!(make(home.path(), &input("Ari"), "2026-10-25", "voice"), Err(Error::Exists(slug)) if slug == "ari")
         );
         assert_eq!(fs::read_to_string(dir.join("keep")).unwrap(), "untouched");
     }
@@ -153,7 +153,7 @@ mod tests {
         let missing = home.path().join("missing");
         std::os::unix::fs::symlink(&missing, &dir).unwrap();
         assert!(
-            matches!(make(home.path(), &input("Ari"), "2026-10-25", "persona-builder"), Err(Error::Exists(slug)) if slug == "ari")
+            matches!(make(home.path(), &input("Ari"), "2026-10-25", "voice"), Err(Error::Exists(slug)) if slug == "ari")
         );
         assert_eq!(fs::read_link(dir).unwrap(), missing);
     }
@@ -169,12 +169,12 @@ mod tests {
                 _ => new.principal_pronouns = "bad@",
             }
             assert!(
-                matches!(make(home.path(), &new, "2026-10-25", "persona-builder"), Err(Error::Invalid(message)) if message.contains(&format!("the {field} "))),
+                matches!(make(home.path(), &new, "2026-10-25", "voice"), Err(Error::Invalid(message)) if message.contains(&format!("the {field} "))),
                 "wrong validation for {field}"
             );
         }
         assert!(
-            matches!(make(home.path(), &input("???"), "2026-10-25", "persona-builder"), Err(Error::Invalid(message)) if message == "name must contain a letter or digit")
+            matches!(make(home.path(), &input("???"), "2026-10-25", "voice"), Err(Error::Invalid(message)) if message == "name must contain a letter or digit")
         );
         assert!(!crew_dir(home.path()).exists());
     }
@@ -183,7 +183,7 @@ mod tests {
         let home = Scratch::new();
         assert!(list(home.path()).unwrap().is_empty());
         for name in ["Zulu", "beta", "Alpha"] {
-            make(home.path(), &input(name), "2026-10-25", "persona-builder").unwrap();
+            make(home.path(), &input(name), "2026-10-25", "voice").unwrap();
         }
         let crew = crew_dir(home.path());
         fs::create_dir(crew.join("empty")).unwrap();
@@ -211,14 +211,8 @@ mod tests {
     fn list_follows_links_and_breaks_name_ties_by_slug() {
         let home = Scratch::new();
         let other = Scratch::new();
-        make(home.path(), &input("Ari"), "2026-10-25", "persona-builder").unwrap();
-        let member = make(
-            other.path(),
-            &input("Beta"),
-            "2026-10-25",
-            "persona-builder",
-        )
-        .unwrap();
+        make(home.path(), &input("Ari"), "2026-10-25", "voice").unwrap();
+        let member = make(other.path(), &input("Beta"), "2026-10-25", "voice").unwrap();
         let path = member.dir.join("member.json");
         let mut value: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();

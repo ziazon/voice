@@ -1,7 +1,6 @@
 mod common;
 
 use common::Scratch;
-use persona_builder_ingest::private::{list_private, write_private};
 use std::{
     fs,
     os::unix::{
@@ -9,6 +8,7 @@ use std::{
         fs::{PermissionsExt, symlink},
     },
 };
+use voice_ingest::private::{list_private, write_private};
 
 #[test]
 fn lists_only_regular_utf8_files_in_sorted_order() {

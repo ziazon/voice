@@ -35,7 +35,7 @@ onMounted(async () => {
   try {
     adopt(await backend.interviewStatus({ slug: props.slug }))
   } catch (failure) {
-    error.value = failureMessage(failure, "Something in this assistant's settings stops the build. Use the persona-builder command to see what.")
+    error.value = failureMessage(failure, "Something in this assistant's settings stops the build. Use the voice command to see what.")
   } finally {
     loading.value = false
   }
@@ -68,7 +68,7 @@ async function move(direction: number, keep = false) {
   try {
     await backend.saveInterviewAnswers({ slug: props.slug, answers: orderedAnswers() })
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't save your answers. Check there's space on this computer, then try again.")
+    error.value = failureMessage(failure, "Voice couldn't save your answers. Check there's space on this computer, then try again.")
     busy.value = false
     return
   }
@@ -76,7 +76,7 @@ async function move(direction: number, keep = false) {
     if (keep) kept.value = await backend.keepInterviewAnswers({ slug: props.slug })
     else page.value += direction
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't keep that answer. Close it and open it again.")
+    error.value = failureMessage(failure, "Voice couldn't keep that answer. Close it and open it again.")
   } finally {
     busy.value = false
   }
@@ -101,7 +101,7 @@ function pick(n: number, letter: string, multi: boolean, checked: boolean) {
         <template v-else>
           <p v-if="status.answered >= status.thinBelow && !status.thinKinds.length">Your history holds {{ status.answered.toLocaleString() }} answered questions, enough to build from. These questions are on kinds of decision that had few examples.</p>
           <p v-else-if="status.answered >= status.thinBelow">Your history holds {{ status.answered.toLocaleString() }} answered questions, enough to build from, but a few kinds of decision have fewer than five examples so far: {{ status.thinKinds.join(', ') }}. A few questions on each fills them out.</p>
-          <p v-else>Your history holds {{ status.answered.toLocaleString() }} answered questions. It takes about {{ status.thinBelow.toLocaleString() }} to know you well, so Persona Builder asks you twenty questions about your work to fill it out.</p>
+          <p v-else>Your history holds {{ status.answered.toLocaleString() }} answered questions. It takes about {{ status.thinBelow.toLocaleString() }} to know you well, so Voice asks you twenty questions about your work to fill it out.</p>
           <ReadProgress v-if="drafting" :progress="null" label="Drafting" />
           <template v-if="!status.questions.length">
             <button type="button" class="btn btn-primary" :disabled="busy" @click="draft(false)">{{ drafting ? 'Drafting the questions…' : 'Draft the questions' }}</button>

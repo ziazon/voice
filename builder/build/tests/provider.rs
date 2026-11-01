@@ -1,18 +1,3 @@
-use persona_builder::{
-    ceilings::{Ceilings, Source},
-    error::Result,
-    member::Member,
-};
-use persona_builder_agent::{
-    guard::{Guard, Sealed},
-    ledger::{Cap, Session},
-    provider::{Provider, Reach, Reply, Usage},
-};
-use persona_builder_build::{
-    build::{Asker, Misfit},
-    interview::{self, Form},
-};
-use persona_builder_steps::book::book;
 use serde_json::{Value, json};
 use std::{
     collections::VecDeque,
@@ -24,6 +9,21 @@ use std::{
     },
     time::{Duration, UNIX_EPOCH},
 };
+use voice_agent::{
+    guard::{Guard, Sealed},
+    ledger::{Cap, Session},
+    provider::{Provider, Reach, Reply, Usage},
+};
+use voice_build::{
+    build::{Asker, Misfit},
+    interview::{self, Form},
+};
+use voice_core::{
+    ceilings::{Ceilings, Source},
+    error::Result,
+    member::Member,
+};
+use voice_steps::book::book;
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -225,12 +225,12 @@ fn a_build_step_sends_its_brief_and_a_new_asker_reuses_the_checked_cache() {
                         "properties": {"label": {"type": "string"}}});
     let guard = Guard::new(vec![&fake], Ceilings::defaults());
     assert_eq!(
-        persona_builder_build::build::SOURCES,
+        voice_build::build::SOURCES,
         &[Source::ClaudeHistory, Source::Typed, Source::CrewFolder]
     );
     let mut asker = Asker::new(
         &guard,
-        persona_builder_build::build::SOURCES,
+        voice_build::build::SOURCES,
         &session,
         &home.0,
         "ada",
@@ -256,12 +256,12 @@ fn a_build_step_sends_its_brief_and_a_new_asker_reuses_the_checked_cache() {
             prompt: "record one\n".to_owned(),
             model: "test-model".to_owned(),
             schema: schema.clone(),
-            sources: persona_builder_build::build::SOURCES.to_vec(),
+            sources: voice_build::build::SOURCES.to_vec(),
         }]
     );
     let mut resumed = Asker::new(
         &guard,
-        persona_builder_build::build::SOURCES,
+        voice_build::build::SOURCES,
         &session,
         &home.0,
         "ada",
@@ -284,13 +284,8 @@ fn a_build_step_sends_its_brief_and_a_new_asker_reuses_the_checked_cache() {
 
 #[test]
 fn claude_cache_key_is_pinned() {
-    let name = persona_builder_build::build::cache_name(
-        "label",
-        "sonnet",
-        "S",
-        &json!({"type":"object"}),
-        "P",
-    );
+    let name =
+        voice_build::build::cache_name("label", "sonnet", "S", &json!({"type":"object"}), "P");
     assert_eq!(name, "label-a81454259719d691af2c1d509da0bd64977c5e8e.json");
 }
 
@@ -364,7 +359,7 @@ fn a_self_hosted_step_does_not_reuse_a_claude_reply() {
     );
     assert!(
         folder
-            .join(persona_builder_build::build::cache_name(
+            .join(voice_build::build::cache_name(
                 "label",
                 "self-hosted/sonnet",
                 "S",

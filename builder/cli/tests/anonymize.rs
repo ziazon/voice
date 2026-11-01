@@ -12,7 +12,7 @@ use std::{
 };
 
 fn run(home: &Scratch, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    Command::new(env!("CARGO_BIN_EXE_voice"))
         .env_clear()
         .env("HOME", &home.0)
         .current_dir(&home.0)
@@ -298,7 +298,7 @@ fn verifier_03_private_skill_name_report_is_anonymous() {
     let output = anonymize(&home, "copy");
     assert_eq!(output.status.code(), Some(1));
     let report = String::from_utf8(output.stdout).unwrap();
-    assert!(report.contains(&format!("A skill you agreed to: not copied, its name holds a private detail (number {number} in persona-builder skills list)")), "{report}");
+    assert!(report.contains(&format!("A skill you agreed to: not copied, its name holds a private detail (number {number} in voice skills list)")), "{report}");
     assert!(!report.to_lowercase().contains("rowan"));
     assert!(!report.contains("SKILL.md"));
 }
@@ -336,7 +336,7 @@ fn verifier_15_output_cannot_contain_project() {
     fs::write(home.0.join("copy/project/keep"), "public").unwrap();
     fs::write(
         home.0.join("copy/.anonymized-copy"),
-        "Made by persona-builder anonymize. Running it again replaces this folder.\n",
+        "Made by voice anonymize. Running it again replaces this folder.\n",
     )
     .unwrap();
     assert!(!anonymize(&home, "copy").status.success());
@@ -363,7 +363,7 @@ fn verifier_07_mapping_survives_a_failed_file_write() {
             "-c",
             "ulimit -f 8; trap '' XFSZ; exec \"$@\"",
             "vo3-test",
-            env!("CARGO_BIN_EXE_persona-builder"),
+            env!("CARGO_BIN_EXE_voice"),
             "anonymize",
             "member",
             "--out",

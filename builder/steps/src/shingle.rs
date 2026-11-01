@@ -1,9 +1,9 @@
 //! `shingle`: the runs of `n` words a draft shares with the corpus, so a distilled file stays
 //! paraphrase only.
 use crate::input::{Record, Records};
-use persona_builder::error::Result;
 use regex::Regex;
 use std::{collections::BTreeSet, sync::LazyLock};
+use voice_core::error::Result;
 
 const SHOWN: usize = 60;
 const FIELDS: [&str; 5] = ["text", "own_words", "notes", "question", "context"];
@@ -23,11 +23,7 @@ pub fn overlaps(doc: &str, corpora: &[(&str, &Records)], n: usize) -> Result<Vec
     for (name, records) in corpora {
         for r in Record::all(name, records) {
             for key in FIELDS {
-                if let Some(value) = r
-                    .map
-                    .get(key)
-                    .filter(|v| persona_builder_ingest::python::truthy(v))
-                {
+                if let Some(value) = r.map.get(key).filter(|v| voice_ingest::python::truthy(v)) {
                     shingles(value.as_str().ok_or_else(|| r.shape(key))?, n, &mut raw);
                 }
             }

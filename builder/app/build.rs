@@ -5,7 +5,7 @@ fn main() {
         tauri_build::Attributes::new()
             .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS)),
     ) {
-        eprintln!("Persona Builder couldn't build: {error}");
+        eprintln!("Voice couldn't build: {error}");
         std::process::exit(1);
     }
 }

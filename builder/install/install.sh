@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Persona Builder into your own ~/Applications folder.
+# Installs Voice into your own ~/Applications folder.
 # Clears quarantine on the installed copy because it is ad-hoc signed, not by Apple yet (PB-D3).
 set -euo pipefail
 
@@ -11,15 +11,15 @@ case "$#:${1-}" in
 esac
 
 fail() { echo "$*" >&2; exit 1; }
-[ "$(uname -s)" = Darwin ] || fail "Persona Builder's installer is for Macs only."
-[ "$EUID" != 0 ] || fail 'Please run this without sudo. Persona Builder installs into your own Applications folder and needs no password.'
+[ "$(uname -s)" = Darwin ] || fail "Voice's installer is for Macs only."
+[ "$EUID" != 0 ] || fail 'Please run this without sudo. Voice installs into your own Applications folder and needs no password.'
 
 here="$(cd "$(dirname "$0")" && pwd)"
-source_app="$here/Persona Builder.app"
+source_app="$here/Voice.app"
 if [ ! -d "$source_app" ] || [ -L "$source_app" ]; then
-  fail "Persona Builder.app isn't next to this installer. Unzip the file you were sent again and run install.sh from the folder it makes."
+  fail "Voice.app isn't next to this installer. Unzip the file you were sent again and run install.sh from the folder it makes."
 fi
-damaged='This copy of Persona Builder looks damaged. Ask for a new copy.'
+damaged='This copy of Voice looks damaged. Ask for a new copy.'
 # --strict also refuses a symlink that leaves the bundle, which keeps xattr -dr below inside the copy, so this check stays first.
 codesign --verify --deep --strict "$source_app" >/dev/null 2>&1 || fail "$damaged"
 
@@ -48,7 +48,7 @@ for arch in "${arch_list[@]}"; do
 done
 "$compatible" || fail "This copy is made for $made_for Macs, and this Mac has $this_mac. Ask for a copy made for this Mac."
 
-cli="$source_app/Contents/MacOS/persona-builder"
+cli="$source_app/Contents/MacOS/voice"
 [ -f "$cli" ] && [ ! -L "$cli" ] && [ -x "$cli" ] || fail "$damaged"
 cli_architectures=$(lipo -archs "$cli" 2>/dev/null) || fail "$damaged"
 read -r -a cli_arch_list <<< "$cli_architectures"
@@ -61,11 +61,11 @@ done
 "$compatible" || fail "$damaged"
 
 mkdir -p "$HOME/Applications"
-staging=$(mktemp -d "$HOME/Applications/.persona-builder-install.XXXXXX")
+staging=$(mktemp -d "$HOME/Applications/.voice-install.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
-copy="$staging/Persona Builder.app"
+copy="$staging/Voice.app"
 ditto "$source_app" "$copy"
-not_ready="Persona Builder couldn't be made ready to open. Nothing was installed."
+not_ready="Voice couldn't be made ready to open. Nothing was installed."
 if ! quarantine_error=$(xattr -dr com.apple.quarantine "$copy" 2>&1); then
   case "$quarantine_error" in
     *'No such xattr'*|*'No such attribute'*) ;;
@@ -76,10 +76,10 @@ attributes=$(xattr -lr "$copy" 2>/dev/null) || fail "$not_ready"
 [[ "$attributes" != *com.apple.quarantine* ]] || fail "$not_ready"
 codesign --verify --deep --strict "$copy" >/dev/null 2>&1 || fail "$damaged"
 
-installed="$HOME/Applications/Persona Builder.app"
+installed="$HOME/Applications/Voice.app"
 rm -rf "$installed"
 mv "$copy" "$installed"
-echo "Persona Builder is installed in your Applications folder: $installed"
+echo "Voice is installed in your Applications folder: $installed"
 if ! "$no_open"; then
   open "$installed"
 fi

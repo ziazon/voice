@@ -26,7 +26,7 @@ it('requires both names and both custom pronouns, trims the request and announce
 })
 it.each([
   [{ message: 'Pick another name.' }, 'Pick another name.'],
-  [new Error('private detail'), "Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again."],
+  [new Error('private detail'), "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."],
 ])('shows a safe failure and keeps typed values', async (error, message) => {
   const backend = fakeBackend({ newAssistant: vi.fn().mockRejectedValue(error) })
   const wrapper = screen(NewAssistant, backend)

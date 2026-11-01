@@ -1,10 +1,10 @@
-use persona_builder::crew::{NewMember, new_member};
 use std::{
     fs,
     path::PathBuf,
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Scratch(PathBuf);
@@ -33,7 +33,7 @@ fn pack_prints_exact_project_instructions() {
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
         &member,
         &NewMember {
-            decisions: persona_builder::crew::Decisions::Python,
+            decisions: voice_core::crew::Decisions::Python,
             name: "Ari",
             pronouns: "they/them",
             principal: "Robin",
@@ -45,7 +45,7 @@ fn pack_prints_exact_project_instructions() {
     .unwrap();
     fs::write(member.join("decisions.md"), "## Calibration (the blind backtest)\n\n| Kind | High |\n|---|---|\n| scope | 6/6 |\n| sequencing | 5/6 |\n\n## By kind of question\n\n### scope\nKeep it small.\nGrow after feedback.\n\n### sequencing\nStart with the unknown.\nPolish later.\n\n### writing-voice\nUse plain words.\nLead with the choice.\n").unwrap();
     let out = scratch.0.join("project pack");
-    let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    let output = Command::new(env!("CARGO_BIN_EXE_voice"))
         .env("HOME", scratch.0.join("home"))
         .env("CLAUDE_CONFIG_DIR", scratch.0.join("home/.claude"))
         .arg("pack")

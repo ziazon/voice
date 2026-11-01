@@ -1,20 +1,19 @@
-use persona_builder::install::{self, Places};
-use persona_builder_api::{dto::*, *};
-use persona_builder_ingest::private::{lock_state, private_folder};
-use persona_builder_save::{git::Git, keychain::MemoryStore};
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_api::{dto::*, *};
+use voice_core::install::{self, Places};
+use voice_ingest::private::{lock_state, private_folder};
+use voice_save::{git::Git, keychain::MemoryStore};
 
-const FIND: &str = "Persona Builder couldn't find that assistant. Close it and open it again.";
+const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
 const CHANGED_ON: &str = "What's on in Claude Code has changed. Look again, then choose.";
 const FORGET_CHANGED: &str =
     "There's more to forget than when you looked. Look again, then confirm.";
-const BUSY: &str =
-    "Persona Builder is already working on Ari. Wait for it to finish, then try again.";
+const BUSY: &str = "Voice is already working on Ari. Wait for it to finish, then try again.";
 const NO_KINDS: &str =
     "Ari doesn't know any kinds of question yet. Build Ari first, then make the claude.ai files.";
 const DECISIONS: &str = "# Decisions\n\n## By kind of question\n\n### writing-voice\n\nUse everyday words.\nLead with the choice.\n\n### scope\n\nKeep the first draft small.\nAdd detail after feedback.\n";
@@ -69,7 +68,7 @@ impl Home {
         self.kinds();
         // Set up through the core, so each API assertion is independently reachable in red.
         let out = private_folder(&self.0, "ari", "claude-ai").unwrap();
-        persona_builder::pack::pack(&self.member(), &out).unwrap();
+        voice_core::pack::pack(&self.member(), &out).unwrap();
     }
 }
 impl Drop for Home {
@@ -259,7 +258,7 @@ fn on_not_set_up_and_failure_are_safe() {
         turn_on_in(&h.0, &h.claude(), slug("ari"))
             .unwrap_err()
             .message,
-        "Persona Builder couldn't turn Ari on, so nothing in your Claude folder was changed."
+        "Voice couldn't turn Ari on, so nothing in your Claude folder was changed."
     );
     assert_eq!(snapshot(&h.claude()), before);
 }
@@ -273,7 +272,7 @@ fn off_nothing_and_this() {
     h.on();
     assert_eq!(
         succeeds(turn_off_in(&h.0, &h.claude(), off("ari"))).message,
-        "Ari is off. Everything Persona Builder added is gone."
+        "Ari is off. Everything Voice added is gone."
     );
     assert_eq!(status(&h).state, OnState::Off);
 }
@@ -300,7 +299,7 @@ fn off_leaves_changed_files() {
     fs::write(h.claude().join("skills/ari/SKILL.md"), "changed").unwrap();
     assert_eq!(
         succeeds(turn_off_in(&h.0, &h.claude(), off("ari"))).message,
-        "Ari is off. A few things in your Claude folder were changed after Ari was turned on, so Persona Builder left them where they are."
+        "Ari is off. A few things in your Claude folder were changed after Ari was turned on, so Voice left them where they are."
     );
     assert_eq!(
         fs::read_to_string(h.claude().join("skills/ari/SKILL.md")).unwrap(),
@@ -321,7 +320,7 @@ fn record_names_are_checked_before_shown() {
         if shown.is_none() {
             assert_eq!(
                 succeeds(turn_off_in(&h.0, &h.claude(), off("ari"))).message,
-                "The assistant is off. Everything Persona Builder added is gone."
+                "The assistant is off. Everything Voice added is gone."
             );
         }
     }
@@ -470,7 +469,7 @@ fn show_requires_pack_canonicalizes_and_hides_opener_errors() {
         )))
         .unwrap_err()
         .message,
-        "Persona Builder couldn't open the folder."
+        "Voice couldn't open the folder."
     );
 }
 #[test]
@@ -537,7 +536,7 @@ fn forget_missing_creates_nothing_and_singular_message() {
     assert_eq!(succeeds(forget_preview_in(&h.0, slug("ari"))).files, 0);
     assert_eq!(
         succeeds(forget_in(&h.0, forget_request(0))).message,
-        "There's nothing to forget: Persona Builder hasn't kept anything for Ari yet."
+        "There's nothing to forget: Voice hasn't kept anything for Ari yet."
     );
     assert!(!h.state().exists());
     agree_consent_in(&h.0, slug("ari")).unwrap();
@@ -664,7 +663,7 @@ fn forget_state_removed_after_preview_is_nothing_to_forget() {
     fs::remove_dir_all(h.state()).unwrap();
     assert_eq!(
         succeeds(forget_in(&h.0, forget_request(files))).message,
-        "There's nothing to forget: Persona Builder hasn't kept anything for Ari yet."
+        "There's nothing to forget: Voice hasn't kept anything for Ari yet."
     );
     assert!(!h.state().exists());
 }
@@ -676,7 +675,7 @@ fn forget_empty_state_is_nothing_to_forget_and_removes_the_folder() {
     assert!(h.state().is_dir());
     assert_eq!(
         succeeds(forget_in(&h.0, forget_request(3))).message,
-        "There's nothing to forget: Persona Builder hasn't kept anything for Ari yet."
+        "There's nothing to forget: Voice hasn't kept anything for Ari yet."
     );
     assert!(!h.state().exists());
 }

@@ -17,7 +17,7 @@ onMounted(async () => {
   try {
     text.value = await backend.consentText()
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't show this. Close it and open it again.")
+    error.value = failureMessage(failure, "Voice couldn't show this. Close it and open it again.")
   } finally {
     loading.value = false
   }
@@ -29,7 +29,7 @@ async function agree() {
   try {
     emit('agreed', await backend.agreeConsent({ slug: props.assistant.slug }))
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't keep your answer. Check there's space on this computer, then try again.")
+    error.value = failureMessage(failure, "Voice couldn't keep your answer. Check there's space on this computer, then try again.")
   } finally {
     saving.value = false
   }

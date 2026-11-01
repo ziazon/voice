@@ -12,7 +12,7 @@ pub struct Section {
     pub heading: &'static str,
     pub lines: &'static [&'static str],
 }
-pub const TITLE: &str = "Before Persona Builder reads anything";
+pub const TITLE: &str = "Before Voice reads anything";
 pub const SECTIONS: &[Section] = &[
     Section {
         heading: "What it reads",
@@ -24,27 +24,27 @@ pub const SECTIONS: &[Section] = &[
     Section {
         heading: "What stays on this computer",
         lines: &[
-            "Your history, and everything Persona Builder makes from it, stays in your Claude folder on this computer.",
+            "Your history, and everything Voice makes from it, stays in your Claude folder on this computer.",
             "It leaves out messages that look private, such as health, family, legal or money matters and account numbers. It can miss some.",
         ],
     },
     Section {
         heading: "What goes to Claude",
         lines: &[
-            "To build your assistant, Persona Builder sends parts of your history to Claude through your own Claude Code, signed in to your own Claude account. The terms of your Claude account apply, as they do to anything else you send through Claude Code.",
-            "This uses your own Claude plan's usage, and a build can use a lot of it. Persona Builder stops for the day when it reaches a daily limit, and you can stop it at any time.",
+            "To build your assistant, Voice sends parts of your history to Claude through your own Claude Code, signed in to your own Claude account. The terms of your Claude account apply, as they do to anything else you send through Claude Code.",
+            "This uses your own Claude plan's usage, and a build can use a lot of it. Voice stops for the day when it reaches a daily limit, and you can stop it at any time.",
         ],
     },
     Section {
         heading: "Nothing else",
         lines: &[
-            "Persona Builder sends nothing anywhere else. A copy goes to GitHub only if you choose that later.",
+            "Voice sends nothing anywhere else. A copy goes to GitHub only if you choose that later.",
             "You can change your mind: Forget deletes the history it read and its working files. What it wrote into your assistant's folder stays there until you delete that folder.",
         ],
     },
 ];
 /// SHA-1 (hex) of `plain_text()`. When changing the wording, bump VERSION and update this.
-pub const WORDING_SHA1: &str = "ea150ac517ac4dd87c3bb9f73c3e572c665e2d98";
+pub const WORDING_SHA1: &str = "51f35478a220cb391d90d86b28dc33f7ec0a3d10";
 pub fn plain_text() -> String {
     let mut text = format!("{TITLE}\n\n");
     for (index, section) in SECTIONS.iter().enumerate() {

@@ -22,7 +22,7 @@ it('announces loading before the folders arrive', () => {
 it.each([{ found: false, folders: [] }, { found: true, folders: [] }])('shows only the empty state for %o', async answer => {
   const wrapper = screen(ClaudeCode, fakeBackend({ claudeCodeFolders: vi.fn().mockResolvedValue(answer) }), { slug: 'example' })
   await flushPromises()
-  expect(wrapper.text()).toContain('Persona Builder found no Claude Code history on this computer.')
+  expect(wrapper.text()).toContain('Voice found no Claude Code history on this computer.')
   expect(wrapper.find('table').exists()).toBe(false)
   expect(wrapper.find('button').exists()).toBe(false)
 })
@@ -79,7 +79,7 @@ it('omits the date range when no first date is available', async () => {
 })
 it.each([
   [{ message: 'Try again.' }, 'Try again.'],
-  [new Error('private detail'), "Persona Builder couldn't read your Claude Code history. Close it and open it again."],
+  [new Error('private detail'), "Voice couldn't read your Claude Code history. Close it and open it again."],
 ])('shows a safe read rejection', async (error, message) => {
   const wrapper = screen(ClaudeCode, fakeBackend({ claudeCodeFolders: vi.fn().mockResolvedValue(folders), readClaudeCode: vi.fn().mockRejectedValue(error) }), { slug: 'example' })
   await flushPromises()
@@ -91,7 +91,7 @@ it.each([
 it('shows the folder fallback on an unexpected rejection', async () => {
   const wrapper = screen(ClaudeCode, fakeBackend({ claudeCodeFolders: vi.fn().mockRejectedValue(new Error('private detail')) }), { slug: 'example' })
   await flushPromises()
-  expect(wrapper.get('.alert').text()).toBe("Persona Builder couldn't look through your Claude Code history. Close it and open it again.")
+  expect(wrapper.get('.alert').text()).toBe("Voice couldn't look through your Claude Code history. Close it and open it again.")
 })
 
 it('names the history card clearly', () => {

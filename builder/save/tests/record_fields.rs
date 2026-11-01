@@ -1,8 +1,8 @@
 pub mod common;
 use common::Scratch;
-use persona_builder_save::record::read_record;
 use serde_json::json;
 use std::fs;
+use voice_save::record::read_record;
 
 macro_rules! rejects {
     ($name:ident, $mode:literal, $field:literal, $value:expr) => {

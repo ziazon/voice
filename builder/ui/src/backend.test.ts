@@ -7,7 +7,7 @@ import { fakeBackend } from './test-support'
 it('throws a plain message without a backend', () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   try {
-    expect(() => useBackend()).toThrow('Persona Builder has no backend')
+    expect(() => useBackend()).toThrow('Voice has no backend')
   } finally { warn.mockRestore() }
 })
 

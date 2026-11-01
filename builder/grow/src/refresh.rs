@@ -8,19 +8,19 @@ use crate::{
     text,
     version::{DECISIONS_MOST, version},
 };
-use persona_builder::{
-    error::{Error, Result},
-    member::Member,
-};
-use persona_builder_agent::{guard::Guard, ledger::Session};
-use persona_builder_build::{
+use serde_json::{Value, json};
+use std::{collections::HashSet, path::Path};
+use voice_agent::{guard::Guard, ledger::Session};
+use voice_build::{
     build::{Asker, Misfit, SHINGLE},
     draft::read_text,
 };
-use persona_builder_ingest::filters::Filters;
-use persona_builder_steps::{book::book, input::RecordList, shingle::overlaps, text_check::hidden};
-use serde_json::{Value, json};
-use std::{collections::HashSet, path::Path};
+use voice_core::{
+    error::{Error, Result},
+    member::Member,
+};
+use voice_ingest::filters::Filters;
+use voice_steps::{book::book, input::RecordList, shingle::overlaps, text_check::hidden};
 
 pub const MOST_CASES: usize = 40;
 pub const MOST_EDITS: usize = 10;
@@ -334,7 +334,7 @@ pub fn propose(
     let prompt = refresh_prompt(&categories, &before, &cases, &signals, &rejected);
     let mut asker = Asker::new(
         guard,
-        persona_builder_build::build::SOURCES,
+        voice_build::build::SOURCES,
         session,
         home,
         &member.slug,

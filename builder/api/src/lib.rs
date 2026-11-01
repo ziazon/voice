@@ -6,7 +6,7 @@ pub mod parity;
 pub fn app_info() -> dto::AppInfo {
     dto::AppInfo {
         version: env!("CARGO_PKG_VERSION").to_owned(),
-        agents: persona_builder_agent::agents::AGENTS
+        agents: voice_agent::agents::AGENTS
             .iter()
             .map(|agent| dto::AgentInfo {
                 id: agent.id.to_owned(),

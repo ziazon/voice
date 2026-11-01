@@ -52,7 +52,7 @@ impl Source {
             }
             Self::CrewFolder => "your assistant's own folder",
             Self::Typed => {
-                "what you type into Persona Builder (interview answers, notes on answers, a panel's question)"
+                "what you type into Voice (interview answers, notes on answers, a panel's question)"
             }
             Self::SkillMirror => "the copy of your skills",
             Self::Mail => "your mail",
@@ -200,7 +200,7 @@ mod tests {
             (
                 Typed,
                 "typed",
-                "what you type into Persona Builder (interview answers, notes on answers, a panel's question)",
+                "what you type into Voice (interview answers, notes on answers, a panel's question)",
                 Anthropic,
                 true,
             ),

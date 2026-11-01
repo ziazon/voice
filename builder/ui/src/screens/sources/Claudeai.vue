@@ -19,7 +19,7 @@ const list = ref<Chats | null>(null)
 const counts = ref<ClaudeaiCounts | null>(null)
 const progress = ref<Progress | null>(null)
 const error = ref('')
-const fallback = "Persona Builder couldn't read this download. Check it's the file claude.ai sent you, then choose it again."
+const fallback = "Voice couldn't read this download. Check it's the file claude.ai sent you, then choose it again."
 onMounted(async () => {
   try {
     status.value = await backend.claudeaiExportStatus({ slug: props.slug })
@@ -91,10 +91,10 @@ async function read() {
       <p class="text-secondary mt-2">If your computer unzipped the download, choose the folder it made.</p>
       <template v-if="status">
         <template v-if="status.ready">
-          <p>You chose {{ status.name }}. Persona Builder can read it: {{ status.chats.toLocaleString() }} chats.</p>
+          <p>You chose {{ status.name }}. Voice can read it: {{ status.chats.toLocaleString() }} chats.</p>
           <button type="button" class="btn btn-primary" :disabled="running" @click="listChats">List the chats</button>
         </template>
-        <div v-else class="alert alert-warning" role="alert">You chose {{ status.name }}, but it's missing parts Persona Builder reads. Download your data from claude.ai again, then choose the new file.</div>
+        <div v-else class="alert alert-warning" role="alert">You chose {{ status.name }}, but it's missing parts Voice reads. Download your data from claude.ai again, then choose the new file.</div>
       </template>
       <template v-if="list">
         <ChatList :slug="slug" :list="list" @update="list = $event" />

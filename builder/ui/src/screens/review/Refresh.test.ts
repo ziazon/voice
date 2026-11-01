@@ -69,7 +69,7 @@ it.each([true, false])('tests an approved change with live lines and kept=%s', a
   let progress!: (value: BuildProgress) => void
   const backend = fakeBackend({ applyRefresh: vi.fn().mockImplementation((_request, callback) => { progress = callback; return call.promise }), reviewStatus: vi.fn().mockResolvedValue(status) })
   const wrapper = screen(Refresh, backend, { slug: 'example', status: { ...status, change: { ...change, approved: true } } })
-  expect(wrapper.text()).toContain('You approved this change. Next, Persona Builder tests it on all your answers: it keeps the change only if every new test passes and none of the others gets worse. It uses a little of your Claude plan.')
+  expect(wrapper.text()).toContain('You approved this change. Next, Voice tests it on all your answers: it keeps the change only if every new test passes and none of the others gets worse. It uses a little of your Claude plan.')
   expect(wrapper.findAll('button').map(b => b.text())).toEqual(['Test it'])
   await button(wrapper, 'Test it').trigger('click')
   expect(wrapper.emitted('running')).toEqual([[true]])
@@ -102,7 +102,7 @@ it.each(['draft', 'answer'] as const)('shows the safe %s fallback', async action
   const backend = fakeBackend({ draftRefresh: vi.fn().mockRejectedValue(new Error('private path')), answerRefresh: vi.fn().mockRejectedValue(new Error('private path')) })
   const wrapper = screen(Refresh, backend, { slug: 'example', status: action === 'draft' ? status : { ...status, change } })
   await button(wrapper, action === 'draft' ? 'Draft a change' : 'Approve').trigger('click'); await flushPromises()
-  expect(wrapper.get('.alert-danger').text()).toBe(action === 'draft' ? "Claude's draft didn't fit, twice, so nothing was saved. Try again." : "Persona Builder couldn't save your answer. Check there's space on this computer, then try again.")
+  expect(wrapper.get('.alert-danger').text()).toBe(action === 'draft' ? "Claude's draft didn't fit, twice, so nothing was saved. Try again." : "Voice couldn't save your answer. Check there's space on this computer, then try again.")
 })
 it('shows nothing new as information after a previous kept change', async () => {
   const backend = fakeBackend({
@@ -125,7 +125,7 @@ it.each(['draft', 'test'] as const)('keeps a successful %s distinct from a faile
   })
   const wrapper = screen(Refresh, backend, { slug: 'example', status: action === 'draft' ? status : { ...status, change: { ...change, approved: true } } })
   await button(wrapper, action === 'draft' ? 'Draft a change' : 'Test it').trigger('click'); await flushPromises()
-  expect(wrapper.get('.alert-danger').text()).toBe("Something in this assistant's settings stops the review. Use the persona-builder command to see what.")
+  expect(wrapper.get('.alert-danger').text()).toBe("Something in this assistant's settings stops the review. Use the voice command to see what.")
   expect(wrapper.text()).not.toContain('nothing was saved')
   expect(wrapper.text()).not.toContain('The test stopped before it finished')
   if (action === 'test') {

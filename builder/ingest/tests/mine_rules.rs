@@ -1,12 +1,12 @@
-use persona_builder::deny::DenyList;
+use voice_core::deny::DenyList;
 mod common;
 use common::{Scratch, repo};
-use persona_builder::member::read_member;
-use persona_builder_ingest::{
+use std::fs;
+use voice_core::member::read_member;
+use voice_ingest::{
     filters::Filters,
     mine::{Split, folders, mine},
 };
-use std::fs;
 #[test]
 fn links_inside_history_are_refused() {
     let s = Scratch::new("mine-link");
@@ -20,14 +20,14 @@ fn links_inside_history_are_refused() {
     assert!(folders(&f, &p, &s.0, &DenyList::builtin()).is_err());
 }
 
-fn member() -> persona_builder::member::Member {
+fn member() -> voice_core::member::Member {
     read_member(&repo().join("crew/_template/member.json")).unwrap()
 }
 fn run(
     p: &std::path::Path,
     h: &std::path::Path,
     split: &Split,
-) -> persona_builder::error::Result<persona_builder_ingest::mine::Mined> {
+) -> voice_core::error::Result<voice_ingest::mine::Mined> {
     let m = member();
     mine(&m, &Filters::compile(&m.filters).unwrap(), p, h, split)
 }
@@ -139,7 +139,7 @@ fn project_root_link_is_allowed_session_links_are_refused() {
             .unwrap_err()
             .to_string(),
         format!(
-            "{} is a link: Persona Builder doesn't follow links in your Claude Code history. Move it away and try again",
+            "{} is a link: Voice doesn't follow links in your Claude Code history. Move it away and try again",
             root.join("app/linked.jsonl").display()
         )
     );
@@ -174,7 +174,7 @@ fn folders_match_python_including_equal_project_names() {
             .arg(&p),
     );
     assert_eq!(
-        persona_builder_ingest::mine::render_folders(
+        voice_ingest::mine::render_folders(
             &folders(
                 &f,
                 &p,
@@ -223,7 +223,7 @@ fn answers_shape_is_skipped_before_question_text() {
         let mined = run(&s.0, &s.0, &Split::Holdout(0.15)).unwrap();
         assert!(mined.records.is_empty());
         assert!(
-            persona_builder_ingest::mine::summary(&mined)
+            voice_ingest::mine::summary(&mined)
                 .contains("; skipped 1 records of an unexpected shape")
         );
     }
@@ -329,7 +329,7 @@ fn records_of_an_unexpected_shape_are_skipped_and_counted() {
         ]
     );
     assert!(
-        persona_builder_ingest::mine::summary(&mined)
+        voice_ingest::mine::summary(&mined)
             .ends_with("0 secret records; skipped 5 records of an unexpected shape\n")
     );
 }

@@ -1,16 +1,16 @@
 mod common;
 use common::{Scratch, parity_tools_available, repo};
-use persona_builder::{
+use serde_json::{Value, json};
+use std::{fs, process::Command};
+use voice_core::{
     error::Result,
     member::{Member, read_member},
 };
-use persona_builder_ingest::{
+use voice_ingest::{
     corpus::{self, Input, Mode},
     filters::Filters,
     mine::Split,
 };
-use serde_json::{Value, json};
-use std::{fs, process::Command};
 fn member() -> Member {
     read_member(&repo().join("crew/_template/member.json")).unwrap()
 }
@@ -109,7 +109,7 @@ fn numbers_are_exact_integers_only_including_nested_values_and_negative_zero() {
         let bytes = format!(r#"{{"sentinel":[{{"nested":{number}}}]}}"#);
         error(
             corpus::read_records("x.jsonl", bytes.as_bytes()),
-            "x.jsonl:1: a record holds a number Persona Builder can't copy exactly",
+            "x.jsonl:1: a record holds a number Voice can't copy exactly",
         );
         if parity_tools_available() {
             let b = format!(

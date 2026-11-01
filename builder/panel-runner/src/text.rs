@@ -4,7 +4,7 @@
 pub const UNREADABLE: &str = "The assistant's answer couldn't be read. Try again.";
 /// Permission required before reading an assistant.
 pub const PERMISSION: &str =
-    "Persona Builder needs your permission before it reads anything. Give it in the first step.";
+    "Voice needs your permission before it reads anything. Give it in the first step.";
 /// Another process holds this panel.
 pub const BUSY: &str = "This panel is still running.";
 /// A paused panel needs a time limit answer.

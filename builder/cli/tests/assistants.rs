@@ -22,7 +22,7 @@ impl Home {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &self.0)
             .args(args)
             .output()
@@ -51,16 +51,16 @@ fn new_list_and_agree_use_the_claude_folders_and_final_wording() {
     let home = Home::new();
     assert_eq!(
         home.success(&["assistants"]),
-        "You have no assistants yet. Make one with: persona-builder new <name> --principal <your name>\n"
+        "You have no assistants yet. Make one with: voice new <name> --principal <your name>\n"
     );
     assert_eq!(
         home.success(&["new", "Wren", "--principal", "Robin"]),
-        "Made Wren in ~/.claude/crew/wren/.\nNext: persona-builder consent show, then persona-builder consent agree ~/.claude/crew/wren\n"
+        "Made Wren in ~/.claude/crew/wren/.\nNext: voice consent show, then voice consent agree ~/.claude/crew/wren\n"
     );
     let skill = fs::read_to_string(home.0.join(".claude/crew/wren/SKILL.md")).unwrap();
     // The CLI's shipped_cli() returns this binary itself; the test executable lives in deps/.
-    let word = persona_builder::cli_command::cli_word(
-        &PathBuf::from(env!("CARGO_BIN_EXE_persona-builder"))
+    let word = voice_core::cli_command::cli_word(
+        &PathBuf::from(env!("CARGO_BIN_EXE_voice"))
             .canonicalize()
             .unwrap(),
         &home.0,
@@ -83,15 +83,14 @@ fn new_list_and_agree_use_the_claude_folders_and_final_wording() {
         "{word} record ~/.claude/crew/wren --stdin <<'END_OF_TEXT'"
     )));
     let member =
-        persona_builder::member::read_member(&home.0.join(".claude/crew/wren/member.json"))
-            .unwrap();
+        voice_core::member::read_member(&home.0.join(".claude/crew/wren/member.json")).unwrap();
     assert_eq!(member.pronouns.as_deref(), Some("they/them"));
     assert_eq!(member.principal_pronouns.as_deref(), Some("they/them"));
     assert_eq!(
         home.success(&["assistants"]),
         "Wren (wren): ~/.claude/crew/wren/ · permission not given yet\n"
     );
-    let date = persona_builder_agent::ledger::local_day(SystemTime::now());
+    let date = voice_agent::ledger::local_day(SystemTime::now());
     assert_eq!(
         home.success(&["consent", "agree", "~/.claude/crew/wren"]),
         format!("Thank you. Permission given on {date}.\n")
@@ -115,10 +114,10 @@ fn duplicate_new_exits_one_and_keeps_the_existing_assistant() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
-        "persona-builder: You already have an assistant in ~/.claude/crew/wren/.\n"
+        "voice: You already have an assistant in ~/.claude/crew/wren/.\n"
     );
     assert_eq!(
-        persona_builder::member::read_member(&home.0.join(".claude/crew/wren/member.json"))
+        voice_core::member::read_member(&home.0.join(".claude/crew/wren/member.json"))
             .unwrap()
             .principal,
         "Robin"
@@ -130,9 +129,9 @@ fn consent_show_prints_the_final_wording_and_version() {
     let text = Home::new().success(&["consent", "show"]);
     assert_eq!(
         text,
-        format!("{}Version 1.\n", persona_builder::consent::plain_text())
+        format!("{}Version 1.\n", voice_core::consent::plain_text())
     );
-    assert!(text.starts_with("Before Persona Builder reads anything\n\nWhat it reads\n"));
+    assert!(text.starts_with("Before Voice reads anything\n\nWhat it reads\n"));
     assert!(text.contains("You can change your mind: Forget deletes the history it read and its working files. What it wrote into your assistant's folder stays there until you delete that folder.\n"));
     assert!(text.ends_with("Version 1.\n"));
 }
@@ -181,7 +180,7 @@ fn new_clears_old_permission_and_rolls_back_when_clearing_fails() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
-        "persona-builder: Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again.\n"
+        "voice: Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.\n"
     );
     assert!(!home.0.join(".claude/crew/wren").exists());
 }
@@ -193,16 +192,16 @@ fn skill_commands_run_similar_and_record_against_private_state() {
     home.success(&["consent", "agree", "~/.claude/crew/ari"]);
     let skill = fs::read_to_string(home.0.join(".claude/crew/ari/SKILL.md")).unwrap();
     // The CLI's shipped_cli() returns this binary itself; the test executable lives in deps/.
-    let word = persona_builder::cli_command::cli_word(
-        &PathBuf::from(env!("CARGO_BIN_EXE_persona-builder"))
+    let word = voice_core::cli_command::cli_word(
+        &PathBuf::from(env!("CARGO_BIN_EXE_voice"))
             .canonicalize()
             .unwrap(),
         &home.0,
     )
     .unwrap();
-    let binary = format!("\"{}\"", env!("CARGO_BIN_EXE_persona-builder"));
+    let binary = format!("\"{}\"", env!("CARGO_BIN_EXE_voice"));
     let state = home.0.join(".claude/state/ari");
-    persona_builder_ingest::private::write_private(&home.0, "ari", "decisions.jsonl",
+    voice_ingest::private::write_private(&home.0, "ari", "decisions.jsonl",
         b"{\"kind\":\"message\",\"split\":\"train\",\"timestamp\":\"2026-10-25T00:00:00Z\",\"project\":\"garden\",\"text\":\"Choose durable garden benches before adding decorative flower pots outdoors.\"}\n").unwrap();
     let cwd = home.0.join("empty");
     fs::create_dir(&cwd).unwrap();

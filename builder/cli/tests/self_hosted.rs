@@ -1,4 +1,3 @@
-use persona_builder::crew::{Decisions, NewMember, new_member_embedded};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -6,6 +5,7 @@ use std::{
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{Decisions, NewMember, new_member_embedded};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Fixture {
@@ -37,7 +37,7 @@ impl Fixture {
         Self { home, dir }
     }
     fn run(&self, command: &str, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", self.home.join("home"))
             .env("CLAUDE_CONFIG_DIR", self.home.join("home/.claude"))
             .args(["self-hosted", command])
@@ -54,7 +54,7 @@ impl Fixture {
     }
     fn state(&self) {
         fs::create_dir_all(self.state_home()).unwrap();
-        drop(persona_builder_ingest::private::lock_state(&self.state_home(), "ari").unwrap());
+        drop(voice_ingest::private::lock_state(&self.state_home(), "ari").unwrap());
     }
 }
 impl Drop for Fixture {
@@ -63,8 +63,8 @@ impl Drop for Fixture {
     }
 }
 
-use persona_builder_agent::{self_hosted::Server, text};
 use std::os::unix::fs::PermissionsExt;
+use voice_agent::{self_hosted::Server, text};
 
 #[test]
 fn show_and_off_use_the_saved_server_without_network_calls() {
@@ -80,8 +80,7 @@ fn show_and_off_use_the_saved_server_without_network_calls() {
     f.state();
     let server = Server::new("http://Model-Box.local:11434/", "qwen3:8b", false).unwrap();
     {
-        let _lock =
-            persona_builder_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
+        let _lock = voice_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
         server.save(&f.state_home(), "ari").unwrap();
     }
     let shown = f.run("show", &[]);
@@ -118,7 +117,7 @@ fn set_refuses_a_public_literal_without_saving_anything() {
     assert!(!output.status.success());
     assert_eq!(
         output.stderr,
-        format!("persona-builder: {}\n", text::SERVER_NOT_OWN).as_bytes()
+        format!("voice: {}\n", text::SERVER_NOT_OWN).as_bytes()
     );
     assert!(!f.settings().exists());
     assert!(!f.state_home().exists());
@@ -131,7 +130,7 @@ fn off_requires_an_existing_private_folder() {
     assert!(!output.status.success());
     assert_eq!(
         output.stderr,
-        format!("persona-builder: {}\n", text::NO_STATE_FOR_SERVER).as_bytes()
+        format!("voice: {}\n", text::NO_STATE_FOR_SERVER).as_bytes()
     );
     assert!(!f.state_home().exists());
 }
@@ -226,7 +225,7 @@ fn listener_set_does_not_save_a_model_the_server_does_not_list() {
     assert!(!output.status.success());
     assert_eq!(
         output.stderr,
-        format!("persona-builder: {}\n", text::no_model("qwen3:8b")).as_bytes()
+        format!("voice: {}\n", text::no_model("qwen3:8b")).as_bytes()
     );
     assert!(!f.settings().exists());
 }
@@ -241,7 +240,7 @@ fn set_requires_network_opt_in_for_private_literals() {
     assert!(!output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "persona-builder: Nothing was sent. Your model server's address isn't this computer, and you haven't said to use your network. To use another computer on your own network, set it up again with --network.\n"
+        "voice: Nothing was sent. Your model server's address isn't this computer, and you haven't said to use your network. To use another computer on your own network, set it up again with --network.\n"
     );
     assert!(!f.settings().exists());
     assert!(!f.state_home().exists());
@@ -251,8 +250,7 @@ fn set_requires_network_opt_in_for_private_literals() {
 fn show_prints_exact_computer_scope() {
     let f = Fixture::new();
     f.state();
-    let _lock =
-        persona_builder_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
+    let _lock = voice_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
     Server::new("http://localhost:1234", "qwen", false)
         .unwrap()
         .save(&f.state_home(), "ari")
@@ -261,7 +259,7 @@ fn show_prints_exact_computer_scope() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Model server: http://localhost:1234, model qwen, on this computer. Steps with data you keep on your own machines go to it, and before each step Persona Builder checks the address still leads to this computer.\n"
+        "Model server: http://localhost:1234, model qwen, on this computer. Steps with data you keep on your own machines go to it, and before each step Voice checks the address still leads to this computer.\n"
     );
 }
 
@@ -269,8 +267,7 @@ fn show_prints_exact_computer_scope() {
 fn show_prints_exact_network_scope() {
     let f = Fixture::new();
     f.state();
-    let _lock =
-        persona_builder_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
+    let _lock = voice_ingest::private::lock_existing_state(&f.state_home(), "ari").unwrap();
     Server::new("http://localhost:1234", "qwen", true)
         .unwrap()
         .save(&f.state_home(), "ari")
@@ -279,6 +276,6 @@ fn show_prints_exact_network_scope() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Model server: http://localhost:1234, model qwen, on your network. Steps with data you keep on your own machines go to it. Before each step Persona Builder checks the address is on a private network, but it can't tell your network from someone else's: on other Wi-Fi, a stranger's computer could answer at the same address. Before you use other Wi-Fi, turn it off with persona-builder self-hosted off.\n"
+        "Model server: http://localhost:1234, model qwen, on your network. Steps with data you keep on your own machines go to it. Before each step Voice checks the address is on a private network, but it can't tell your network from someone else's: on other Wi-Fi, a stranger's computer could answer at the same address. Before you use other Wi-Fi, turn it off with voice self-hosted off.\n"
     );
 }

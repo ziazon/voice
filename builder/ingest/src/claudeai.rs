@@ -7,10 +7,6 @@ use crate::{
     privacy::privacy,
     python::{line_break, py_space, splitlines, truthy},
 };
-use persona_builder::{
-    deny::DenyList,
-    error::{Error, Result},
-};
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::{
@@ -19,6 +15,10 @@ use std::{
     io::{Read, Seek, SeekFrom},
     os::unix::fs::OpenOptionsExt,
     path::Path,
+};
+use voice_core::{
+    deny::DenyList,
+    error::{Error, Result},
 };
 
 const CAP: u64 = 2 * 1024 * 1024 * 1024;
@@ -101,7 +101,7 @@ fn open(path: &Path) -> Result<File> {
         .map_err(|e| {
             if e.raw_os_error() == Some(libc::ELOOP) {
                 invalid(format!(
-                    "{} is a link: Persona Builder doesn't follow links. Use the export file itself",
+                    "{} is a link: Voice doesn't follow links. Use the export file itself",
                     path.display()
                 ))
             } else if e.kind() == std::io::ErrorKind::NotFound {
@@ -141,7 +141,7 @@ fn from_zip(file: File) -> Result<(usize, Vec<u8>)> {
     let mut archive = zip::ZipArchive::new(file).map_err(|e| unreadable(&e))?;
     if archive.len() > MAX_ENTRIES {
         return Err(invalid(
-            "the export zip holds more than 100,000 files, so Persona Builder won't open it",
+            "the export zip holds more than 100,000 files, so Voice won't open it",
         ));
     }
     let mut files = 0;
@@ -168,7 +168,7 @@ fn from_zip(file: File) -> Result<(usize, Vec<u8>)> {
     }
     if u128::from(size) > 100 * u128::from(compressed) {
         return Err(invalid(
-            "the export's conversations.json is compressed more than 100:1, so Persona Builder won't open it",
+            "the export's conversations.json is compressed more than 100:1, so Voice won't open it",
         ));
     }
     // The zip crate keeps one entry per name, so a repeated name would hide an entry; this also
@@ -463,7 +463,7 @@ pub fn utc(when: &str) -> Option<String> {
 }
 fn timestamp(value: &Value) -> Result<String> {
     value.as_str().and_then(utc).ok_or_else(|| {
-        invalid("a date in the export isn't one Persona Builder can read: the export's shape changed, run persona-builder claudeai inspect")
+        invalid("a date in the export isn't one Voice can read: the export's shape changed, run voice claudeai inspect")
     })
 }
 
@@ -624,7 +624,7 @@ pub fn titles(
         let id = uuid(c, n)?;
         if id.chars().any(|ch| ch == '\t' || line_break(ch)) {
             return Err(invalid(format!(
-                "conversations.json: conversation {n} has a uuid Persona Builder can't list"
+                "conversations.json: conversation {n} has a uuid Voice can't list"
             )));
         }
         keyed.push((created, id, n, value, c));
@@ -689,7 +689,7 @@ pub fn titles_summary(t: &Titles, shown: &str) -> String {
 /// A `--title` pattern, compiled by the `regex` crate.
 pub fn title_pattern(pattern: &str) -> Result<Regex> {
     Regex::new(pattern).map_err(|_| {
-        invalid("--title is not a valid pattern, or it uses look-around or a backreference, which Persona Builder can't read")
+        invalid("--title is not a valid pattern, or it uses look-around or a backreference, which Voice can't read")
     })
 }
 impl Selector {

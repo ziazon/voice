@@ -1,8 +1,15 @@
 //! The steps' own rules: every refusal's words, no record text in any error, and each place the
 //! Rust port refuses what the Python only tolerates (asserted beside the Python where it differs).
-use persona_builder::member::Member;
-use persona_builder_ingest::{corpus::read_records, filters::Filters};
-use persona_builder_steps::{
+use serde_json::{Map, Value, json};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+use voice_core::member::Member;
+use voice_ingest::{corpus::read_records, filters::Filters};
+use voice_steps::{
     book::book,
     chunk::chunk,
     distil::distil_in,
@@ -12,13 +19,6 @@ use persona_builder_steps::{
     score::score,
     shingle::overlaps,
     similar::similar,
-};
-use serde_json::{Map, Value, json};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::atomic::{AtomicUsize, Ordering},
 };
 
 /// A word that must never appear in an error: it sits in every bad record's text.
@@ -59,7 +59,7 @@ fn message(id: &str, split: &str, text: &str) -> Value {
 fn labels(value: Value) -> Map<String, Value> {
     value.as_object().unwrap().clone()
 }
-fn error<T>(result: persona_builder::error::Result<T>) -> String {
+fn error<T>(result: voice_core::error::Result<T>) -> String {
     let Err(error) = result else {
         panic!("expected an error")
     };
@@ -114,7 +114,7 @@ fn json_inputs_are_checked_whole() {
     );
     assert_eq!(
         error(read_json("l.json", b"{\"a\": 1.5}")),
-        "l.json holds a number Persona Builder can't copy exactly"
+        "l.json holds a number Voice can't copy exactly"
     );
     assert_eq!(
         error(read_object("l.json", b"[]")),

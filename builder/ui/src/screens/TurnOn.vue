@@ -19,7 +19,7 @@ async function load() {
   try {
     status.value = await backend.claudeCodeStatus({ slug: props.assistant.slug })
   } catch (failure) {
-    loadError.value = failureMessage(failure, "Persona Builder couldn't check Claude Code. Close it and open it again.")
+    loadError.value = failureMessage(failure, "Voice couldn't check Claude Code. Close it and open it again.")
   } finally { loading.value = false }
 }
 onMounted(load)
@@ -31,7 +31,7 @@ async function turnOn() {
   try {
     message.value = (await backend.turnOn({ slug: props.assistant.slug })).message
   } catch (failure) {
-    error.value = failureMessage(failure, `Persona Builder couldn't turn ${props.assistant.name} on, so nothing in your Claude folder was changed.`)
+    error.value = failureMessage(failure, `Voice couldn't turn ${props.assistant.name} on, so nothing in your Claude folder was changed.`)
   }
   await load()
   action.value = ''
@@ -45,7 +45,7 @@ async function turnOff() {
   try {
     message.value = (await backend.turnOff({ slug })).message
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't turn the assistant off. Close it and open it again, then try again.")
+    error.value = failureMessage(failure, "Voice couldn't turn the assistant off. Close it and open it again, then try again.")
   }
   await load()
   action.value = ''
@@ -72,7 +72,7 @@ async function turnOff() {
         <template v-else-if="status.state === 'this'">
           <p>{{ assistant.name }} is on in Claude Code.</p>
           <p v-if="status.outOfDate">{{ assistant.name }} has changed since you turned it on.</p>
-          <p v-if="status.changed" class="text-secondary">Something Persona Builder added for {{ assistant.name }} in your Claude folder was changed or removed.</p>
+          <p v-if="status.changed" class="text-secondary">Something Voice added for {{ assistant.name }} in your Claude folder was changed or removed.</p>
           <div class="btn-list">
             <button v-if="status.outOfDate" type="button" class="btn btn-primary" :disabled="busy" @click="turnOn">{{ action === 'on' ? 'Updating…' : `Update ${assistant.name} in Claude Code` }}</button>
             <button type="button" class="btn btn-outline-secondary" :disabled="busy" @click="turnOff">{{ action === 'off' ? 'Turning it off…' : `Turn ${assistant.name} off` }}</button>

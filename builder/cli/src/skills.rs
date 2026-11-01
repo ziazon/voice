@@ -1,11 +1,11 @@
 use clap::Subcommand;
-use persona_builder::error::{Error, Result};
-use persona_builder_ingest::{
+use std::{collections::BTreeMap, path::PathBuf, process::ExitCode, time::SystemTime};
+use voice_core::error::{Error, Result};
+use voice_ingest::{
     anonymize::{self, Mapping, Rules},
     private,
     skills::{self, Agreements, State},
 };
-use std::{collections::BTreeMap, path::PathBuf, process::ExitCode, time::SystemTime};
 
 #[derive(Subcommand)]
 pub enum SkillsCommand {
@@ -60,12 +60,12 @@ pub fn run(command: SkillsCommand) -> Result<()> {
             for id in &ids {
                 if !found.skills.iter().any(|skill| skill.id == *id) {
                     return Err(Error::Invalid(format!(
-                        "{id} isn't one of the skills on this computer. See them with: persona-builder skills list {}",
+                        "{id} isn't one of the skills on this computer. See them with: voice skills list {}",
                         skills::display_path(&member_dir, &home)
                     )));
                 }
             }
-            let date = persona_builder_agent::ledger::local_day(SystemTime::now());
+            let date = voice_agent::ledger::local_day(SystemTime::now());
             for id in &ids {
                 let skill = found
                     .skills
@@ -142,7 +142,7 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
         agreed += 1;
         if anonymize::name_holds_private_detail(&skill.name, &rules) {
             println!(
-                "A skill you agreed to: not copied, its name holds a private detail (number {} in persona-builder skills list)",
+                "A skill you agreed to: not copied, its name holds a private detail (number {} in voice skills list)",
                 index + 1
             );
             continue;
@@ -197,7 +197,7 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
     );
     if waiting > 0 {
         println!(
-            "{waiting} skills wait for your yes: persona-builder skills list {}",
+            "{waiting} skills wait for your yes: voice skills list {}",
             anonymize::report_path(
                 &PathBuf::from(skills::display_path(&member_dir, &home)),
                 &rules

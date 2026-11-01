@@ -1,25 +1,25 @@
 //! Panel model calls through the person's Claude Code or per-seat model servers.
-use persona_builder::{
-    assistants::assistant_dir,
-    ceilings::{Ceilings, Source},
-    error::Error,
-    member::read_member,
-};
-#[cfg(test)]
-use persona_builder_agent::provider::Provider;
-use persona_builder_agent::{
-    claude::{self, Claude},
-    guard::{self, Guard},
-    ledger::{Cap, Session},
-    provider::Brief,
-    self_hosted::SelfHosted,
-};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
     sync::{Arc, atomic::AtomicBool},
+};
+#[cfg(test)]
+use voice_agent::provider::Provider;
+use voice_agent::{
+    claude::{self, Claude},
+    guard::{self, Guard},
+    ledger::{Cap, Session},
+    provider::Brief,
+    self_hosted::SelfHosted,
+};
+use voice_core::{
+    assistants::assistant_dir,
+    ceilings::{Ceilings, Source},
+    error::Error,
+    member::read_member,
 };
 
 /// Reported usage for one assistant's turn.
@@ -69,7 +69,7 @@ impl ClaudeTurns {
         let mut ceilings = Vec::new();
         let mut servers = BTreeMap::new();
         for seat in seats {
-            let settings = || -> persona_builder::error::Result<Ceilings> {
+            let settings = || -> voice_core::error::Result<Ceilings> {
                 let folder = assistant_dir(home, seat)?;
                 Ceilings::for_member(&read_member(&folder.join("member.json"))?)
             };
@@ -84,7 +84,7 @@ impl ClaudeTurns {
             let cap = Cap::load(home, seat)
                 .map_err(|_| crate::text::assistant_problem(seat, crate::text::BAD_LIMIT))?;
             let session = Session::open_existing(home, seat, cap).map_err(|error| {
-                let reason = if matches!(&error, Error::Invalid(value) if value == persona_builder_ingest::private::BUSY) {
+                let reason = if matches!(&error, Error::Invalid(value) if value == voice_ingest::private::BUSY) {
                     crate::text::ASSISTANT_BUSY
                 } else { crate::text::NO_ASSISTANT };
                 crate::text::assistant_problem(seat, reason)
@@ -124,11 +124,11 @@ fn panel_ceilings(ceilings: &[Ceilings]) -> Ceilings {
 fn message(error: Error) -> String {
     match error {
         Error::Invalid(message) => message,
-        _ => persona_builder_agent::text::FAILED.into(),
+        _ => voice_agent::text::FAILED.into(),
     }
 }
 fn turn_error(error: Error) -> String {
-    use persona_builder_agent::text as agent_text;
+    use voice_agent::text as agent_text;
     match error {
         Error::Invalid(value)
             if [
@@ -215,21 +215,21 @@ fn ask(guard: &Guard, session: &Session, system: &str, prompt: &str) -> Turn {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use persona_builder::ceilings::{Ceilings, Source};
-    use persona_builder_agent::{
-        guard::{Guard, Sealed},
-        provider::{Reach, Reply, Usage},
-    };
     use std::sync::{
         Mutex,
         atomic::{AtomicUsize, Ordering},
     };
+    use voice_agent::{
+        guard::{Guard, Sealed},
+        provider::{Reach, Reply, Usage},
+    };
+    use voice_core::ceilings::{Ceilings, Source};
 
     #[test]
     fn panel_ceiling_fold_keeps_every_seats_narrowest_and_explicit_settings() {
-        use persona_builder::ceilings::Ceiling;
+        use voice_core::ceilings::Ceiling;
         let seat = |settings| {
-            let mut member: persona_builder::member::Member =
+            let mut member: voice_core::member::Member =
                 serde_json::from_str(include_str!("../../../crew/_template/member.json")).unwrap();
             member.extra.insert("ceilings".into(), settings);
             Ceilings::for_member(&member).unwrap()
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn server_turn_errors_are_shown_verbatim() {
-        use persona_builder_agent::text;
+        use voice_agent::text;
         for message in [text::SERVER_FAILED.to_owned(), text::server_cut_off(3)] {
             assert_eq!(turn_error(Error::Invalid(message.clone())), message);
         }
@@ -264,11 +264,7 @@ mod tests {
         fn reach(&self) -> Reach {
             Reach::OwnMachines
         }
-        fn call(
-            &self,
-            _session: &Session,
-            sealed: &Sealed,
-        ) -> persona_builder::error::Result<Reply> {
+        fn call(&self, _session: &Session, sealed: &Sealed) -> voice_core::error::Result<Reply> {
             sealed.check(self.id(), self.reach())?;
             self.0.lock().unwrap().push(sealed.brief().sources.to_vec());
             Ok(Reply {

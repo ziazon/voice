@@ -95,6 +95,6 @@ it.each([{ kept: 1, word: 'change' }, { kept: 2000, word: 'changes' }])('shows g
 it.each([{ message: 'Could not read it.' }, new Error('private')])('shows safe failures', async failure => {
   const backend = fakeBackend({ showReport: vi.fn().mockRejectedValue(failure) })
   const wrapper = screen(Report, backend, { assistant }); await flushPromises()
-  expect(wrapper.get('.alert-danger').text()).toBe(failure instanceof Error ? "Something in this assistant's settings stops the review. Use the persona-builder command to see what." : failure.message)
+  expect(wrapper.get('.alert-danger').text()).toBe(failure instanceof Error ? "Something in this assistant's settings stops the review. Use the voice command to see what." : failure.message)
   expect(wrapper.text()).not.toContain("There's no report yet")
 })

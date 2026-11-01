@@ -1,7 +1,7 @@
 use crate::{secret::Secret, text};
-use persona_builder::error::{Error, Result};
 use serde_json::{Value, json};
 use std::time::Duration;
+use voice_core::error::{Error, Result};
 
 pub enum Method {
     Get,
@@ -33,7 +33,7 @@ impl Default for UreqHttp {
             .http_status_as_error(false)
             .max_redirects(0)
             .timeout_global(Some(Duration::from_secs(30)))
-            .user_agent(format!("persona-builder/{}", persona_builder::VERSION))
+            .user_agent(format!("voice/{}", voice_core::VERSION))
             .build();
         Self {
             agent: config.into(),
@@ -114,13 +114,13 @@ impl Endpoints {
 pub const SCOPE: &str = "repo";
 /// API version: https://docs.github.com/en/rest/about-the-rest-api/api-versions
 pub const API_VERSION: &str = "2026-03-10";
-/// Persona Builder's registered GitHub OAuth App (device flow on, expiring tokens off). An OAuth
+/// Voice's registered GitHub OAuth App (device flow on, expiring tokens off). An OAuth
 /// App's client ID ships in the app; the device flow needs no client secret ("The `client_secret` is
 /// not needed for the device flow"):
 /// https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow
 const CLIENT_ID: Option<&str> = Some("Ov23lihBQMOVFHgJOJhZ");
 pub fn client_id() -> Option<&'static str> {
-    option_env!("PERSONA_BUILDER_GITHUB_CLIENT_ID").or(CLIENT_ID)
+    option_env!("VOICE_GITHUB_CLIENT_ID").or(CLIENT_ID)
 }
 pub struct Github<'a> {
     http: &'a dyn Http,
@@ -302,10 +302,15 @@ impl<'a> Github<'a> {
         if !valid_repo_name(name) {
             return Err(Error::Invalid(text::BAD_REPO_NAME.into()));
         }
-        let response = self.api(Method::Post, "/user/repos", token, Some(json!({
-            "name": name, "private": true, "description": "My AI assistant, saved by Persona Builder",
-            "auto_init": false, "has_issues": false, "has_projects": false, "has_wiki": false
-        })))?;
+        let response = self.api(
+            Method::Post,
+            "/user/repos",
+            token,
+            Some(json!({
+                "name": name, "private": true, "description": "My AI assistant, saved by Voice",
+                "auto_init": false, "has_issues": false, "has_projects": false, "has_wiki": false
+            })),
+        )?;
         match response.status {
             201 => {}
             422 => return Err(Error::Invalid(text::repo_name_taken(name))),

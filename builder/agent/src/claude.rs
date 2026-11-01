@@ -1,5 +1,5 @@
 //! The person's own Claude Code (PB-D9): finding it, checking it is signed in, and one tool-less
-//! call. Persona Builder starts Claude Code's login but never reads, sets or passes a token.
+//! call. Voice starts Claude Code's login but never reads, sets or passes a token.
 //!
 //! Sources, read 2026-10-24: `https://code.claude.com/docs/en/headless` (the JSON reply, its
 //! `structured_output`, the 10 MB stdin cap, and that without `--bare` a `-p` run loads the working
@@ -15,7 +15,6 @@ use crate::{
     provider::{Provider, Reach, Reply, Usage, check_brief},
     text,
 };
-use persona_builder::error::{Error, Result};
 use serde_json::Value;
 use std::{
     ffi::OsStr,
@@ -29,6 +28,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use voice_core::error::{Error, Result};
 
 pub const AGENT_ID: &str = "claude-code";
 pub const AGENT_NAME: &str = "Claude, through your own Claude Code";
@@ -40,7 +40,7 @@ pub use crate::provider::{MAX_PROMPT, MAX_SYSTEM};
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const CHECK_CAP: u64 = 64 * 1024;
 const STDOUT_CAP: u64 = 16 * 1024 * 1024;
-/// Set by Claude Code in the sessions it runs; Persona Builder's calls run as a fresh, top-level CLI.
+/// Set by Claude Code in the sessions it runs; Voice's calls run as a fresh, top-level CLI.
 const SESSION_MARKERS: [&str; 2] = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"];
 
 #[derive(Debug, PartialEq, Eq)]
@@ -278,13 +278,13 @@ fn judge(ran: Ran, timeout: Duration) -> Option<Judged> {
     })
 }
 
-/// Persona Builder's own Claude Code profile (`CLAUDE_CONFIG_DIR`): its sign-in and settings,
+/// Voice's own Claude Code profile (`CLAUDE_CONFIG_DIR`): its sign-in and settings,
 /// apart from the person's own `~/.claude`.
 pub fn profile_folder(home: &Path) -> PathBuf {
     #[cfg(target_os = "macos")]
-    let folder = "Library/Application Support/Persona Builder/claude-code";
+    let folder = "Library/Application Support/Voice/claude-code";
     #[cfg(not(target_os = "macos"))]
-    let folder = ".local/share/persona-builder/claude-code";
+    let folder = ".local/share/voice/claude-code";
     home.join(folder)
 }
 
@@ -321,7 +321,7 @@ pub struct Status {
     pub api_key_set: bool,
 }
 
-/// How long Persona Builder waits for the person to finish signing in.
+/// How long Voice waits for the person to finish signing in.
 pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 impl Claude {

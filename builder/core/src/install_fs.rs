@@ -74,7 +74,7 @@ fn temporary_path(path: &Path, record: bool) -> PathBuf {
     path.with_file_name(if record {
         format!(".installed.json.tmp-{}", std::process::id())
     } else {
-        format!(".CLAUDE.md.persona-builder-{}", std::process::id())
+        format!(".CLAUDE.md.voice-{}", std::process::id())
     })
 }
 

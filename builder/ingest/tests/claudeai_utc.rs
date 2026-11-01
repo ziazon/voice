@@ -1,7 +1,7 @@
 mod common;
 use common::{parity_tools_available, repo};
-use persona_builder_ingest::claudeai::utc;
 use std::process::Command;
+use voice_ingest::claudeai::utc;
 
 const BOTH: &[&str] = &[
     "2026-03-01T12:00:00.000000Z",
@@ -50,7 +50,7 @@ const NEITHER: &[&str] = &[
     "",
     "not a date",
 ];
-/// Forms Python's `fromisoformat` takes that Persona Builder refuses (accepted difference 1).
+/// Forms Python's `fromisoformat` takes that Voice refuses (accepted difference 1).
 const PYTHON_ONLY: &[&str] = &[
     "2026-03-01T12",
     "2026-03-01x12:00:00",

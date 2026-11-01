@@ -52,7 +52,7 @@ it('shows loading while it reads the assistants', async () => {
 })
 it.each([
   [{ message: 'The assistant list is unavailable.' }, 'The assistant list is unavailable.'],
-  [new Error('private detail'), "Your assistants couldn't be read. Close Persona Builder and open it again."],
+  [new Error('private detail'), "Your assistants couldn't be read. Close Voice and open it again."],
 ])('shows the safe assistant error %s', async (error, words) => {
   const wrapper = screen(NewPanel, fakeBackend({ listAssistants: vi.fn().mockRejectedValue(error) }))
   await flushPromises()

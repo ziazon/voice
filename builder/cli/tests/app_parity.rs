@@ -1,5 +1,5 @@
-use persona_builder_api::parity::PARITY;
 use std::process::Command;
+use voice_api::parity::PARITY;
 
 #[test]
 fn every_app_command_has_working_cli_equivalents() {
@@ -8,7 +8,7 @@ fn every_app_command_has_working_cli_equivalents() {
         assert!(!row.cli.is_empty(), "{} has no CLI equivalent", row.app);
         for argv in row.cli {
             assert!(!argv.is_empty(), "{} has an empty CLI invocation", row.app);
-            let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+            let output = Command::new(env!("CARGO_BIN_EXE_voice"))
                 .args(*argv)
                 .arg("--help")
                 .output()

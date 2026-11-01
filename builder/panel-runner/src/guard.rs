@@ -1,7 +1,7 @@
 //! Check posts for private details before sharing them.
-use persona_builder_ingest::filters::{Filters, Kind};
 use regex::Regex;
 use std::{collections::BTreeSet, sync::LazyLock};
+use voice_ingest::filters::{Filters, Kind};
 use voice_panels::Block;
 
 static PATHS: LazyLock<[Result<Regex, regex::Error>; 5]> = LazyLock::new(|| {
@@ -22,7 +22,7 @@ static EMAILS: LazyLock<[Result<Regex, regex::Error>; 2]> = LazyLock::new(|| {
     ]
 });
 
-pub use persona_builder_ingest::anonymize::scrub;
+pub use voice_ingest::anonymize::scrub;
 
 /// The exact text shared as a previous post in the next round's brief.
 pub fn forwarded(text: &str) -> String {

@@ -7,10 +7,10 @@ publish.workspace = true
 
 [dependencies]
 voice-panels = { path = "../panels" }
-persona-builder = { path = "../core" }
-persona-builder-ingest = { path = "../ingest" }
-persona-builder-agent = { path = "../agent" }
-persona-builder-build = { path = "../build" }
+voice-core = { path = "../core" }
+voice-ingest = { path = "../ingest" }
+voice-agent = { path = "../agent" }
+voice-build = { path = "../build" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "=1.13.1"

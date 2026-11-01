@@ -1,14 +1,14 @@
 //! `similar`: the past answers closest to a new question, by shared rare words, from the training
 //! split only, so a backtest never sees the answers it is scored on.
 use crate::input::{Record, Records, first, pretty};
-use persona_builder::{error::Result, member::Member};
-use persona_builder_ingest::{privacy::searchable, python::py_space};
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::{
     collections::{BTreeSet, HashMap},
     sync::LazyLock,
 };
+use voice_core::{error::Result, member::Member};
+use voice_ingest::{privacy::searchable, python::py_space};
 
 /// One shared word matched "review that PR" to any question about reviews.
 pub const MIN_SHARED_WORDS: usize = 2;

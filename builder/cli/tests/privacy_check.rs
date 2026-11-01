@@ -1,10 +1,10 @@
-use persona_builder::crew::{NewMember, new_member};
 use std::{
     fs,
     path::PathBuf,
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Fixture {
@@ -24,7 +24,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             member.parent().unwrap(),
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Rowan Vale",
@@ -37,7 +37,7 @@ impl Fixture {
         Self { home, member }
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env_clear()
             .env("HOME", &self.home)
             .env("PATH", std::env::var_os("PATH").unwrap())
@@ -95,7 +95,7 @@ fn advice_precedes_summary() {
         String::from_utf8(out.stdout).unwrap(),
         format!(
             "member.json:filters.personal (differs from crew/_template)\n{}\n1 hits\n",
-            persona_builder_ingest::check::ADVICE
+            voice_ingest::check::ADVICE
         )
     );
     assert!(out.stderr.is_empty());
@@ -109,7 +109,7 @@ fn empty_folder_names_missing_member() {
     assert_eq!(
         String::from_utf8(out.stderr).unwrap(),
         format!(
-            "persona-builder: {}/member.json: no member.json to check\n",
+            "voice: {}/member.json: no member.json to check\n",
             f.home.canonicalize().unwrap().display()
         )
     );

@@ -1,6 +1,6 @@
 use crate::filters::{Filters, Kind};
-use persona_builder::error::{Error, Result};
 use serde_json::{Map, Value};
+use voice_core::error::{Error, Result};
 
 /// A record or an option: anything whose fields are read by name.
 trait Fields {

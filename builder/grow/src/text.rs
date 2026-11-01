@@ -18,7 +18,7 @@ pub const ALREADY_APPROVED: &str = "already has an approval";
 pub const REJECTED: &str = "was rejected, so it cannot have a measurement";
 pub fn base_moved(id: &str) -> String {
     format!(
-        "{id} was drafted for a different version. Draft a new change with `persona-builder refresh propose`."
+        "{id} was drafted for a different version. Draft a new change with `voice refresh propose`."
     )
 }
 pub fn case_changed(id: &str) -> String {
@@ -49,15 +49,15 @@ pub fn damaged(file: &str, line: usize) -> String {
 pub fn already_kept(id: &str) -> String {
     format!("{id} is already kept and cannot be replaced.")
 }
-pub const FILLED_IN: &str = "Persona Builder fills in the answer's schema, id, persona and time. Leave those out and try again.";
+pub const FILLED_IN: &str =
+    "Voice fills in the answer's schema, id, persona and time. Leave those out and try again.";
 pub const TOO_BIG: &str = "That answer is too big to keep. Keep it under 64 KiB and try again.";
 pub const INPUT_SHAPE: &str =
     "That answer isn't in the expected shape. Check its fields and try again.";
 pub fn unknown_key(key: &str) -> String {
     if key.is_empty() || key.len() > 40 || !key.bytes().all(|c| c.is_ascii_lowercase() || c == b'_')
     {
-        return "The answer has a field Persona Builder doesn't know. Leave it out and try again."
-            .into();
+        return "The answer has a field Voice doesn't know. Leave it out and try again.".into();
     }
     format!("The answer has an unknown field: {key}. Leave it out and try again.")
 }
@@ -151,7 +151,7 @@ pub const DRAFTING: &str = "Drafting a change from your answers";
 pub const NOTHING_TO_REFRESH: &str =
     "There's nothing new to learn from yet. Keep answering your assistant, then try again.";
 pub const NO_OPEN: &str = "No change is waiting for your answer.";
-pub const DAMAGED_PROPOSAL: &str = "That saved change looks damaged, so it wasn't shown. Draft a new one with `persona-builder refresh propose`.";
+pub const DAMAGED_PROPOSAL: &str = "That saved change looks damaged, so it wasn't shown. Draft a new one with `voice refresh propose`.";
 pub const DIFF_BUG: &str = "The drafted change couldn't be checked, so nothing was saved.";
 pub const REPLY_SHAPE: &str = "The drafted change didn't have the expected shape.";
 pub const EDIT_COUNT: &str = "The drafted change needs between 1 and 10 points.";
@@ -170,7 +170,7 @@ pub fn quoted(count: usize) -> String {
 }
 pub fn open_waiting(id: &str) -> String {
     format!(
-        "A change is already waiting for your answer ({id}). Look at it with `persona-builder refresh show`, then approve or reject it."
+        "A change is already waiting for your answer ({id}). Look at it with `voice refresh show`, then approve or reject it."
     )
 }
 pub fn open_approved(id: &str) -> String {
@@ -194,8 +194,8 @@ pub fn learned(count: usize) -> String {
 }
 pub fn refresh_commands(member: &std::path::Path, id: &str) -> [String; 2] {
     [
-        format!("persona-builder refresh approve {} {id}", member.display()),
-        format!("persona-builder refresh reject {} {id}", member.display()),
+        format!("voice refresh approve {} {id}", member.display()),
+        format!("voice refresh reject {} {id}", member.display()),
     ]
 }
 
@@ -203,7 +203,7 @@ pub const DECISIONS_HIDDEN: &str = "Your assistant's decisions.md has a hidden c
 
 pub fn refresh_misfit(what: &str, problem: &str) -> String {
     format!(
-        "{what}: Claude's draft didn't fit twice, so nothing was saved ({problem}). Run `persona-builder refresh propose` again."
+        "{what}: Claude's draft didn't fit twice, so nothing was saved ({problem}). Run `voice refresh propose` again."
     )
 }
 
@@ -212,9 +212,9 @@ pub const DECISIONS_CHANGED: &str = "Your assistant's decisions changed while th
 // Testing and applying an approved refresh.
 pub const TESTING: &str = "Testing the change on your answers";
 pub const GRADING: &str = "Checking the written answers";
-pub const CHANGE_DOES_NOT_FIT: &str = "That saved change no longer fits your assistant, so nothing was changed. Draft a new one with `persona-builder refresh propose`.";
-pub const DECISIONS_CHANGED_TESTING: &str = "Your assistant's decisions changed while the change was being tested, so nothing was saved. Draft a new one with `persona-builder refresh propose`.";
-pub const DECISIONS_MOVED_AFTER: &str = "Your assistant's decisions.md changed after this change was tested, so it wasn't applied. Draft a new one with `persona-builder refresh propose`.";
+pub const CHANGE_DOES_NOT_FIT: &str = "That saved change no longer fits your assistant, so nothing was changed. Draft a new one with `voice refresh propose`.";
+pub const DECISIONS_CHANGED_TESTING: &str = "Your assistant's decisions changed while the change was being tested, so nothing was saved. Draft a new one with `voice refresh propose`.";
+pub const DECISIONS_MOVED_AFTER: &str = "Your assistant's decisions.md changed after this change was tested, so it wasn't applied. Draft a new one with `voice refresh propose`.";
 pub const KEEP_REASON: &str = "Every new test now passes, and none of the others got worse.";
 pub const ANSWER_PROMPT: &str = "Answer each test the way the person would.\n\nHow the person decides (their decisions.md):\n\n";
 pub const GRADE_PROMPT: &str = "Grade each answer against what the right answer must do.\n\nThe items, one JSON object per line:\n";
@@ -231,18 +231,18 @@ pub fn apply_grades_count(n: usize) -> String {
 }
 pub fn not_answered(id: &str) -> String {
     format!(
-        "That change ({id}) is still waiting for your answer. Look at it with `persona-builder refresh show`, then approve or reject it."
+        "That change ({id}) is still waiting for your answer. Look at it with `voice refresh show`, then approve or reject it."
     )
 }
 pub fn was_rejected(id: &str) -> String {
     format!("You rejected that change ({id}), so it can't be applied.")
 }
 pub fn cases_moved(_id: &str) -> String {
-    "Some of the tests this change was meant to pass have changed since you approved it. Draft a new one with `persona-builder refresh propose`.".into()
+    "Some of the tests this change was meant to pass have changed since you approved it. Draft a new one with `voice refresh propose`.".into()
 }
 pub fn apply_misfit(what: &str, problem: &str) -> String {
     format!(
-        "{what}: Claude's answers didn't fit twice, so nothing was saved ({problem}). Run `persona-builder refresh apply` again."
+        "{what}: Claude's answers didn't fit twice, so nothing was saved ({problem}). Run `voice refresh apply` again."
     )
 }
 pub fn kept(_id: &str) -> String {

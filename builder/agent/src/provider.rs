@@ -1,8 +1,8 @@
 //! The tool-less interface for model providers.
 use crate::{guard::Sealed, ledger::Session};
-use persona_builder::ceilings::Source;
-use persona_builder::error::{Error, Result};
 use serde_json::Value;
+use voice_core::ceilings::Source;
+use voice_core::error::{Error, Result};
 
 /// Where a provider sends what it is given. Ordered from the narrowest to the widest, so VO8.2
 /// can compare a provider's reach with a source's ceiling.

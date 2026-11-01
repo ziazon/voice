@@ -87,7 +87,7 @@ impl SystemClock {
 }
 impl Clock for SystemClock {
     fn now_iso(&self) -> String {
-        persona_builder_agent::ledger::utc_stamp(std::time::SystemTime::now())
+        voice_agent::ledger::utc_stamp(std::time::SystemTime::now())
     }
     fn seconds(&self) -> f64 {
         self.0.elapsed().as_secs_f64()

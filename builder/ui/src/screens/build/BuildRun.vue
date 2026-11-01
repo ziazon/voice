@@ -23,7 +23,7 @@ onMounted(async () => {
     const initial = await backend.spendToday({ slug: props.slug })
     if (!attempted.value) spend.value = initial
   } catch (failure) {
-    if (!attempted.value) error.value = failureMessage(failure, "Persona Builder's record of what this assistant has spent can't be read, so it won't spend anything more. Use the persona-builder command to see what's wrong.")
+    if (!attempted.value) error.value = failureMessage(failure, "Voice's record of what this assistant has spent can't be read, so it won't spend anything more. Use the voice command to see what's wrong.")
   }
 })
 async function build(mergeFirst = false) {
@@ -41,7 +41,7 @@ async function build(mergeFirst = false) {
       try {
         await backend.mergeHistories({ slug: props.slug })
       } catch (failure) {
-        error.value = failureMessage(failure, "Persona Builder couldn't put your history together. Close it and open it again.")
+        error.value = failureMessage(failure, "Voice couldn't put your history together. Close it and open it again.")
         return
       }
       if (stopping.value) {

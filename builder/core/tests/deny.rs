@@ -1,8 +1,8 @@
 mod common;
 
 use common::Scratch;
-use persona_builder::{deny::DenyList, error::Error};
 use std::{fs, path::Path};
+use voice_core::{deny::DenyList, error::Error};
 
 fn canary(home: &Path, relative: &str) -> std::path::PathBuf {
     let path = home.join(relative);
@@ -153,7 +153,7 @@ fn malformed_entries_are_refused_with_the_sentence() {
         assert_eq!(
             error.to_string(),
             format!(
-                "member config: filters.denied_paths: {entry:?} isn't a name or a path Persona Builder can use. Write a name like diary*, or a path starting with ~/ or / below a folder, in plain letters (use * for an accented letter), with no . or .. parts, at most 255 characters."
+                "member config: filters.denied_paths: {entry:?} isn't a name or a path Voice can use. Write a name like diary*, or a path starting with ~/ or / below a folder, in plain letters (use * for an accented letter), with no . or .. parts, at most 255 characters."
             )
         );
     }

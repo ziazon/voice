@@ -1,20 +1,20 @@
 //! Full interviews fill a thin history; short interviews fill out kinds with few examples.
 //! Both draft questions in the shape `round` reads and keep answers as training records.
 use crate::text;
-use persona_builder::{
+use serde_json::{Map, Value, json};
+use voice_agent::{guard::Guard, ledger::Session, provider::Brief};
+use voice_core::{
     ceilings::Source,
     error::{Error, Result},
     member::Member,
 };
-use persona_builder_agent::{guard::Guard, ledger::Session, provider::Brief};
-use persona_builder_ingest::filters::Filters;
-use persona_builder_steps::{
+use voice_ingest::filters::Filters;
+use voice_steps::{
     book::Book,
     input::Records,
     labels::Row,
     round::{Round, check_questions, round},
 };
-use serde_json::{Map, Value, json};
 
 /// Below this many answered questions the full interview is offered.
 pub const THIN_BELOW: usize = 150;
@@ -92,7 +92,7 @@ const MAX_LABEL: usize = 100;
 const MAX_DESCRIPTION: usize = 300;
 
 /// Fixed text only: the system prompt goes in the argv, which other local users can read.
-pub const SYSTEM: &str = "You draft calibration interview questions for Persona Builder, which builds a person's AI assistant from how they decide. You have no tools. Answer only with the JSON the schema asks for.";
+pub const SYSTEM: &str = "You draft calibration interview questions for Voice, which builds a person's AI assistant from how they decide. You have no tools. Answer only with the JSON the schema asks for.";
 
 /// The answers the call must give: the round-questions shape. Fixed, for the same reason.
 pub fn schema(count: usize) -> Value {

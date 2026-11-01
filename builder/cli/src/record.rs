@@ -1,10 +1,10 @@
 //! Keep live decisions in the assistant's existing private state folder.
 use clap::{Arg, ArgAction, Command};
-use persona_builder::error::{Error, Result};
-use persona_builder_ingest::{mine::to_jsonl, private::append_private};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::path::PathBuf;
+use voice_core::error::{Error, Result};
+use voice_ingest::{mine::to_jsonl, private::append_private};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -34,7 +34,7 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
     let pick_flag = format!("{}-pick", member.slug);
     let answer_flag = format!("{}-answer", member.principal_slug);
     let mut command = record_command(&pick_flag, &answer_flag);
-    let argv: Vec<_> = std::iter::once("persona-builder record".to_owned())
+    let argv: Vec<_> = std::iter::once("voice record".to_owned())
         .chain(args)
         .collect();
     let matches = command
@@ -112,7 +112,7 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
     let mut row = Map::new();
     row.insert(
         "timestamp".into(),
-        Value::String(persona_builder_grow::store::utc_now()),
+        Value::String(voice_grow::store::utc_now()),
     );
     for (name, value) in [
         ("work", &input.work),
@@ -139,7 +139,7 @@ pub fn run(member_dir: PathBuf, args: Vec<String>) -> Result<()> {
     append_private(&home, &member.slug, "live.jsonl", line.as_bytes()).map_err(|error| {
         match error {
             Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => Error::Invalid(format!(
-                "{} has nowhere to keep this yet: ~/.claude/state/{} isn't there. Open Persona Builder and give {} permission, then try again.", member.name, member.slug, member.name)),
+                "{} has nowhere to keep this yet: ~/.claude/state/{} isn't there. Open Voice and give {} permission, then try again.", member.name, member.slug, member.name)),
             other => other,
         }
     })?;
@@ -171,7 +171,7 @@ fn option_like_value(value: &str) -> bool {
 
 fn record_command(pick_flag: &str, answer_flag: &str) -> Command {
     // Member-specific names belong to this invocation of the command.
-    let mut command = Command::new("persona-builder record")
+    let mut command = Command::new("voice record")
         .about("Keep one decision the assistant made, or your answer to one it handed back.")
         .arg(
             Arg::new("stdin")

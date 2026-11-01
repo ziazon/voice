@@ -1,10 +1,3 @@
-use persona_builder_api::{dto::*, *};
-use persona_builder_ingest::{
-    claudeai, corpus,
-    filters::Filters,
-    mine::{self, Split},
-    private::*,
-};
 use serde_json::json;
 use std::{
     fs,
@@ -12,15 +5,21 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_api::{dto::*, *};
+use voice_ingest::{
+    claudeai, corpus,
+    filters::Filters,
+    mine::{self, Split},
+    private::*,
+};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 const PERMISSION: &str =
-    "Persona Builder needs your permission before it reads anything. Give it in the first step.";
-const FIND: &str = "Persona Builder couldn't find that assistant. Close it and open it again.";
+    "Voice needs your permission before it reads anything. Give it in the first step.";
+const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
 const BUSY: &str =
-    "Persona Builder is already working on this assistant. Wait for it to finish, then try again.";
-const EXPORT_BAD: &str = "Persona Builder couldn't read this download. Check it's the file claude.ai sent you, then choose it again.";
-const EXPORT_GONE: &str =
-    "Persona Builder can't find your claude.ai download any more. Choose it again.";
+    "Voice is already working on this assistant. Wait for it to finish, then try again.";
+const EXPORT_BAD: &str = "Voice couldn't read this download. Check it's the file claude.ai sent you, then choose it again.";
+const EXPORT_GONE: &str = "Voice can't find your claude.ai download any more. Choose it again.";
 const NO_CHATS: &str = "Choose at least one chat first.";
 const NOTHING: &str = "There's nothing to put together yet. Read your Claude Code history or your claude.ai chats first.";
 struct Home(PathBuf);
@@ -166,7 +165,7 @@ fn every_command_refuses_history_elsewhere() {
     every_command(
         &h,
         "ari",
-        "This assistant keeps its history outside your Claude folder. Use the persona-builder command for it.",
+        "This assistant keeps its history outside your Claude folder. Use the voice command for it.",
     );
 }
 fn code_history(h: &Home, folders: usize) {
@@ -186,8 +185,8 @@ fn code_history(h: &Home, folders: usize) {
         .unwrap();
     }
 }
-fn member(h: &Home) -> persona_builder::member::Member {
-    persona_builder::member::read_member(&h.path().join(".claude/crew/ari/member.json")).unwrap()
+fn member(h: &Home) -> voice_core::member::Member {
+    voice_core::member::read_member(&h.path().join(".claude/crew/ari/member.json")).unwrap()
 }
 #[test]
 fn code_folders_count_and_exclusion() {

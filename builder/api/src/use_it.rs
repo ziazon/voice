@@ -3,7 +3,13 @@ use crate::{
     assistants::{failure, home, listed, opener_args},
     dto,
 };
-use persona_builder::{
+use std::{
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+use voice_core::{
     assistants::Listed,
     crew,
     error::Error,
@@ -11,28 +17,21 @@ use persona_builder::{
     install::{self, FileState, Places},
     member, pack,
 };
-use persona_builder_ingest::private::{self, lock_state, private_folder_exists};
-use std::{
-    ffi::OsStr,
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use voice_ingest::private::{self, lock_state, private_folder_exists};
 
 type Result<T> = std::result::Result<T, dto::Failure>;
-const STATUS: &str = "Persona Builder couldn't check Claude Code. Close it and open it again.";
+const STATUS: &str = "Voice couldn't check Claude Code. Close it and open it again.";
 const NOT_SET_UP: &str =
     "Claude Code isn't set up on this computer yet. Install it and sign in, then come back.";
 const NOTHING_ON: &str = "No assistant is on in Claude Code.";
 const CHANGED_ON: &str = "What's on in Claude Code has changed. Look again, then choose.";
 const OFF: &str =
-    "Persona Builder couldn't turn the assistant off. Close it and open it again, then try again.";
-const FILES: &str =
-    "Persona Builder couldn't look for the claude.ai files. Close it and open it again.";
-const PACK: &str = "Persona Builder couldn't make the claude.ai files. Check there's space on this computer, then try again.";
+    "Voice couldn't turn the assistant off. Close it and open it again, then try again.";
+const FILES: &str = "Voice couldn't look for the claude.ai files. Close it and open it again.";
+const PACK: &str = "Voice couldn't make the claude.ai files. Check there's space on this computer, then try again.";
 const MAKE_FIRST: &str = "Make the claude.ai files first.";
-const SHOW: &str = "Persona Builder couldn't open the folder.";
-const FORGET: &str = "Persona Builder couldn't forget anything, and nothing was deleted. Close it and open it again, then try again.";
+const SHOW: &str = "Voice couldn't open the folder.";
+const FORGET: &str = "Voice couldn't forget anything, and nothing was deleted. Close it and open it again, then try again.";
 const FORGET_CHANGED: &str =
     "There's more to forget than when you looked. Look again, then confirm.";
 
@@ -53,9 +52,7 @@ fn said(message: impl Into<String>) -> dto::Said {
     }
 }
 fn on_failed(name: &str) -> String {
-    format!(
-        "Persona Builder couldn't turn {name} on, so nothing in your Claude folder was changed."
-    )
+    format!("Voice couldn't turn {name} on, so nothing in your Claude folder was changed.")
 }
 fn other_on(shown: Option<&str>, name: &str) -> String {
     match shown {
@@ -68,7 +65,7 @@ fn other_on(shown: Option<&str>, name: &str) -> String {
     }
 }
 fn busy(name: &str) -> String {
-    format!("Persona Builder is already working on {name}. Wait for it to finish, then try again.")
+    format!("Voice is already working on {name}. Wait for it to finish, then try again.")
 }
 fn no_kinds(name: &str) -> String {
     format!(
@@ -76,7 +73,7 @@ fn no_kinds(name: &str) -> String {
     )
 }
 fn nothing_to_forget(name: &str) -> String {
-    format!("There's nothing to forget: Persona Builder hasn't kept anything for {name} yet.")
+    format!("There's nothing to forget: Voice hasn't kept anything for {name} yet.")
 }
 fn count(files: usize) -> u32 {
     u32::try_from(files).unwrap_or(u32::MAX)
@@ -176,11 +173,11 @@ pub fn turn_off_in(
     let shown = result.name.as_deref().and_then(shown_name);
     let subject = shown.as_deref().unwrap_or("The assistant");
     Ok(said(if result.left.is_empty() {
-        format!("{subject} is off. Everything Persona Builder added is gone.")
+        format!("{subject} is off. Everything Voice added is gone.")
     } else {
         let pronoun = shown.as_deref().unwrap_or("it");
         format!(
-            "{subject} is off. A few things in your Claude folder were changed after {pronoun} was turned on, so Persona Builder left them where they are."
+            "{subject} is off. A few things in your Claude folder were changed after {pronoun} was turned on, so Voice left them where they are."
         )
     }))
 }

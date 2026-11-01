@@ -1,8 +1,8 @@
 include!("../src/command_names.rs");
 
-use persona_builder_api::parity::PARITY;
 use serde_json::Value;
 use std::path::Path;
+use voice_api::parity::PARITY;
 
 fn source(name: &str) -> String {
     std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(name)).unwrap()
@@ -207,5 +207,5 @@ fn app_exit_stops_a_pending_claude_sign_in() {
     let main = source("src/main.rs");
     assert!(main.contains(".build(tauri::generate_context!())"));
     assert!(main.contains("tauri::RunEvent::Exit"));
-    assert!(main.contains("persona_builder_api::claude_sign_in_shutdown(Duration::from_secs(1))"));
+    assert!(main.contains("voice_api::claude_sign_in_shutdown(Duration::from_secs(1))"));
 }

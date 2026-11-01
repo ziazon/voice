@@ -1,10 +1,10 @@
 //! The member's codebook, as `crew_decisions.py`'s `codebook()` reads it.
-use persona_builder::{
+use serde_json::Value;
+use voice_core::{
     error::{Error, Result},
     member::Member,
 };
-use persona_builder_ingest::private::validate_name;
-use serde_json::Value;
+use voice_ingest::private::validate_name;
 
 pub struct Book {
     pub categories: Vec<String>,

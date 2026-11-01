@@ -1,10 +1,10 @@
-use persona_builder::crew::{NewMember, new_member};
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Scratch(PathBuf);
@@ -34,7 +34,7 @@ fn member_show_prints_exact_file_bytes() {
         &template,
         &target,
         &NewMember {
-            decisions: persona_builder::crew::Decisions::Python,
+            decisions: voice_core::crew::Decisions::Python,
             name: "Ari",
             pronouns: "they/them",
             principal: "Robin",
@@ -45,7 +45,7 @@ fn member_show_prints_exact_file_bytes() {
     )
     .unwrap();
     let path = target.join("member.json");
-    let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    let output = Command::new(env!("CARGO_BIN_EXE_voice"))
         .env("HOME", scratch.0.join("home"))
         .env("CLAUDE_CONFIG_DIR", scratch.0.join("home/.claude"))
         .args(["member", "show"])
@@ -65,7 +65,7 @@ fn member_show_prints_exact_file_bytes() {
 fn member_show_missing_path_exits_one_with_prefix() {
     let scratch = Scratch::new();
     let path = scratch.0.join("member.json");
-    let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    let output = Command::new(env!("CARGO_BIN_EXE_voice"))
         .env("HOME", scratch.0.join("home"))
         .env("CLAUDE_CONFIG_DIR", scratch.0.join("home/.claude"))
         .args(["member", "show"])
@@ -75,6 +75,6 @@ fn member_show_missing_path_exits_one_with_prefix() {
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     let error = String::from_utf8(output.stderr).unwrap();
-    assert!(error.starts_with("persona-builder: "), "{error}");
+    assert!(error.starts_with("voice: "), "{error}");
     assert!(error.contains(&path.display().to_string()), "{error}");
 }

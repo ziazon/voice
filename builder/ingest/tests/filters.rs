@@ -1,5 +1,5 @@
-use persona_builder::member;
-use persona_builder_ingest::filters::{Filters, Kind};
+use voice_core::member;
+use voice_ingest::filters::{Filters, Kind};
 fn config() -> member::Filters {
     member::Filters {
         excluded_folders: "private".into(),
@@ -24,7 +24,7 @@ fn invalid_patterns_are_refused_for_the_right_key() {
             assert_eq!(
                 error.map(|e| e.to_string()),
                 Some(format!(
-                    "member config: filters.{key} is not a valid regex, or it uses look-around or a backreference, which Persona Builder can't read"
+                    "member config: filters.{key} is not a valid regex, or it uses look-around or a backreference, which Voice can't read"
                 ))
             );
         }

@@ -1,4 +1,4 @@
-use persona_builder_save::secret::Secret;
+use voice_save::secret::Secret;
 
 #[test]
 fn debug_hides_the_value() {

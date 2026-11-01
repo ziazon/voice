@@ -1,19 +1,19 @@
 mod common;
 use common::*;
-use persona_builder::{
-    ceilings::{Ceiling, Ceilings, Source},
-    error::Result,
-    member::Member,
-};
-use persona_builder_agent::{
-    guard::{self, Guard, Sealed},
-    ledger::Session,
-    provider::{Brief, Provider, Reach, Reply, Usage},
-};
 use serde_json::json;
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
+};
+use voice_agent::{
+    guard::{self, Guard, Sealed},
+    ledger::Session,
+    provider::{Brief, Provider, Reach, Reply, Usage},
+};
+use voice_core::{
+    ceilings::{Ceiling, Ceilings, Source},
+    error::Result,
+    member::Member,
 };
 
 #[derive(Debug, PartialEq)]
@@ -185,7 +185,7 @@ fn mail_refusal_names_the_blocked_source_without_a_call_or_ledger_line() {
     let guard = Guard::new(vec![&fake], Ceilings::defaults());
     assert_eq!(
         refused(&guard, &[Source::CrewFolder, Source::Mail]),
-        "Nothing was sent. This step uses your mail, which you keep on your own machines, and the provider for this step, Fake, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> mail anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."
+        "Nothing was sent. This step uses your mail, which you keep on your own machines, and the provider for this step, Fake, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> mail anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`."
     );
     assert_eq!(fake.count(), 0);
     assert!(fake.briefs.lock().unwrap().is_empty());
@@ -196,7 +196,7 @@ fn the_persons_local_history_setting_refuses_anthropic() {
     let guard = Guard::new(vec![&fake], settings("claude-history", "local-only"));
     assert_eq!(
         refused(&guard, &[Source::ClaudeHistory]),
-        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Fake, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."
+        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Fake, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> claude-history anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`."
     );
     assert_eq!(fake.count(), 0);
 }
@@ -216,7 +216,7 @@ fn any_consented_still_refuses_a_third_party() {
     let guard = Guard::new(vec![&fake], settings("mail", "any-consented"));
     assert_eq!(
         refused(&guard, &[Source::Mail]),
-        "Nothing was sent. This step uses your mail, and the provider for this step, Fake, sends what it's given to another company, which you haven't agreed to. To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."
+        "Nothing was sent. This step uses your mail, and the provider for this step, Fake, sends what it's given to another company, which you haven't agreed to. To run it without the data leaving your machines, set up a model server with `voice self-hosted set`."
     );
     assert_eq!(fake.count(), 0);
 }
@@ -241,12 +241,12 @@ fn the_seal_refuses_a_different_provider_id() {
 }
 
 struct Forwarder {
-    claude: persona_builder_agent::claude::Claude,
+    claude: voice_agent::claude::Claude,
     calls: AtomicUsize,
 }
 impl Provider for Forwarder {
     fn id(&self) -> &'static str {
-        persona_builder_agent::claude::AGENT_ID
+        voice_agent::claude::AGENT_ID
     }
     fn name(&self) -> &'static str {
         "Forwarder"
@@ -274,7 +274,7 @@ fn claude_rechecks_a_local_history_seal_forwarded_with_its_own_id() {
     );
     assert_eq!(
         refused(&guard, &[Source::ClaudeHistory]),
-        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Forwarder, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic"
+        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Forwarder, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> claude-history anthropic"
     );
     assert_eq!(forwarder.calls.load(Ordering::SeqCst), 1);
     assert!(!stub.ran());
@@ -288,5 +288,5 @@ fn missing_own_machines_provider_adds_setup_hint() {
         &[Source::Mail],
     );
     assert!(message.starts_with("Nothing was sent."));
-    assert!(message.ends_with("To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."));
+    assert!(message.ends_with("To run it without the data leaving your machines, set up a model server with `voice self-hosted set`."));
 }

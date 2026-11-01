@@ -6,11 +6,6 @@
 //! cap, in this process and in any other, and a build that is killed mid-call (its `claude` child
 //! runs on in its own process group) still has that call counted at its budget.
 use crate::{provider::Usage, text};
-use persona_builder::error::{Error, Result};
-use persona_builder_ingest::private::{
-    StateLock, lock_existing_state, lock_state, private_folder, read_private_optional,
-    write_private,
-};
 use serde_json::{Map, Value};
 use std::{
     path::{Path, PathBuf},
@@ -19,6 +14,11 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
+};
+use voice_core::error::{Error, Result};
+use voice_ingest::private::{
+    StateLock, lock_existing_state, lock_state, private_folder, read_private_optional,
+    write_private,
 };
 
 pub const LIMIT: &str = "limit.json";

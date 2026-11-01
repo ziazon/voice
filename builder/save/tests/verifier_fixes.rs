@@ -1,12 +1,12 @@
 pub mod common;
 
 use common::{FakeHttp, reply};
-use persona_builder_save::{
+use serde_json::json;
+use voice_save::{
     github::{DeviceCode, Endpoints, Github},
     keychain::store_line,
     secret::Secret,
 };
-use serde_json::json;
 
 // Invented token: a GitHub OAuth prefix followed by 36 base62 characters.
 const TOKEN: &str = "gho_0123456789abcdefghijklmnopqrstuvwxyz";
@@ -15,7 +15,7 @@ fn device(github: &Github<'_>) -> DeviceCode {
     github.start_sign_in().unwrap()
 }
 
-fn start_reply() -> persona_builder_save::github::HttpResponse {
+fn start_reply() -> voice_save::github::HttpResponse {
     reply(
         200,
         json!({
@@ -43,11 +43,11 @@ fn finish_sign_in_returns_github_oauth_token() {
 
 #[test]
 fn store_line_builds_exact_github_oauth_line() {
-    let line = store_line("persona-builder.test", &Secret::new(TOKEN.into()));
+    let line = store_line("voice.test", &Secret::new(TOKEN.into()));
     assert_eq!(
         line.as_ref().map(|line| line.expose()).ok(),
         Some(
-            "add-generic-password -U -s persona-builder.test -a persona-builder -w \"gho_0123456789abcdefghijklmnopqrstuvwxyz\"\n"
+            "add-generic-password -U -s voice.test -a voice -w \"gho_0123456789abcdefghijklmnopqrstuvwxyz\"\n"
         )
     );
 }
@@ -56,9 +56,9 @@ use common::{
     Scratch,
     pb6::{git, init, real_git, seed},
 };
-use persona_builder::error::Error;
-use persona_builder_save::git::{Env, Git, Identity, commit_folder};
 use std::{fs, path::Path};
+use voice_core::error::Error;
+use voice_save::git::{Env, Git, Identity, commit_folder};
 
 fn checkout_state(repo: &Path) -> (String, Vec<u8>, String, Vec<u8>) {
     let index = git(repo, &["rev-parse", "--git-path", "index"]);
@@ -116,7 +116,7 @@ fn refuses_checked_out_branch(linked: bool) {
         "Save Wren",
     );
     assert!(
-        matches!(&result, Err(Error::Invalid(message)) if message == "The branch persona/wren is open in your repo right now, so Persona Builder didn't save. Switch to another branch, then try again."),
+        matches!(&result, Err(Error::Invalid(message)) if message == "The branch persona/wren is open in your repo right now, so Voice didn't save. Switch to another branch, then try again."),
         "expected branch-in-use error"
     );
     assert_eq!(checkout_state(&repo), before_repo);
@@ -141,7 +141,7 @@ fn refuses_branch_checked_out_only_in_linked_worktree() {
     refuses_checked_out_branch(true);
 }
 
-use persona_builder_save::text;
+use voice_save::text;
 
 #[test]
 fn poll_400_pending_then_token() {
@@ -206,7 +206,7 @@ fn poll_401_is_unexpected_even_with_error_body() {
     http.assert_drained();
 }
 
-use persona_builder_save::flow::MemberPaths;
+use voice_save::flow::MemberPaths;
 
 #[test]
 fn relative_state_dir_is_refused_without_creating_anything() {

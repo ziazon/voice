@@ -2,8 +2,8 @@
 mod common;
 
 use common::Scratch;
-use persona_builder_save::git::folder_files;
 use std::{fs, path::PathBuf};
+use voice_save::git::folder_files;
 
 #[test]
 fn saving_refuses_env_and_pem_files_with_the_sentence() {
@@ -15,7 +15,7 @@ fn saving_refuses_env_and_pem_files_with_the_sentence() {
         assert_eq!(
             folder_files(&folder.0).unwrap_err().to_string(),
             format!(
-                "{relative} is a kind of file that holds passwords or keys, so Persona Builder won't save this folder. Move it out of the assistant's folder, then save again."
+                "{relative} is a kind of file that holds passwords or keys, so Voice won't save this folder. Move it out of the assistant's folder, then save again."
             )
         );
     }

@@ -1,27 +1,27 @@
 //! Reading local histories after the assistant's current agreement.
 use crate::dto::*;
-use persona_builder::{
-    assistants,
-    deny::DenyList,
-    error::Error,
-    member::{self, Member},
-};
-use persona_builder_ingest::{claudeai, corpus};
-use persona_builder_ingest::{
-    filters::Filters,
-    mine::{self, Split},
-    private,
-};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
 };
-pub(crate) const FIND: &str =
-    "Persona Builder couldn't find that assistant. Close it and open it again.";
-const ELSEWHERE: &str = "This assistant keeps its history outside your Claude folder. Use the persona-builder command for it.";
+use voice_core::{
+    assistants,
+    deny::DenyList,
+    error::Error,
+    member::{self, Member},
+};
+use voice_ingest::{claudeai, corpus};
+use voice_ingest::{
+    filters::Filters,
+    mine::{self, Split},
+    private,
+};
+pub(crate) const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
+const ELSEWHERE: &str =
+    "This assistant keeps its history outside your Claude folder. Use the voice command for it.";
 pub(crate) const PERMISSION: &str =
-    "Persona Builder needs your permission before it reads anything. Give it in the first step.";
+    "Voice needs your permission before it reads anything. Give it in the first step.";
 pub(crate) fn failure(message: &str) -> Failure {
     Failure {
         message: message.into(),
@@ -43,12 +43,12 @@ pub(crate) fn readable(home: &Path, slug: &str) -> Result<Member> {
 }
 type Result<T> = std::result::Result<T, Failure>;
 pub(crate) const BUSY: &str =
-    "Persona Builder is already working on this assistant. Wait for it to finish, then try again.";
-const SAVE: &str = "Persona Builder couldn't save what it read. Check there's space on this computer, then try again.";
+    "Voice is already working on this assistant. Wait for it to finish, then try again.";
+const SAVE: &str =
+    "Voice couldn't save what it read. Check there's space on this computer, then try again.";
 const FOLDERS: &str =
-    "Persona Builder couldn't look through your Claude Code history. Close it and open it again.";
-const READ: &str =
-    "Persona Builder couldn't read your Claude Code history. Close it and open it again.";
+    "Voice couldn't look through your Claude Code history. Close it and open it again.";
+const READ: &str = "Voice couldn't read your Claude Code history. Close it and open it again.";
 pub(crate) fn locked(home: &Path, slug: &str) -> Result<(Member, private::StateLock)> {
     locked_after(home, slug, &mut || {})
 }
@@ -180,13 +180,11 @@ pub fn read_claude_code_in(
         last: mined.records.last().map(date),
     })
 }
-const EXPORT_GONE: &str =
-    "Persona Builder can't find your claude.ai download any more. Choose it again.";
-const EXPORT_BAD: &str = "Persona Builder couldn't read this download. Check it's the file claude.ai sent you, then choose it again.";
+const EXPORT_GONE: &str = "Voice can't find your claude.ai download any more. Choose it again.";
+const EXPORT_BAD: &str = "Voice couldn't read this download. Check it's the file claude.ai sent you, then choose it again.";
 const NO_CHATS: &str = "Choose at least one chat first.";
 const NOTHING: &str = "There's nothing to put together yet. Read your Claude Code history or your claude.ai chats first.";
-const MERGE: &str =
-    "Persona Builder couldn't put your history together. Close it and open it again.";
+const MERGE: &str = "Voice couldn't put your history together. Close it and open it again.";
 const EXPORT: &str = "claudeai-export.json";
 const REVIEW: &str = "claudeai-review.tsv";
 
@@ -263,7 +261,7 @@ fn chat_list(rows: Vec<claudeai::ReviewRow>) -> ChatList {
             ChatMark::Mine
         } else if row
             .mine
-            .trim_matches(persona_builder_ingest::python::py_space)
+            .trim_matches(voice_ingest::python::py_space)
             .is_empty()
         {
             list.unmarked = list.unmarked.saturating_add(1);

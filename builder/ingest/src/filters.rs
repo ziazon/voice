@@ -1,6 +1,6 @@
-use persona_builder::error::{Error, Result};
 use regex::{Regex, RegexBuilder};
 use std::collections::BTreeMap;
+use voice_core::error::{Error, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -23,10 +23,10 @@ pub struct Filters {
     pasted: Vec<String>,
 }
 impl Filters {
-    pub fn compile(filters: &persona_builder::member::Filters) -> Result<Self> {
+    pub fn compile(filters: &voice_core::member::Filters) -> Result<Self> {
         fn compile(key: &str, pattern: &str) -> Result<Regex> {
             RegexBuilder::new(pattern).case_insensitive(true).build().map_err(|_| {
-                Error::Invalid(format!("member config: filters.{key} is not a valid regex, or it uses look-around or a backreference, which Persona Builder can't read"))
+                Error::Invalid(format!("member config: filters.{key} is not a valid regex, or it uses look-around or a backreference, which Voice can't read"))
             })
         }
         Ok(Self {

@@ -1,10 +1,10 @@
-use persona_builder::crew::{NewMember, new_member};
 use std::{
     fs,
     path::PathBuf,
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Fixture {
     root: PathBuf,
@@ -30,7 +30,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Ari",
                 pronouns: "they/them",
                 principal: "Robin",
@@ -48,7 +48,7 @@ impl Fixture {
         }
     }
     fn command(&self) -> Command {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_persona-builder"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_voice"));
         command.env("HOME", &self.home).env("CLAUDE_CONFIG_DIR", "");
         command
     }
@@ -77,7 +77,7 @@ fn on_status_off_print_exact_text() {
     assert_eq!(
         f.run(&["on", f.member.to_str().unwrap()]),
         format!(
-            "Ari is on in Claude Code.\nAdded the skill /ari in {0}/skills/ari.\nAdded one line to {0}/CLAUDE.md:\n  @~/.claude/persona-builder/ari/RULES.md\nStart a new Claude Code session to use Ari. To turn Ari off: persona-builder off\n",
+            "Ari is on in Claude Code.\nAdded the skill /ari in {0}/skills/ari.\nAdded one line to {0}/CLAUDE.md:\n  @~/.claude/persona-builder/ari/RULES.md\nStart a new Claude Code session to use Ari. To turn Ari off: voice off\n",
             f.claude.display()
         )
     );
@@ -90,12 +90,12 @@ fn on_status_off_print_exact_text() {
     );
     fs::write(f.member.join("SKILL.md"), "updated").unwrap();
     assert!(f.run(&["status"]).ends_with(&format!(
-        "Ari has changed since it was turned on. To update it: persona-builder on {}\n",
+        "Ari has changed since it was turned on. To update it: voice on {}\n",
         f.member.display()
     )));
     assert_eq!(
         f.run(&["off"]),
-        "Ari is off. Everything Persona Builder added is removed.\n"
+        "Ari is off. Everything Voice added is removed.\n"
     );
     for command in ["off", "status"] {
         assert_eq!(f.run(&[command]), "No assistant is on in Claude Code.\n");
@@ -152,7 +152,7 @@ fn folder_option_and_environment_select_the_folder() {
                 .output()
                 .unwrap()
         ),
-        "Ari is off. Everything Persona Builder added is removed.\n"
+        "Ari is off. Everything Voice added is removed.\n"
     );
 }
 #[test]
@@ -168,7 +168,7 @@ fn missing_or_empty_home_is_a_plain_error() {
         let output = command.arg("status").output().unwrap();
         assert_eq!(output.status.code(), Some(1));
         assert!(output.stdout.is_empty());
-        assert_eq!(output.stderr, b"persona-builder: HOME is not set\n");
+        assert_eq!(output.stderr, b"voice: HOME is not set\n");
     }
 }
 #[test]

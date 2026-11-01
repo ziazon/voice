@@ -1,10 +1,10 @@
-use persona_builder::error::Result;
-use persona_builder_save::github::{Http, HttpRequest, HttpResponse, Method};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use voice_core::error::Result;
+use voice_save::github::{Http, HttpRequest, HttpResponse, Method};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -14,7 +14,7 @@ impl Scratch {
     pub fn new(label: &str) -> Self {
         loop {
             let path = std::env::temp_dir().join(format!(
-                "persona-builder-{label}-{}-{}",
+                "voice-{label}-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -90,10 +90,10 @@ pub fn reply(status: u16, body: serde_json::Value) -> HttpResponse {
 #[allow(dead_code)] // Integration test crates use different subsets of these fixtures.
 pub mod pb6 {
     use super::*;
-    use persona_builder::crew::{NewMember, new_member};
     use std::path::Path;
     use std::process::{Command, Output};
     use std::sync::OnceLock;
+    use voice_core::crew::{NewMember, new_member};
 
     fn executable(name: &str) -> PathBuf {
         // The dispatch explicitly requires resolving the real git with command -v.
@@ -215,13 +215,13 @@ os.execv({}, [{}, *sys.argv[1:]])
             fs::write(&self.log, "").unwrap();
         }
     }
-    pub fn member(dir: &Path) -> persona_builder::member::Member {
+    pub fn member(dir: &Path) -> voice_core::member::Member {
         let template = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template");
         let member = new_member(
             &template,
             dir,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Rowan Vale",

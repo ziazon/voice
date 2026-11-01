@@ -15,7 +15,7 @@ it('announces loading, then shows the empty list and make action', async () => {
 it('shows a safe list error without leaking a rejection', async () => {
   const wrapper = screen(Assistants, fakeBackend({ listAssistants: vi.fn().mockRejectedValue(new Error('private detail')) }))
   await flushPromises()
-  expect(wrapper.get('[role="alert"]').text()).toBe("Persona Builder couldn't look for your assistants. Close it and open it again.")
+  expect(wrapper.get('[role="alert"]').text()).toBe("Voice couldn't look for your assistants. Close it and open it again.")
   expect(wrapper.text()).not.toContain('private detail')
 })
 it('keeps backend order, shows status, opens and reveals each assistant', async () => {

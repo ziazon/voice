@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Persona Builder",
+  "productName": "Voice",
   "version": "0.1.0",
-  "identifier": "dev.personabuilder.desktop",
+  "identifier": "dev.voice.desktop",
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://127.0.0.1:5180",
@@ -20,7 +20,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Persona Builder",
+        "title": "Voice",
         "width": 1100,
         "height": 760,
         "minWidth": 860,

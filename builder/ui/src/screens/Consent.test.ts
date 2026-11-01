@@ -38,6 +38,6 @@ it('shows a Failure from saving', async () => {
 it('shows a safe wording-load failure', async () => {
   const wrapper = screen(Consent, fakeBackend({ consentText: vi.fn().mockRejectedValue(new Error('private detail')) }), { assistant })
   await flushPromises()
-  expect(wrapper.get('[role="alert"]').text()).toBe("Persona Builder couldn't show this. Close it and open it again.")
+  expect(wrapper.get('[role="alert"]').text()).toBe("Voice couldn't show this. Close it and open it again.")
   expect(wrapper.find('button').exists()).toBe(false)
 })

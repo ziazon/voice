@@ -1,12 +1,12 @@
 mod common;
 use common::{Scratch, parity_tools_available, repo};
-use persona_builder::{error::Error, member::read_member};
-use persona_builder_ingest::{
+use serde_json::{Value, json};
+use std::{fs, process::Command};
+use voice_core::{error::Error, member::read_member};
+use voice_ingest::{
     filters::Filters,
     privacy::{filtered_text, privacy},
 };
-use serde_json::{Value, json};
-use std::{fs, process::Command};
 
 #[test]
 fn records_match_the_real_python() {

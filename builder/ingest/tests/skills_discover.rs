@@ -1,14 +1,14 @@
 #[path = "../../core/tests/common/mod.rs"]
 mod common;
 use common::Scratch;
-use persona_builder_ingest::{
-    anonymize::Rules,
-    skills::{self, Agreements, Source, State},
-};
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
     path::Path,
+};
+use voice_ingest::{
+    anonymize::Rules,
+    skills::{self, Agreements, Source, State},
 };
 fn skill(home: &Path, relative: &str) {
     let p = home.join(relative);
@@ -250,7 +250,7 @@ fn malformed_agreements_never_print_their_contents() {
         serde_json::json!({"version":1,"skills":{"private-canary": {"agreed_on":"private-canary","folder":"private-canary"}}}),
         serde_json::json!({"version":1,"skills":{},"private-canary":true}),
     ] {
-        persona_builder_ingest::private::write_private_at(
+        voice_ingest::private::write_private_at(
             &scratch.0,
             "pebble",
             Some("anonymizer"),
@@ -333,17 +333,17 @@ fn nested_linked_folder_is_a_link_source_and_is_not_walked() {
             .any(|(path, source)| path == Path::new("references/outside")
                 && matches!(source, Source::Link))
     );
-    let result = persona_builder_ingest::anonymize::skill(
+    let result = voice_ingest::anonymize::skill(
         &files,
         &Rules::builtin(),
-        &mut persona_builder_ingest::anonymize::Mapping::default(),
+        &mut voice_ingest::anonymize::Mapping::default(),
     );
     assert!(
         result
             .left_out
             .iter()
             .any(|(path, reason)| path == Path::new("references/outside")
-                && matches!(reason, persona_builder_ingest::anonymize::LeftOut::Link))
+                && matches!(reason, voice_ingest::anonymize::LeftOut::Link))
     );
 }
 
@@ -365,17 +365,13 @@ fn oversized_file_is_left_out_without_counting_unread_bytes() {
             .any(|(path, source)| path == Path::new("large.md")
                 && matches!(source, Source::TooLarge))
     );
-    let result = persona_builder_ingest::anonymize::skill(
-        &files,
-        &Rules::builtin(),
-        &mut Default::default(),
-    );
+    let result = voice_ingest::anonymize::skill(&files, &Rules::builtin(), &mut Default::default());
     assert!(result.refused.is_empty());
     assert_eq!(
         result.left_out,
         vec![(
             "large.md".into(),
-            persona_builder_ingest::anonymize::LeftOut::TooLarge
+            voice_ingest::anonymize::LeftOut::TooLarge
         )]
     );
 }
@@ -444,16 +440,15 @@ fn verifier_13_odd_file_name_is_left_out() {
     if written.is_err() {
         files.push((odd.into(), Source::Bytes(b"public".to_vec())));
     }
-    let result = persona_builder_ingest::anonymize::skill(
-        &files,
-        &Rules::builtin(),
-        &mut Default::default(),
-    );
+    let result = voice_ingest::anonymize::skill(&files, &Rules::builtin(), &mut Default::default());
     assert!(result.refused.is_empty());
     assert_eq!(result.kept.len(), 1);
-    assert!(result.left_out.iter().any(|(_, reason)| {
-        persona_builder_ingest::anonymize::left_out_reason(reason) == "odd name"
-    }));
+    assert!(
+        result
+            .left_out
+            .iter()
+            .any(|(_, reason)| { voice_ingest::anonymize::left_out_reason(reason) == "odd name" })
+    );
 }
 
 #[test]
@@ -463,7 +458,7 @@ fn verifier_15_output_cannot_contain_discovered_skill() {
     let out = scratch.0.join("copy");
     fs::write(
         out.join(".anonymized-copy"),
-        "Made by persona-builder anonymize. Running it again replaces this folder.\n",
+        "Made by voice anonymize. Running it again replaces this folder.\n",
     )
     .unwrap();
     let folder = out.join("notes").canonicalize().unwrap();

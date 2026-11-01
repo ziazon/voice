@@ -1,11 +1,11 @@
 mod common;
 
 use common::Scratch;
-use persona_builder_ingest::private::write_private;
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
 };
+use voice_ingest::private::write_private;
 
 #[test]
 fn private_files_replace_atomically_and_keep_existing_directory_modes() {
@@ -50,7 +50,7 @@ fn refuses_each_linked_directory_without_writing_to_its_target() {
         assert_eq!(
             error.to_string(),
             format!(
-                "{} is a link or not a folder: Persona Builder writes your history only into a real folder. Move it away and try again",
+                "{} is a link or not a folder: Voice writes your history only into a real folder. Move it away and try again",
                 fs::canonicalize(&home.0).unwrap().join(suffix).display()
             )
         );

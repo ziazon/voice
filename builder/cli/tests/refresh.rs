@@ -1,5 +1,4 @@
 //! Refresh drafts stay private; approved changes are tested before they change the member.
-use persona_builder::crew::{NewMember, new_member};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -8,6 +7,7 @@ use std::{
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -24,7 +24,7 @@ fn python() -> Option<PathBuf> {
         .ok()
         .filter(|out| out.status.success())
         .map(|out| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()));
-    if found.is_none() && std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref() == Ok("1") {
+    if found.is_none() && std::env::var("VOICE_REQUIRE_PARITY").as_deref() == Ok("1") {
         panic!("python3 is needed for the stub claude");
     }
     found
@@ -44,7 +44,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Robin",
@@ -74,7 +74,7 @@ impl Fixture {
             .count()
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &self.home)
             .env("PATH", format!("{}:/usr/bin:/bin", self.bin.display()))
             .env_remove("ANTHROPIC_API_KEY")
@@ -202,10 +202,7 @@ fn propose_show_approve_and_wait_without_changing_the_member() {
     assert!(shown.contains("--- a/decisions.md"), "{shown}");
     for command in ["approve", "reject"] {
         assert!(
-            shown.contains(&format!(
-                "persona-builder refresh {command} {} {id}",
-                f.member()
-            )),
+            shown.contains(&format!("voice refresh {command} {} {id}", f.member())),
             "{shown}"
         );
     }
@@ -388,7 +385,7 @@ fn applying_an_unanswered_change_says_it_is_waiting_without_calls() {
     let before = f.snapshot();
     let out = f.run(&["refresh", "apply", &f.member(), id]);
     assert!(!out.status.success());
-    assert!(text(&out.stderr).contains(&format!("That change ({id}) is still waiting for your answer. Look at it with `persona-builder refresh show`, then approve or reject it.")), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains(&format!("That change ({id}) is still waiting for your answer. Look at it with `voice refresh show`, then approve or reject it.")), "{}", text(&out.stderr));
     assert_eq!(f.calls(), calls);
     assert_eq!(f.snapshot(), before);
 }
@@ -401,7 +398,7 @@ fn apply_help_explains_the_model_is_for_testing() {
     assert!(text(&out.stdout).contains("The Claude model to test with"));
 }
 
-const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`.";
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`.";
 
 fn keep_folder_local(member: &std::path::Path) {
     let path = member.join("member.json");
@@ -422,10 +419,7 @@ fn refresh_propose_honors_the_members_local_folder_ceiling() {
     let ledger = fs::read(f.state().join("runs.jsonl")).unwrap();
     let out = f.run(&["refresh", "propose", &f.member()]);
     assert!(!out.status.success());
-    assert_eq!(
-        text(&out.stderr),
-        format!("persona-builder: {FOLDER_KEPT_HOME}\n")
-    );
+    assert_eq!(text(&out.stderr), format!("voice: {FOLDER_KEPT_HOME}\n"));
     assert_eq!(f.calls(), calls);
     assert_eq!(fs::read(f.state().join("runs.jsonl")).unwrap(), ledger);
 }
@@ -449,10 +443,7 @@ fn refresh_apply_honors_the_members_local_folder_ceiling() {
     let ledger = fs::read(f.state().join("runs.jsonl")).unwrap();
     let out = f.run(&["refresh", "apply", &f.member(), id]);
     assert!(!out.status.success());
-    assert_eq!(
-        text(&out.stderr),
-        format!("persona-builder: {FOLDER_KEPT_HOME}\n")
-    );
+    assert_eq!(text(&out.stderr), format!("voice: {FOLDER_KEPT_HOME}\n"));
     assert_eq!(f.calls(), calls);
     assert_eq!(fs::read(f.state().join("runs.jsonl")).unwrap(), ledger);
 }

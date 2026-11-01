@@ -1,9 +1,5 @@
 mod common;
 use common::*;
-use persona_builder_agent::{
-    claude::{self, Claude},
-    text,
-};
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
@@ -11,6 +7,10 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
+};
+use voice_agent::{
+    claude::{self, Claude},
+    text,
 };
 
 fn found(stub: &Stub, home: &Path) -> Claude {
@@ -23,13 +23,12 @@ fn profile_folder_is_under_the_given_home() {
     #[cfg(target_os = "macos")]
     assert_eq!(
         claude::profile_folder(&home.0),
-        home.0
-            .join("Library/Application Support/Persona Builder/claude-code")
+        home.0.join("Library/Application Support/Voice/claude-code")
     );
     #[cfg(not(target_os = "macos"))]
     assert_eq!(
         claude::profile_folder(&home.0),
-        home.0.join(".local/share/persona-builder/claude-code")
+        home.0.join(".local/share/voice/claude-code")
     );
 }
 
@@ -199,6 +198,6 @@ fn displayed_paths_hide_the_home_and_signed_out_text_is_exact() {
     );
     assert_eq!(
         text::signed_out_at("2.1.292", "~/.local/bin/claude"),
-        "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Persona Builder yet. Persona Builder keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account."
+        "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account."
     );
 }

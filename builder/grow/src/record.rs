@@ -1,8 +1,8 @@
 use crate::text;
-use persona_builder::error::{Error, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::BTreeSet, sync::LazyLock};
+use voice_core::error::{Error, Result};
 pub const TIMESTAMP: &str =
     r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$";
 pub const PERSONA: &str = r"^[a-z0-9]+(-[a-z0-9]+)*$";

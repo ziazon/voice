@@ -5,9 +5,9 @@ use crate::{
     input::{Record, Records, first},
     labels::{category, label},
 };
-use persona_builder::error::{Error, Result};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
+use voice_core::error::{Error, Result};
 
 /// The most characters of an option's description a row keeps.
 pub const DESCRIPTION_CHARS: usize = 150;

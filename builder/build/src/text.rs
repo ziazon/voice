@@ -35,15 +35,15 @@ pub fn drafted(count: usize, weighted: bool) -> String {
 
 pub fn swap(folder: &str) -> String {
     format!(
-        "Swap any question that doesn't fit your work, then answer them. Save your answers in the same private folder, then: persona-builder interview answer {folder} --answers <the answers file's name>"
+        "Swap any question that doesn't fit your work, then answer them. Save your answers in the same private folder, then: voice interview answer {folder} --answers <the answers file's name>"
     )
 }
 
 pub fn merge_next(folder: &str) -> String {
-    format!("Next, add them to your history: persona-builder merge {folder}")
+    format!("Next, add them to your history: voice merge {folder}")
 }
 
-pub const NOTHING_TO_BUILD: &str = "There's no history to build from yet. Read your history in first (persona-builder mine, then persona-builder merge), then try again.";
+pub const NOTHING_TO_BUILD: &str = "There's no history to build from yet. Read your history in first (voice mine, then voice merge), then try again.";
 pub const NO_CODEBOOK: &str = "Your assistant's folder has no briefs/codebook.md, which says what each kind of decision means. Put it back from crew/_template/briefs/codebook.md, then try again.";
 pub const CHECKING: &str = "Checking the draft for anything private before it's saved.";
 
@@ -94,7 +94,7 @@ pub fn private_hits(places: &[String]) -> String {
 
 pub fn thin_history(answered: usize) -> String {
     format!(
-        "Your history holds {answered} answered questions. Fewer than 150 is thin: persona-builder interview draft adds twenty questions to fill it out."
+        "Your history holds {answered} answered questions. Fewer than 150 is thin: voice interview draft adds twenty questions to fill it out."
     )
 }
 
@@ -121,7 +121,7 @@ pub const REPORT_BAD_NAME: &str = "A kind of decision in your assistant's settin
 pub const REPORT_UNREADABLE: &str = "Your last report couldn't be read, so it isn't shown. Build your assistant again to make a new one.";
 
 pub fn no_report(folder: &str) -> String {
-    format!("There's no report yet. Build your assistant first: persona-builder build {folder}")
+    format!("There's no report yet. Build your assistant first: voice build {folder}")
 }
 pub fn report_from(day: &str) -> String {
     format!("From the build on {day}:")
@@ -129,13 +129,11 @@ pub fn report_from(day: &str) -> String {
 
 pub const REPORT_ENOUGH_HISTORY: &str =
     "There's enough history to learn from, but too little to test yet.";
-pub const REPORT_INTERVIEW: &str =
-    "The interview fills out a thin history: persona-builder interview draft";
+pub const REPORT_INTERVIEW: &str = "The interview fills out a thin history: voice interview draft";
 pub const REPORT_AREAS: &str = "By kind of decision:";
 pub const REPORT_NO_AREAS: &str = "By kind of decision: none yet.";
-pub const REPORT_STRENGTHEN_INTERVIEW: &str =
-    "answer the interview (persona-builder interview draft)";
-pub const REPORT_STRENGTHEN_CLAUDEAI: &str = "add your claude.ai chats (persona-builder claudeai)";
+pub const REPORT_STRENGTHEN_INTERVIEW: &str = "answer the interview (voice interview draft)";
+pub const REPORT_STRENGTHEN_CLAUDEAI: &str = "add your claude.ai chats (voice claudeai)";
 pub const REPORT_STRENGTHEN_TIME: &str = "keep using Claude, since it learns from every answer";
 
 pub fn report_level(level: crate::report::Level) -> &'static str {
@@ -192,5 +190,4 @@ pub fn drafted_short(count: usize, kinds: &[(String, Option<usize>)]) -> String 
         "Drafted {count} questions on the kinds of decision your history holds the fewest examples of: {kinds}."
     )
 }
-pub const REPORT_STRENGTHEN_SHORT: &str =
-    "answer a few questions about it (persona-builder interview draft)";
+pub const REPORT_STRENGTHEN_SHORT: &str = "answer a few questions about it (voice interview draft)";

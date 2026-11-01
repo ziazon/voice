@@ -1,6 +1,4 @@
 //! Sign-in uses only invented stubs and disposable homes, never a real Claude account.
-use persona_builder_agent::text;
-use persona_builder_api::{dto::ClaudeStatus, *};
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -9,6 +7,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use voice_agent::text;
+use voice_api::{dto::ClaudeStatus, *};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Stub(PathBuf);
 impl Stub {

@@ -20,7 +20,7 @@ it('starts once, shows the code and fixed plain address, then finishes immediate
   expect(backend.githubSignInFinish).toHaveBeenCalledExactlyOnceWith()
   expect(wrapper.get('[data-code]').text()).toBe('ABCD-EFGH')
   expect(wrapper.text()).toContain('Go to github.com/login/device and enter this code:')
-  expect(wrapper.get('[role="status"]').text()).toBe('Waiting for you to approve Persona Builder on GitHub…')
+  expect(wrapper.get('[role="status"]').text()).toBe('Waiting for you to approve Voice on GitHub…')
   expect(wrapper.find('a').exists()).toBe(false)
   await button(wrapper, "Open GitHub").trigger('click')
   expect(backend.openLink).toHaveBeenCalledExactlyOnceWith({ link: 'githubDevice' })
@@ -53,7 +53,7 @@ it.each(['start', 'finish'] as const)('hides a non-Failure rejection from %s', a
 })
 it.each([
   [{ message: 'Open the device page yourself.' }, 'Open the device page yourself.'],
-  [new Error('private detail'), "Persona Builder couldn't open your web browser. Go to https://github.com/login/device yourself."],
+  [new Error('private detail'), "Voice couldn't open your web browser. Go to https://github.com/login/device yourself."],
 ])('shows a safe device-page failure', async (error, message) => {
   const wrapper = screen(GithubSignIn, fakeBackend({ githubSignInFinish: vi.fn().mockReturnValue(deferred<Said>().promise), openLink: vi.fn().mockRejectedValue(error) }))
   await button(wrapper, 'Sign in to GitHub').trigger('click')

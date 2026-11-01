@@ -1,10 +1,10 @@
 mod common;
 
 use common::{Scratch, parity_tools_available, repo};
-use persona_builder::{json::to_python_json, member::read_member};
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
+use voice_core::{json::to_python_json, member::read_member};
 
 const MEMBER: &str = r#"{
   "name": "Ari",
@@ -148,9 +148,9 @@ fn missing_tools_fail_only_when_parity_is_required() {
             ])
             .env("PATH", "/nonexistent-dir");
         if required {
-            command.env("PERSONA_BUILDER_REQUIRE_PARITY", "1");
+            command.env("VOICE_REQUIRE_PARITY", "1");
         } else {
-            command.env_remove("PERSONA_BUILDER_REQUIRE_PARITY");
+            command.env_remove("VOICE_REQUIRE_PARITY");
         }
         let output = command.output().unwrap();
         assert_eq!(

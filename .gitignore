@@ -49,7 +49,7 @@ venv/
 decisions*.jsonl
 **/private.json
 
-# Persona Builder app output
+# Voice app output
 builder/ui/node_modules/
 builder/ui/dist/
 builder/app/gen/

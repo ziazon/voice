@@ -2,12 +2,12 @@
 mod common;
 
 use common::Scratch;
-use persona_builder_api::{
+use std::fs;
+use voice_api::{
     agree_consent_in,
     dto::{NewAssistantRequest, SlugRequest},
     new_assistant_in, use_claudeai_export_in,
 };
-use std::fs;
 
 #[test]
 fn chosen_export_under_ssh_shows_denial_instead_of_export_bad() {
@@ -35,6 +35,6 @@ fn chosen_export_under_ssh_shows_denial_instead_of_export_bad() {
     let error = use_claudeai_export_in(&home.0, "pebble", &path).unwrap_err();
     assert_eq!(
         error.message,
-        "~/.ssh/export.zip is a kind of file that holds passwords or keys, so Persona Builder never opens it. Choose another file."
+        "~/.ssh/export.zip is a kind of file that holds passwords or keys, so Voice never opens it. Choose another file."
     );
 }

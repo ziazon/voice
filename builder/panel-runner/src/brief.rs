@@ -4,8 +4,8 @@ use crate::{
     run::Convened,
     text,
 };
-use persona_builder::member::Member;
 use std::collections::BTreeMap;
+use voice_core::member::Member;
 use voice_panels::{DeliberationState, RoundReport, clean, fence};
 
 fn section(parts: &mut Vec<String>, label: &str, value: &str) {

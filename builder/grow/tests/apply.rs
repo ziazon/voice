@@ -1,22 +1,5 @@
 mod common;
 use common::*;
-use persona_builder::ceilings::Ceilings;
-use persona_builder::error::Result;
-use persona_builder_agent::guard::Guard;
-use persona_builder_agent::{
-    claude::Claude,
-    ledger::{Cap, Session},
-};
-use persona_builder_grow::{
-    apply::{self, Left, Measured},
-    diff,
-    keep::keep,
-    record::*,
-    refresh, rules,
-    store::Store,
-    version::version,
-};
-use persona_builder_ingest::{filters::Filters, private::write_private_at};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -26,6 +9,23 @@ use std::{
     process::Command,
     sync::{Mutex, MutexGuard},
 };
+use voice_agent::guard::Guard;
+use voice_agent::{
+    claude::Claude,
+    ledger::{Cap, Session},
+};
+use voice_core::ceilings::Ceilings;
+use voice_core::error::Result;
+use voice_grow::{
+    apply::{self, Left, Measured},
+    diff,
+    keep::keep,
+    record::*,
+    refresh, rules,
+    store::Store,
+    version::version,
+};
+use voice_ingest::{filters::Filters, private::write_private_at};
 const BASE: &str = "# Decisions\n\n## By kind of question\n\n### communication\n\n**The lean:**\n- Keep the first step small.\n\n**Standing rules:**\n- None yet.\n\n**Precedents:**\n- None yet.\n";
 const CANDIDATE: &str = "# Decisions\n\n## By kind of question\n\n### communication\n\n**The lean:**\n- Keep the first step small.\n\n**Standing rules:**\n- ADJUST the first step.\n\n**Precedents:**\n- None yet.\n";
 static SUBPROCESS_TEST: Mutex<()> = Mutex::new(());
@@ -545,7 +545,7 @@ fn refusal(mode: &str) {
         "unanswered" => "still waiting for your answer",
         "rejected" => "You rejected that change",
         "moved" => "Draft a new change",
-        "damaged" | "hidden" => persona_builder_grow::text::DAMAGED_PROPOSAL,
+        "damaged" | "hidden" => voice_grow::text::DAMAGED_PROPOSAL,
         "active" => "Some of the tests this change was meant to pass have changed",
         _ => "",
     };
@@ -588,7 +588,7 @@ fn changed_decisions_during_answers_refuse_before_saving_measurement() {
         .to_string();
     assert_eq!(
         error,
-        "Your assistant's decisions changed while the change was being tested, so nothing was saved. Draft a new one with `persona-builder refresh propose`."
+        "Your assistant's decisions changed while the change was being tested, so nothing was saved. Draft a new one with `voice refresh propose`."
     );
     assert!(s.store().measurements().unwrap().is_empty());
     assert!(!s.dir.join("measurements.md").exists());
@@ -634,7 +634,7 @@ fn two_misfits_refuse_without_echoing_open_answer_or_saving() {
             error.contains("Claude's answers didn't fit twice, so nothing was saved ("),
             "{mode}: {error}"
         );
-        assert!(error.contains("Run `persona-builder refresh apply` again."));
+        assert!(error.contains("Run `voice refresh apply` again."));
         assert!(!error.contains("private sentinel"));
         assert!(!error.contains("not an offered option"));
         assert_eq!(s.calls(), 2);
@@ -722,7 +722,7 @@ fn finish_refuses_a_third_version_without_writing_entry_or_cases() {
     let error = s.finish(&p, &m).unwrap_err().to_string();
     assert_eq!(
         error,
-        "Your assistant's decisions.md changed after this change was tested, so it wasn't applied. Draft a new one with `persona-builder refresh propose`."
+        "Your assistant's decisions.md changed after this change was tested, so it wasn't applied. Draft a new one with `voice refresh propose`."
     );
     assert_eq!(s.snapshot(), before);
 }
@@ -855,7 +855,7 @@ fn resume_rechecks_saved_measurement_and_proposal() {
         let calls = s.calls();
         assert_eq!(
             s.measure(&p.id).expect_err(mode).to_string(),
-            persona_builder_grow::text::CHANGE_DOES_NOT_FIT,
+            voice_grow::text::CHANGE_DOES_NOT_FIT,
             "{mode}"
         );
         assert_eq!(s.calls(), calls, "{mode}");
@@ -882,7 +882,7 @@ fn finish_recomputes_reason_from_results() {
     assert_eq!(saved.measurement, m);
     s.finish(&saved.proposal, &saved.measurement).unwrap();
     let entry = fs::read_to_string(s.dir.join("measurements.md")).unwrap();
-    assert!(entry.contains(persona_builder_grow::text::KEEP_REASON));
+    assert!(entry.contains(voice_grow::text::KEEP_REASON));
     assert!(!entry.contains(&m.reason));
 }
 
@@ -899,10 +899,7 @@ fn finish_refuses_missing_named_case_before_any_write() {
         .to_string();
     assert_eq!(
         error,
-        persona_builder_grow::text::rule(
-            &p.cases[0],
-            persona_builder_grow::text::MISSING_REFERENCE
-        )
+        voice_grow::text::rule(&p.cases[0], voice_grow::text::MISSING_REFERENCE)
     );
     assert_eq!(s.snapshot(), before);
 }
@@ -926,7 +923,7 @@ fn duplicate_approvals_refuse_before_any_call() {
         s.measure(&p.id)
             .expect_err("duplicate approval")
             .to_string(),
-        persona_builder_grow::text::rule(&p.id, persona_builder_grow::text::ALREADY_APPROVED)
+        voice_grow::text::rule(&p.id, voice_grow::text::ALREADY_APPROVED)
     );
     assert_eq!(s.calls(), 0);
     assert_eq!(s.snapshot(), before);
@@ -955,7 +952,7 @@ fn stray_carriage_return_on_an_added_line_refuses_before_any_call() {
         s.measure(&p.id)
             .expect_err("hidden added character")
             .to_string(),
-        persona_builder_grow::text::CHANGE_DOES_NOT_FIT
+        voice_grow::text::CHANGE_DOES_NOT_FIT
     );
     assert_eq!(s.calls(), 0);
     assert_eq!(s.snapshot(), before);
@@ -999,7 +996,7 @@ fn resume_rechecks_an_undone_result_by_the_keep_rule() {
         s.measure(&p.id)
             .expect_err("forged undone result")
             .to_string(),
-        persona_builder_grow::text::CHANGE_DOES_NOT_FIT
+        voice_grow::text::CHANGE_DOES_NOT_FIT
     );
     assert_eq!(s.calls(), calls);
     assert_eq!(s.snapshot(), before);
@@ -1059,7 +1056,7 @@ fn locked_answer_matches_answer_without_taking_another_lock() {
     let s = Setup::new();
     let p = s.proposal(CANDIDATE);
     let store = s.store();
-    let _lock = persona_builder_ingest::private::lock_state(&s.f.home, &s.f.member.slug).unwrap();
+    let _lock = voice_ingest::private::lock_state(&s.f.home, &s.f.member.slug).unwrap();
     let actual = refresh::answer_locked(&store, &s.dir, &p.id, Decision::Approved, NOW);
     assert!(
         actual.is_ok(),
@@ -1070,8 +1067,8 @@ fn locked_answer_matches_answer_without_taking_another_lock() {
 
 #[test]
 fn apply_briefs_name_the_build_sources() {
-    use persona_builder::ceilings::{Ceilings, Source};
-    use persona_builder_agent::guard::Guard;
+    use voice_agent::guard::Guard;
+    use voice_core::ceilings::{Ceilings, Source};
     let s = Setup::new();
     let proposal = s.approved(CANDIDATE);
     let claude = Claude::at(s.stub.join("claude"));
@@ -1094,7 +1091,7 @@ fn apply_briefs_name_the_build_sources() {
     .unwrap();
     assert!(!measured.already);
     assert_eq!(
-        persona_builder_build::build::SOURCES,
+        voice_build::build::SOURCES,
         &[Source::ClaudeHistory, Source::Typed, Source::CrewFolder]
     );
     let sources = provider.sources.lock().unwrap();
@@ -1105,6 +1102,6 @@ fn apply_briefs_name_the_build_sources() {
     assert!(
         sources
             .iter()
-            .all(|sources| sources == persona_builder_build::build::SOURCES)
+            .all(|sources| sources == voice_build::build::SOURCES)
     );
 }

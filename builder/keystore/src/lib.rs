@@ -9,7 +9,7 @@ pub use keyring_core;
 use keyring_core::{CredentialStore, Entry, Result};
 use std::{collections::HashMap, sync::Arc};
 
-/// This computer has no password store Persona Builder can use: no Secret Service is running on
+/// This computer has no password store Voice can use: no Secret Service is running on
 /// Linux, or the OS is neither Windows nor Linux.
 #[derive(Debug, PartialEq, Eq)]
 pub struct NoStore;
@@ -39,7 +39,7 @@ impl System {
         let store = zbus_secret_service_keyring_store::Store::new().map_err(|_| NoStore)?;
         Ok(Self {
             store,
-            modifiers: &[("label", "Persona Builder: GitHub sign-in")],
+            modifiers: &[("label", "Voice: GitHub sign-in")],
         })
     }
 

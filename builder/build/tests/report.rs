@@ -1,20 +1,20 @@
 //! The plain report uses only counts, checked test results and the codebook's areas.
-use persona_builder_build::{
-    build::{Backtest, Built, Counts},
-    report::{self, Area, Level, REPORT, REPORT_MOST, Report, SCHEMA, Strengthen, Test},
-};
-use persona_builder_ingest::private;
-use persona_builder_steps::{
-    book::Book,
-    labels::Row,
-    score::{Cell, Score},
-};
 use serde_json::{Value, json};
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
+};
+use voice_build::{
+    build::{Backtest, Built, Counts},
+    report::{self, Area, Level, REPORT, REPORT_MOST, Report, SCHEMA, Strengthen, Test},
+};
+use voice_ingest::private;
+use voice_steps::{
+    book::Book,
+    labels::Row,
+    score::{Cell, Score},
 };
 
 fn book() -> Book {
@@ -313,9 +313,9 @@ fn render_untested_words_are_exact_and_interview_is_only_for_thin_history() {
             "How well your assistant knows you: Thin.",
             "Your history holds 44 answered questions. It takes about 150 to know you well.",
             "Only 10 questions were kept back to test your assistant, fewer than 30, so there's too little to measure yet. Until it can be tested, it decides nothing on its own.",
-            "The interview fills out a thin history: persona-builder interview draft",
+            "The interview fills out a thin history: voice interview draft",
             "By kind of decision:",
-            "- scope: Thin, 1 example so far. To strengthen it: answer the interview (persona-builder interview draft); add your claude.ai chats (persona-builder claudeai); keep using Claude, since it learns from every answer.",
+            "- scope: Thin, 1 example so far. To strengthen it: answer the interview (voice interview draft); add your claude.ai chats (voice claudeai); keep using Claude, since it learns from every answer.",
         ]
     );
     r.answered = 150;
@@ -508,12 +508,12 @@ fn render_short_interview_at_150_and_full_at_149() {
     assert!(
         report::render(&r)
             .join("\n")
-            .contains("answer a few questions about it (persona-builder interview draft)")
+            .contains("answer a few questions about it (voice interview draft)")
     );
     r.answered = 149;
     assert!(
         report::render(&r)
             .join("\n")
-            .contains("answer the interview (persona-builder interview draft)")
+            .contains("answer the interview (voice interview draft)")
     );
 }

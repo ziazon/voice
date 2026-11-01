@@ -1,19 +1,19 @@
 mod common;
 
 use common::*;
-use persona_builder::{
-    ceilings::{Ceilings, Source},
-    member::Member,
-};
-use persona_builder_agent::guard::Guard;
-use persona_builder_agent::{
+use serde_json::{Value, json};
+use std::{fs, os::unix::fs::symlink, time::Duration};
+use voice_agent::guard::Guard;
+use voice_agent::{
     claude::MAX_PROMPT,
     ledger::local_day,
     provider::{Brief, Usage},
     text,
 };
-use serde_json::{Value, json};
-use std::{fs, os::unix::fs::symlink, time::Duration};
+use voice_core::{
+    ceilings::{Ceilings, Source},
+    member::Member,
+};
 
 const MARKER: &str = "PLOVERMARK";
 
@@ -60,7 +60,7 @@ fn a_call_runs_tool_less_in_the_work_folder_with_the_prompt_on_stdin() {
     let reply = guard
         .call(
             &session,
-            &persona_builder_agent::provider::Brief {
+            &voice_agent::provider::Brief {
                 sources: &[Source::ClaudeHistory],
                 ..call(&prompt, &schema)
             },
@@ -422,7 +422,7 @@ fn a_program_that_cannot_start_spends_nothing() {
     let home = Scratch::new("call-missing");
     let session = common::session(&home.0);
     let schema = schema();
-    let claude = persona_builder_agent::claude::Claude::at(home.0.join("no-such-claude"));
+    let claude = voice_agent::claude::Claude::at(home.0.join("no-such-claude"));
     let error = Guard::new(vec![&claude], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap_err();
@@ -436,13 +436,13 @@ fn a_call_that_never_started_gives_its_budget_back() {
     seed_ledger(
         &home.0,
         &[spent_line(
-            &persona_builder_agent::ledger::local_day(fixed_time()),
+            &voice_agent::ledger::local_day(fixed_time()),
             45.0,
         )],
     );
     let session = common::session(&home.0);
     let schema = schema();
-    let missing = persona_builder_agent::claude::Claude::at(home.0.join("no-such-claude"));
+    let missing = voice_agent::claude::Claude::at(home.0.join("no-such-claude"));
     Guard::new(vec![&missing], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap_err();
@@ -508,7 +508,7 @@ fn a_prompt_that_starts_like_a_command_is_refused() {
 
 #[test]
 fn optional_budgets_change_only_the_budget_arguments() {
-    use persona_builder_agent::ledger::{Cap, Session};
+    use voice_agent::ledger::{Cap, Session};
     for (daily, step, spent, budget) in [
         (0.0, 0.0, 0.0, None),
         (20.0, 0.0, 0.0, Some("20.00")),
@@ -535,7 +535,7 @@ fn optional_budgets_change_only_the_budget_arguments() {
 
 #[test]
 fn an_unlimited_call_without_a_cost_records_unknown_and_the_ledger_reads_it() {
-    use persona_builder_agent::ledger::{Cap, Session};
+    use voice_agent::ledger::{Cap, Session};
     let home = Scratch::new("unknown-cost");
     let stub = Stub::replying(&reply_with(json!({"total_cost_usd": null})), 0);
     let cap = Cap::new(0.0, 0.0).expect("zero means no limit");
@@ -579,7 +579,7 @@ fn local_history_is_refused_before_the_stub_runs_or_spends() {
         .unwrap_err();
     assert_eq!(
         error.to_string(),
-        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> claude-history anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."
+        "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> claude-history anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`."
     );
     assert!(!stub.ran());
     assert!(ledger_lines(&home.0).is_empty());

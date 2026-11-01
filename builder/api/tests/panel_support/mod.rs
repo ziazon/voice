@@ -1,5 +1,4 @@
 //! Isolated invented assistants and a Claude Code substitute shared by panel boundary tests.
-use persona_builder_api::{agree_consent_in, dto::*, new_assistant_in};
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -7,6 +6,7 @@ use std::{
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_api::{agree_consent_in, dto::*, new_assistant_in};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 pub struct Home {
     pub path: PathBuf,

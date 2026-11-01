@@ -18,7 +18,7 @@ async function mark(mine: boolean, uuids: string[], unmarked = false) {
     const answer = await backend.markClaudeaiChats({ slug: props.slug, mine, uuids, unmarked })
     emit('update', answer)
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't read this download. Check it's the file claude.ai sent you, then choose it again.")
+    error.value = failureMessage(failure, "Voice couldn't read this download. Check it's the file claude.ai sent you, then choose it again.")
   } finally {
     running.value = false
   }

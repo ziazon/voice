@@ -1,17 +1,17 @@
 [package]
-name = "persona-builder-grow"
+name = "voice-grow"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
-persona-builder = { path = "../core" }
-persona-builder-ingest = { path = "../ingest" }
-persona-builder-steps = { path = "../steps" }
+voice-core = { path = "../core" }
+voice-ingest = { path = "../ingest" }
+voice-steps = { path = "../steps" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "=1.13.1"
-persona-builder-agent = { path = "../agent" }
-persona-builder-build = { path = "../build" }
+voice-agent = { path = "../agent" }
+voice-build = { path = "../build" }
 sha1_smol = "=1.0.1"

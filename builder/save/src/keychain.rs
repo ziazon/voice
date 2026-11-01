@@ -1,7 +1,7 @@
 use crate::{secret::Secret, text};
-use persona_builder::error::{Error, Result};
-use persona_builder_keystore::{System, keyring_core};
 use std::sync::Mutex;
+use voice_core::error::{Error, Result};
+use voice_keystore::{System, keyring_core};
 use zeroize::Zeroize;
 
 pub trait TokenStore {
@@ -9,14 +9,14 @@ pub trait TokenStore {
     fn save(&self, token: &Secret) -> Result<()>;
     fn forget(&self) -> Result<()>;
 }
-pub const ACCOUNT: &str = "persona-builder";
+pub const ACCOUNT: &str = "voice";
 pub struct Keychain {
     service: String,
 }
 impl Keychain {
     pub fn github() -> Self {
         Self {
-            service: "persona-builder.github".into(),
+            service: "voice.github".into(),
         }
     }
     pub fn with_service(service: &str) -> Result<Self> {
@@ -225,7 +225,7 @@ pub fn store_line(service: &str, token: &Secret) -> Result<Secret> {
         return Err(failed());
     }
     let prefix = "add-generic-password -U -s ";
-    let middle = " -a persona-builder -w \"";
+    let middle = " -a voice -w \"";
     let suffix = "\"\n";
     let mut line = String::with_capacity(
         prefix.len() + service.len() + middle.len() + token.expose().len() + suffix.len(),

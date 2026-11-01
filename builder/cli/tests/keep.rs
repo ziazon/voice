@@ -1,5 +1,4 @@
 //! Keep fictional Robin's answers privately, and count their tests without printing their words.
-use persona_builder::crew::{NewMember, new_member};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -8,6 +7,7 @@ use std::{
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 const KEPT: &str =
@@ -32,7 +32,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Robin",
                 pronouns: "they/them",
                 principal: "Robin",
@@ -56,7 +56,7 @@ impl Fixture {
         fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
     }
     fn run(&self, command: &str, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &self.home)
             .arg(command)
             .arg(&self.member)
@@ -206,7 +206,7 @@ fn cases_shows_none_then_counts_two_answers_in_category_order_without_their_word
 
 #[test]
 fn help_lists_the_new_commands_in_plain_words() {
-    let out = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    let out = Command::new(env!("CARGO_BIN_EXE_voice"))
         .arg("--help")
         .output()
         .unwrap();

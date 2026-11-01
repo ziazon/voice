@@ -1,23 +1,5 @@
 mod common;
 use common::*;
-use persona_builder::ceilings::Ceilings;
-use persona_builder_agent::guard::Guard;
-use persona_builder_agent::{
-    claude::Claude,
-    ledger::{Cap, Session},
-};
-use persona_builder_grow::{
-    diff,
-    keep::keep,
-    record::*,
-    refresh::{self, Proposed},
-    store::Store,
-    version::version,
-};
-use persona_builder_ingest::{
-    filters::Filters,
-    private::{lock_state, write_private_at},
-};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -25,6 +7,24 @@ use std::{
     path::PathBuf,
     process::Command,
     sync::{Mutex, MutexGuard},
+};
+use voice_agent::guard::Guard;
+use voice_agent::{
+    claude::Claude,
+    ledger::{Cap, Session},
+};
+use voice_core::ceilings::Ceilings;
+use voice_grow::{
+    diff,
+    keep::keep,
+    record::*,
+    refresh::{self, Proposed},
+    store::Store,
+    version::version,
+};
+use voice_ingest::{
+    filters::Filters,
+    private::{lock_state, write_private_at},
 };
 
 const BASE: &str = "# Decisions\n\n## By kind of question\n\n### communication\n\n**The lean:**\n- Keep the first step small.\n\n**Standing rules:**\n- None yet.\n\n**Precedents:**\n- None yet.\n";
@@ -101,7 +101,7 @@ impl Setup {
     fn plan(&self, plan: Value) {
         fs::write(self.stub.join("plan.json"), plan.to_string()).unwrap();
     }
-    fn propose(&self) -> persona_builder::error::Result<Proposed> {
+    fn propose(&self) -> voice_core::error::Result<Proposed> {
         let session = Session::open(&self.f.home, &self.f.member.slug, Cap::default()).unwrap();
         refresh::propose(
             &Guard::new(
@@ -140,7 +140,7 @@ impl Setup {
     fn check(
         &self,
         reply: &Value,
-    ) -> Result<Vec<persona_builder_grow::edit::Edit>, persona_builder_build::build::Misfit> {
+    ) -> Result<Vec<voice_grow::edit::Edit>, voice_build::build::Misfit> {
         let (cases, signals) = self.asked();
         refresh::check_reply(
             &self.f.member.codebook.as_ref().unwrap().categories,
@@ -185,8 +185,8 @@ fn saves_private_change_and_proves_each_diff_without_touching_member() {
         "2. A smaller",
         "--- a/decisions.md",
         "2",
-        "persona-builder refresh approve",
-        "persona-builder refresh reject",
+        "voice refresh approve",
+        "voice refresh reject",
     ] {
         assert!(lines.contains(expected), "missing {expected}");
     }
@@ -239,7 +239,7 @@ fn two_misfits_save_nothing_and_do_not_echo_reply_words() {
             "{error}"
         );
         assert!(
-            error.contains("Run `persona-builder refresh propose` again."),
+            error.contains("Run `voice refresh propose` again."),
             "{error}"
         );
         assert_eq!(s.calls(), 2);
@@ -652,7 +652,7 @@ fn rendering_damaged_text_returns_only_the_refusal() {
     p.summary = "zebracorn\u{200b}".into();
     assert_eq!(
         refresh::render(&p, &s.dir),
-        vec![persona_builder_grow::text::DAMAGED_PROPOSAL]
+        vec![voice_grow::text::DAMAGED_PROPOSAL]
     );
 }
 #[test]
@@ -746,7 +746,7 @@ fn unchanged_replacement_is_a_misfit() {
     v["edits"][0]["text"] = json!("Keep the first step small.");
     assert_eq!(
         s.check(&v).unwrap_err().shown,
-        persona_builder_grow::text::REPLY_APPLY
+        voice_grow::text::REPLY_APPLY
     );
 }
 
@@ -775,11 +775,11 @@ fn hidden_context_refuses_before_saving() {
 #[test]
 fn heading_shows_date_without_time_and_accepts_short_created() {
     assert_eq!(
-        persona_builder_grow::text::refresh_heading(NOW, "change-id"),
+        voice_grow::text::refresh_heading(NOW, "change-id"),
         "Change drafted 2026-03-04 (change-id)"
     );
     assert_eq!(
-        persona_builder_grow::text::refresh_heading("short", "change-id"),
+        voice_grow::text::refresh_heading("short", "change-id"),
         "Change drafted short (change-id)"
     );
 }
@@ -812,8 +812,8 @@ fn windows_proposal_is_saved_shown_and_its_diffs_apply() {
 
 #[test]
 fn refresh_briefs_name_the_build_sources() {
-    use persona_builder::ceilings::{Ceilings, Source};
-    use persona_builder_agent::guard::Guard;
+    use voice_agent::guard::Guard;
+    use voice_core::ceilings::{Ceilings, Source};
     let s = Setup::new(1);
     let claude = Claude::at(s.stub.join("claude"));
     let provider = RecordingProvider::new(&claude);
@@ -835,7 +835,7 @@ fn refresh_briefs_name_the_build_sources() {
         Proposed::Drafted(_)
     ));
     assert_eq!(
-        persona_builder_build::build::SOURCES,
+        voice_build::build::SOURCES,
         &[Source::ClaudeHistory, Source::Typed, Source::CrewFolder]
     );
     let sources = provider.sources.lock().unwrap();
@@ -843,6 +843,6 @@ fn refresh_briefs_name_the_build_sources() {
     assert!(
         sources
             .iter()
-            .all(|sources| sources == persona_builder_build::build::SOURCES)
+            .all(|sources| sources == voice_build::build::SOURCES)
     );
 }

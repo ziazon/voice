@@ -3,16 +3,6 @@ use crate::{
     assistants::{failure, home, listed},
     dto,
 };
-use persona_builder::error::{Error, Result as CoreResult};
-use persona_builder_save::{
-    flow::{self, GithubRemotes, MemberPaths, RemoteCheck, Saved, Saver},
-    git::Git,
-    github::{self, DeviceCode, Endpoints, Github, UreqHttp},
-    keychain::{Keychain, TokenStore},
-    record::{self, SaveRecord},
-    secret::Secret,
-    text,
-};
 use std::{
     ffi::OsString,
     path::Path,
@@ -23,20 +13,29 @@ use std::{
     },
     time::Duration,
 };
+use voice_core::error::{Error, Result as CoreResult};
+use voice_save::{
+    flow::{self, GithubRemotes, MemberPaths, RemoteCheck, Saved, Saver},
+    git::Git,
+    github::{self, DeviceCode, Endpoints, Github, UreqHttp},
+    keychain::{Keychain, TokenStore},
+    record::{self, SaveRecord},
+    secret::Secret,
+    text,
+};
 
 type Result<T> = std::result::Result<T, dto::Failure>;
 const OPTIONS: &str =
-    "Persona Builder couldn't check where your assistant can be kept. Close it and open it again.";
+    "Voice couldn't check where your assistant can be kept. Close it and open it again.";
 const CHANGED: &str =
     "The places to keep your assistant have changed. Look at them again, then choose.";
 const SIGN_IN: &str =
     "GitHub sign-in didn't work. Try again later, or keep your assistant on this computer only.";
 const START: &str = "Start signing in to GitHub again.";
-const SIGN_OUT: &str = "Persona Builder couldn't sign you out of GitHub. Try again.";
-const CHOOSE: &str =
-    "Persona Builder couldn't keep your choice. Close it and open it again, then try again.";
+const SIGN_OUT: &str = "Voice couldn't sign you out of GitHub. Try again.";
+const CHOOSE: &str = "Voice couldn't keep your choice. Close it and open it again, then try again.";
 const SAVE: &str =
-    "Persona Builder couldn't save your assistant. Try again, or keep it on this computer only.";
+    "Voice couldn't save your assistant. Try again, or keep it on this computer only.";
 const SIGNUP_PAGE: &str = "https://github.com/signup";
 const DEVICE_PAGE: &str = "https://github.com/login/device";
 fn said(message: impl Into<String>) -> dto::Said {
@@ -48,10 +47,10 @@ fn said(message: impl Into<String>) -> dto::Said {
 pub struct FolderPrivacy;
 impl flow::PrivacyCheck for FolderPrivacy {
     fn hits(&self, folder: &Path) -> CoreResult<Vec<String>> {
-        let files = persona_builder_save::git::folder_files(folder)?;
-        let member = persona_builder::member::read_member(&folder.join("member.json"))?;
-        let filters = persona_builder_ingest::filters::Filters::compile(&member.filters)?;
-        Ok(persona_builder_ingest::check::scan(folder, &files, &filters)?.hits)
+        let files = voice_save::git::folder_files(folder)?;
+        let member = voice_core::member::read_member(&folder.join("member.json"))?;
+        let filters = voice_ingest::filters::Filters::compile(&member.filters)?;
+        Ok(voice_ingest::check::scan(folder, &files, &filters)?.hits)
     }
 }
 pub struct UnavailableRemotes;
@@ -150,11 +149,11 @@ pub fn open_link_in(
     let (url, fallback) = match request.link {
         dto::Link::GithubSignup => (
             SIGNUP_PAGE,
-            "Persona Builder couldn't open your web browser. Go to https://github.com/signup yourself.",
+            "Voice couldn't open your web browser. Go to https://github.com/signup yourself.",
         ),
         dto::Link::GithubDevice => (
             DEVICE_PAGE,
-            "Persona Builder couldn't open your web browser. Go to https://github.com/login/device yourself.",
+            "Voice couldn't open your web browser. Go to https://github.com/login/device yourself.",
         ),
     };
     open(url).map_err(|_| failure(fallback))

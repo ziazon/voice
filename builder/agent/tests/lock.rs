@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use persona_builder_agent::ledger::{Cap, Session};
+use voice_agent::ledger::{Cap, Session};
 
 #[test]
 fn one_session_per_assistant_at_a_time() {
@@ -32,7 +32,7 @@ fn open_existing_creates_nothing_and_shares_the_lock() {
         .expect("a missing state folder must be refused");
     assert!(matches!(
         error,
-        persona_builder::error::Error::Io { source, .. }
+        voice_core::error::Error::Io { source, .. }
             if source.kind() == std::io::ErrorKind::NotFound
     ));
     assert!(!home.0.join(".claude/state/wren").exists());

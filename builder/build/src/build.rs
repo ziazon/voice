@@ -2,20 +2,25 @@
 //! the blind backtest, one call at a time through the privacy guard, every reply checked
 //! before it is used and kept in `build/` so a rerun pays only for what was not finished.
 use crate::text;
-use persona_builder::{
+use serde_json::{Map, Value, json};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
+use voice_agent::{claude, guard::Guard, ledger::Session, provider::Brief};
+use voice_core::{
     ceilings::Source,
     error::{Error, Result},
     member::Member,
 };
-use persona_builder_agent::{claude, guard::Guard, ledger::Session, provider::Brief};
-use persona_builder_ingest::{
+use voice_ingest::{
     corpus::{read_records, split},
     filters::Filters,
     mine::to_jsonl,
     private::{private_folder, read_private_at, write_private_at},
     python::truthy,
 };
-use persona_builder_steps::{
+use voice_steps::{
     book::Book,
     chunk::chunk,
     distil::{Group, distil_in},
@@ -25,11 +30,6 @@ use persona_builder_steps::{
     shingle::overlaps,
     similar::{similar, similar_text},
     text_check::hidden,
-};
-use serde_json::{Map, Value, json};
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
 };
 
 /// The most records in one labelling call, as `PROMPT.md` chunks them.
@@ -655,7 +655,7 @@ pub fn check_backtest_reply(
 }
 
 /// True at 5 or more High picks with at least 90% right.
-pub fn live(high: Option<&persona_builder_steps::score::Cell>) -> bool {
+pub fn live(high: Option<&voice_steps::score::Cell>) -> bool {
     high.is_some_and(|cell| cell.n >= THIN && cell.hits * 10 >= cell.n * 9)
 }
 
@@ -753,7 +753,7 @@ pub const SOURCES: &[Source] = &[Source::ClaudeHistory, Source::Typed, Source::C
 
 /// Sources that may be in this build's corpus, including mail mined by the guided build.
 pub fn sources(home: &Path, member: &Member) -> Result<Vec<Source>> {
-    let mined = persona_builder_ingest::private::list_private(home, &member.slug)?
+    let mined = voice_ingest::private::list_private(home, &member.slug)?
         .iter()
         .any(|name| name.starts_with("decisions-src-") && name.ends_with(".jsonl"));
     let configured = member
@@ -997,10 +997,7 @@ pub fn build(
         progress(&text::too_few(held));
         None
     } else {
-        let model = format!(
-            "{sections}{}",
-            persona_builder_steps::labels::tally_markdown(&rows)
-        );
+        let model = format!("{sections}{}", voice_steps::labels::tally_markdown(&rows));
         let schema = backtest_schema();
         let mut predictions = Map::new();
         let batches = batches(&heldout.questions);

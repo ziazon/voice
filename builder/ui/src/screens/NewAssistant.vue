@@ -28,7 +28,7 @@ async function make() {
   try {
     emit('made', await backend.newAssistant(request.value))
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again.")
+    error.value = failureMessage(failure, "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.")
   } finally {
     saving.value = false
   }

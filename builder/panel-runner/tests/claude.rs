@@ -1,7 +1,4 @@
 //! Public model-call and leak-guard contracts, using only invented assistants and details.
-use persona_builder::crew::{Decisions, NewMember, new_member_embedded};
-use persona_builder_agent::ledger::{Cap, Session, local_day};
-use persona_builder_ingest::filters::Filters;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -14,6 +11,9 @@ use std::{
     },
     time::SystemTime,
 };
+use voice_agent::ledger::{Cap, Session, local_day};
+use voice_core::crew::{Decisions, NewMember, new_member_embedded};
+use voice_ingest::filters::Filters;
 use voice_panel_runner::{
     guard,
     turns::{ClaudeTurns, Turns},
@@ -286,7 +286,7 @@ fn filters() -> Vec<Filters> {
     [("amberfern", "a^"), ("a^", "violetvault")]
         .into_iter()
         .map(|(personal, secret)| {
-            Filters::compile(&persona_builder::member::Filters {
+            Filters::compile(&voice_core::member::Filters {
                 excluded_folders: "a^".into(),
                 personal: personal.into(),
                 secret: secret.into(),
@@ -399,7 +399,7 @@ fn a_seats_local_typed_ceiling_is_its_turn_error_without_a_stub_call() {
     assert_eq!(
         turn.error.as_deref(),
         Some(
-            "Nothing was sent. This step uses what you type into Persona Builder (interview answers, notes on answers, a panel's question), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> typed anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."
+            "Nothing was sent. This step uses what you type into Voice (interview answers, notes on answers, a panel's question), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> typed anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`."
         )
     );
     assert!(turn.post.is_none());

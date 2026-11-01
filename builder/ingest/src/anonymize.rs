@@ -3,10 +3,6 @@ mod detect;
 mod rules;
 mod scan;
 mod terms;
-use persona_builder::{
-    deny::DenyList,
-    error::{Error, Result},
-};
 use regex::Regex;
 pub use rules::Rules;
 use serde_json::{Value, json};
@@ -14,6 +10,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     sync::LazyLock,
+};
+use voice_core::{
+    deny::DenyList,
+    error::{Error, Result},
 };
 
 const INVISIBLE: &[(u32, u32)] = &[

@@ -4,11 +4,11 @@ use crate::{
     draft, interview,
     report::{self, Report},
 };
-use persona_builder::{error::Result, member::Member};
-use persona_builder_agent::ledger::local_day;
-use persona_builder_ingest::{corpus::read_records, filters::Filters, private};
-use persona_builder_steps::book::{Book, book};
 use std::{path::Path, time::SystemTime};
+use voice_agent::ledger::local_day;
+use voice_core::{error::Result, member::Member};
+use voice_ingest::{corpus::read_records, filters::Filters, private};
+use voice_steps::book::{Book, book};
 
 pub struct Prepared {
     pub book: Book,

@@ -1,7 +1,7 @@
 mod common;
 use common::Scratch;
-use persona_builder_ingest::private::{remove_private, write_private};
 use std::{fs, os::unix::fs::symlink};
+use voice_ingest::private::{remove_private, write_private};
 
 #[test]
 fn removes_private_file_and_reports_missing_without_creating_folders() {

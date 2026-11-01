@@ -1,11 +1,11 @@
 mod common;
 
 use common::{Scratch, checked, copy_tree, parity_tools_available, repo};
-use persona_builder::crew::{NewMember, new_member, new_member_embedded};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use voice_core::crew::{NewMember, new_member, new_member_embedded};
 
 fn isolated<'a>(command: &'a mut Command, home: &Path) -> &'a mut Command {
     command
@@ -128,7 +128,7 @@ fn parity_case(name: &str, slug: &str, pronouns: &str, principal: &str, principa
             &fork.join("crew/_template"),
             &target,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name,
                 pronouns,
                 principal,
@@ -146,7 +146,7 @@ fn parity_case(name: &str, slug: &str, pronouns: &str, principal: &str, principa
         new_member_embedded(
             &embedded_target,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name,
                 pronouns,
                 principal,

@@ -12,12 +12,12 @@ it('previews zero and closes without deleting', async () => {
   expect(wrapper.find('h2').exists()).toBe(true)
   await flushPromises()
   expect(wrapper.text()).toContain('Forget what Ari learned from')
-  expect(wrapper.text()).toContain("Forget deletes the history Ari learned from and Persona Builder's working files. Ari itself stays.")
+  expect(wrapper.text()).toContain("Forget deletes the history Ari learned from and Voice's working files. Ari itself stays.")
   await button(wrapper, 'Forget…').trigger('click')
   expect(backend.forgetPreview).toHaveBeenCalledExactlyOnceWith({ slug: 'ari' })
   expect(button(wrapper, 'Checking…').attributes('disabled')).toBeDefined()
   pending.resolve({ files: 0 }); await flushPromises()
-  expect(wrapper.text()).toContain("There's nothing to forget: Persona Builder hasn't kept anything for Ari yet.")
+  expect(wrapper.text()).toContain("There's nothing to forget: Voice hasn't kept anything for Ari yet.")
   expect(wrapper.findAll('button').map(b => b.text())).not.toContain('Delete these files')
   await button(wrapper, 'Close').trigger('click')
   expect(button(wrapper, 'Forget…').exists()).toBe(true)
@@ -33,8 +33,8 @@ it.each([1, 7])('confirms %i files, deletes the previewed count and emits forgot
   await button(wrapper, 'Forget…').trigger('click'); await flushPromises()
   expect(wrapper.text()).toContain(`This deletes ${files === 1 ? '1 file' : '7 files'} from your Claude folder:`)
   expect(wrapper.findAll('ul').map(list => list.findAll('li').map(item => item.text()))).toEqual([
-    ['the history Ari learned from', "Persona Builder's working files, including the claude.ai files", 'your permission to read your history', 'your choice of where to keep a copy of Ari'],
-    ["Ari's own folder, and everything Persona Builder wrote into it", 'any copy of Ari on GitHub', "Ari in Claude Code, if it's on"],
+    ['the history Ari learned from', "Voice's working files, including the claude.ai files", 'your permission to read your history', 'your choice of where to keep a copy of Ari'],
+    ["Ari's own folder, and everything Voice wrote into it", 'any copy of Ari on GitHub', "Ari in Claude Code, if it's on"],
   ])
   expect(wrapper.text()).toContain("You can't undo this.")
   expect(button(wrapper, 'Delete these files').classes()).toContain('btn-danger')
@@ -79,6 +79,6 @@ it.each(['preview', 'delete'] as const)('hides a non-Failure %s rejection', asyn
   expect(wrapper.findAll('button').map(b => b.text())).toContain('Forget…')
   await button(wrapper, 'Forget…').trigger('click'); await flushPromises()
   if (stage === 'delete') { await button(wrapper, 'Delete these files').trigger('click'); await flushPromises() }
-  expect(wrapper.find('.alert-warning').text()).toBe("Persona Builder couldn't forget anything, and nothing was deleted. Close it and open it again, then try again.")
+  expect(wrapper.find('.alert-warning').text()).toBe("Voice couldn't forget anything, and nothing was deleted. Close it and open it again, then try again.")
   expect(wrapper.text()).not.toContain('private detail')
 })

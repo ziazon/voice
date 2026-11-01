@@ -30,7 +30,7 @@ it('announces loading, then shows choices, recommendation, note and fixed signup
 })
 it.each([
   [{ message: 'Could not check the places.' }, 'Could not check the places.'],
-  [new Error('private detail'), "Persona Builder couldn't check where your assistant can be kept. Close it and open it again."],
+  [new Error('private detail'), "Voice couldn't check where your assistant can be kept. Close it and open it again."],
 ])('shows a safe options failure and retries', async (error, message) => {
   const backend = fakeBackend({ saveOptions: vi.fn().mockRejectedValueOnce(error).mockResolvedValue(options) })
   const wrapper = screen(Save, backend, { assistant })
@@ -43,7 +43,7 @@ it.each([
 })
 it.each([
   [{ message: 'Open the signup page yourself.' }, 'Open the signup page yourself.'],
-  [new Error('private detail'), "Persona Builder couldn't open your web browser. Go to https://github.com/signup yourself."],
+  [new Error('private detail'), "Voice couldn't open your web browser. Go to https://github.com/signup yourself."],
 ])('shows a safe signup failure', async (error, message) => {
   const wrapper = screen(Save, fakeBackend({ saveOptions: vi.fn().mockResolvedValue(options), openLink: vi.fn().mockRejectedValue(error) }), { assistant })
   await flushPromises()
@@ -133,7 +133,7 @@ it.each(['', '   '])('disables keeping a GitHub choice with an empty trimmed nam
 })
 it.each([
   [{ message: 'Pick a different repo name.' }, 'Pick a different repo name.'],
-  [new Error('private detail'), "Persona Builder couldn't keep your choice. Close it and open it again, then try again."],
+  [new Error('private detail'), "Voice couldn't keep your choice. Close it and open it again, then try again."],
 ])('shows a safe choice failure', async (error, message) => {
   const wrapper = screen(Save, fakeBackend({ saveOptions: vi.fn().mockResolvedValue({ ...options, signedIn: true }), saveChoose: vi.fn().mockRejectedValue(error) }), { assistant })
   await flushPromises()
@@ -163,7 +163,7 @@ it('announces saving and shows the save result', async () => {
 })
 it.each([
   [{ message: 'The privacy check found a private line.' }, 'The privacy check found a private line.'],
-  [new Error('private detail'), "Persona Builder couldn't save your assistant. Try again, or keep it on this computer only."],
+  [new Error('private detail'), "Voice couldn't save your assistant. Try again, or keep it on this computer only."],
 ])('shows the privacy Failure or safe save fallback', async (error, message) => {
   const wrapper = screen(Save, fakeBackend({ saveOptions: vi.fn().mockResolvedValue({ ...options, chosen: 'This computer only.' }), savePush: vi.fn().mockRejectedValue(error) }), { assistant })
   await flushPromises()

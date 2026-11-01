@@ -1,13 +1,13 @@
-use persona_builder_save::keychain::{Keychain, MemoryStore, TokenStore, storable, store_line};
-use persona_builder_save::{secret::Secret, text};
+use voice_save::keychain::{Keychain, MemoryStore, TokenStore, storable, store_line};
+use voice_save::{secret::Secret, text};
 
 #[test]
 fn store_line_has_exact_bytes() {
     let token = Secret::new("invented._~:+/=-".into());
-    let line = store_line("persona-builder.test", &token).unwrap();
+    let line = store_line("voice.test", &token).unwrap();
     assert_eq!(
         line.expose(),
-        "add-generic-password -U -s persona-builder.test -a persona-builder -w \"invented._~:+/=-\"\n"
+        "add-generic-password -U -s voice.test -a voice -w \"invented._~:+/=-\"\n"
     );
 }
 
@@ -43,18 +43,14 @@ fn storable_refuses_unsafe_values() {
 #[test]
 fn store_line_refuses_invalid_tokens() {
     for value in ["", "a b", "a\"b", "a\\b", "a\nb"] {
-        let error = store_line("persona-builder.test", &Secret::new(value.into())).unwrap_err();
+        let error = store_line("voice.test", &Secret::new(value.into())).unwrap_err();
         assert_eq!(error.to_string(), text::KEYCHAIN_FAILED);
     }
 }
 
 #[test]
 fn service_accepts_lowercase_alphabet_and_boundaries() {
-    for service in [
-        "a".to_owned(),
-        "persona-builder.test-09".into(),
-        "a".repeat(64),
-    ] {
+    for service in ["a".to_owned(), "voice.test-09".into(), "a".repeat(64)] {
         assert!(Keychain::with_service(&service).is_ok());
     }
 }
@@ -100,7 +96,7 @@ fn default_memory_store_starts_empty() {
 #[test]
 #[ignore = "writes to this computer's live password store; run by hand"]
 fn live_keychain_round_trip() {
-    let store = Keychain::with_service("persona-builder.test").unwrap();
+    let store = Keychain::with_service("voice.test").unwrap();
     store
         .save(&Secret::new("invented-live-test".into()))
         .unwrap();

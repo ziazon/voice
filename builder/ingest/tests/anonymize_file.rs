@@ -1,6 +1,6 @@
-use persona_builder_ingest::anonymize::{self, FileResult, LeftOut, Mapping, Rules};
 use serde_json::json;
 use std::path::{Path, PathBuf};
+use voice_ingest::anonymize::{self, FileResult, LeftOut, Mapping, Rules};
 
 fn rules(value: serde_json::Value) -> Rules {
     Rules::from_value(Some(&value), Path::new("/fictional-home")).unwrap()
@@ -168,7 +168,7 @@ fn report_never_contains_canaries_or_rules() {
     let result = anonymize::skill(
         &[(
             PathBuf::from("SKILL.md"),
-            persona_builder_ingest::skills::Source::Bytes(text.into_bytes()),
+            voice_ingest::skills::Source::Bytes(text.into_bytes()),
         )],
         &r,
         &mut Mapping::default(),
@@ -432,7 +432,7 @@ fn repeat_verifier_partial_allow_fullwidth_offsets() {
 
 #[test]
 fn verifier_03_paths_are_scanned_and_report_redacts_components() {
-    use persona_builder_ingest::skills::Source;
+    use voice_ingest::skills::Source;
     for path in [
         "references/rowan-vale-contract.md",
         "references/RowanVale.md",
@@ -485,7 +485,7 @@ fn verifier_05_home_case() {
 
 #[test]
 fn verifier_07_case_colliding_kept_paths() {
-    use persona_builder_ingest::skills::Source;
+    use voice_ingest::skills::Source;
     let files = ["SKILL.md", "README.md", "readme.md"]
         .map(|p| (p.into(), Source::Bytes(b"Useful".to_vec())));
     let result = anonymize::skill(&files, &Rules::builtin(), &mut Mapping::default());
@@ -607,7 +607,7 @@ fn verifier_04_accent_report_explains_how_to_rewrite() {
     let result = anonymize::skill(
         &[(
             "SKILL.md".into(),
-            persona_builder_ingest::skills::Source::Bytes("Cafe\u{301} Rowan".as_bytes().to_vec()),
+            voice_ingest::skills::Source::Bytes("Cafe\u{301} Rowan".as_bytes().to_vec()),
         )],
         &rules(json!({"terms":["Café Rowan"]})),
         &mut Mapping::default(),

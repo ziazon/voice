@@ -1,11 +1,11 @@
 mod common;
 use common::{Scratch, parity_tools_available, repo};
-use persona_builder::member::read_member;
-use persona_builder_ingest::{
+use std::{fs, process::Command};
+use voice_core::member::read_member;
+use voice_ingest::{
     filters::Filters,
     mine::{Split, mine, summary, to_jsonl},
 };
-use std::{fs, process::Command};
 #[test]
 fn basic_real_python_parity() {
     if !parity_tools_available() {

@@ -1,4 +1,4 @@
-use persona_builder_grow::diff::{apply, unified};
+use voice_grow::diff::{apply, unified};
 
 fn roundtrip(old: &str, new: &str) -> String {
     let change = unified("decisions.md", old, new).unwrap();
@@ -95,14 +95,14 @@ fn no_newline_marker_on_a_nonfinal_line_is_refused() {
 fn added_lines_preserves_plus_content_and_excludes_headers() {
     let change = unified("decisions.md", "old\n", "++ content\nplain\n").unwrap();
     assert_eq!(
-        persona_builder_grow::diff::added_lines(&change),
+        voice_grow::diff::added_lines(&change),
         vec!["++ content", "plain"]
     );
 }
 
 #[test]
 fn added_lines_allow_one_carriage_return_only_in_a_crlf_file() {
-    use persona_builder_grow::diff::added_lines;
+    use voice_grow::diff::added_lines;
     assert_eq!(
         added_lines(&unified("decisions.md", "a\r\n", "a\r\nb\r\n").unwrap()),
         vec!["b"]
@@ -123,7 +123,7 @@ fn added_lines_allow_one_carriage_return_only_in_a_crlf_file() {
 
 #[test]
 fn removed_rows_exclude_headers_and_preserve_final_carriage_returns() {
-    use persona_builder_grow::diff::removed_lines;
+    use voice_grow::diff::removed_lines;
     for (old, new, expected) in [
         (
             "keep\nreplace\nremove\n",

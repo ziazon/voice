@@ -33,7 +33,7 @@ it('loads, makes files, shows the list, steps, Show the folder and remake', asyn
 })
 it.each([
   [{ message: 'Build Ari first.' }, 'Build Ari first.'],
-  [new Error('private detail'), "Persona Builder couldn't make the claude.ai files. Check there's space on this computer, then try again."],
+  [new Error('private detail'), "Voice couldn't make the claude.ai files. Check there's space on this computer, then try again."],
 ])('shows safe make failure', async (error, message) => {
   const wrapper = screen(ClaudeAiFiles, fakeBackend({ makeClaudeAiFiles: vi.fn().mockRejectedValue(error) }), { assistant })
   expect(wrapper.find('h2').exists()).toBe(true)
@@ -45,7 +45,7 @@ it.each([
 })
 it.each([
   [{ message: 'Look again.' }, 'Look again.'],
-  [new Error('private detail'), "Persona Builder couldn't look for the claude.ai files. Close it and open it again."],
+  [new Error('private detail'), "Voice couldn't look for the claude.ai files. Close it and open it again."],
 ])('shows safe list failure and retries', async (error, message) => {
   const backend = fakeBackend({ claudeAiFiles: vi.fn().mockRejectedValueOnce(error).mockResolvedValue({ files }) })
   const wrapper = screen(ClaudeAiFiles, backend, { assistant })
@@ -57,7 +57,7 @@ it.each([
 })
 it.each([
   [{ message: 'The folder could not open.' }, 'The folder could not open.'],
-  [new Error('private detail'), "Persona Builder couldn't open the folder."],
+  [new Error('private detail'), "Voice couldn't open the folder."],
 ])('disables every action during Show the folder and shows a safe small failure', async (error, message) => {
   const pending = deferred<void>()
   const wrapper = screen(ClaudeAiFiles, fakeBackend({ claudeAiFiles: vi.fn().mockResolvedValue({ files }), showClaudeAiFiles: vi.fn().mockReturnValue(pending.promise) }), { assistant })

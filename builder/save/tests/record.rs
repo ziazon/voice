@@ -1,10 +1,10 @@
 pub mod common;
 use common::Scratch;
-use persona_builder_save::record::{SaveRecord, read_record, write_record};
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
 };
+use voice_save::record::{SaveRecord, read_record, write_record};
 
 #[test]
 fn each_variant_round_trips_and_local_bytes_are_pinned() {

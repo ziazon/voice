@@ -1,7 +1,6 @@
 //! Descriptor-anchored walks: a renamed folder cannot redirect a skill's reads.
 use super::{SKILL_TOO_LARGE, SKILL_UNREADABLE, Skill, Source, invalid};
 use crate::anonymize::{self, Rules};
-use persona_builder::error::Result;
 use std::{
     ffi::{CStr, OsString},
     fs::{File, OpenOptions},
@@ -12,6 +11,7 @@ use std::{
     },
     path::{Path, PathBuf},
 };
+use voice_core::error::Result;
 
 pub fn read(skill: &Skill) -> Result<Vec<(PathBuf, Source)>> {
     read_with_rules(skill, &Rules::builtin())

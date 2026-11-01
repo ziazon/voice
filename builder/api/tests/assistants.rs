@@ -1,5 +1,3 @@
-use persona_builder_agent::{ledger::local_day, text};
-use persona_builder_api::{dto::*, *};
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -7,6 +5,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::SystemTime,
 };
+use voice_agent::{ledger::local_day, text};
+use voice_api::{dto::*, *};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Home(PathBuf);
 impl Home {
@@ -47,11 +47,9 @@ fn new_list_and_private_consent_round_trip() {
     let made = new_assistant_in(h, request()).unwrap();
     assert_eq!(made.slug, "ari");
     let skill = fs::read_to_string(h.join(".claude/crew/ari/SKILL.md")).unwrap();
-    let word = persona_builder::cli_command::cli_word(
-        &persona_builder::cli_command::shipped_cli().unwrap(),
-        h,
-    )
-    .unwrap();
+    let word =
+        voice_core::cli_command::cli_word(&voice_core::cli_command::shipped_cli().unwrap(), h)
+            .unwrap();
     assert!(!skill.contains("{{"), "unfilled placeholder in SKILL.md");
     assert!(
         !skill.contains("crew_decisions.py"),
@@ -157,7 +155,7 @@ fn fixed_failure_messages_hide_core_details() {
         "You already have an assistant called ARI. Pick another name, or open that one."
     );
     for s in ["../x", "A", "absent"] {
-        let expected = "Persona Builder couldn't find that assistant. Close it and open it again.";
+        let expected = "Voice couldn't find that assistant. Close it and open it again.";
         assert_eq!(agree_consent_in(h, slug(s)).unwrap_err().message, expected);
         assert_eq!(
             show_assistant_folder_in(h, slug(s), |_| panic!("invalid folder opened"))
@@ -177,19 +175,19 @@ fn fixed_failure_messages_hide_core_details() {
     fs::write(broken.path().join(".claude"), "file").unwrap();
     assert_eq!(
         list_assistants_in(broken.path()).unwrap_err().message,
-        "Persona Builder couldn't look for your assistants. Close it and open it again."
+        "Voice couldn't look for your assistants. Close it and open it again."
     );
     assert_eq!(
         new_assistant_in(broken.path(), request())
             .unwrap_err()
             .message,
-        "Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again."
+        "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
     );
     fs::create_dir_all(h.join(".claude/state")).unwrap();
     fs::write(h.join(".claude/state/ari"), "file").unwrap();
     assert_eq!(
         agree_consent_in(h, slug("ari")).unwrap_err().message,
-        "Persona Builder couldn't keep your answer. Check there's space on this computer, then try again."
+        "Voice couldn't keep your answer. Check there's space on this computer, then try again."
     );
 }
 #[test]
@@ -208,7 +206,7 @@ fn folder_opener_gets_canonical_folder_and_safe_errors() {
         )))
         .unwrap_err()
         .message,
-        "Persona Builder couldn't open the folder."
+        "Voice couldn't open the folder."
     );
 }
 #[test]
@@ -229,7 +227,7 @@ fn claude_status_uses_only_safe_messages() {
     let program = bin.join("claude");
     for (auth, expected) in [
         ("true", text::ready("2.1.292")),
-        ("false", "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Persona Builder yet. Persona Builder keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account.".into()),
+        ("false", "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account.".into()),
     ] {
         fs::write(&program,format!("#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.292 (Claude Code)'; else echo '{{\"loggedIn\":{auth}}}'; fi\n")).unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
@@ -276,17 +274,10 @@ fn dto_json_and_wording_match_contract() {
         serde_json::json!({"agreed":true,"agreedOn":"2026-10-25"})
     );
     let wording = consent_text().unwrap();
-    assert_eq!(wording.title, persona_builder::consent::TITLE);
-    assert_eq!(wording.version, persona_builder::consent::VERSION);
-    assert_eq!(
-        wording.sections.len(),
-        persona_builder::consent::SECTIONS.len()
-    );
-    for (got, expected) in wording
-        .sections
-        .iter()
-        .zip(persona_builder::consent::SECTIONS)
-    {
+    assert_eq!(wording.title, voice_core::consent::TITLE);
+    assert_eq!(wording.version, voice_core::consent::VERSION);
+    assert_eq!(wording.sections.len(), voice_core::consent::SECTIONS.len());
+    for (got, expected) in wording.sections.iter().zip(voice_core::consent::SECTIONS) {
         assert_eq!(got.heading, expected.heading);
         assert_eq!(got.lines, expected.lines);
     }
@@ -320,7 +311,7 @@ fn unlisted_folder_is_never_opened() {
         ))
         .unwrap_err()
         .message,
-        "Persona Builder couldn't find that assistant. Close it and open it again."
+        "Voice couldn't find that assistant. Close it and open it again."
     );
 }
 
@@ -336,7 +327,7 @@ fn failed_consent_clear_removes_only_the_new_assistant() {
         new_assistant_in(home.path(), request())
             .unwrap_err()
             .message,
-        "Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again."
+        "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
     );
     assert!(!home.path().join(".claude/crew/ari").exists());
     assert!(state.join("ari").is_symlink());
@@ -379,13 +370,13 @@ fn unsafe_app_folder_shows_the_move_sentence() {
             new_assistant_in(home.path(), request())
                 .unwrap_err()
                 .message,
-            persona_builder::cli_command::CLI_FOLDER
+            voice_core::cli_command::CLI_FOLDER
         );
         assert!(!home.path().join(".claude/crew/ari").exists());
         return;
     }
     let scratch = Home::new();
-    let dir = scratch.path().join("Persona Builder $folder.app");
+    let dir = scratch.path().join("Voice $folder.app");
     fs::create_dir(&dir).unwrap();
     let executable = dir.join("app-test");
     fs::copy(std::env::current_exe().unwrap(), &executable).unwrap();

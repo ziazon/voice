@@ -1,12 +1,6 @@
 mod common;
 
 use common::*;
-use persona_builder::ceilings::Ceilings;
-use persona_builder_agent::guard::Guard;
-use persona_builder_agent::{
-    ledger::{Cap, LIMIT, local_day},
-    text,
-};
 use serde_json::json;
 use std::{
     fs,
@@ -14,6 +8,12 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
+use voice_agent::guard::Guard;
+use voice_agent::{
+    ledger::{Cap, LIMIT, local_day},
+    text,
+};
+use voice_core::ceilings::Ceilings;
 
 fn today() -> String {
     local_day(fixed_time())
@@ -203,7 +203,7 @@ fn loading_an_unsaved_limit_creates_nothing() {
 fn saved_limit_round_trips_in_a_private_file() {
     let home = Scratch::new("limit-saved");
     let cap = Cap::new(20.0, 2.5).unwrap();
-    let _lock = persona_builder_ingest::private::lock_state(&home.0, "wren").unwrap();
+    let _lock = voice_ingest::private::lock_state(&home.0, "wren").unwrap();
     cap.save(&home.0, "wren").unwrap();
     assert_eq!(Cap::load(&home.0, "wren").unwrap(), cap);
     assert_eq!(
@@ -229,8 +229,7 @@ fn damaged_saved_limits_stop_spending() {
         r#"{"daily_usd":20}"#,
     ] {
         let home = Scratch::new("limit-damaged");
-        persona_builder_ingest::private::write_private(&home.0, "wren", LIMIT, bad.as_bytes())
-            .unwrap();
+        voice_ingest::private::write_private(&home.0, "wren", LIMIT, bad.as_bytes()).unwrap();
         assert_eq!(
             Cap::load(&home.0, "wren").unwrap_err().to_string(),
             text::limit_damaged(&state(&home.0).join(LIMIT)),
@@ -251,7 +250,7 @@ fn unlimited_caps_round_trip_and_normalize_negative_zero() {
     ] {
         let home = Scratch::new("limit-none");
         let cap = Cap::new(daily, call).expect("zero means no limit");
-        let _lock = persona_builder_ingest::private::lock_state(&home.0, "wren").unwrap();
+        let _lock = voice_ingest::private::lock_state(&home.0, "wren").unwrap();
         cap.save(&home.0, "wren").unwrap();
         let loaded = Cap::load(&home.0, "wren").unwrap();
         assert_eq!((loaded.daily_usd(), loaded.call_usd()), (daily, call));
@@ -305,7 +304,7 @@ fn limits_and_spend_describe_each_combination() {
         (
             0.0,
             0.0,
-            "No limit: Persona Builder doesn't stop for the day or for one step.",
+            "No limit: Voice doesn't stop for the day or for one step.",
         ),
     ] {
         assert_eq!(text::limit(Cap::new(daily, step).unwrap()), expected);
@@ -318,7 +317,7 @@ fn limits_and_spend_describe_each_combination() {
 
 #[test]
 fn next_budget_obeys_each_optional_limit_and_rounds_down() {
-    use persona_builder_agent::ledger::Reached;
+    use voice_agent::ledger::Reached;
     for (daily, step, spent, expected) in [
         (20.0, 5.0, 0.0, Ok(Some(5.0))),
         (20.0, 5.0, 15.0, Ok(Some(5.0))),

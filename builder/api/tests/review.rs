@@ -1,8 +1,4 @@
 //! Review against invented assistants and isolated Claude Code stubs.
-use persona_builder_api::{dto::*, *};
-use persona_builder_build::report;
-use persona_builder_grow::{apply, diff, record::*, store::Store, text};
-use persona_builder_ingest::private::*;
 use serde_json::json;
 use std::{
     fs,
@@ -14,13 +10,17 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
+use voice_api::{dto::*, *};
+use voice_build::report;
+use voice_grow::{apply, diff, record::*, store::Store, text};
+use voice_ingest::private::*;
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 static CASES: Mutex<()> = Mutex::new(());
 const PERMISSION: &str =
-    "Persona Builder needs your permission before it reads anything. Give it in the first step.";
-const FIND: &str = "Persona Builder couldn't find that assistant. Close it and open it again.";
+    "Voice needs your permission before it reads anything. Give it in the first step.";
+const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
 const BUSY: &str =
-    "Persona Builder is already working on this assistant. Wait for it to finish, then try again.";
+    "Voice is already working on this assistant. Wait for it to finish, then try again.";
 const GONE: &str =
     "That change isn't waiting for your answer any more. Close it and open it again.";
 const PRIVATE: &str = "That looked personal or secret, so it wasn't kept. Leave out names and private details, then try again.";
@@ -64,7 +64,7 @@ impl Home {
     fn store(&self) -> Store {
         Store::open(
             &self.path,
-            &persona_builder::member::read_member(&self.dir().join("member.json")).unwrap(),
+            &voice_core::member::read_member(&self.dir().join("member.json")).unwrap(),
         )
         .unwrap()
     }
@@ -285,7 +285,7 @@ fn keep_validates_and_saves_instruction_and_correction_under_one_lock() {
         safe(
             &h,
             keep_answer_in(&h.path, a),
-            "Persona Builder couldn't keep that answer. Check it and try again.",
+            "Voice couldn't keep that answer. Check it and try again.",
         );
     }
     let mut a = answer();
@@ -510,7 +510,7 @@ fn apply_cap_is_a_safe_sentence() {
     let id = h.prepared();
     h.approve(&id, true).unwrap();
     h.stub(true, |s| s);
-    let today = persona_builder_agent::ledger::local_day(std::time::SystemTime::now());
+    let today = voice_agent::ledger::local_day(std::time::SystemTime::now());
     let row = json!({"at":format!("{today}T12:00:00Z"),"id":"seed","day":today,"agent":"claude","step":"label","model":"sonnet","outcome":"success","seconds":1,"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cost_usd":49.0,"cost_from":"reported"});
     write_private(&h.path, "wren", "runs.jsonl", format!("{row}\n").as_bytes()).unwrap();
     safe(
@@ -638,7 +638,7 @@ fn draft_refuses_forgotten_state_between_check_and_open_without_calls() {
     assert!(!h.path.join(".claude/state/wren").exists());
 }
 
-const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`.";
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`.";
 
 fn keep_folder_local(member: &std::path::Path) {
     let path = member.join("member.json");

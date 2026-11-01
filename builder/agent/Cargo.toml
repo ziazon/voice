@@ -1,5 +1,5 @@
 [package]
-name = "persona-builder-agent"
+name = "voice-agent"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -7,8 +7,8 @@ publish.workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-persona-builder = { path = "../core" }
-persona-builder-ingest = { path = "../ingest" }
+voice-core = { path = "../core" }
+voice-ingest = { path = "../ingest" }
 serde_json = { version = "1", features = ["preserve_order"] }
 libc = "=0.2.191"
 ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }

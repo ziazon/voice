@@ -4,18 +4,6 @@ use crate::{
     dto::*,
     history::{BUSY, FIND, PERMISSION, count, failure, locked, readable},
 };
-use persona_builder::ceilings::Ceilings;
-use persona_builder::{assistants, error::Error, member::Member};
-use persona_builder_agent::{
-    claude,
-    guard::{self, Guard},
-    ledger::{Cap, Session, local_day},
-    self_hosted::SelfHosted,
-    text as agent_text,
-};
-use persona_builder_build::{build, interview, report, run, text};
-use persona_builder_ingest::{corpus::read_records, filters::Filters, mine::to_jsonl, private};
-use persona_builder_steps::{book::book, input::pretty, round};
 use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -27,18 +15,33 @@ use std::{
     },
     time::SystemTime,
 };
+use voice_agent::{
+    claude,
+    guard::{self, Guard},
+    ledger::{Cap, Session, local_day},
+    self_hosted::SelfHosted,
+    text as agent_text,
+};
+use voice_build::{build, interview, report, run, text};
+use voice_core::ceilings::Ceilings;
+use voice_core::{assistants, error::Error, member::Member};
+use voice_ingest::{corpus::read_records, filters::Filters, mine::to_jsonl, private};
+use voice_steps::{book::book, input::pretty, round};
 
 type Result<T> = std::result::Result<T, Failure>;
 const STOPPED: &str = "Stopped. Your assistant is as it was before this build. What was already finished is kept, so running the build again carries on from there.";
 const NOTHING_YET: &str = "There's nothing to build from yet. Read your history and put it together first, in Your history.";
-const SETTINGS: &str = "Something in this assistant's settings stops the build. Use the persona-builder command to see what.";
+const SETTINGS: &str =
+    "Something in this assistant's settings stops the build. Use the voice command to see what.";
 const BUILD_FAILED: &str = "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.";
 const PRIVATE: &str = "The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Run the build again to try once more.";
-const LIMIT_DAMAGED: &str = "Persona Builder can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
+const LIMIT_DAMAGED: &str = "Voice can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
 const LIMIT_BAD: &str = "Each amount is 0 for no limit, or from $0.01 to $1,000 in whole cents, like 2.50. When both are set, the most one step may use can't be more than the daily limit.";
-const LIMIT_SAVE: &str = "Persona Builder couldn't save the limit. Check there's space on this computer, then try again.";
-const LEDGER: &str = "Persona Builder's record of what this assistant has spent can't be read, so it won't spend anything more. Use the persona-builder command to see what's wrong.";
-const BUILD_SAVE: &str = "Persona Builder couldn't save your assistant. Check there's space on this computer, then try again.";
+const LIMIT_SAVE: &str =
+    "Voice couldn't save the limit. Check there's space on this computer, then try again.";
+const LEDGER: &str = "Voice's record of what this assistant has spent can't be read, so it won't spend anything more. Use the voice command to see what's wrong.";
+const BUILD_SAVE: &str =
+    "Voice couldn't save your assistant. Check there's space on this computer, then try again.";
 const ENOUGH: &str =
     "Your history already holds enough answers to build from, and no kind of decision is thin.";
 const ALREADY_DRAFTED: &str =
@@ -46,10 +49,11 @@ const ALREADY_DRAFTED: &str =
 const DRAFT_FAILED: &str =
     "Claude drafted questions that didn't fit, twice, so none were saved. Try again.";
 const NO_QUESTIONS: &str = "Draft the questions first.";
-const ANSWER_BAD: &str = "Persona Builder couldn't keep that answer. Close it and open it again.";
+const ANSWER_BAD: &str = "Voice couldn't keep that answer. Close it and open it again.";
 const NO_ANSWERS: &str = "Answer at least one question first.";
 const ALL_LEFT_OUT: &str = "Every answer looked personal or secret, so none was kept. Answer without names or private details, then try again.";
-const ANSWERS_SAVE: &str = "Persona Builder couldn't save your answers. Check there's space on this computer, then try again.";
+const ANSWERS_SAVE: &str =
+    "Voice couldn't save your answers. Check there's space on this computer, then try again.";
 const CORPUS: &str = "decisions.jsonl";
 const LETTERS: [&str; 4] = ["A", "B", "C", "D"];
 fn cap_reached(spent: f64, cap: f64) -> String {

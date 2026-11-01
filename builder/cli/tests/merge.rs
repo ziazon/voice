@@ -1,7 +1,3 @@
-use persona_builder::{
-    crew::{NewMember, new_member},
-    member::{read_member, write_member},
-};
 use std::{
     fs,
     os::unix::{
@@ -11,6 +7,10 @@ use std::{
     path::PathBuf,
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
+};
+use voice_core::{
+    crew::{NewMember, new_member},
+    member::{read_member, write_member},
 };
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Fixture {
@@ -30,7 +30,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Robin",
@@ -63,7 +63,7 @@ impl Fixture {
         fs::write(self.state().join("decisions.jsonl"), b"not an input").unwrap();
     }
     fn run(&self, command: &str, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env_clear()
             .env("HOME", &self.home)
             .env("PATH", std::env::var_os("PATH").unwrap())
@@ -77,10 +77,7 @@ impl Fixture {
     fn refused(&self, command: &str, args: &[&str], message: &str) {
         let out = self.run(command, args);
         assert_eq!(out.status.code(), Some(1));
-        assert_eq!(
-            out.stderr,
-            format!("persona-builder: {message}\n").as_bytes()
-        );
+        assert_eq!(out.stderr, format!("voice: {message}\n").as_bytes());
         assert!(!String::from_utf8_lossy(&out.stderr).contains("sentinel"));
         assert!(out.stdout.is_empty());
     }
@@ -255,7 +252,7 @@ fn validation_and_missing_inputs_never_write() {
     m.state_dir = "~/elsewhere".into();
     write_member(&config, &m).unwrap();
     for command in ["merge", "split"] {
-        f.refused(command,&["--dry-run"],"Persona Builder keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says ~/elsewhere: change it to ~/.claude/state/<slug> and try again");
+        f.refused(command,&["--dry-run"],"Voice keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says ~/elsewhere: change it to ~/.claude/state/<slug> and try again");
     }
 }
 #[test]

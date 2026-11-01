@@ -1,15 +1,15 @@
 mod common;
 
 use common::*;
-use persona_builder::ceilings::Ceilings;
-use persona_builder_agent::guard::Guard;
-use persona_builder_agent::{
+use serde_json::json;
+use std::collections::HashSet;
+use voice_agent::guard::Guard;
+use voice_agent::{
     agents::{self, AGENTS},
     claude::Claude,
     provider::{Brief, Provider, Reach},
 };
-use serde_json::json;
-use std::collections::HashSet;
+use voice_core::ceilings::Ceilings;
 
 #[test]
 fn claude_reports_its_identity_and_reach_through_the_trait() {
@@ -54,7 +54,7 @@ fn a_trait_call_uses_claude_and_leaves_one_ledger_line() {
         .call(
             &session,
             &Brief {
-                sources: &[persona_builder::ceilings::Source::ClaudeHistory],
+                sources: &[voice_core::ceilings::Source::ClaudeHistory],
                 step: "label",
                 system: "Label each record.",
                 prompt: "record one\n",

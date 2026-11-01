@@ -1,8 +1,4 @@
 //! Build and interview commands against invented assistants, isolated homes and Claude stubs.
-use persona_builder_agent::{ledger::local_day, text as agent_text};
-use persona_builder_api::{dto::*, *};
-use persona_builder_build::{interview, text as build_text};
-use persona_builder_ingest::{filters::Filters, mine, private::*};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -17,19 +13,23 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime},
 };
+use voice_agent::{ledger::local_day, text as agent_text};
+use voice_api::{dto::*, *};
+use voice_build::{interview, text as build_text};
+use voice_ingest::{filters::Filters, mine, private::*};
 
 // A parallel test can spawn a child which retains another test's flock until exec.
 // Keep cases separate; scoped threads inside stop tests still exercise concurrent commands.
 static CASES: Mutex<()> = Mutex::new(());
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 const PERMISSION: &str =
-    "Persona Builder needs your permission before it reads anything. Give it in the first step.";
-const FIND: &str = "Persona Builder couldn't find that assistant. Close it and open it again.";
+    "Voice needs your permission before it reads anything. Give it in the first step.";
+const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
 const BUSY: &str =
-    "Persona Builder is already working on this assistant. Wait for it to finish, then try again.";
+    "Voice is already working on this assistant. Wait for it to finish, then try again.";
 const STOPPED: &str = "Stopped. Your assistant is as it was before this build. What was already finished is kept, so running the build again carries on from there.";
 const NOTHING: &str = "There's nothing to build from yet. Read your history and put it together first, in Your history.";
-const ANSWER_BAD: &str = "Persona Builder couldn't keep that answer. Close it and open it again.";
+const ANSWER_BAD: &str = "Voice couldn't keep that answer. Close it and open it again.";
 const NO_ANSWERS: &str = "Answer at least one question first.";
 const NO_QUESTIONS: &str = "Draft the questions first.";
 const ENOUGH: &str =
@@ -679,7 +679,7 @@ fn kept_answers_equal_core_records_and_count_private_ones() {
         answer(2, &[], "My therapist asked about this."),
     ])
     .unwrap();
-    let m = persona_builder::member::read_member(&h.member().join("member.json")).unwrap();
+    let m = voice_core::member::read_member(&h.member().join("member.json")).unwrap();
     let filters = Filters::compile(&m.filters).unwrap();
     let q: Value =
         serde_json::from_slice(&read_private(&h.path, "wren", interview::QUESTIONS_FILE).unwrap())
@@ -805,14 +805,14 @@ fn unreadable_settings_and_ledger_return_fixed_safe_messages() {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let h = Home::new(true);
     h.write("decisions.jsonl", b"not json\n");
-    let settings = "Something in this assistant's settings stops the build. Use the persona-builder command to see what.";
+    let settings = "Something in this assistant's settings stops the build. Use the voice command to see what.";
     safe(&h, interview_status_in(&h.path, slug()), settings);
     safe(&h, h.build(&Builds::new(), &mut |_| {}), settings);
     h.write("runs.jsonl", b"broken ledger\n");
     safe(
         &h,
         spend_today_in(&h.path, slug()),
-        "Persona Builder's record of what this assistant has spent can't be read, so it won't spend anything more. Use the persona-builder command to see what's wrong.",
+        "Voice's record of what this assistant has spent can't be read, so it won't spend anything more. Use the voice command to see what's wrong.",
     );
 }
 #[test]
@@ -848,9 +848,9 @@ fn report_for_long_history(thin: bool) -> Vec<u8> {
         "placement-naming",
         "go-no-go",
     ];
-    let report = serde_json::to_vec(&json!({"schema":"persona-builder/report/1","built":"2026-10-24","overall":"thin","answered":150,"held":0,"test":null,
+    let report = serde_json::to_vec(&json!({"schema":"voice/report/1","built":"2026-10-24","overall":"thin","answered":150,"held":0,"test":null,
         "areas":kinds.iter().enumerate().map(|(n, kind)|json!({"area":kind,"level":if thin && n < 2 {"thin"} else {"strong"},"examples":if thin && n < 2 {n * 3} else {40},"strengthen":[]})).collect::<Vec<_>>()})).unwrap();
-    serde_json::from_slice::<persona_builder_build::report::Report>(&report).unwrap();
+    serde_json::from_slice::<voice_build::report::Report>(&report).unwrap();
     report
 }
 
@@ -965,7 +965,7 @@ fn long_history_without_thin_kinds_spends_nothing() {
     );
 }
 
-const LIMIT_DAMAGED: &str = "Persona Builder can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
+const LIMIT_DAMAGED: &str = "Voice can't read the daily limit saved for this assistant, so it won't spend anything. Set the limit again on Connect Claude.";
 const LIMIT_BAD: &str = "Each amount is 0 for no limit, or from $0.01 to $1,000 in whole cents, like 2.50. When both are set, the most one step may use can't be more than the daily limit.";
 fn limit_request(daily_usd: f64, call_usd: f64) -> SpendingLimitRequest {
     SpendingLimitRequest {
@@ -1035,12 +1035,9 @@ fn a_build_enforces_the_saved_daily_limit() {
 fn invalid_spending_limits_write_nothing_even_while_busy() {
     let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
     let h = Home::new(true);
-    let _session = persona_builder_agent::ledger::Session::open(
-        &h.path,
-        "wren",
-        persona_builder_agent::ledger::Cap::default(),
-    )
-    .unwrap();
+    let _session =
+        voice_agent::ledger::Session::open(&h.path, "wren", voice_agent::ledger::Cap::default())
+            .unwrap();
     for (day, call) in [(0.001, 0.0), (1000.01, 5.0), (10.0, 20.0), (f64::NAN, 5.0)] {
         safe(
             &h,
@@ -1056,12 +1053,9 @@ fn a_running_session_prevents_changing_the_limit() {
     let h = Home::new(true);
     set_spending_limit_in(&h.path, limit_request(20.0, 2.5)).unwrap();
     let before = fs::read(h.state("limit.json")).unwrap();
-    let _session = persona_builder_agent::ledger::Session::open(
-        &h.path,
-        "wren",
-        persona_builder_agent::ledger::Cap::default(),
-    )
-    .unwrap();
+    let _session =
+        voice_agent::ledger::Session::open(&h.path, "wren", voice_agent::ledger::Cap::default())
+            .unwrap();
     safe(
         &h,
         set_spending_limit_in(&h.path, limit_request(30.0, 3.0)),
@@ -1143,18 +1137,16 @@ fn drafted_model_call_uses_the_apps_own_claude_profile() {
     h.program(&source.replace("prompt = sys.stdin.read()", "prompt = sys.stdin.read()\n    with open(os.path.join(HERE, 'profile'), 'w') as f:\n        f.write(os.environ.get('CLAUDE_CONFIG_DIR', 'unset'))"));
     assert!(h.draft(false).is_ok());
     #[cfg(target_os = "macos")]
-    let expected = h
-        .path
-        .join("Library/Application Support/Persona Builder/claude-code");
+    let expected = h.path.join("Library/Application Support/Voice/claude-code");
     #[cfg(not(target_os = "macos"))]
-    let expected = h.path.join(".local/share/persona-builder/claude-code");
+    let expected = h.path.join(".local/share/voice/claude-code");
     assert_eq!(
         fs::read_to_string(h.bin.join("profile")).unwrap(),
         expected.to_str().unwrap()
     );
 }
 
-const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`.";
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`.";
 
 fn keep_folder_local(member: &std::path::Path) {
     let path = member.join("member.json");

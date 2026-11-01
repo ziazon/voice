@@ -1,11 +1,11 @@
 mod common;
 use common::Scratch;
-use persona_builder_ingest::private::{
-    place, read_private_at, validate_json_name, write_private, write_private_at,
-};
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
+};
+use voice_ingest::private::{
+    place, read_private_at, validate_json_name, write_private, write_private_at,
 };
 
 fn mode(path: &std::path::Path) -> u32 {
@@ -148,7 +148,7 @@ fn a_state_folder_others_can_change_is_refused() {
 
 #[test]
 fn bounded_private_reads_refuse_oversized_files_before_reading() {
-    use persona_builder_ingest::private::read_private_at_max;
+    use voice_ingest::private::read_private_at_max;
     let s = Scratch::new("private-at-max");
     let path = write_private_at(&s.0, "wren", Some("growth"), "signals.jsonl", b"one").unwrap();
     assert_eq!(
@@ -171,7 +171,7 @@ fn bounded_private_reads_refuse_oversized_files_before_reading() {
         "signals.jsonl is too big to read (over 65536 KiB)"
     );
     assert!(
-        persona_builder_ingest::private::read_private_optional_at_max(
+        voice_ingest::private::read_private_optional_at_max(
             &s.0,
             "wren",
             Some("growth"),
@@ -181,7 +181,7 @@ fn bounded_private_reads_refuse_oversized_files_before_reading() {
         .is_err()
     );
     assert!(
-        persona_builder_ingest::private::read_private_optional_at_max(
+        voice_ingest::private::read_private_optional_at_max(
             &s.0,
             "wren",
             Some("growth"),

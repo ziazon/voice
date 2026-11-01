@@ -30,7 +30,7 @@ it('shows not-ready text without links and checks again', async () => {
 it('shows the safe bridge rejection and retry', async () => {
   const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockRejectedValue(new Error('private detail')) }), { assistant })
   await flushPromises()
-  expect(wrapper.get('.alert-warning').text()).toBe("Persona Builder couldn't check Claude Code. Close it and open it again.")
+  expect(wrapper.get('.alert-warning').text()).toBe("Voice couldn't check Claude Code. Close it and open it again.")
   expect(button(wrapper, 'Check again').text()).toBe('Check again')
   expect(wrapper.find('a').exists()).toBe(false)
 })
@@ -55,7 +55,7 @@ it('saves dollars and shows the answered amounts', async () => {
   await button(wrapper, 'Save the limit').trigger('click')
   await flushPromises()
   expect(backend.setSpendingLimit).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug, dailyUsd: 20, callUsd: 2.5 })
-  expect(wrapper.get('[role="status"]').text()).toBe('Saved. Persona Builder stops for the day at about $20.00, and one step may use at most $2.50.')
+  expect(wrapper.get('[role="status"]').text()).toBe('Saved. Voice stops for the day at about $20.00, and one step may use at most $2.50.')
   expect(wrapper.get<HTMLInputElement>('#limit-day').element.value).toBe('20.00')
   expect(wrapper.get<HTMLInputElement>('#limit-step').element.value).toBe('2.50')
   expect(button(wrapper, 'Save the limit').attributes('disabled')).toBeUndefined()
@@ -101,7 +101,7 @@ it('hides the fields and save button when loading the limit fails', async () => 
 it('says the limit could not be read when loading fails without a message', async () => {
   const wrapper = screen(ConnectClaude, fakeBackend({ spendingLimit: vi.fn().mockRejectedValue(new Error('private detail')) }), { assistant })
   await flushPromises()
-  expect(wrapper.get('.alert-danger').text()).toBe("Persona Builder couldn't read the limit. Close it and open it again.")
+  expect(wrapper.get('.alert-danger').text()).toBe("Voice couldn't read the limit. Close it and open it again.")
 })
 it('disables save while saving', async () => {
   const pending = deferred<{ dailyUsd: number; callUsd: number }>()
@@ -139,11 +139,11 @@ it('explains the account, daily use and provider choice while checking and after
   const check = deferred<ClaudeStatus>()
   const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockReturnValue(check.promise) }), { assistant })
   const card = wrapper.findAll('.card')[0]!
-  expect(card.text()).toContain('Persona Builder works through your own Claude Code, signed in to your own Claude account.')
+  expect(card.text()).toContain('Voice works through your own Claude Code, signed in to your own Claude account.')
   expect(card.text()).toContain('It checks that now, and you set how much it may use in a day.')
-  const explanation = "Persona Builder never sees your Claude password: you sign in on Claude's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later."
+  const explanation = "Voice never sees your Claude password: you sign in on Claude's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later."
   expect(card.get('p.text-secondary.mt-3.mb-0').text()).toBe(explanation)
-  expect(card.text()).toContain("Persona Builder never sees your Claude password: you sign in on Claude's own page.")
+  expect(card.text()).toContain("Voice never sees your Claude password: you sign in on Claude's own page.")
   expect(card.text()).toContain('Claude is the only choice for now.')
   expect(card.text()).toContain('Other AI providers come later.')
   expect(wrapper.findAll('.card')[1]!.text()).not.toContain(explanation)
@@ -187,7 +187,7 @@ it.each([
 it.each([
   [0, 0, "Saved. There's no limit."],
   [0, 5, "Saved. There's no daily limit, and one step may use at most $5.00."],
-  [50, 0, 'Saved. Persona Builder stops for the day at about $50.00, with no separate limit for one step.'],
+  [50, 0, 'Saved. Voice stops for the day at about $50.00, with no separate limit for one step.'],
 ])('saves daily %s and step %s with the no-limit message', async (dailyUsd, callUsd, message) => {
   const backend = fakeBackend({ setSpendingLimit: vi.fn().mockResolvedValue({ dailyUsd, callUsd }) })
   const wrapper = screen(ConnectClaude, backend, { assistant })
@@ -207,8 +207,8 @@ it('explains that either field can have no limit', async () => {
   expect(wrapper.text()).toContain('Enter 0 in either box for no limit.')
 })
 
-const signedOut: ClaudeStatus = { ready: false, message: 'Sign in for Persona Builder.', note: null, canSignIn: true }
-const waiting = "Finish signing in on the Claude page that opened in your browser. Persona Builder carries on when you're done."
+const signedOut: ClaudeStatus = { ready: false, message: 'Sign in for Voice.', note: null, canSignIn: true }
+const waiting = "Finish signing in on the Claude page that opened in your browser. Voice carries on when you're done."
 
 it('offers sign-in and a secondary check when Claude Code can sign in', async () => {
   const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut) }), { assistant })
@@ -261,7 +261,7 @@ it('ignores a failed cancel until the pending sign-in ends', async () => {
   expect(button(wrapper, 'Sign in to Claude').text()).toBe('Sign in to Claude')
 })
 it.each([
-  [new Error('private detail'), "Persona Builder couldn't start signing in to Claude. Close it and open it again."],
+  [new Error('private detail'), "Voice couldn't start signing in to Claude. Close it and open it again."],
   [{ message: 'Try signing in again.' }, 'Try signing in again.'],
 ])('shows a safe rejected sign-in and allows retry', async (failure, message) => {
   const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut), claudeSignIn: vi.fn().mockRejectedValue(failure) })

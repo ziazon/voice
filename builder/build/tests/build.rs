@@ -1,24 +1,6 @@
 //! The build: packing the records, each reply's check, the whole build against a stub `claude`
 //! (fixed instructions, no held-out answer in any prompt, one retry, the cache, the cap), the draft
 //! in the template's shape, the measurements entry and the write.
-use persona_builder::ceilings::Ceilings;
-use persona_builder::member::Member;
-use persona_builder_agent::guard::Guard;
-use persona_builder_agent::{
-    claude::Claude,
-    ledger::{Cap, Session},
-};
-use persona_builder_build::{
-    build::{self, Inputs, Misfit},
-    draft,
-};
-use persona_builder_ingest::{corpus::read_records, filters::Filters};
-use persona_builder_steps::{
-    book::{Book, book},
-    distil::Group,
-    labels::Mode,
-    score::Cell,
-};
 use serde_json::{Map, Value, json};
 use std::{
     fs,
@@ -27,6 +9,24 @@ use std::{
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, UNIX_EPOCH},
+};
+use voice_agent::guard::Guard;
+use voice_agent::{
+    claude::Claude,
+    ledger::{Cap, Session},
+};
+use voice_build::{
+    build::{self, Inputs, Misfit},
+    draft,
+};
+use voice_core::ceilings::Ceilings;
+use voice_core::member::Member;
+use voice_ingest::{corpus::read_records, filters::Filters};
+use voice_steps::{
+    book::{Book, book},
+    distil::Group,
+    labels::Mode,
+    score::Cell,
 };
 
 /// A word only the model or a held-out answer writes: it must never reach an error or a prompt.
@@ -127,7 +127,7 @@ fn python() -> Option<PathBuf> {
         .ok()
         .filter(|out| out.status.success())
         .map(|out| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()));
-    if found.is_none() && std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref() == Ok("1") {
+    if found.is_none() && std::env::var("VOICE_REQUIRE_PARITY").as_deref() == Ok("1") {
         panic!("python3 is needed for the stub claude");
     }
     found
@@ -195,7 +195,7 @@ fn run(
     corpus: &str,
     cap: Cap,
     lines: &mut Vec<String>,
-) -> persona_builder::error::Result<build::Built> {
+) -> voice_core::error::Result<build::Built> {
     let member = member();
     let book = the_book();
     let filters = filters();
@@ -1162,9 +1162,9 @@ fn only_real_dates_reach_the_front_matter() {
 #[test]
 fn a_write_sweeps_what_an_interrupted_run_left_but_never_a_link() {
     let dir = Scratch::new();
-    let left = dir.0.join(".decisions.md.persona-builder-123-456-0");
+    let left = dir.0.join(".decisions.md.voice-123-456-0");
     fs::write(&left, "half written\n").unwrap();
-    let kept = dir.0.join(".measurements.md.persona-builder-9");
+    let kept = dir.0.join(".measurements.md.voice-9");
     std::os::unix::fs::symlink("/etc/hosts", &kept).unwrap();
     draft::write(&dir.0, "new decisions\n", "new measurements\n").unwrap();
     assert!(!left.exists());
@@ -1181,9 +1181,9 @@ fn a_member_write_sweeps_interrupted_staged_files_but_never_a_link() {
     let dir = Scratch::new();
     let path = dir.0.join("member.json");
     fs::write(&path, "old member\n").unwrap();
-    let left = dir.0.join(".member.json.persona-builder-123-456-0");
+    let left = dir.0.join(".member.json.voice-123-456-0");
     fs::write(&left, "half written\n").unwrap();
-    let kept = dir.0.join(".member.json.persona-builder-123-456-1");
+    let kept = dir.0.join(".member.json.voice-123-456-1");
     std::os::unix::fs::symlink(&path, &kept).unwrap();
     let member = member();
 
@@ -1195,7 +1195,7 @@ fn a_member_write_sweeps_interrupted_staged_files_but_never_a_link() {
     );
     assert_eq!(
         fs::read_to_string(&path).unwrap(),
-        persona_builder::json::to_python_json(&member).unwrap()
+        voice_core::json::to_python_json(&member).unwrap()
     );
     assert!(
         fs::symlink_metadata(&kept)
@@ -1245,23 +1245,23 @@ fn preflight_and_the_codebook_refuse_links_before_anything_is_spent() {
 // Section 8: exercise the complete build, including its guard, with invented corpus records.
 struct RecordingClaude {
     claude: Claude,
-    sources: std::sync::Mutex<Vec<Vec<persona_builder::ceilings::Source>>>,
+    sources: std::sync::Mutex<Vec<Vec<voice_core::ceilings::Source>>>,
 }
-impl persona_builder_agent::provider::Provider for RecordingClaude {
+impl voice_agent::provider::Provider for RecordingClaude {
     fn id(&self) -> &'static str {
         self.claude.id()
     }
     fn name(&self) -> &'static str {
         self.claude.name()
     }
-    fn reach(&self) -> persona_builder_agent::provider::Reach {
+    fn reach(&self) -> voice_agent::provider::Reach {
         self.claude.reach()
     }
     fn call(
         &self,
         session: &Session,
-        sealed: &persona_builder_agent::guard::Sealed,
-    ) -> persona_builder::error::Result<persona_builder_agent::provider::Reply> {
+        sealed: &voice_agent::guard::Sealed,
+    ) -> voice_core::error::Result<voice_agent::provider::Reply> {
         self.sources
             .lock()
             .unwrap()
@@ -1274,7 +1274,7 @@ fn mail_build(
     home: &Path,
     member: &Member,
     provider: &RecordingClaude,
-) -> persona_builder::error::Result<build::Built> {
+) -> voice_core::error::Result<build::Built> {
     let session = session(home, Cap::default());
     let book = book(member).unwrap();
     let text = corpus(12, 0);
@@ -1301,7 +1301,7 @@ fn recording(stub: &Stub) -> RecordingClaude {
     }
 }
 fn mined_mail(home: &Path) {
-    persona_builder_ingest::private::write_private(
+    voice_ingest::private::write_private(
         home,
         "ada",
         "decisions-src-mail.jsonl",
@@ -1309,8 +1309,8 @@ fn mined_mail(home: &Path) {
     )
     .unwrap();
 }
-fn mail_sources() -> Vec<persona_builder::ceilings::Source> {
-    use persona_builder::ceilings::Source::*;
+fn mail_sources() -> Vec<voice_core::ceilings::Source> {
+    use voice_core::ceilings::Source::*;
     vec![ClaudeHistory, Typed, CrewFolder, Mail]
 }
 
@@ -1325,7 +1325,7 @@ fn mined_mail_at_its_default_is_refused_before_a_call_or_ledger_line() {
     assert!(result.is_err(), "mail at its default must stay home");
     assert_eq!(
         result.err().unwrap().to_string(),
-        "Nothing was sent. This step uses your mail, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> mail anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`."
+        "Nothing was sent. This step uses your mail, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> mail anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`."
     );
     assert!(provider.sources.lock().unwrap().is_empty());
     assert_eq!(stub.calls(), 0);

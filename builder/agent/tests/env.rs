@@ -2,9 +2,9 @@
 mod common;
 
 use common::*;
-use persona_builder::ceilings::Ceilings;
-use persona_builder_agent::guard::Guard;
 use serde_json::json;
+use voice_agent::guard::Guard;
+use voice_core::ceilings::Ceilings;
 
 #[test]
 fn the_session_markers_do_not_reach_claude_and_the_rest_does() {
@@ -47,8 +47,7 @@ auth) echo '{{"loggedIn":true}}';;
 esac"#,
         ok_reply(&json!({}))
     ));
-    let claude =
-        persona_builder_agent::claude::find_in(&home.0, None, &[profiled.program()]).unwrap();
+    let claude = voice_agent::claude::find_in(&home.0, None, &[profiled.program()]).unwrap();
     claude.check(&home.0).unwrap();
     Guard::new(vec![&claude], Ceilings::defaults())
         .call(&session, &call("records", &schema))
@@ -56,7 +55,7 @@ esac"#,
     claude
         .sign_in(&home.0, &std::sync::atomic::AtomicBool::new(false))
         .unwrap();
-    let folder = persona_builder_agent::claude::profile_folder(&home.0);
+    let folder = voice_agent::claude::profile_folder(&home.0);
     let expected = ["--version", "auth", "-p", "auth"]
         .map(|arg| format!("{arg} {} unset", folder.display()))
         .join("\n");

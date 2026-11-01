@@ -112,7 +112,7 @@ export interface Backend {
   forget(request: ForgetRequest): Promise<Said>
 }
 
-export const backendKey: InjectionKey<Backend> = Symbol('persona-builder-backend')
+export const backendKey: InjectionKey<Backend> = Symbol('voice-backend')
 
 export function provideBackend(backend: Backend): void {
   provide(backendKey, backend)
@@ -120,6 +120,6 @@ export function provideBackend(backend: Backend): void {
 
 export function useBackend(): Backend {
   const backend = inject(backendKey)
-  if (!backend) throw new Error('Persona Builder has no backend')
+  if (!backend) throw new Error('Voice has no backend')
   return backend
 }

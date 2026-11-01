@@ -5,22 +5,22 @@ use crate::{
     build::{Built, live},
     text,
 };
-use persona_builder::{
-    error::{Error, Result},
-    member::Member,
-};
-use persona_builder_ingest::filters::Filters;
-use persona_builder_steps::{
-    book::Book,
-    labels::tally_markdown,
-    score::{Cell, Score},
-    share::{percent, share},
-};
 use std::{
     fs,
     io::Write,
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
+};
+use voice_core::{
+    error::{Error, Result},
+    member::Member,
+};
+use voice_ingest::filters::Filters;
+use voice_steps::{
+    book::Book,
+    labels::tally_markdown,
+    score::{Cell, Score},
+    share::{percent, share},
 };
 
 pub const TEMPLATE: &str = include_str!("../../../crew/_template/decisions.md");
@@ -36,7 +36,7 @@ const REPORTS: &str = "## Reports";
 /// The most the member's codebook brief, and its measurements file, may hold.
 pub const CODEBOOK_MOST: u64 = 64 * 1024;
 pub const MEASUREMENTS_MOST: u64 = 1024 * 1024;
-const STAGED: &str = ".persona-builder-";
+const STAGED: &str = ".voice-";
 static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn pronouns(member: &Member) -> &str {
@@ -180,7 +180,7 @@ pub fn decisions(member: &Member, book: &Book, built: &Built) -> String {
         } else if line.starts_with("sources: ") {
             out.push(format!("sources: {}", sources(built)));
         } else if line.starts_with("generated_by: ") {
-            out.push("generated_by: persona-builder build (counts) and Claude Code distillation over labelled records (paraphrase only)".to_owned());
+            out.push("generated_by: voice build (counts) and Claude Code distillation over labelled records (paraphrase only)".to_owned());
         } else {
             out.push(line.to_owned());
             if line.starts_with("|---") && heading.starts_with("Calibration") {
@@ -229,7 +229,7 @@ pub fn entries(book: &Book, built: &Built, model: &str, today: &str) -> String {
             let s = &test.score;
             let live = live_categories(book, s);
             format!(
-                "## {today}: build backtest\n\n- **Set:** {} held-out questions, {} → {}: the newest share of answered questions, never seen by the model.\n- **Method:** `persona-builder build` predicted each one blind through {who}, from decisions.md and the closest past decisions in the training split only; scored with `persona-builder score`.\n- **Result:** {} of {} ({}); always-take-the-recommendation baseline {}. {}.\n- **Read:** {}\n",
+                "## {today}: build backtest\n\n- **Set:** {} held-out questions, {} → {}: the newest share of answered questions, never seen by the model.\n- **Method:** `voice build` predicted each one blind through {who}, from decisions.md and the closest past decisions in the training split only; scored with `voice score`.\n- **Result:** {} of {} ({}); always-take-the-recommendation baseline {}. {}.\n- **Read:** {}\n",
                 s.overall.n,
                 test.first,
                 test.last,
@@ -322,7 +322,7 @@ fn mode_of(path: &Path) -> Result<u32> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0o644),
         Err(source) => Err(io(path, source)),
         Ok(meta) if meta.file_type().is_symlink() => Err(Error::Invalid(format!(
-            "{} is a link: Persona Builder writes only real files, never links. Move it away and try again",
+            "{} is a link: Voice writes only real files, never links. Move it away and try again",
             path.display()
         ))),
         Ok(meta) if !meta.is_file() => Err(Error::Invalid(format!(
@@ -399,7 +399,7 @@ pub fn write(member_dir: &Path, decisions: &str, measurements: &str) -> Result<(
 /// Replace member.json through the same synced, mode-preserving staged sibling as build output.
 pub fn write_member(member_dir: &Path, member: &Member) -> Result<()> {
     sweep(member_dir)?;
-    let text = persona_builder::json::to_python_json(member)?;
+    let text = voice_core::json::to_python_json(member)?;
     Staged::new(member_dir, MEMBER, &text)?.rename()
 }
 
@@ -450,7 +450,7 @@ pub fn read_codebook(member_dir: &Path) -> Result<String> {
     match fs::symlink_metadata(&briefs) {
         Ok(meta) if meta.file_type().is_symlink() => {
             return Err(Error::Invalid(format!(
-                "{} is a link: Persona Builder reads only real folders, never links. Move it away and try again",
+                "{} is a link: Voice reads only real folders, never links. Move it away and try again",
                 briefs.display()
             )));
         }
@@ -477,7 +477,7 @@ pub fn read_text(path: &Path, most: u64) -> Result<Option<String>> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) if error.raw_os_error() == Some(libc::ELOOP) => {
             return Err(Error::Invalid(format!(
-                "{} is a link: Persona Builder reads only real files, never links. Move it away and try again",
+                "{} is a link: Voice reads only real files, never links. Move it away and try again",
                 path.display()
             )));
         }
@@ -496,7 +496,7 @@ pub fn read_text(path: &Path, most: u64) -> Result<Option<String>> {
         .map_err(|e| io(path, e))?;
     if bytes.len() as u64 > most {
         return Err(Error::Invalid(format!(
-            "{} is larger than Persona Builder reads ({} KiB at most)",
+            "{} is larger than Voice reads ({} KiB at most)",
             path.display(),
             most / 1024
         )));

@@ -20,7 +20,7 @@ async function check() {
   } catch (failure) {
     status.value = {
       ready: false,
-      message: failureMessage(failure, "Persona Builder couldn't check Claude Code. Close it and open it again."),
+      message: failureMessage(failure, "Voice couldn't check Claude Code. Close it and open it again."),
       note: null,
       canSignIn: false,
     }
@@ -35,7 +35,7 @@ async function signIn() {
   } catch (failure) {
     status.value = {
       ready: false,
-      message: failureMessage(failure, "Persona Builder couldn't start signing in to Claude. Close it and open it again."),
+      message: failureMessage(failure, "Voice couldn't start signing in to Claude. Close it and open it again."),
       note: null,
       canSignIn: true,
     }
@@ -58,8 +58,8 @@ const loadingLimit = ref(true)
 const savingLimit = ref(false)
 const limitError = ref('')
 const savedMessage = ref('')
-const limitSaveFailure = "Persona Builder couldn't save the limit. Check there's space on this computer, then try again."
-const limitLoadFailure = "Persona Builder couldn't read the limit. Close it and open it again."
+const limitSaveFailure = "Voice couldn't save the limit. Check there's space on this computer, then try again."
+const limitLoadFailure = "Voice couldn't read the limit. Close it and open it again."
 const amountProblem = 'Enter an amount like 50.00, or 0 for no limit.'
 const dayProblem = computed(() => {
   const amount = dollars(day.value)
@@ -110,8 +110,8 @@ async function saveLimit() {
         ? "Saved. There's no limit."
         : `Saved. There's no daily limit, and one step may use at most $${answer.callUsd.toFixed(2)}.`
       : answer.callUsd === 0
-        ? `Saved. Persona Builder stops for the day at about $${answer.dailyUsd.toFixed(2)}, with no separate limit for one step.`
-        : `Saved. Persona Builder stops for the day at about $${answer.dailyUsd.toFixed(2)}, and one step may use at most $${answer.callUsd.toFixed(2)}.`
+        ? `Saved. Voice stops for the day at about $${answer.dailyUsd.toFixed(2)}, with no separate limit for one step.`
+        : `Saved. Voice stops for the day at about $${answer.dailyUsd.toFixed(2)}, and one step may use at most $${answer.callUsd.toFixed(2)}.`
   } catch (failure) {
     limitError.value = failureMessage(failure, limitSaveFailure)
   } finally {
@@ -126,10 +126,10 @@ onMounted(loadLimit)
   <section class="card">
     <div class="card-body p-5">
       <h2 class="mb-3">Connect Claude</h2>
-      <p>Persona Builder works through your own Claude Code, signed in to your own Claude account. It checks that now, and you set how much it may use in a day.</p>
+      <p>Voice works through your own Claude Code, signed in to your own Claude account. It checks that now, and you set how much it may use in a day.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Checking Claude Code…</span></div>
       <template v-else-if="signingIn">
-        <div class="mb-3" role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Finish signing in on the Claude page that opened in your browser. Persona Builder carries on when you're done.</div>
+        <div class="mb-3" role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Finish signing in on the Claude page that opened in your browser. Voice carries on when you're done.</div>
         <button type="button" class="btn btn-outline-secondary" @click="cancelSignIn">Cancel</button>
       </template>
       <template v-else-if="status">
@@ -141,7 +141,7 @@ onMounted(loadLimit)
           <button type="button" :class="status.canSignIn ? 'btn btn-outline-secondary ms-2' : 'btn btn-primary'" @click="check">Check again</button>
         </template>
       </template>
-      <p class="text-secondary mt-3 mb-0">Persona Builder never sees your Claude password: you sign in on Claude's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later.</p>
+      <p class="text-secondary mt-3 mb-0">Voice never sees your Claude password: you sign in on Claude's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later.</p>
     </div>
   </section>
   <section class="card mt-3">
@@ -169,7 +169,7 @@ onMounted(loadLimit)
           </div>
         </div>
         <p class="mt-3">Enter 0 in either box for no limit. With no limit for one step, the day's last step may go a little over.</p>
-        <p class="mt-3">If the build reaches the limit, it carries on tomorrow. Persona Builder checks the limit before every step, so it stops before it goes over.</p>
+        <p class="mt-3">If the build reaches the limit, it carries on tomorrow. Voice checks the limit before every step, so it stops before it goes over.</p>
         <button type="button" class="btn btn-primary" :disabled="loadingLimit || savingLimit || !!dayProblem || !!stepProblem" @click="saveLimit">Save the limit</button>
         <p v-if="savedMessage" class="mt-3 mb-0" role="status">{{ savedMessage }}</p>
       </template>

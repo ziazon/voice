@@ -8,7 +8,7 @@ use std::{
 };
 
 fn run(home: &Scratch, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    Command::new(env!("CARGO_BIN_EXE_voice"))
         .env_clear()
         .env("HOME", &home.0)
         .current_dir(&home.0)
@@ -22,7 +22,7 @@ fn refused(output: Output, shown: &str) {
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
         format!(
-            "persona-builder: {shown} is a kind of file that holds passwords or keys, so Persona Builder never opens it. Choose another file.\n"
+            "voice: {shown} is a kind of file that holds passwords or keys, so Voice never opens it. Choose another file.\n"
         )
     );
 }

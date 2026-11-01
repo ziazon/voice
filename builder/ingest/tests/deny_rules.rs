@@ -1,18 +1,15 @@
 mod common;
 
 use common::{Scratch, repo};
-use persona_builder::{deny::DenyList, member::read_member};
-use persona_builder_ingest::{
+use std::{fs, path::Path};
+use voice_core::{deny::DenyList, member::read_member};
+use voice_ingest::{
     claudeai::read_export,
     filters::Filters,
     mine::{Split, mine, summary},
 };
-use std::{fs, path::Path};
 
-fn run(
-    projects: &Path,
-    home: &Path,
-) -> persona_builder::error::Result<persona_builder_ingest::mine::Mined> {
+fn run(projects: &Path, home: &Path) -> voice_core::error::Result<voice_ingest::mine::Mined> {
     let member = read_member(&repo().join("crew/_template/member.json")).unwrap();
     mine(
         &member,
@@ -30,7 +27,7 @@ fn session(home: &Path) -> std::path::PathBuf {
 }
 fn sentence(shown: &str) -> String {
     format!(
-        "{shown} is a kind of file that holds passwords or keys, so Persona Builder never opens it. Choose another file."
+        "{shown} is a kind of file that holds passwords or keys, so Voice never opens it. Choose another file."
     )
 }
 

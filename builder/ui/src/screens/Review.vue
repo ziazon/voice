@@ -24,7 +24,7 @@ async function reload() {
   try {
     status.value = await backend.reviewStatus({ slug: props.assistant.slug })
   } catch (failure) {
-    error.value = failureMessage(failure, "Something in this assistant's settings stops the review. Use the persona-builder command to see what.")
+    error.value = failureMessage(failure, "Something in this assistant's settings stops the review. Use the voice command to see what.")
   } finally {
     loading.value = false
   }
@@ -38,7 +38,7 @@ watch(() => props.active, (active, wasActive) => {
 <template>
   <section>
     <h2 class="mb-3">Review</h2>
-    <p>Teach your assistant from your own answers. Persona Builder turns what it learns into a change you can read, and keeps it only if your assistant does at least as well on every test.</p>
+    <p>Teach your assistant from your own answers. Voice turns what it learns into a change you can read, and keeps it only if your assistant does at least as well on every test.</p>
     <div v-if="loading" class="spinner-border" role="status">
       <span class="visually-hidden">Reading your answers…</span>
     </div>

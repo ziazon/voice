@@ -1,6 +1,6 @@
-use persona_builder_ingest::anonymize::{Mapping, Rules};
 use serde_json::json;
 use std::path::Path;
+use voice_ingest::anonymize::{Mapping, Rules};
 
 #[test]
 fn rules_validate_without_disclosing_private_values() {
@@ -20,7 +20,7 @@ fn rules_validate_without_disclosing_private_values() {
         ),
         (
             json!({"patterns":["(?=private)"]}),
-            ".patterns[0] is not a valid regex, or it uses look-around or a backreference, which Persona Builder can't read",
+            ".patterns[0] is not a valid regex, or it uses look-around or a backreference, which Voice can't read",
         ),
         (
             json!({"allow":["xy"]}),
@@ -184,7 +184,7 @@ fn all_entry_shapes_and_limits_are_private_errors() {
         ),
         (
             json!({"patterns":[r"(private)\1"]}),
-            ".patterns[0] is not a valid regex, or it uses look-around or a backreference, which Persona Builder can't read",
+            ".patterns[0] is not a valid regex, or it uses look-around or a backreference, which Voice can't read",
         ),
         (
             json!({"allow":["a".repeat(201)]}),
@@ -245,7 +245,7 @@ fn for_member_reads_private_lists() {
         br#"{"anonymizer":{"never_copy":["family-*"],"projects":["~/work/pebble"]}}"#,
     )
     .unwrap();
-    let member = persona_builder::member::read_member(&path).unwrap();
+    let member = voice_core::member::read_member(&path).unwrap();
     let rules = Rules::for_member(&member, &scratch.0).unwrap();
     assert!(rules.never_copy("family-notes"));
     assert_eq!(rules.projects(), &[scratch.0.join("work/pebble")]);

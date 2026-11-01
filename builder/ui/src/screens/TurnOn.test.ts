@@ -39,7 +39,7 @@ it('shows update and changed notices and updates', async () => {
   expect(wrapper.find('h2').exists()).toBe(true)
   await flushPromises()
   expect(wrapper.text()).toContain('Ari has changed since you turned it on.')
-  expect(wrapper.findAll('.text-secondary').map(p => p.text())).toContain('Something Persona Builder added for Ari in your Claude folder was changed or removed.')
+  expect(wrapper.findAll('.text-secondary').map(p => p.text())).toContain('Something Voice added for Ari in your Claude folder was changed or removed.')
   await button(wrapper, 'Update Ari in Claude Code').trigger('click'); await flushPromises()
   expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari' })
 })
@@ -63,7 +63,7 @@ it.each([
 })
 it.each([
   [{ message: 'Look again.' }, 'Look again.'],
-  [new Error('private detail'), "Persona Builder couldn't check Claude Code. Close it and open it again."],
+  [new Error('private detail'), "Voice couldn't check Claude Code. Close it and open it again."],
 ])('shows safe status failure and retries', async (error, message) => {
   const backend = fakeBackend({ claudeCodeStatus: vi.fn().mockRejectedValueOnce(error).mockResolvedValue(off) })
   const wrapper = screen(TurnOn, backend, { assistant })
@@ -75,7 +75,7 @@ it.each([
 })
 it.each([
   [{ message: 'Turn the other assistant off first.' }, 'Turn the other assistant off first.'],
-  [new Error('private detail'), "Persona Builder couldn't turn Ari on, so nothing in your Claude folder was changed."],
+  [new Error('private detail'), "Voice couldn't turn Ari on, so nothing in your Claude folder was changed."],
 ])('shows safe on failure and reloads', async (error, message) => {
   const backend = fakeBackend({ turnOn: vi.fn().mockRejectedValue(error) })
   const wrapper = screen(TurnOn, backend, { assistant })
@@ -91,7 +91,7 @@ it('uses the safe off fallback and reloads', async () => {
   expect(wrapper.find('h2').exists()).toBe(true)
   await flushPromises()
   await button(wrapper, 'Turn Ari off').trigger('click'); await flushPromises()
-  expect(wrapper.find('.alert-warning').text()).toBe("Persona Builder couldn't turn the assistant off. Close it and open it again, then try again.")
+  expect(wrapper.find('.alert-warning').text()).toBe("Voice couldn't turn the assistant off. Close it and open it again, then try again.")
   expect(backend.claudeCodeStatus).toHaveBeenCalledTimes(2)
 })
 

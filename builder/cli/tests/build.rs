@@ -1,5 +1,4 @@
-//! `persona-builder build` against a stub `claude` on `PATH`, on an invented member.
-use persona_builder::crew::{NewMember, new_member};
+//! `voice build` against a stub `claude` on `PATH`, on an invented member.
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -8,6 +7,7 @@ use std::{
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -24,7 +24,7 @@ fn python() -> Option<PathBuf> {
         .ok()
         .filter(|out| out.status.success())
         .map(|out| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()));
-    if found.is_none() && std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref() == Ok("1") {
+    if found.is_none() && std::env::var("VOICE_REQUIRE_PARITY").as_deref() == Ok("1") {
         panic!("python3 is needed for the stub claude");
     }
     found
@@ -44,7 +44,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Robin",
@@ -74,7 +74,7 @@ impl Fixture {
             .count()
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &self.home)
             .env("PATH", format!("{}:/usr/bin:/bin", self.bin.display()))
             .env_remove("ANTHROPIC_API_KEY")
@@ -141,7 +141,7 @@ fn build_writes_how_they_decide_and_the_tests_result() {
     assert_eq!(fixture.calls(), 6);
     let stdout = text(&out.stdout);
     for line in [
-        "Your history holds 44 answered questions. Fewer than 150 is thin: persona-builder interview draft adds twenty questions to fill it out.",
+        "Your history holds 44 answered questions. Fewer than 150 is thin: voice interview draft adds twenty questions to fill it out.",
         "Reading your history: 44 answered questions, 32 of them kept back to test your assistant.",
         "Sorting your decisions by kind, part 2 of 2: done.",
         "Testing your assistant on 32 questions it hasn't seen, batch 1 of 1: done.",
@@ -208,7 +208,7 @@ fn build_spends_nothing_and_writes_nothing_when_claude_code_is_signed_out() {
     let out = fixture.run(&["build", &fixture.member()]);
     assert!(!out.status.success());
     assert!(
-        text(&out.stderr).contains(persona_builder_agent::text::SIGNED_OUT),
+        text(&out.stderr).contains(voice_agent::text::SIGNED_OUT),
         "{}",
         text(&out.stderr)
     );
@@ -262,7 +262,7 @@ fn report_shows_the_last_build() {
     assert_eq!(
         text(&out.stdout),
         format!(
-            "There's no report yet. Build your assistant first: persona-builder build {}\n",
+            "There's no report yet. Build your assistant first: voice build {}\n",
             fixture.member()
         )
     );
@@ -304,8 +304,7 @@ fn build_with_too_few_held_out_questions_says_so_honestly() {
     let stdout = text(&out.stdout);
     assert!(stdout.contains("Only 10 questions were kept back to test your assistant, fewer than 30, so there's too little to measure yet. Until it can be tested, it decides nothing on its own.\n"), "{stdout}");
     assert!(
-        stdout
-            .contains("The interview fills out a thin history: persona-builder interview draft\n"),
+        stdout.contains("The interview fills out a thin history: voice interview draft\n"),
         "{stdout}"
     );
     assert!(!stdout.contains(": Strong."), "{stdout}");
@@ -332,7 +331,7 @@ fn build_refuses_bad_report_names_before_changing_member_files() {
     assert!(!out.status.success(), "{}", text(&out.stdout));
     assert_eq!(
         text(&out.stderr).trim(),
-        "persona-builder: A kind of decision in your assistant's settings (codebook.categories) has a name that is empty, longer than 100 characters, or holds a character that can't be shown, so nothing was saved. Rename it, then try again."
+        "voice: A kind of decision in your assistant's settings (codebook.categories) has a name that is empty, longer than 100 characters, or holds a character that can't be shown, so nothing was saved. Rename it, then try again."
     );
     for (name, bytes) in before {
         assert_eq!(
@@ -349,11 +348,11 @@ fn build_refuses_bad_report_names_before_changing_member_files() {
 
 #[test]
 fn shared_build_path_writes_exactly_the_cli_outputs() {
-    use persona_builder_agent::{
+    use voice_agent::{
         claude::Claude,
         ledger::{Cap, Session},
     };
-    use persona_builder_build::{build, run};
+    use voice_build::{build, run};
     let Some(python) = python() else { return };
     let cli = Fixture::new();
     cli.signed_in(&python);
@@ -363,16 +362,13 @@ fn shared_build_path_writes_exactly_the_cli_outputs() {
     let shared = Fixture::new();
     shared.signed_in(&python);
     shared.write_state("decisions.jsonl", &corpus(32));
-    let member = persona_builder::member::read_member(&shared.member.join("member.json")).unwrap();
+    let member = voice_core::member::read_member(&shared.member.join("member.json")).unwrap();
     let prepared = run::prepare(&member, &shared.member, &shared.home, "decisions.jsonl").unwrap();
     let claude = Claude::at(shared.bin.join("claude"));
     let session = Session::open(&shared.home, &member.slug, Cap::default()).unwrap();
     let mut progress = Vec::new();
     let built = build::build(
-        &persona_builder_agent::guard::Guard::new(
-            vec![&claude],
-            persona_builder::ceilings::Ceilings::defaults(),
-        ),
+        &voice_agent::guard::Guard::new(vec![&claude], voice_core::ceilings::Ceilings::defaults()),
         &session,
         &shared.home,
         &prepared.inputs(&member, "decisions.jsonl", "sonnet"),
@@ -397,7 +393,7 @@ fn shared_build_path_writes_exactly_the_cli_outputs() {
     }
 }
 
-const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: persona-builder ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `persona-builder self-hosted set`.";
+const FOLDER_KEPT_HOME: &str = "Nothing was sent. This step uses your assistant's own folder, which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> crew-folder anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`.";
 
 fn keep_folder_local(member: &std::path::Path) {
     let path = member.join("member.json");
@@ -416,10 +412,7 @@ fn build_honors_the_members_local_folder_ceiling() {
     keep_folder_local(&f.member);
     let out = f.run(&["build", &f.member()]);
     assert!(!out.status.success());
-    assert_eq!(
-        text(&out.stderr),
-        format!("persona-builder: {FOLDER_KEPT_HOME}\n")
-    );
+    assert_eq!(text(&out.stderr), format!("voice: {FOLDER_KEPT_HOME}\n"));
     assert_eq!(f.calls(), 0);
     assert!(!f.state().join("runs.jsonl").exists());
 }

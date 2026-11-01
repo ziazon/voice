@@ -33,7 +33,7 @@ async function load() {
     if (firstLoad || !options.value.choices[choice.value]) choice.value = options.value.selected
     if (firstLoad) name.value = options.value.suggestedName
   } catch (failure) {
-    loadError.value = failureMessage(failure, "Persona Builder couldn't check where your assistant can be kept. Close it and open it again.")
+    loadError.value = failureMessage(failure, "Voice couldn't check where your assistant can be kept. Close it and open it again.")
   } finally {
     loading.value = false
   }
@@ -44,7 +44,7 @@ async function openSignup() {
   try {
     await backend.openLink({ link: 'githubSignup' })
   } catch (failure) {
-    linkError.value = failureMessage(failure, "Persona Builder couldn't open your web browser. Go to https://github.com/signup yourself.")
+    linkError.value = failureMessage(failure, "Voice couldn't open your web browser. Go to https://github.com/signup yourself.")
   }
 }
 async function keep() {
@@ -59,7 +59,7 @@ async function keep() {
     message.value = answer.message
     await load()
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't keep your choice. Close it and open it again, then try again.")
+    error.value = failureMessage(failure, "Voice couldn't keep your choice. Close it and open it again, then try again.")
   } finally {
     keeping.value = false
   }
@@ -73,7 +73,7 @@ async function save() {
   try {
     message.value = (await backend.savePush({ slug: props.assistant.slug })).message
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't save your assistant. Try again, or keep it on this computer only.")
+    error.value = failureMessage(failure, "Voice couldn't save your assistant. Try again, or keep it on this computer only.")
   } finally {
     saving.value = false
   }
@@ -89,7 +89,7 @@ async function signOut() {
     if (options.value) options.value.signedIn = false
     await load()
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't sign you out of GitHub. Try again.")
+    error.value = failureMessage(failure, "Voice couldn't sign you out of GitHub. Try again.")
   } finally {
     signingOut.value = false
   }

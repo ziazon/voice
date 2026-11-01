@@ -1,15 +1,5 @@
 //! The interview when the history is thin: counting, weighting, the prompt, the check of a drafted
 //! file, the call with one retry against a stub `claude`, and the answers as training records.
-use persona_builder::ceilings::Ceilings;
-use persona_builder::member::Member;
-use persona_builder_agent::guard::Guard;
-use persona_builder_agent::{
-    claude::Claude,
-    ledger::{Cap, Session},
-};
-use persona_builder_build::{interview, text};
-use persona_builder_ingest::{corpus::read_records, filters::Filters};
-use persona_builder_steps::{book::book, labels::tally};
 use serde_json::{Map, Value, json};
 use std::{
     fs,
@@ -18,6 +8,16 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, UNIX_EPOCH},
 };
+use voice_agent::guard::Guard;
+use voice_agent::{
+    claude::Claude,
+    ledger::{Cap, Session},
+};
+use voice_build::{interview, text};
+use voice_core::ceilings::Ceilings;
+use voice_core::member::Member;
+use voice_ingest::{corpus::read_records, filters::Filters};
+use voice_steps::{book::book, labels::tally};
 
 /// A word the model writes into a header: it must never come back in an error.
 const SENTINEL: &str = "zebracorn";
@@ -374,7 +374,7 @@ fn short_draft_with_no_kinds_makes_no_call() {
     .unwrap_err();
     assert_eq!(stub.calls(), 0);
     assert!(
-        matches!(error, persona_builder::error::Error::Invalid(ref message)
+        matches!(error, voice_core::error::Error::Invalid(ref message)
         if message == text::NOTHING_TO_ASK)
     );
 }
@@ -444,7 +444,7 @@ fn draft_never_retries_a_call_that_failed() {
     )
     .unwrap_err();
     assert_eq!(stub.calls(), 1);
-    assert_eq!(error.to_string(), persona_builder_agent::text::FAILED);
+    assert_eq!(error.to_string(), voice_agent::text::FAILED);
 }
 
 #[test]
@@ -545,7 +545,7 @@ fn answers_refuse_a_file_with_no_answer() {
 
 #[test]
 fn report_weights_use_examples_and_zero_for_absent_areas() {
-    use persona_builder_build::report::{Area, Level, Report, SCHEMA};
+    use voice_build::report::{Area, Level, Report, SCHEMA};
     let book = book(&member()).unwrap();
     assert_eq!(
         interview::weights_from_report(&book, None).unwrap(),
@@ -635,8 +635,8 @@ fn thin_kinds_keep_only_counts_under_five_and_at_most_five_in_order() {
         "Methods".into(),
         "Scope".into(),
     ];
-    let report: persona_builder_build::report::Report = serde_json::from_value(json!({
-        "schema":"persona-builder/report/1", "built":"2026-10-24", "overall":"thin", "answered":150, "held":0, "test":null,
+    let report: voice_build::report::Report = serde_json::from_value(json!({
+        "schema":"voice/report/1", "built":"2026-10-24", "overall":"thin", "answered":150, "held":0, "test":null,
         "areas": weights.iter().map(|(kind, n)| json!({"area":kind,"examples":n,"level":"thin","strengthen":[]})).collect::<Vec<_>>()
     })).unwrap();
     let from_report = interview::weights_from_report(&book, Some(&report)).unwrap();

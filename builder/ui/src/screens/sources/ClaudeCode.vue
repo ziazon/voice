@@ -36,7 +36,7 @@ onMounted(async () => {
   try {
     folders.value = await backend.claudeCodeFolders({ slug: props.slug })
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't look through your Claude Code history. Close it and open it again.")
+    error.value = failureMessage(failure, "Voice couldn't look through your Claude Code history. Close it and open it again.")
   } finally {
     loading.value = false
   }
@@ -49,7 +49,7 @@ async function read(dryRun: boolean) {
     counts.value = await backend.readClaudeCode({ slug: props.slug, dryRun }, value => { progress.value = value })
     saved.value = !dryRun
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't read your Claude Code history. Close it and open it again.")
+    error.value = failureMessage(failure, "Voice couldn't read your Claude Code history. Close it and open it again.")
   } finally {
     running.value = null
   }
@@ -63,7 +63,7 @@ async function read(dryRun: boolean) {
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Looking at your Claude Code history…</span></div>
       <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
       <template v-if="folders">
-        <p v-if="!folders.found || !folders.folders.length" class="mb-0">Persona Builder found no Claude Code history on this computer.</p>
+        <p v-if="!folders.found || !folders.folders.length" class="mb-0">Voice found no Claude Code history on this computer.</p>
         <template v-else>
           <p>{{ summary }}</p>
           <div class="overflow-auto" style="max-height: 16rem">

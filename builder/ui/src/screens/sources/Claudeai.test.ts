@@ -30,7 +30,7 @@ it('announces checking the chosen download', () => {
 it('keeps a ready status when a later choice is cancelled', async () => {
   const wrapper = screen(Claudeai, fakeBackend({ claudeaiExportStatus: vi.fn().mockResolvedValue(status), chooseClaudeaiExport: vi.fn().mockResolvedValue(null) }), { slug: 'example' })
   await flushPromises()
-  const sentence = `You chose download.zip. Persona Builder can read it: ${(1200).toLocaleString()} chats.`
+  const sentence = `You chose download.zip. Voice can read it: ${(1200).toLocaleString()} chats.`
   expect(wrapper.text()).toContain(sentence)
   expect(button(wrapper, 'List the chats').exists()).toBe(true)
   await button(wrapper, 'Choose the download').trigger('click')
@@ -40,7 +40,7 @@ it('keeps a ready status when a later choice is cancelled', async () => {
 it('warns when a chosen download is missing required parts', async () => {
   const wrapper = screen(Claudeai, fakeBackend({ claudeaiExportStatus: vi.fn().mockResolvedValue({ ...status, ready: false }) }), { slug: 'example' })
   await flushPromises()
-  expect(wrapper.get('.alert-warning').text()).toBe("You chose download.zip, but it's missing parts Persona Builder reads. Download your data from claude.ai again, then choose the new file.")
+  expect(wrapper.get('.alert-warning').text()).toBe("You chose download.zip, but it's missing parts Voice reads. Download your data from claude.ai again, then choose the new file.")
   expect(wrapper.findAll('button').map(item => item.text())).not.toContain('List the chats')
 })
 it('shows a status failure and keeps both choose buttons available', async () => {

@@ -1,6 +1,5 @@
 mod common;
 use common::Scratch;
-use persona_builder_ingest::private::{read_private, write_private};
 use std::{
     fs,
     os::unix::{
@@ -9,6 +8,7 @@ use std::{
     },
     process::Command,
 };
+use voice_ingest::private::{read_private, write_private};
 fn listing(path: &std::path::Path) -> Vec<std::ffi::OsString> {
     let mut names: Vec<_> = fs::read_dir(path)
         .unwrap()
@@ -90,12 +90,12 @@ fn links_at_every_level_are_refused() {
             .to_string();
         let expected = if depth == 3 {
             format!(
-                "{} is a link: Persona Builder reads only real files, never links. Move it away and try again",
+                "{} is a link: Voice reads only real files, never links. Move it away and try again",
                 shown.display()
             )
         } else {
             format!(
-                "{} is a link or not a folder: Persona Builder writes your history only into a real folder. Move it away and try again",
+                "{} is a link or not a folder: Voice writes your history only into a real folder. Move it away and try again",
                 shown.display()
             )
         };

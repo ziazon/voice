@@ -1,9 +1,9 @@
 mod common;
 
 use common::{Scratch, repo};
-use persona_builder::member::{Member, read_member, write_member};
 use serde_json::json;
 use std::fs;
+use voice_core::member::{Member, read_member, write_member};
 
 #[test]
 fn absent_denied_paths_preserves_member_read_and_write() {

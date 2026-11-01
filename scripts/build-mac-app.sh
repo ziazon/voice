@@ -47,37 +47,37 @@ fi
 pnpm -C builder/ui install --frozen-lockfile
 pnpm -C builder/ui tauri "${build_args[@]}"
 target_dir=$(CARGO_NET_OFFLINE=true cargo metadata --format-version 1 --no-deps | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
-app="$target_dir/$bundle_dir/Persona Builder.app"
+app="$target_dir/$bundle_dir/Voice.app"
 [ -d "$app" ] || fail "app not found: $app"
 codesign --verify --deep --strict "$app" >/dev/null 2>&1 || fail "signature check failed: $app"
 
-name="persona-builder-$version-mac-$label"
+name="voice-$version-mac-$label"
 mkdir -p "$repo/dist"
 staging="$repo/dist/$name"
 trap 'rm -rf "$staging"' EXIT
 rm -rf "$staging"
-package="$staging/Persona Builder"
+package="$staging/Voice"
 mkdir -p "$package"
 
 if "$universal"; then
   cli_binaries=()
   for target in aarch64-apple-darwin x86_64-apple-darwin; do
-    CARGO_NET_OFFLINE=true cargo build --release --locked -p persona-builder-cli --target "$target"
-    binary="$target_dir/$target/release/persona-builder"
-    [ -f "$binary" ] || fail 'the persona-builder command was not built'
+    CARGO_NET_OFFLINE=true cargo build --release --locked -p voice-cli --target "$target"
+    binary="$target_dir/$target/release/voice"
+    [ -f "$binary" ] || fail 'the voice command was not built'
     cli_binaries+=("$binary")
   done
-  staging_cli="$staging/persona-builder"
+  staging_cli="$staging/voice"
   lipo -create -output "$staging_cli" "${cli_binaries[@]}"
 else
-  CARGO_NET_OFFLINE=true cargo build --release --locked -p persona-builder-cli
-  staging_cli="$target_dir/release/persona-builder"
+  CARGO_NET_OFFLINE=true cargo build --release --locked -p voice-cli
+  staging_cli="$target_dir/release/voice"
 fi
-[ -f "$staging_cli" ] || fail 'the persona-builder command was not built'
+[ -f "$staging_cli" ] || fail 'the voice command was not built'
 
-ditto "$app" "$package/Persona Builder.app"
-staged_app="$package/Persona Builder.app"
-staged_cli="$staged_app/Contents/MacOS/persona-builder"
+ditto "$app" "$package/Voice.app"
+staged_app="$package/Voice.app"
+staged_cli="$staged_app/Contents/MacOS/voice"
 cp "$staging_cli" "$staged_cli"
 chmod 755 "$staged_cli"
 codesign --force --sign - "$staged_cli"
@@ -86,7 +86,7 @@ codesign --verify --deep --strict "$staged_app" >/dev/null 2>&1 || fail "signatu
 
 executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$staged_app/Contents/Info.plist")
 architectures=$(lipo -archs "$staged_app/Contents/MacOS/$executable")
-cli_architectures=$(lipo -archs "$staged_cli") || fail 'the persona-builder command was built for other Macs than the app'
+cli_architectures=$(lipo -archs "$staged_cli") || fail 'the voice command was built for other Macs than the app'
 read -r -a arch_list <<< "$architectures"
 read -r -a cli_arch_list <<< "$cli_architectures"
 for arch in "${arch_list[@]}"; do
@@ -96,7 +96,7 @@ for arch in "${arch_list[@]}"; do
       compatible=true
     fi
   done
-  "$compatible" || fail 'the persona-builder command was built for other Macs than the app'
+  "$compatible" || fail 'the voice command was built for other Macs than the app'
 done
 
 cp builder/install/install.sh "$package/install.sh"

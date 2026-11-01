@@ -27,7 +27,7 @@ onMounted(async () => {
   try {
     assistants.value = await backend.listAssistants()
   } catch (failure) {
-    error.value = failureMessage(failure, "Your assistants couldn't be read. Close Persona Builder and open it again.")
+    error.value = failureMessage(failure, "Your assistants couldn't be read. Close Voice and open it again.")
   } finally {
     loading.value = false
   }

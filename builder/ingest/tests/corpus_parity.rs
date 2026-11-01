@@ -1,12 +1,12 @@
 mod common;
 use common::{Scratch, parity_tools_available, repo};
-use persona_builder::member::read_member;
-use persona_builder_ingest::{
+use std::{fs, process::Command};
+use voice_core::member::read_member;
+use voice_ingest::{
     corpus::{self, Input, Mode},
     filters::Filters,
     mine::{Split, to_jsonl},
 };
-use std::{fs, process::Command};
 
 fn compare(case: &str, ari: bool, flags: &[&str]) {
     let s = Scratch::new("corpus-parity");

@@ -4,13 +4,6 @@ use crate::{
     rules::{self, CaseBook},
     text,
 };
-use persona_builder::{
-    error::{Error, Result},
-    member::Member,
-};
-use persona_builder_ingest::private::{
-    StateLock, lock_state, private_folder_exists, read_private_optional_at_max, write_private_at,
-};
 use regex::Regex;
 use serde::Serialize;
 use std::{
@@ -18,6 +11,13 @@ use std::{
     path::{Path, PathBuf},
     sync::LazyLock,
     time::{SystemTime, UNIX_EPOCH},
+};
+use voice_core::{
+    error::{Error, Result},
+    member::Member,
+};
+use voice_ingest::private::{
+    StateLock, lock_state, private_folder_exists, read_private_optional_at_max, write_private_at,
 };
 static PERSONA_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(PERSONA).expect("persona pattern"));

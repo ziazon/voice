@@ -1,10 +1,10 @@
 //! Skills discovered on this computer and the private permission to copy them.
 use crate::{anonymize::Rules, private};
-use persona_builder::{
+use serde_json::{Value, json};
+use voice_core::{
     deny::DenyList,
     error::{Error, Result},
 };
-use serde_json::{Value, json};
 mod output;
 mod read;
 pub use output::{prepare_output, prepare_output_with_projects, write_skill};

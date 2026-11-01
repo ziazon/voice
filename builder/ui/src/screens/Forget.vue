@@ -13,7 +13,7 @@ const deleting = ref(false)
 const busy = computed(() => checking.value || deleting.value)
 const error = ref('')
 const message = ref('')
-const FORGET = "Persona Builder couldn't forget anything, and nothing was deleted. Close it and open it again, then try again."
+const FORGET = "Voice couldn't forget anything, and nothing was deleted. Close it and open it again, then try again."
 async function check() {
   if (busy.value) return
   checking.value = true
@@ -46,22 +46,22 @@ async function forget() {
   <section class="card mt-4">
     <div class="card-body p-5">
       <h2 class="mb-3">Forget what {{ assistant.name }} learned from</h2>
-      <p>Forget deletes the history {{ assistant.name }} learned from and Persona Builder's working files. {{ assistant.name }} itself stays.</p>
+      <p>Forget deletes the history {{ assistant.name }} learned from and Voice's working files. {{ assistant.name }} itself stays.</p>
       <template v-if="preview && preview.files === 0">
-        <p>There's nothing to forget: Persona Builder hasn't kept anything for {{ assistant.name }} yet.</p>
+        <p>There's nothing to forget: Voice hasn't kept anything for {{ assistant.name }} yet.</p>
         <button type="button" class="btn btn-link p-0" :disabled="busy" @click="preview = undefined">Close</button>
       </template>
       <template v-else-if="preview">
         <p>This deletes {{ preview.files === 1 ? '1 file' : `${preview.files} files` }} from your Claude folder:</p>
         <ul>
           <li>the history {{ assistant.name }} learned from</li>
-          <li>Persona Builder's working files, including the claude.ai files</li>
+          <li>Voice's working files, including the claude.ai files</li>
           <li>your permission to read your history</li>
           <li>your choice of where to keep a copy of {{ assistant.name }}</li>
         </ul>
         <p>These stay:</p>
         <ul>
-          <li>{{ assistant.name }}'s own folder, and everything Persona Builder wrote into it</li>
+          <li>{{ assistant.name }}'s own folder, and everything Voice wrote into it</li>
           <li>any copy of {{ assistant.name }} on GitHub</li>
           <li>{{ assistant.name }} in Claude Code, if it's on</li>
         </ul>

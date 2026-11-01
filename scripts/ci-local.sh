@@ -20,11 +20,11 @@ if command -v cargo >/dev/null 2>&1; then
   echo 'cargo clippy --all-targets --locked -- -D warnings'
   cargo clippy --all-targets --locked -- -D warnings
   if [ "$(uname -s)" = Darwin ]; then
-    echo 'PERSONA_BUILDER_REQUIRE_PARITY=1 PERSONA_BUILDER_REQUIRE_SANDBOX=1 cargo test --locked'
-    PERSONA_BUILDER_REQUIRE_PARITY=1 PERSONA_BUILDER_REQUIRE_SANDBOX=1 cargo test --locked
+    echo 'VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked'
+    VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked
   else
-    echo 'PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked'
-    PERSONA_BUILDER_REQUIRE_PARITY=1 cargo test --locked
+    echo 'VOICE_REQUIRE_PARITY=1 cargo test --locked'
+    VOICE_REQUIRE_PARITY=1 cargo test --locked
   fi
   echo 'git diff --exit-code -- builder/ui/src/types/generated'
   git diff --exit-code -- builder/ui/src/types/generated
@@ -35,8 +35,8 @@ if command -v cargo >/dev/null 2>&1; then
   # The Windows and Linux password stores are pure Rust, so any computer can check them.
   for target in x86_64-pc-windows-msvc x86_64-unknown-linux-gnu; do
     if rustup target list --installed 2>/dev/null | grep -qx "$target"; then
-      echo "cargo check --locked -p persona-builder-keystore --all-targets --target $target"
-      cargo check --locked -p persona-builder-keystore --all-targets --target "$target"
+      echo "cargo check --locked -p voice-keystore --all-targets --target $target"
+      cargo check --locked -p voice-keystore --all-targets --target "$target"
     else
       echo "ci-local: the $target target is missing, skipping its check (rustup target add $target)"
     fi

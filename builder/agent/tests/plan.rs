@@ -1,15 +1,15 @@
 mod common;
 
 use common::*;
-use persona_builder::ceilings::Ceilings;
-use persona_builder_agent::guard::Guard;
-use persona_builder_agent::{
+use serde_json::{Value, json};
+use std::time::Duration;
+use voice_agent::guard::Guard;
+use voice_agent::{
     ledger::{Cap, Session, local_day},
     provider::Usage,
     text,
 };
-use serde_json::{Value, json};
-use std::time::Duration;
+use voice_core::ceilings::Ceilings;
 
 fn stream(lines: &[String]) -> String {
     format!("{}\n", lines.join("\n"))

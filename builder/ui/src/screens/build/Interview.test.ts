@@ -100,5 +100,5 @@ it('clears a kept result after edits or navigation and offers rebuilding only af
 it('explains how twenty questions fill out a short history', async () => {
   const wrapper = screen(Interview, fakeBackend({ interviewStatus: vi.fn().mockResolvedValue(status) }), { slug: 'example' })
   await flushPromises()
-  expect(wrapper.findAll('p')[0]!.text()).toBe('Your history holds 10 answered questions. It takes about 150 to know you well, so Persona Builder asks you twenty questions about your work to fill it out.')
+  expect(wrapper.findAll('p')[0]!.text()).toBe('Your history holds 10 answered questions. It takes about 150 to know you well, so Voice asks you twenty questions about your work to fill it out.')
 })

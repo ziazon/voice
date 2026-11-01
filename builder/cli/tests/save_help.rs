@@ -1,7 +1,7 @@
 use std::process::Command;
 
 fn help(args: &[&str]) -> String {
-    let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    let output = Command::new(env!("CARGO_BIN_EXE_voice"))
         .env_clear()
         .args(args)
         .output()

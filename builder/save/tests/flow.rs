@@ -4,8 +4,14 @@ use common::{
     pb6::{Wrapper, file_url, git, git_output, init, member, seed},
     reply,
 };
-use persona_builder::error::{Error, Result};
-use persona_builder_save::{
+use serde_json::json;
+use std::{
+    cell::RefCell,
+    fs,
+    path::{Path, PathBuf},
+};
+use voice_core::error::{Error, Result};
+use voice_save::{
     flow::{self, Choice, GithubRemotes, MemberPaths, PrivacyCheck, RemoteCheck, Saved, Saver},
     git::{FoundRepo, Git, Remote},
     github::{Endpoints, Github},
@@ -13,12 +19,6 @@ use persona_builder_save::{
     record::{SaveRecord, read_record},
     secret::Secret,
     text,
-};
-use serde_json::json;
-use std::{
-    cell::RefCell,
-    fs,
-    path::{Path, PathBuf},
 };
 
 struct Approve {
@@ -66,14 +66,14 @@ impl PrivacyCheck for NeverPrivacy {
 fn client(http: &FakeHttp) -> Github<'_> {
     Github::new(http, Endpoints::github(), "Iv1.invented").unwrap()
 }
-fn account() -> persona_builder_save::github::HttpResponse {
+fn account() -> voice_save::github::HttpResponse {
     let mut response = reply(200, json!({"login":"rowan-vale","id":4242}));
     response
         .headers
         .push(("x-oauth-scopes".into(), "repo".into()));
     response
 }
-fn private() -> persona_builder_save::github::HttpResponse {
+fn private() -> voice_save::github::HttpResponse {
     reply(200, json!({"private":true,"visibility":"private"}))
 }
 fn tokens() -> MemoryStore {
@@ -619,7 +619,7 @@ fn github_choice_creates_once_and_saves_to_main_then_refuses_changed_origin() {
         assert_eq!(
             calls[1].json,
             Some(
-                json!({"name":"wren-assistant","private":true,"description":"My AI assistant, saved by Persona Builder","auto_init":false,"has_issues":false,"has_projects":false,"has_wiki":false})
+                json!({"name":"wren-assistant","private":true,"description":"My AI assistant, saved by Voice","auto_init":false,"has_issues":false,"has_projects":false,"has_wiki":false})
             )
         );
     }

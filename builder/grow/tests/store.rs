@@ -1,9 +1,3 @@
-use persona_builder::{error::Result, member::Member};
-use persona_builder_grow::{
-    record::*,
-    store::{Prefix, Store},
-};
-use persona_builder_ingest::private::{lock_state, write_private_at};
 use serde_json::json;
 use std::{
     fs,
@@ -11,6 +5,12 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::{error::Result, member::Member};
+use voice_grow::{
+    record::*,
+    store::{Prefix, Store},
+};
+use voice_ingest::private::{lock_state, write_private_at};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Scratch(PathBuf);
 impl Scratch {
@@ -603,7 +603,7 @@ fn approval_write_refuses_wrong_role_without_using_up_approval() {
             store.save_proposal(&proposal).unwrap();
             let mut approval: Approval = example("approval");
             approval.decision = decision;
-            let right_role = persona_builder_grow::rules::approver(persona_kind);
+            let right_role = voice_grow::rules::approver(persona_kind);
             approval.role = if right_role == GivenBy::Subject {
                 GivenBy::Staff
             } else {
@@ -614,10 +614,7 @@ fn approval_write_refuses_wrong_role_without_using_up_approval() {
             assert!(result.is_err(), "wrong-role approval must be refused");
             assert_eq!(
                 result.unwrap_err().to_string(),
-                persona_builder_grow::text::rule(
-                    &approval.id,
-                    persona_builder_grow::text::WRONG_ROLE,
-                ),
+                voice_grow::text::rule(&approval.id, voice_grow::text::WRONG_ROLE,),
             );
             assert_eq!(fs::read_dir(s.growth()).unwrap().count(), before);
             assert!(store.approvals().unwrap().is_empty());

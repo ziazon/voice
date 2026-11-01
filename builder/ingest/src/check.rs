@@ -1,8 +1,4 @@
 use crate::filters::Filters;
-use persona_builder::{
-    error::{Error, Result},
-    member::read_member,
-};
 use serde_json::Value;
 use std::{
     collections::BTreeSet,
@@ -11,6 +7,10 @@ use std::{
     os::unix::{ffi::OsStrExt, fs::OpenOptionsExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+};
+use voice_core::{
+    error::{Error, Result},
+    member::read_member,
 };
 
 pub struct Report {

@@ -1,4 +1,4 @@
-use persona_builder_save::text;
+use voice_save::text;
 
 #[test]
 fn the_wording_says_this_computer_never_this_mac() {
@@ -75,7 +75,7 @@ fn is_said_accepts_only_save_failure_sentences() {
         (text::repo_public("example/assistant"), ""),
         (
             text::repo_unconfirmed("example/assistant"),
-            "Persona Builder couldn't confirm that ",
+            "Voice couldn't confirm that ",
         ),
         (
             text::repo_name_taken("assistant"),
@@ -87,7 +87,7 @@ fn is_said_accepts_only_save_failure_sentences() {
         ),
         (
             text::links_in_folder("notes.md"),
-            "Persona Builder won't save a folder that holds links to other places: ",
+            "Voice won't save a folder that holds links to other places: ",
         ),
         (
             text::push_failed("try again"),
@@ -109,7 +109,7 @@ fn is_said_accepts_only_save_failure_sentences() {
         "not a GitHub address",
         "",
         "GitHub sign-in didn't work (GitHub said: ). Try again later, or keep your assistant on this computer only.",
-        "The branch ma\nin is open in your repo right now, so Persona Builder didn't save. Switch to another branch, then try again.",
+        "The branch ma\nin is open in your repo right now, so Voice didn't save. Switch to another branch, then try again.",
         "GitHub didn't take the save: try\ragain",
     ] {
         assert!(!text::is_said(message), "{message}");

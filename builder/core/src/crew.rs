@@ -58,7 +58,7 @@ pub fn shown_path(repo: &Path, home: &Path) -> Result<String> {
 pub enum Decisions<'a> {
     /// The guided build's `scripts/crew_decisions.py`, inside the repo.
     Python,
-    /// A `persona-builder` command, already written as one shell word (see `cli_word`).
+    /// A `voice` command, already written as one shell word (see `cli_word`).
     Cli(&'a str),
 }
 
@@ -362,17 +362,15 @@ mod tests {
                 .path()
                 .join(if embedded { "embedded" } else { "disk" });
             let mut new = input();
-            new.decisions = Decisions::Cli(
-                "\"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\"",
-            );
+            new.decisions = Decisions::Cli("\"$HOME/Applications/Voice.app/Contents/MacOS/voice\"");
             if embedded {
                 new_member_embedded(&target, &new).unwrap();
             } else {
                 new_member(&repo().join("crew/_template"), &target, &new).unwrap();
             }
             let skill = fs::read_to_string(target.join("SKILL.md")).unwrap();
-            assert!(skill.contains("   \"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\" similar ~/projects/voice/crew/ari --stdin <<'END_OF_TEXT'"));
-            assert_eq!(skill.matches("  \"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\" record ~/projects/voice/crew/ari --stdin <<'END_OF_TEXT'").count(), 2);
+            assert!(skill.contains("   \"$HOME/Applications/Voice.app/Contents/MacOS/voice\" similar ~/projects/voice/crew/ari --stdin <<'END_OF_TEXT'"));
+            assert_eq!(skill.matches("  \"$HOME/Applications/Voice.app/Contents/MacOS/voice\" record ~/projects/voice/crew/ari --stdin <<'END_OF_TEXT'").count(), 2);
             assert!(!skill.contains("{{"));
             assert!(!skill.contains("crew_decisions.py"));
         }

@@ -16,7 +16,7 @@ async function merge() {
   try {
     counts.value = await backend.mergeHistories({ slug: props.slug })
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't put your history together. Close it and open it again.")
+    error.value = failureMessage(failure, "Voice couldn't put your history together. Close it and open it again.")
   } finally {
     running.value = false
   }

@@ -2747,149 +2747,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "persona-builder"
-version = "0.1.0"
-dependencies = [
- "libc",
- "serde",
- "serde_json",
- "sha1_smol",
-]
-
-[[package]]
-name = "persona-builder-agent"
-version = "0.1.0"
-dependencies = [
- "libc",
- "persona-builder",
- "persona-builder-ingest",
- "serde",
- "serde_json",
- "ureq",
-]
-
-[[package]]
-name = "persona-builder-api"
-version = "0.1.0"
-dependencies = [
- "persona-builder",
- "persona-builder-agent",
- "persona-builder-build",
- "persona-builder-grow",
- "persona-builder-ingest",
- "persona-builder-save",
- "persona-builder-steps",
- "serde",
- "serde_json",
- "ts-rs",
- "voice-panel-runner",
-]
-
-[[package]]
-name = "persona-builder-app"
-version = "0.1.0"
-dependencies = [
- "persona-builder-api",
- "rfd",
- "serde_json",
- "tauri",
- "tauri-build",
-]
-
-[[package]]
-name = "persona-builder-build"
-version = "0.1.0"
-dependencies = [
- "libc",
- "persona-builder",
- "persona-builder-agent",
- "persona-builder-ingest",
- "persona-builder-steps",
- "serde",
- "serde_json",
- "sha1_smol",
-]
-
-[[package]]
-name = "persona-builder-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "persona-builder",
- "persona-builder-agent",
- "persona-builder-api",
- "persona-builder-build",
- "persona-builder-grow",
- "persona-builder-ingest",
- "persona-builder-save",
- "persona-builder-steps",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "persona-builder-grow"
-version = "0.1.0"
-dependencies = [
- "persona-builder",
- "persona-builder-agent",
- "persona-builder-build",
- "persona-builder-ingest",
- "persona-builder-steps",
- "regex",
- "serde",
- "serde_json",
- "sha1_smol",
-]
-
-[[package]]
-name = "persona-builder-ingest"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "libc",
- "persona-builder",
- "regex",
- "serde",
- "serde_json",
- "sha1_smol",
- "zip",
-]
-
-[[package]]
-name = "persona-builder-keystore"
-version = "0.1.0"
-dependencies = [
- "keyring-core",
- "windows-native-keyring-store",
- "zbus-secret-service-keyring-store",
-]
-
-[[package]]
-name = "persona-builder-save"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "libc",
- "persona-builder",
- "persona-builder-keystore",
- "serde",
- "serde_json",
- "ureq",
- "zeroize",
-]
-
-[[package]]
-name = "persona-builder-steps"
-version = "0.1.0"
-dependencies = [
- "persona-builder",
- "persona-builder-ingest",
- "regex",
- "serde_json",
-]
-
-[[package]]
 name = "phf"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4661,17 +4518,136 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "voice-agent"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "ureq",
+ "voice-core",
+ "voice-ingest",
+]
+
+[[package]]
+name = "voice-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ts-rs",
+ "voice-agent",
+ "voice-build",
+ "voice-core",
+ "voice-grow",
+ "voice-ingest",
+ "voice-panel-runner",
+ "voice-save",
+ "voice-steps",
+]
+
+[[package]]
+name = "voice-app"
+version = "0.1.0"
+dependencies = [
+ "rfd",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "voice-api",
+]
+
+[[package]]
+name = "voice-build"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "sha1_smol",
+ "voice-agent",
+ "voice-core",
+ "voice-ingest",
+ "voice-steps",
+]
+
+[[package]]
+name = "voice-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "voice-agent",
+ "voice-api",
+ "voice-build",
+ "voice-core",
+ "voice-grow",
+ "voice-ingest",
+ "voice-save",
+ "voice-steps",
+]
+
+[[package]]
+name = "voice-core"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "sha1_smol",
+]
+
+[[package]]
+name = "voice-grow"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "sha1_smol",
+ "voice-agent",
+ "voice-build",
+ "voice-core",
+ "voice-ingest",
+ "voice-steps",
+]
+
+[[package]]
+name = "voice-ingest"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "libc",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha1_smol",
+ "voice-core",
+ "zip",
+]
+
+[[package]]
+name = "voice-keystore"
+version = "0.1.0"
+dependencies = [
+ "keyring-core",
+ "windows-native-keyring-store",
+ "zbus-secret-service-keyring-store",
+]
+
+[[package]]
 name = "voice-panel-runner"
 version = "0.1.0"
 dependencies = [
  "libc",
- "persona-builder",
- "persona-builder-agent",
- "persona-builder-build",
- "persona-builder-ingest",
  "regex",
  "serde",
  "serde_json",
+ "voice-agent",
+ "voice-build",
+ "voice-core",
+ "voice-ingest",
  "voice-panels",
 ]
 
@@ -4682,6 +4658,30 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "voice-save"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "libc",
+ "serde",
+ "serde_json",
+ "ureq",
+ "voice-core",
+ "voice-keystore",
+ "zeroize",
+]
+
+[[package]]
+name = "voice-steps"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde_json",
+ "voice-core",
+ "voice-ingest",
 ]
 
 [[package]]

@@ -8,18 +8,18 @@ use crate::{
     text,
     version::{DECISIONS_MOST, version},
 };
-use persona_builder::{
-    error::{Error, Result},
-    member::Member,
-};
-use persona_builder_agent::{guard::Guard, ledger::Session};
-use persona_builder_build::{
+use std::{collections::BTreeMap, path::Path};
+use voice_agent::{guard::Guard, ledger::Session};
+use voice_build::{
     build::{Asker, batches},
     draft,
 };
-use persona_builder_ingest::filters::Filters;
-use persona_builder_steps::text_check::hidden;
-use std::{collections::BTreeMap, path::Path};
+use voice_core::{
+    error::{Error, Result},
+    member::Member,
+};
+use voice_ingest::filters::Filters;
+use voice_steps::text_check::hidden;
 
 #[derive(Debug)]
 pub struct Measured {
@@ -154,7 +154,7 @@ pub fn measure(
         .collect();
     let mut asker = Asker::new(
         guard,
-        persona_builder_build::build::SOURCES,
+        voice_build::build::SOURCES,
         session,
         home,
         &member.slug,

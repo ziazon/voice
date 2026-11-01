@@ -86,7 +86,8 @@ fn tree(path: &Path) -> BTreeMap<PathBuf, (u32, Vec<u8>)> {
     walk(path, path, &mut out);
     out
 }
-const BLOCK: &str = "<!-- persona-builder:begin ari -->\n@~/.claude/persona-builder/ari/RULES.md\n<!-- persona-builder:end ari -->\n";
+const BLOCK: &str =
+    "<!-- voice:begin ari -->\n@~/.claude/persona-builder/ari/RULES.md\n<!-- voice:end ari -->\n";
 const RULES: &str = "# Ari\n\nBefore you ask me a question (a choice between options, a go or no-go, a plan's open questions),\nask Ari first with the /ari skill. Ari says what I would likely pick and how sure\nthat answer is. Ask me only what Ari hands back, and show me Ari's answer beside the\nquestion.\n";
 
 #[test]
@@ -172,7 +173,7 @@ fn second_assistant_is_refused_without_changes() {
     let before = tree(&f.places.claude_home);
     assert_eq!(
         turn_on(&other, &f.places).unwrap_err().to_string(),
-        "Ari is on. Turn Ari off first: persona-builder off"
+        "Ari is on. Turn Ari off first: voice off"
     );
     assert_eq!(tree(&f.places.claude_home), before);
 }
@@ -185,7 +186,7 @@ fn unowned_skill_directory_is_refused_without_changes() {
     assert_eq!(
         error,
         format!(
-            "{} exists and Persona Builder did not add it. Move it away, then turn Ari on again",
+            "{} exists and Voice did not add it. Move it away, then turn Ari on again",
             f.path("skills/ari").display()
         )
     );
@@ -232,11 +233,7 @@ fn symlinked_claude_file_keeps_link_target_bytes_and_mode() {
     fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
     symlink(&target, f.path("CLAUDE.md")).unwrap();
     f.on();
-    assert!(
-        fs::read_to_string(&target)
-            .unwrap()
-            .contains("persona-builder:begin")
-    );
+    assert!(fs::read_to_string(&target).unwrap().contains("voice:begin"));
     assert!(
         fs::symlink_metadata(f.path("CLAUDE.md"))
             .unwrap()
@@ -279,7 +276,7 @@ fn turning_on_twice_refreshes_one_block() {
     f.off();
 }
 #[test]
-fn persona_builder_file_is_refused_before_any_write() {
+fn voice_file_is_refused_before_any_write() {
     let f = Fixture::new();
     fs::write(f.path("CLAUDE.md"), "notes").unwrap();
     fs::write(f.path("persona-builder"), "not a folder").unwrap();
@@ -403,7 +400,7 @@ fn late_install_failure_restores_claude_and_keeps_existing_temporary() {
 fn malformed_block_stops_off_before_any_deletion() {
     let f = Fixture::new();
     f.on();
-    fs::write(f.path("CLAUDE.md"), "<!-- persona-builder:begin ari -->\n").unwrap();
+    fs::write(f.path("CLAUDE.md"), "<!-- voice:begin ari -->\n").unwrap();
     let before = tree(&f.places.claude_home);
     let error = turn_off(&f.places).unwrap_err().to_string();
     assert!(error.contains(&f.path("CLAUDE.md").display().to_string()));
@@ -462,7 +459,7 @@ fn failed_refresh_restores_deleted_files_despite_unrelated_temporary_names() {
     f.on();
     fs::write(
         f.path(&format!(
-            "skills/ari/.CLAUDE.md.persona-builder-{}",
+            "skills/ari/.CLAUDE.md.voice-{}",
             std::process::id()
         )),
         "user file",
@@ -481,10 +478,7 @@ fn refresh_checks_claude_restore_temporary_before_removing_original() {
     let f = Fixture::new();
     f.on();
     fs::write(
-        f.path(&format!(
-            ".CLAUDE.md.persona-builder-{}",
-            std::process::id()
-        )),
+        f.path(&format!(".CLAUDE.md.voice-{}", std::process::id())),
         "user file",
     )
     .unwrap();
@@ -601,7 +595,7 @@ fn skill_without_matching_name_is_refused() {
 fn skill_with_hooks_is_refused() {
     refused_skill(
         "---\nname: ari\nhooks: {}\n---\n",
-        "asks for hooks, which can run commands without asking. Persona Builder turns on only a skill without them",
+        "asks for hooks, which can run commands without asking. Voice turns on only a skill without them",
     );
 }
 
@@ -609,7 +603,7 @@ fn skill_with_hooks_is_refused() {
 fn skill_with_allowed_tools_is_refused() {
     refused_skill(
         "---\nname: ari\nallowed-tools: Bash\n---\n",
-        "asks for allowed-tools, which can run commands without asking. Persona Builder turns on only a skill without them",
+        "asks for allowed-tools, which can run commands without asking. Voice turns on only a skill without them",
     );
 }
 
@@ -621,7 +615,7 @@ fn skill_with_shell_command_is_refused() {
     ] {
         refused_skill(
             text,
-            "runs a shell command (!`). Persona Builder turns on only a skill without one",
+            "runs a shell command (!`). Voice turns on only a skill without one",
         );
     }
 }
@@ -763,11 +757,11 @@ fn skill_front_matter_rejects_disallowed_key_spellings() {
     ] {
         let message = if matches!(key, "hooks" | "allowed-tools") {
             format!(
-                "asks for {key}, which can run commands without asking. Persona Builder turns on only a skill without them"
+                "asks for {key}, which can run commands without asking. Voice turns on only a skill without them"
             )
         } else {
             format!(
-                "asks for {key}, which Persona Builder does not turn on. Remove it, then turn Ari on again"
+                "asks for {key}, which Voice does not turn on. Remove it, then turn Ari on again"
             )
         };
         refused_skill(&format!("---\nname: ari\n{line}\n---\n"), &message);
@@ -819,12 +813,12 @@ fn skill_with_uncheckable_characters_is_refused() {
     ] {
         refused_skill(
             &format!("---\nname: ari\n{line}\n---\n"),
-            "holds a character Persona Builder can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn Ari on again",
+            "holds a character Voice can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn Ari on again",
         );
     }
     refused_skill(
         "---\nname: ari\n---\nbody\r",
-        "holds a character Persona Builder can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn Ari on again",
+        "holds a character Voice can't check (a lone carriage return, a Unicode line break or another control character). Save it as plain text, then turn Ari on again",
     );
 }
 

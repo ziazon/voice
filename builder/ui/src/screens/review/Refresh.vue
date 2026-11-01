@@ -21,7 +21,7 @@ async function reload() {
   try {
     emit('changed', await backend.reviewStatus({ slug: props.slug }))
   } catch (failure) {
-    error.value = failureMessage(failure, "Something in this assistant's settings stops the review. Use the persona-builder command to see what.")
+    error.value = failureMessage(failure, "Something in this assistant's settings stops the review. Use the voice command to see what.")
   }
 }
 async function draft() {
@@ -55,7 +55,7 @@ async function answer(approve: boolean) {
     kept.value = false
     emit('changed', status)
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't save your answer. Check there's space on this computer, then try again.")
+    error.value = failureMessage(failure, "Voice couldn't save your answer. Check there's space on this computer, then try again.")
   } finally {
     busy.value = false
   }
@@ -106,7 +106,7 @@ async function test() {
         <p class="text-secondary">Drafted {{ status.change.drafted }}.</p>
         <p><strong>{{ status.change.summary }}</strong></p>
         <p class="text-secondary">Learned from {{ status.change.learnedFrom.toLocaleString() }} of your answers.</p>
-        <p v-if="status.change.approved">You approved this change. Next, Persona Builder tests it on all your answers: it keeps the change only if every new test passes and none of the others gets worse. It uses a little of your Claude plan.</p>
+        <p v-if="status.change.approved">You approved this change. Next, Voice tests it on all your answers: it keeps the change only if every new test passes and none of the others gets worse. It uses a little of your Claude plan.</p>
         <div v-for="(point, index) in status.change.points" :key="index" class="mb-3">
           <h4>{{ (index + 1).toLocaleString() }}. {{ point.why }}</h4>
           <div class="row">

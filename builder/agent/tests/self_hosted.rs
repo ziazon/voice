@@ -1,16 +1,5 @@
 mod common;
 use common::*;
-use persona_builder::{
-    ceilings::{Ceilings, Source},
-    error::Result,
-};
-use persona_builder_agent::{
-    guard::{self, Guard, Sealed},
-    ledger::{Cap, Session, local_day},
-    provider::{Provider, Reach, Reply},
-    self_hosted::{FILE, SelfHosted, Server, own_network},
-    text,
-};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
@@ -25,6 +14,17 @@ use std::{
     },
     thread,
     time::Duration,
+};
+use voice_agent::{
+    guard::{self, Guard, Sealed},
+    ledger::{Cap, Session, local_day},
+    provider::{Provider, Reach, Reply},
+    self_hosted::{FILE, SelfHosted, Server, own_network},
+    text,
+};
+use voice_core::{
+    ceilings::{Ceilings, Source},
+    error::Result,
 };
 
 #[test]
@@ -179,8 +179,7 @@ fn damaged_server_settings_name_the_file() {
         "not json",
         r#"{"url":"http://8.8.8.8","model":"qwen","network":true}"#,
     ] {
-        persona_builder_ingest::private::write_private(&home.0, "wren", FILE, raw.as_bytes())
-            .unwrap();
+        voice_ingest::private::write_private(&home.0, "wren", FILE, raw.as_bytes()).unwrap();
         assert_eq!(
             Server::load(&home.0, "wren").unwrap_err().to_string(),
             text::server_damaged(&path)
@@ -535,7 +534,7 @@ fn listener_provider_order_routes_mail_home_and_history_to_claude() {
     guard
         .call(
             &session,
-            &persona_builder_agent::provider::Brief {
+            &voice_agent::provider::Brief {
                 sources: &[Source::Mail],
                 ..call("records", &schema)
             },
@@ -582,7 +581,7 @@ fn private_literal_requires_network_opt_in() {
 fn saved_settings_without_network_are_damaged() {
     let home = Scratch::new("missing-network");
     let _session = session(&home.0);
-    persona_builder_ingest::private::write_private(
+    voice_ingest::private::write_private(
         &home.0,
         "wren",
         FILE,

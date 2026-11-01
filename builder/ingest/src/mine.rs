@@ -3,11 +3,6 @@ use crate::{
     privacy::privacy,
     python::{PythonFormatter, decode, py_space, splitlines, truthy},
 };
-use persona_builder::{
-    deny::DenyList,
-    error::{Error, Result},
-    member::Member,
-};
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::{
@@ -16,6 +11,11 @@ use std::{
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     sync::LazyLock,
+};
+use voice_core::{
+    deny::DenyList,
+    error::{Error, Result},
+    member::Member,
 };
 
 pub const DEFAULT_HOLDOUT: f64 = 0.15;
@@ -35,7 +35,7 @@ pub struct Mined {
     pub excluded: usize,
     pub personal: usize,
     pub secret: usize,
-    /// Records of a shape Persona Builder can't read, left out whole.
+    /// Records of a shape Voice can't read, left out whole.
     pub unreadable: usize,
     /// Files on the never-read list, left out unopened.
     pub denied: usize,
@@ -55,7 +55,7 @@ fn io<T>(path: &Path, result: std::io::Result<T>) -> Result<T> {
 }
 fn link(path: &Path) -> Error {
     Error::Invalid(format!(
-        "{} is a link: Persona Builder doesn't follow links in your Claude Code history. Move it away and try again",
+        "{} is a link: Voice doesn't follow links in your Claude Code history. Move it away and try again",
         path.display()
     ))
 }
@@ -811,8 +811,7 @@ mod tests {
     #[test]
     fn opening_a_fifo_returns_without_waiting_for_a_writer() {
         let _serial = crate::serial_test();
-        let path =
-            std::env::temp_dir().join(format!("persona-builder-fifo-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("voice-fifo-{}", std::process::id()));
         assert!(
             std::process::Command::new("mkfifo")
                 .arg(&path)

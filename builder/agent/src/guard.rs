@@ -6,7 +6,7 @@ use crate::{
     self_hosted::SelfHosted,
     text,
 };
-use persona_builder::{
+use voice_core::{
     ceilings::{Ceiling, Ceilings, Source},
     error::{Error, Result},
 };

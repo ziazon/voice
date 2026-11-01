@@ -1,6 +1,5 @@
 use crate::{secret::Secret, text};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use persona_builder::error::{Error, Result};
 use std::{
     fs,
     io::Write,
@@ -9,6 +8,7 @@ use std::{
     process::{Command, Output, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::error::{Error, Result};
 
 pub struct Git {
     program: PathBuf,
@@ -235,7 +235,7 @@ fn list(
     folder: &Path,
     directory: &Path,
     files: &mut Vec<String>,
-    deny: &persona_builder::deny::DenyList,
+    deny: &voice_core::deny::DenyList,
 ) -> Result<()> {
     let mut entries = fs::read_dir(directory)
         .map_err(|e| io(directory, e))?
@@ -276,7 +276,7 @@ pub fn folder_files(folder: &Path) -> Result<Vec<PathBuf>> {
         folder,
         folder,
         &mut files,
-        &persona_builder::deny::DenyList::builtin(),
+        &voice_core::deny::DenyList::builtin(),
     )?;
     let mut paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
     paths.sort();

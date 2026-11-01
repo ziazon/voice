@@ -1,13 +1,10 @@
 mod common;
 use common::*;
-use persona_builder_grow::{keep::keep, record::*, store::Store};
-use persona_builder_ingest::filters::Filters;
 use serde_json::{Value, json};
 use std::fs;
-fn run(
-    f: &Fixture,
-    input: &Value,
-) -> persona_builder::error::Result<persona_builder_grow::keep::Kept> {
+use voice_grow::{keep::keep, record::*, store::Store};
+use voice_ingest::filters::Filters;
+fn run(f: &Fixture, input: &Value) -> voice_core::error::Result<voice_grow::keep::Kept> {
     keep(
         &Store::open(&f.home, &f.member).unwrap(),
         &f.member,
@@ -66,7 +63,7 @@ fn refused(v: Value) {
         .iter()
         .any(|key| v.get(key).is_some())
     {
-        assert_eq!(message, persona_builder_grow::text::FILLED_IN);
+        assert_eq!(message, voice_grow::text::FILLED_IN);
     }
     assert!(!message.contains("zebracorn"), "{message}");
     assert!(
@@ -97,7 +94,7 @@ fn unknown_key() {
     v["app_extra"] = json!("zebracorn");
     assert_eq!(
         run(&f, &v).unwrap_err().to_string(),
-        persona_builder_grow::text::unknown_key("app_extra")
+        voice_grow::text::unknown_key("app_extra")
     );
     assert!(!f.home.join(".claude").exists());
 }
@@ -119,7 +116,7 @@ fn too_big() {
     v["wanted"] = json!("zebracorn".repeat(8000));
     assert_eq!(
         run(&f, &v).unwrap_err().to_string(),
-        persona_builder_grow::text::TOO_BIG
+        voice_grow::text::TOO_BIG
     );
     assert!(!f.home.join(".claude").exists());
 }
@@ -197,14 +194,14 @@ fn malformed_input_and_bad_time_write_nothing() {
 #[test]
 fn keeping_refuses_an_already_held_lock_without_writing() {
     let f = Fixture::new();
-    let _lock = persona_builder_ingest::private::lock_state(&f.home, &f.member.slug).unwrap();
+    let _lock = voice_ingest::private::lock_state(&f.home, &f.member.slug).unwrap();
     assert!(run(&f, &input()).is_err());
     assert!(!f.growth().exists());
 }
 
 #[test]
 fn summary_counts_statuses_in_category_order_without_words() {
-    use persona_builder_grow::{rules::CaseBook, text};
+    use voice_grow::{rules::CaseBook, text};
     let mut base: Case = serde_json::from_str(include_str!("golden/case.json")).unwrap();
     base.situation = "zebracorn".into();
     let mut active = base.clone();
@@ -223,11 +220,11 @@ fn summary_counts_statuses_in_category_order_without_words() {
 
 #[test]
 fn unknown_keys_only_echo_short_lowercase_names() {
-    use persona_builder_grow::text::unknown_key;
+    use voice_grow::text::unknown_key;
     for key in ["", "UPPER", "a1", "<planted>", "a\n", "é", &"q".repeat(41)] {
         assert_eq!(
             unknown_key(key),
-            "The answer has a field Persona Builder doesn't know. Leave it out and try again."
+            "The answer has a field Voice doesn't know. Leave it out and try again."
         );
     }
     for key in ["a", "some_field", &"q".repeat(40)] {
@@ -272,7 +269,7 @@ fn kept_text_allows_less_than_and_uses_plain_errors() {
         ("area", "The area", 2000),
     ] {
         assert_eq!(
-            persona_builder_grow::text::invalid_text(field, limit),
+            voice_grow::text::invalid_text(field, limit),
             format!(
                 "{label} must be 1 to {} characters long, with no hidden characters.",
                 if limit == 2000 { "2,000" } else { "100" }
@@ -284,7 +281,7 @@ fn kept_text_allows_less_than_and_uses_plain_errors() {
 #[test]
 fn kept_confirmation_is_a_constant() {
     assert_eq!(
-        persona_builder_grow::text::KEPT,
+        voice_grow::text::KEPT,
         "Kept your answer. It's now one of the tests your assistant is checked on at its next refresh."
     );
 }
@@ -302,7 +299,7 @@ fn invalid_case_history_leaves_signals_unchanged() {
         to_line(&invalid),
         to_line(&kept.case)
     );
-    persona_builder_ingest::private::write_private_at(
+    voice_ingest::private::write_private_at(
         &f.home,
         &f.member.slug,
         Some("growth"),
@@ -354,9 +351,8 @@ fn locked_keep_matches_keep_without_taking_another_lock() {
     let expected = run(&first, &input()).unwrap();
     let second = Fixture::new();
     let store = Store::open(&second.home, &second.member).unwrap();
-    let _lock =
-        persona_builder_ingest::private::lock_state(&second.home, &second.member.slug).unwrap();
-    let actual = persona_builder_grow::keep::keep_locked(
+    let _lock = voice_ingest::private::lock_state(&second.home, &second.member.slug).unwrap();
+    let actual = voice_grow::keep::keep_locked(
         &store,
         &second.member,
         &Filters::compile(&second.member.filters).unwrap(),

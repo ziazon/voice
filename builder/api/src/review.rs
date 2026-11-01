@@ -5,33 +5,34 @@ use crate::{
     dto::*,
     history::{FIND, PERMISSION, count, failure, locked, readable},
 };
-use persona_builder::ceilings::Ceilings;
-use persona_builder::{assistants, error::Error, member::Member};
-use persona_builder_agent::{
+use serde_json::json;
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
+use voice_agent::{
     claude,
     guard::{self, Guard},
     self_hosted::SelfHosted,
 };
-use persona_builder_build::{interview, report};
-use persona_builder_grow::{
+use voice_build::{interview, report};
+use voice_core::ceilings::Ceilings;
+use voice_core::{assistants, error::Error, member::Member};
+use voice_grow::{
     apply, diff, keep,
     record::{Decision, KeepOrRevert, Proposal, Status},
     refresh,
     store::{self, Store},
     text,
 };
-use persona_builder_ingest::filters::Filters;
-use persona_builder_steps::book::book;
-use serde_json::json;
-use std::{
-    ffi::OsStr,
-    path::{Path, PathBuf},
-};
+use voice_ingest::filters::Filters;
+use voice_steps::book::book;
 type Result<T> = std::result::Result<T, Failure>;
-const REVIEW_SETTINGS: &str = "Something in this assistant's settings stops the review. Use the persona-builder command to see what.";
-const GROWTH_DAMAGED: &str = "Your assistant's kept answers can't be read, so nothing was changed. Use the persona-builder command to see what's wrong.";
+const REVIEW_SETTINGS: &str =
+    "Something in this assistant's settings stops the review. Use the voice command to see what.";
+const GROWTH_DAMAGED: &str = "Your assistant's kept answers can't be read, so nothing was changed. Use the voice command to see what's wrong.";
 const KEEP_EMPTY: &str = "Say what was being decided and what you'd want, then keep it.";
-const KEEP_BAD: &str = "Persona Builder couldn't keep that answer. Check it and try again.";
+const KEEP_BAD: &str = "Voice couldn't keep that answer. Check it and try again.";
 const KEEP_PRIVATE: &str = "That looked personal or secret, so it wasn't kept. Leave out names and private details, then try again.";
 const NOT_BUILT_YET: &str = "Build your assistant first: there's nothing to refresh yet.";
 const ALREADY_OPEN: &str =
@@ -40,10 +41,12 @@ const REFRESH_FAILED: &str = "Claude's draft didn't fit, twice, so nothing was s
 const CHANGE_GONE: &str =
     "That change isn't waiting for your answer any more. Close it and open it again.";
 const CHANGE_OLD: &str = "Your assistant or your answers changed since this was drafted, so it can't be approved. Reject it, then draft a new one.";
-const ANSWER_SAVE: &str = "Persona Builder couldn't save your answer. Check there's space on this computer, then try again.";
-const TEST_OLD: &str = "Your assistant or your answers changed since you approved this change, so it wasn't tested and nothing changed. Use the persona-builder command to see what to do.";
+const ANSWER_SAVE: &str =
+    "Voice couldn't save your answer. Check there's space on this computer, then try again.";
+const TEST_OLD: &str = "Your assistant or your answers changed since you approved this change, so it wasn't tested and nothing changed. Use the voice command to see what to do.";
 const TEST_FAILED: &str = "The test stopped before it finished, so your assistant is as it was. What was already finished is kept: test again to carry on.";
-const APPLY_SAVE: &str = "The change was tested, but the result couldn't be saved. Use the persona-builder command to finish it.";
+const APPLY_SAVE: &str =
+    "The change was tested, but the result couldn't be saved. Use the voice command to finish it.";
 fn level(value: report::Level) -> ReportLevel {
     match value {
         report::Level::Strong => ReportLevel::Strong,

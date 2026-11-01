@@ -1,8 +1,8 @@
 pub mod common;
 
 use common::Scratch;
-use persona_builder_save::{git::Git, text};
 use std::{fs, os::unix::fs::PermissionsExt};
+use voice_save::{git::Git, text};
 
 #[test]
 fn missing_git_needs_installation() {

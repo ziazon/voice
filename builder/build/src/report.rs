@@ -3,14 +3,14 @@ use crate::{
     build::{self, Built},
     draft, interview, text,
 };
-use persona_builder::error::{Error, Result};
-use persona_builder_ingest::private;
-use persona_builder_steps::book::Book;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use voice_core::error::{Error, Result};
+use voice_ingest::private;
+use voice_steps::book::Book;
 
 pub const REPORT: &str = "report.json";
-pub const SCHEMA: &str = "persona-builder/report/1";
+pub const SCHEMA: &str = "voice/report/1";
 pub const REPORT_MOST: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -214,7 +214,7 @@ pub fn check_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Result<()> {
     if names.into_iter().any(|name| {
         name.is_empty()
             || name.chars().count() > 100
-            || name.chars().any(persona_builder_steps::text_check::hidden)
+            || name.chars().any(voice_steps::text_check::hidden)
     }) {
         return Err(Error::Invalid(text::REPORT_BAD_NAME.into()));
     }

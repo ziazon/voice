@@ -5,14 +5,14 @@ use crate::{
     labels::category,
     share::{percent, share},
 };
-use persona_builder::{
+use serde_json::{Map, Value};
+use std::collections::{BTreeMap, HashSet};
+use voice_core::{
     error::{Error, Result},
     json::to_python_json,
     member::Member,
 };
-use persona_builder_ingest::{mine::Mark, python::truthy};
-use serde_json::{Map, Value};
-use std::collections::{BTreeMap, HashSet};
+use voice_ingest::{mine::Mark, python::truthy};
 
 pub const TIERS: [&str; 3] = ["high", "medium", "low"];
 

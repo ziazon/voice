@@ -1,7 +1,7 @@
-use persona_builder_grow::record::*;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
+use voice_grow::record::*;
 
 fn spec() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/spec/growth-loop")
@@ -180,7 +180,7 @@ fn refused<T: Record>(mut value: Value, field: &str) {
     let result = parse::<T>(&serde_json::to_vec(&value).unwrap());
     assert!(result.is_err(), "{} {field} was accepted", T::KIND);
     let error = result.err().unwrap();
-    assert!(matches!(error, persona_builder::error::Error::Invalid(_)));
+    assert!(matches!(error, voice_core::error::Error::Invalid(_)));
     let message = error.to_string();
     assert!(message.contains(T::KIND), "{message}");
     assert!(

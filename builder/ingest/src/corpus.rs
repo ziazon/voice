@@ -4,12 +4,12 @@ use crate::{
     mine, privacy,
     python::py_space,
 };
-use persona_builder::{
+use serde_json::{Map, Value};
+use std::collections::HashSet;
+use voice_core::{
     error::{Error, Result},
     member::Member,
 };
-use serde_json::{Map, Value};
-use std::collections::HashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -71,7 +71,7 @@ pub fn read_records(name: &str, bytes: &[u8]) -> Result<Vec<(usize, Map<String, 
                 return Err(invalid(
                     name,
                     line_number,
-                    "a record holds a number Persona Builder can't copy exactly",
+                    "a record holds a number Voice can't copy exactly",
                 ));
             }
             let Value::Object(record) = value else {

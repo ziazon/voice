@@ -1,13 +1,13 @@
-use persona_builder::{
-    error::{Error, Result},
-    json::to_python_json,
-};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
+};
+use voice_core::{
+    error::{Error, Result},
+    json::to_python_json,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

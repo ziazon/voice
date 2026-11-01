@@ -29,12 +29,12 @@ const SEQUENCES: &[&[&str]] = &[
 pub const TOO_MANY: &str = "member config: filters.denied_paths holds more than 200 entries.";
 pub fn bad_entry(entry: &str) -> String {
     format!(
-        "member config: filters.denied_paths: {entry:?} isn't a name or a path Persona Builder can use. Write a name like diary*, or a path starting with ~/ or / below a folder, in plain letters (use * for an accented letter), with no . or .. parts, at most 255 characters."
+        "member config: filters.denied_paths: {entry:?} isn't a name or a path Voice can use. Write a name like diary*, or a path starting with ~/ or / below a folder, in plain letters (use * for an accented letter), with no . or .. parts, at most 255 characters."
     )
 }
 pub fn refusal(shown: &str) -> String {
     format!(
-        "{shown} is a kind of file that holds passwords or keys, so Persona Builder never opens it. Choose another file."
+        "{shown} is a kind of file that holds passwords or keys, so Voice never opens it. Choose another file."
     )
 }
 

@@ -1,4 +1,4 @@
-//! The build's steps through the `persona-builder` binary against the real Python, on the invented
+//! The build's steps through the `voice` binary against the real Python, on the invented
 //! members and files `tests/crew_steps_fixtures.py` writes: the same printed lines, exit codes and
 //! files, byte for byte.
 use serde_json::Value;
@@ -23,7 +23,7 @@ fn python_available() -> bool {
     if Command::new("python3").arg("--version").output().is_ok() {
         return true;
     }
-    if std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref() == Ok("1") {
+    if std::env::var("VOICE_REQUIRE_PARITY").as_deref() == Ok("1") {
         panic!("parity tools missing: python3 not on PATH");
     }
     eprintln!("skipped: python3 not found");
@@ -123,7 +123,7 @@ fn compare(case: &str, who: &str) {
             .current_dir(home)
             .output()
             .unwrap();
-        let rust: Output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        let rust: Output = Command::new(env!("CARGO_BIN_EXE_voice"))
             .env_clear()
             .env("HOME", home)
             .env("PATH", std::env::var_os("PATH").unwrap())

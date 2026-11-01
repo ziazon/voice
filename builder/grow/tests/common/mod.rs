@@ -1,10 +1,10 @@
 #![allow(dead_code)]
-use persona_builder::member::Member;
 use std::{
     fs,
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::member::Member;
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 pub struct Fixture {
     pub home: PathBuf,
@@ -44,32 +44,32 @@ pub fn input() -> serde_json::Value {
 
 /// Test provider that records the sources actually delivered by the guard, then uses the stub.
 pub struct RecordingProvider<'a> {
-    pub inner: &'a dyn persona_builder_agent::provider::Provider,
-    pub sources: std::sync::Mutex<Vec<Vec<persona_builder::ceilings::Source>>>,
+    pub inner: &'a dyn voice_agent::provider::Provider,
+    pub sources: std::sync::Mutex<Vec<Vec<voice_core::ceilings::Source>>>,
 }
 impl<'a> RecordingProvider<'a> {
-    pub fn new(inner: &'a dyn persona_builder_agent::provider::Provider) -> Self {
+    pub fn new(inner: &'a dyn voice_agent::provider::Provider) -> Self {
         Self {
             inner,
             sources: std::sync::Mutex::new(Vec::new()),
         }
     }
 }
-impl persona_builder_agent::provider::Provider for RecordingProvider<'_> {
+impl voice_agent::provider::Provider for RecordingProvider<'_> {
     fn id(&self) -> &'static str {
         self.inner.id()
     }
     fn name(&self) -> &'static str {
         self.inner.name()
     }
-    fn reach(&self) -> persona_builder_agent::provider::Reach {
+    fn reach(&self) -> voice_agent::provider::Reach {
         self.inner.reach()
     }
     fn call(
         &self,
-        session: &persona_builder_agent::ledger::Session,
-        sealed: &persona_builder_agent::guard::Sealed,
-    ) -> persona_builder::error::Result<persona_builder_agent::provider::Reply> {
+        session: &voice_agent::ledger::Session,
+        sealed: &voice_agent::guard::Sealed,
+    ) -> voice_core::error::Result<voice_agent::provider::Reply> {
         sealed.check(self.id(), self.reach())?;
         self.sources
             .lock()

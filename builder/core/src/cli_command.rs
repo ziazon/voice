@@ -1,28 +1,25 @@
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
 
-pub const CLI_FOLDER: &str = "Persona Builder can't be used from a folder whose name has \" $ ` \\ ! { or } in it. Move Persona Builder to the Applications folder in your home folder, then try again.";
+pub const CLI_FOLDER: &str = "Voice can't be used from a folder whose name has \" $ ` \\ ! { or } in it. Move Voice to the Applications folder in your home folder, then try again.";
 
-pub const CLI_PLACE: &str = "Persona Builder needs to be installed before it can make an assistant. Install it with install.sh, as \"How to install.txt\" shows (both are in the Persona Builder folder you were sent), then open it from the Applications folder in your home folder.";
+pub const CLI_PLACE: &str = "Voice needs to be installed before it can make an assistant. Install it with install.sh, as \"How to install.txt\" shows (both are in the Voice folder you were sent), then open it from the Applications folder in your home folder.";
 
-/// The `persona-builder` command that ships with this program: this program itself when it is
-/// that command, else the `persona-builder` beside it (the app's `Contents/MacOS`).
+/// The `voice` command that ships with this program: this program itself when it is
+/// that command, else the `voice` beside it (the app's `Contents/MacOS`).
 pub fn shipped_cli() -> Result<PathBuf> {
     let executable = std::env::current_exe().map_err(|source| Error::Io {
-        path: PathBuf::from("persona-builder"),
+        path: PathBuf::from("voice"),
         source,
     })?;
     let path = executable.canonicalize().map_err(|source| Error::Io {
         path: executable,
         source,
     })?;
-    if path.file_name() == Some(std::ffi::OsStr::new("persona-builder")) {
+    if path.file_name() == Some(std::ffi::OsStr::new("voice")) {
         Ok(path)
     } else {
-        Ok(path
-            .parent()
-            .expect("executable has parent")
-            .join("persona-builder"))
+        Ok(path.parent().expect("executable has parent").join("voice"))
     }
 }
 
@@ -129,7 +126,7 @@ mod tests {
     fn outside_every_root_is_refused() {
         let place = Scratch::new();
         let root = Scratch::new();
-        let command = command_at(place.path(), "persona-builder");
+        let command = command_at(place.path(), "voice");
         assert!(matches!(
             lasting(&command, &[root.path()]),
             Err(Error::Invalid(message)) if message == CLI_PLACE
@@ -141,7 +138,7 @@ mod tests {
         let root = Scratch::new();
         let command = command_at(
             root.path(),
-            "AppTranslocation/1234/d/Persona Builder.app/Contents/MacOS/persona-builder",
+            "AppTranslocation/1234/d/Voice.app/Contents/MacOS/voice",
         );
         assert!(matches!(
             lasting(&command, &[root.path()]),
@@ -154,7 +151,7 @@ mod tests {
     fn a_folder_others_can_write_is_refused() {
         use std::os::unix::fs::PermissionsExt;
         let root = Scratch::new();
-        let command = command_at(root.path(), "open/persona-builder");
+        let command = command_at(root.path(), "open/voice");
         let open = root.path().join("open");
         fs::set_permissions(&open, fs::Permissions::from_mode(0o757)).unwrap();
         let folder_result = lasting(&command, &[root.path()]);
@@ -170,7 +167,7 @@ mod tests {
     fn the_place_rule_runs_only_when_asked() {
         let place = Scratch::new();
         let home = Scratch::new();
-        let command = command_at(place.path(), "persona-builder");
+        let command = command_at(place.path(), "voice");
         assert_eq!(
             word_from(&command, home.path(), false).unwrap(),
             cli_word(&command, home.path()).unwrap()
@@ -204,10 +201,7 @@ mod tests {
     fn a_root_folder_owned_by_the_person_is_lasting() {
         use std::os::unix::fs::PermissionsExt;
         let root = Scratch::new();
-        let command = command_at(
-            root.path(),
-            "Applications/Persona Builder.app/Contents/MacOS/persona-builder",
-        );
+        let command = command_at(root.path(), "Applications/Voice.app/Contents/MacOS/voice");
         assert!(lasting(&command, &[root.path()]).is_ok());
         assert_eq!(
             word_from(&command, root.path(), true).unwrap(),
@@ -222,17 +216,14 @@ mod tests {
     #[test]
     fn only_the_applications_folder_in_home_is_lasting() {
         let home = Scratch::new();
-        let command = command_at(
-            home.path(),
-            "Applications/Persona Builder.app/Contents/MacOS/persona-builder",
-        );
+        let command = command_at(home.path(), "Applications/Voice.app/Contents/MacOS/voice");
         assert_eq!(
             word_from(&command, home.path(), true).unwrap(),
             cli_word(&command, home.path()).unwrap()
         );
         let download = command_at(
             home.path(),
-            "Downloads/Persona Builder/Persona Builder.app/Contents/MacOS/persona-builder",
+            "Downloads/Voice/Voice.app/Contents/MacOS/voice",
         );
         assert!(matches!(
             word_from(&download, home.path(), true),
@@ -240,7 +231,7 @@ mod tests {
         ));
         let applications_old = command_at(
             home.path(),
-            "ApplicationsOld/Persona Builder.app/Contents/MacOS/persona-builder",
+            "ApplicationsOld/Voice.app/Contents/MacOS/voice",
         );
         assert!(matches!(
             word_from(&applications_old, home.path(), true),
@@ -251,16 +242,16 @@ mod tests {
     #[test]
     fn a_passing_disk_is_the_volumes_folder_or_a_translocated_copy() {
         for path in [
-            "/Volumes/Persona Builder/Persona Builder.app/Contents/MacOS/persona-builder",
+            "/Volumes/Voice/Voice.app/Contents/MacOS/voice",
             "/Volumes",
-            "/private/var/folders/ab/cd/T/AppTranslocation/1234-ABCD/d/Persona Builder.app/Contents/MacOS/persona-builder",
+            "/private/var/folders/ab/cd/T/AppTranslocation/1234-ABCD/d/Voice.app/Contents/MacOS/voice",
         ] {
             assert!(on_a_passing_disk(Path::new(path)), "accepted {path}");
         }
         for path in [
-            "/VolumesX/persona-builder",
-            "/Applications/Persona Builder.app/Contents/MacOS/persona-builder",
-            "/Users/robin/AppTranslocationNotes/persona-builder",
+            "/VolumesX/voice",
+            "/Applications/Voice.app/Contents/MacOS/voice",
+            "/Users/robin/AppTranslocationNotes/voice",
         ] {
             assert!(!on_a_passing_disk(Path::new(path)), "refused {path}");
         }
@@ -269,7 +260,7 @@ mod tests {
     #[test]
     fn shipped_cli_is_beside_the_canonical_executable() {
         let executable = std::env::current_exe().unwrap().canonicalize().unwrap();
-        let expected = executable.parent().unwrap().join("persona-builder");
+        let expected = executable.parent().unwrap().join("voice");
         assert_eq!(shipped_cli().unwrap(), expected);
     }
     #[test]
@@ -279,17 +270,17 @@ mod tests {
             .path()
             .canonicalize()
             .unwrap()
-            .join("Applications/Persona Builder.app/Contents/MacOS/persona-builder");
+            .join("Applications/Voice.app/Contents/MacOS/voice");
         assert_eq!(
             cli_word(&path, home.path()).unwrap(),
-            "\"$HOME/Applications/Persona Builder.app/Contents/MacOS/persona-builder\""
+            "\"$HOME/Applications/Voice.app/Contents/MacOS/voice\""
         );
     }
     #[test]
     fn outside_home_is_one_quoted_word() {
         let home = Scratch::new();
         let other = Scratch::new();
-        let path = other.path().join("Persona Builder.app/persona-builder");
+        let path = other.path().join("Voice.app/voice");
         assert_eq!(
             cli_word(&path, home.path()).unwrap(),
             format!("\"{}\"", path.display())
@@ -303,8 +294,8 @@ mod tests {
             '\u{2028}', '\u{2029}',
         ] {
             for path in [
-                home.path().join(format!("bad{c}/persona-builder")),
-                PathBuf::from(format!("/bad{c}/persona-builder")),
+                home.path().join(format!("bad{c}/voice")),
+                PathBuf::from(format!("/bad{c}/voice")),
             ] {
                 assert!(
                     matches!(cli_word(&path, home.path()), Err(Error::Invalid(message)) if message == CLI_FOLDER),
@@ -314,7 +305,7 @@ mod tests {
             if !c.is_control() && c != '\\' {
                 let unsafe_home = home.path().join(format!("home{c}"));
                 std::fs::create_dir(&unsafe_home).unwrap();
-                let path = unsafe_home.canonicalize().unwrap().join("persona-builder");
+                let path = unsafe_home.canonicalize().unwrap().join("voice");
                 assert!(
                     matches!(cli_word(&path, &unsafe_home), Err(Error::Invalid(message)) if message == CLI_FOLDER),
                     "accepted unsafe home: {path:?}"
@@ -328,7 +319,7 @@ mod tests {
         use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
         let home = Scratch::new();
         assert!(
-            matches!(cli_word(Path::new(OsStr::from_bytes(b"/bad\xff/persona-builder")), home.path()), Err(Error::Invalid(message)) if message == CLI_FOLDER)
+            matches!(cli_word(Path::new(OsStr::from_bytes(b"/bad\xff/voice")), home.path()), Err(Error::Invalid(message)) if message == CLI_FOLDER)
         );
     }
     #[test]
@@ -336,7 +327,7 @@ mod tests {
         let home = Scratch::new();
         assert!(matches!(
             cli_word(
-                Path::new("/Applications/persona-builder"),
+                Path::new("/Applications/voice"),
                 &home.path().join("absent")
             ),
             Err(Error::Io { .. })

@@ -1,5 +1,4 @@
 //! Descriptor-relative private reads and writes: directory links are never followed.
-use persona_builder::error::{Error, Result};
 use std::{
     ffi::{CStr, CString},
     fs::{self, File, OpenOptions, Permissions},
@@ -15,8 +14,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use voice_core::error::{Error, Result};
 
-pub const BUSY: &str = "Persona Builder is already working on this assistant in another window. Wait for it to finish, then try again";
+pub const BUSY: &str = "Voice is already working on this assistant in another window. Wait for it to finish, then try again";
 
 /// How long a refused lock is tried again: a child another thread is starting shares the lock until it execs.
 const INHERITED_LOCK_GRACE: Duration = Duration::from_millis(300);
@@ -35,7 +35,7 @@ fn io(path: &Path, source: std::io::Error) -> Error {
 fn directory_error(path: &Path, source: std::io::Error) -> Error {
     if matches!(source.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR)) {
         Error::Invalid(format!(
-            "{} is a link or not a folder: Persona Builder writes your history only into a real folder. Move it away and try again",
+            "{} is a link or not a folder: Voice writes your history only into a real folder. Move it away and try again",
             path.display()
         ))
     } else {
@@ -410,7 +410,7 @@ fn read_private_at_limit(
         let source = std::io::Error::last_os_error();
         if source.raw_os_error() == Some(libc::ELOOP) {
             return Err(Error::Invalid(format!(
-                "{} is a link: Persona Builder reads only real files, never links. Move it away and try again",
+                "{} is a link: Voice reads only real files, never links. Move it away and try again",
                 path.display()
             )));
         }
@@ -552,7 +552,7 @@ fn only_mine(folder: &File, path: &Path, others: u32, how: &str) -> Result<()> {
         || std::os::unix::fs::MetadataExt::uid(&metadata) != me
     {
         return Err(Error::Invalid(format!(
-            "{} can be {how} by others on this computer, so Persona Builder stopped. Make it a folder only you can {}, then try again",
+            "{} can be {how} by others on this computer, so Voice stopped. Make it a folder only you can {}, then try again",
             path.display(),
             if how == "changed" { "change" } else { "open" }
         )));
@@ -989,8 +989,7 @@ mod tests {
 
     #[test]
     fn renamed_temporary_does_not_unlink_a_reused_name() {
-        let path =
-            std::env::temp_dir().join(format!("persona-builder-guard-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("voice-guard-{}", std::process::id()));
         fs::create_dir(&path).unwrap();
         let directory: OwnedFd = File::open(&path).unwrap().into();
         let source = path.join("source.tmp");

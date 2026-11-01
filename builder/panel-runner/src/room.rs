@@ -122,7 +122,7 @@ pub fn validate_id(id: &str) -> Result<(), String> {
 }
 /// A UTC id with six random lowercase hex digits.
 pub fn new_id() -> Result<String, String> {
-    let stamp = persona_builder_agent::ledger::utc_stamp(SystemTime::now());
+    let stamp = voice_agent::ledger::utc_stamp(SystemTime::now());
     let stamp: String = stamp.chars().filter(|c| !matches!(c, '-' | ':')).collect();
     let id = format!("dl-{stamp}-{}", random_hex()?);
     validate_id(&id)?;
@@ -333,8 +333,7 @@ impl Room {
     pub fn load_state(&self, convene: &Convened) -> Result<DeliberationState, String> {
         let value = self.read_json("state.json")?;
         let state = DeliberationState::from_json(&value).map_err(|_| text::READ_STATE)?;
-        let valid_name =
-            |name: &String| persona_builder::crew::slugify(name).as_ref() == Some(name);
+        let valid_name = |name: &String| voice_core::crew::slugify(name).as_ref() == Some(name);
         if state.crew != convene.input.seats
             || !state.crew.iter().all(valid_name)
             || !state

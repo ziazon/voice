@@ -1,9 +1,9 @@
 //! One test in its own binary: environment mutation follows tests/env.rs.
 mod common;
 use common::*;
-use persona_builder::ceilings::{Ceilings, Source};
-use persona_builder_agent::{guard::Guard, provider::Brief};
 use serde_json::json;
+use voice_agent::{guard::Guard, provider::Brief};
+use voice_core::ceilings::{Ceilings, Source};
 
 #[test]
 fn provider_switches_and_base_urls_are_removed_but_https_proxy_reaches_claude() {

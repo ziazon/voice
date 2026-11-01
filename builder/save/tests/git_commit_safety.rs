@@ -3,8 +3,8 @@ use common::{
     Scratch,
     pb6::{Wrapper, git, init},
 };
-use persona_builder_save::git::{Env, Git, Identity, commit_folder};
 use std::{fs, os::unix::fs::PermissionsExt};
+use voice_save::git::{Env, Git, Identity, commit_folder};
 
 #[test]
 fn user_commit_ignores_configured_gpg_signing() {

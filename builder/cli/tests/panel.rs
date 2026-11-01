@@ -2,14 +2,14 @@
 #[path = "../../api/tests/panel_support/mod.rs"]
 mod panel_support;
 use panel_support::Home;
-use persona_builder_api::{Panels, convene_panel_in};
 use std::{
     fs,
     process::{Command, Output},
 };
+use voice_api::{Panels, convene_panel_in};
 
 fn run(h: &Home, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    Command::new(env!("CARGO_BIN_EXE_voice"))
         .env("HOME", &h.path)
         .env("PATH", format!("{}:/usr/bin:/bin", h.bin.display()))
         .env_remove("ANTHROPIC_API_KEY")

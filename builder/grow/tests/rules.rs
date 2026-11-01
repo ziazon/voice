@@ -1,6 +1,6 @@
-use persona_builder_grow::{record::*, rules::*};
 use serde::de::DeserializeOwned;
 use std::{fs, path::PathBuf};
+use voice_grow::{record::*, rules::*};
 
 fn example<T: DeserializeOwned>(kind: &str) -> T {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -33,9 +33,9 @@ fn cases() -> CaseBook {
     ])
     .unwrap()
 }
-fn refused(result: persona_builder::error::Result<()>, id: &str) {
+fn refused(result: voice_core::error::Result<()>, id: &str) {
     let error = result.expect_err("the rule must refuse this record");
-    assert!(matches!(error, persona_builder::error::Error::Invalid(_)));
+    assert!(matches!(error, voice_core::error::Error::Invalid(_)));
     assert!(error.to_string().contains(id), "{error}");
     assert!(!error.to_string().contains("zebracorn"), "{error}");
 }

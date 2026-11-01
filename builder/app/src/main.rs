@@ -69,11 +69,11 @@ fn main() {
     match app {
         Ok(app) => app.run(|_, event| {
             if let tauri::RunEvent::Exit = event {
-                persona_builder_api::claude_sign_in_shutdown(Duration::from_secs(1));
+                voice_api::claude_sign_in_shutdown(Duration::from_secs(1));
             }
         }),
         Err(error) => {
-            eprintln!("Persona Builder couldn't start: {error}");
+            eprintln!("Voice couldn't start: {error}");
             std::process::exit(1);
         }
     }

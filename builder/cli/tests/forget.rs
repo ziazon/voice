@@ -1,5 +1,3 @@
-use persona_builder::crew::{NewMember, new_member};
-use persona_builder_ingest::private::{self, lock_state};
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -7,6 +5,8 @@ use std::{
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{NewMember, new_member};
+use voice_ingest::private::{self, lock_state};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Scratch(PathBuf);
@@ -33,7 +33,7 @@ fn fixture(scratch: &Scratch) -> (PathBuf, PathBuf, PathBuf) {
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
         &member,
         &NewMember {
-            decisions: persona_builder::crew::Decisions::Python,
+            decisions: voice_core::crew::Decisions::Python,
             name: "Ari",
             pronouns: "they/them",
             principal: "Robin",
@@ -66,7 +66,7 @@ fn forget_prints_exact_preview_delete_and_missing_text() {
         (
             false,
             format!(
-                "This deletes 2 files in {}: the history Ari learned from and the drafts of each build.\nAri's own files in {} stay.\nTo go ahead: persona-builder forget {} --yes\n",
+                "This deletes 2 files in {}: the history Ari learned from and the drafts of each build.\nAri's own files in {} stay.\nTo go ahead: voice forget {} --yes\n",
                 state.display(),
                 member.display(),
                 member.display()
@@ -89,7 +89,7 @@ fn forget_prints_exact_preview_delete_and_missing_text() {
             format!("Nothing to forget: {} is not there.\n", state.display()),
         ),
     ] {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_persona-builder"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_voice"));
         command
             .env("HOME", &home)
             .env("CLAUDE_CONFIG_DIR", scratch.0.join("other-claude"))
@@ -129,7 +129,7 @@ fn forget_refuses_busy_state_then_deletes_after_unlock() {
     let (member, home, state) = fixture(&scratch);
     let lock = lock_state(&home, "ari").unwrap();
     let run = || {
-        Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+        Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &home)
             .env("CLAUDE_CONFIG_DIR", scratch.0.join("other-claude"))
             .arg("forget")
@@ -164,7 +164,7 @@ fn forget_missing_state_never_creates_it() {
     let scratch = Scratch::new();
     let (member, home, state) = fixture(&scratch);
     fs::remove_dir_all(home.join(".claude")).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_persona-builder"))
+    let output = Command::new(env!("CARGO_BIN_EXE_voice"))
         .env("HOME", &home)
         .env("CLAUDE_CONFIG_DIR", scratch.0.join("other-claude"))
         .arg("forget")

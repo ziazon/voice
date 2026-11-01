@@ -1,18 +1,19 @@
 use clap::{CommandFactory, Parser, Subcommand};
-use persona_builder::ceilings::Ceilings;
-use persona_builder::{
+use std::path::{Path, PathBuf};
+use voice_agent::{
+    guard::{self, Guard},
+    self_hosted::{SelfHosted, Server},
+};
+use voice_core::ceilings::Ceilings;
+use voice_core::{
     deny::DenyList,
     error::{Error, Result},
     install::{self, FileState, Places},
     json::to_python_json,
     member::read_member,
 };
-use persona_builder_agent::{
-    guard::{self, Guard},
-    self_hosted::{SelfHosted, Server},
-};
-use persona_builder_ingest::private::StateLock;
-use persona_builder_save::{
+use voice_ingest::private::StateLock;
+use voice_save::{
     flow::{self, Choice, GithubRemotes, MemberPaths, RemoteCheck, Saved, Saver},
     git::Git,
     github::{self, Endpoints, Github, UreqHttp},
@@ -20,8 +21,7 @@ use persona_builder_save::{
     record::SaveRecord,
     text,
 };
-use persona_builder_steps::input::RecordList as Records;
-use std::path::{Path, PathBuf};
+use voice_steps::input::RecordList as Records;
 
 mod assistants;
 mod panel;
@@ -29,11 +29,11 @@ mod record;
 mod skills;
 mod stdin_json;
 
-/// The `persona-builder` command: a thin layer over the core library.
+/// The `voice` command: a thin layer over the core library.
 #[derive(Parser)]
 #[command(
-    name = "persona-builder",
-    version = persona_builder::VERSION,
+    name = "voice",
+    version = voice_core::VERSION,
     about = "Build your AI assistant from your own Claude history"
 )]
 struct Cli {
@@ -54,7 +54,7 @@ enum CeilingsCommand {
 }
 
 fn ceilings(command: CeilingsCommand) -> Result<()> {
-    use persona_builder::{ceilings::Source, member::Member};
+    use voice_core::{ceilings::Source, member::Member};
     match command {
         CeilingsCommand::Show { member_dir } => {
             let member = read_member(&member_dir.join("member.json"))?;
@@ -73,15 +73,15 @@ fn ceilings(command: CeilingsCommand) -> Result<()> {
                     if source.read_today() {
                         ""
                     } else {
-                        " (Persona Builder doesn't read this yet)"
+                        " (Voice doesn't read this yet)"
                     }
                 );
             }
-            for agent in persona_builder_agent::agents::AGENTS {
+            for agent in voice_agent::agents::AGENTS {
                 println!(
                     "{}: sends what it's given to {}.",
                     agent.name,
-                    persona_builder_agent::text::reach_words(agent.reach)
+                    voice_agent::text::reach_words(agent.reach)
                 );
             }
         }
@@ -94,20 +94,17 @@ fn ceilings(command: CeilingsCommand) -> Result<()> {
             let checked = checked_member(&member_dir, &home)?;
             // An assistant can have settings before it has private state. Once that folder
             // exists, use the same exclusive directory lock as builds and limit changes.
-            let _lock =
-                match persona_builder_ingest::private::lock_existing_state(&home, &checked.slug) {
-                    Ok(lock) => Some(lock),
-                    Err(Error::Io { source, .. })
-                        if source.kind() == std::io::ErrorKind::NotFound =>
-                    {
-                        None
-                    }
-                    Err(error) => return Err(error),
-                };
+            let _lock = match voice_ingest::private::lock_existing_state(&home, &checked.slug) {
+                Ok(lock) => Some(lock),
+                Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+                    None
+                }
+                Err(error) => return Err(error),
+            };
             let path = member_dir.join("member.json");
             // Re-read only public settings under the build's lock. read_text opens with
             // O_NOFOLLOW and checks the opened descriptor is a regular file.
-            let text = persona_builder_build::draft::read_text(&path, 1024 * 1024)?
+            let text = voice_build::draft::read_text(&path, 1024 * 1024)?
                 .ok_or_else(|| Error::Invalid(format!("{} is missing", path.display())))?;
             let value = serde_json::from_str(&text).map_err(|error| {
                 Error::Invalid(format!(
@@ -136,7 +133,7 @@ fn ceilings(command: CeilingsCommand) -> Result<()> {
             )?;
             let source = Source::from_id(&source).expect("validated source");
             let ceilings = Ceilings::for_member(&member)?;
-            persona_builder_build::draft::write_member(&member_dir, &member)?;
+            voice_build::draft::write_member(&member_dir, &member)?;
             println!(
                 "{} now stays {}.",
                 source.name(),
@@ -182,7 +179,7 @@ enum Command {
     },
     /// List your assistants
     Assistants,
-    /// Your permission for Persona Builder to read your history
+    /// Your permission for Voice to read your history
     Consent {
         #[command(subcommand)]
         command: ConsentCommand,
@@ -380,7 +377,7 @@ enum Command {
         #[command(subcommand)]
         command: MemberCommand,
     },
-    /// List the agents Persona Builder can build with.
+    /// List the agents Voice can build with.
     Agents,
     /// Check your own Claude Code.
     Claude {
@@ -412,7 +409,7 @@ enum Command {
         /// Your merged history: a file in your assistant's private folder.
         #[arg(long, default_value = "decisions.jsonl")]
         corpus: String,
-        #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
+        #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
@@ -462,7 +459,7 @@ enum SelfHostedCommand {
 }
 
 fn self_hosted(command: SelfHostedCommand) -> Result<()> {
-    use persona_builder_agent::text;
+    use voice_agent::text;
     let member_dir = match &command {
         SelfHostedCommand::Show { member_dir }
         | SelfHostedCommand::Set { member_dir, .. }
@@ -470,13 +467,12 @@ fn self_hosted(command: SelfHostedCommand) -> Result<()> {
     };
     let (member, home) = member_and_home(member_dir)?;
     let lock = || {
-        persona_builder_ingest::private::lock_existing_state(&home, &member.slug).map_err(|error| {
-            match error {
-                Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
-                    Error::Invalid(text::NO_STATE_FOR_SERVER.into())
-                }
-                error => error,
+        voice_ingest::private::lock_existing_state(&home, &member.slug).map_err(|error| match error
+        {
+            Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                Error::Invalid(text::NO_STATE_FOR_SERVER.into())
             }
+            error => error,
         })
     };
     match command {
@@ -527,7 +523,7 @@ enum RefreshCommand {
     Propose {
         member_dir: PathBuf,
         /// The Claude model to draft with.
-        #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
+        #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
@@ -543,7 +539,7 @@ enum RefreshCommand {
         #[arg(value_name = "CHANGE")]
         proposal: String,
         /// The Claude model to test with.
-        #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
+        #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
@@ -585,7 +581,7 @@ enum InterviewCommand {
         /// Labels from an earlier build, to find the kinds of decision your history holds least of.
         #[arg(long)]
         labels: Option<String>,
-        #[arg(long, default_value = persona_builder_agent::claude::DEFAULT_MODEL)]
+        #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
         #[arg(long)]
@@ -616,7 +612,7 @@ enum InterviewCommand {
 
 #[derive(Subcommand)]
 enum ConsentCommand {
-    /// Show what you agree to before Persona Builder reads your history
+    /// Show what you agree to before Voice reads your history
     Show,
     /// Agree, for one assistant
     Agree { member_dir: PathBuf },
@@ -626,13 +622,13 @@ enum ConsentCommand {
 enum ClaudeCommand {
     /// Check that Claude Code is installed and signed in.
     Check,
-    /// Sign in to Claude Code in Persona Builder's own profile folder, on Claude's page in your browser.
+    /// Sign in to Claude Code in Voice's own profile folder, on Claude's page in your browser.
     SignIn,
 }
 
 #[derive(Subcommand)]
 enum ClaudeaiCommand {
-    /// Check the export has what Persona Builder reads (shows field names only, never your words).
+    /// Check the export has what Voice reads (shows field names only, never your words).
     Inspect {
         #[arg(long)]
         export: PathBuf,
@@ -762,8 +758,8 @@ fn projects_path(projects: Option<PathBuf>, home: &std::path::Path) -> Result<Pa
 fn split_choice(
     holdout: Option<String>,
     cutoff: Option<String>,
-) -> Result<persona_builder_ingest::mine::Split> {
-    use persona_builder_ingest::mine;
+) -> Result<voice_ingest::mine::Split> {
+    use voice_ingest::mine;
     let split = match cutoff {
         Some(cutoff) => mine::Split::Cutoff(cutoff),
         None => {
@@ -782,11 +778,11 @@ fn split_choice(
 fn checked_member(
     member_dir: &std::path::Path,
     home: &std::path::Path,
-) -> Result<persona_builder::member::Member> {
+) -> Result<voice_core::member::Member> {
     let member = read_member(&member_dir.join("member.json"))?;
-    persona_builder::member::private_state_dir(&member, home).ok_or_else(|| {
+    voice_core::member::private_state_dir(&member, home).ok_or_else(|| {
         Error::Invalid(format!(
-            "Persona Builder keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says {}: change it to ~/.claude/state/<slug> and try again",
+            "Voice keeps your history only in ~/.claude/state/<slug>. This assistant's member.json says {}: change it to ~/.claude/state/<slug> and try again",
             member.state_dir
         ))
     })?;
@@ -794,21 +790,21 @@ fn checked_member(
 }
 fn nothing_yet(slug: &str) -> Error {
     Error::Invalid(format!(
-        "~/.claude/state/{slug} isn't there yet, so there's nothing to read. Start with persona-builder mine, persona-builder claudeai titles or persona-builder interview draft."
+        "~/.claude/state/{slug} isn't there yet, so there's nothing to read. Start with voice mine, voice claudeai titles or voice interview draft."
     ))
 }
 fn no_review() -> Error {
-    Error::Invalid("there's no review file yet: run persona-builder claudeai titles first".into())
+    Error::Invalid("there's no review file yet: run voice claudeai titles first".into())
 }
 fn history_lock_new(home: &Path, slug: &str) -> Result<StateLock> {
-    persona_builder_ingest::private::lock_state(home, slug)
+    voice_ingest::private::lock_state(home, slug)
 }
 fn history_lock_existing(
     home: &Path,
     slug: &str,
     missing: impl FnOnce() -> Error,
 ) -> Result<StateLock> {
-    use persona_builder_ingest::private::lock_existing_state;
+    use voice_ingest::private::lock_existing_state;
     lock_existing_state(home, slug).map_err(|error| match error {
         Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => missing(),
         error => error,
@@ -822,8 +818,8 @@ fn mine(
     cutoff: Option<String>,
     dry_run: bool,
 ) -> Result<()> {
-    use persona_builder_ingest::{filters::Filters, mine, private::write_private};
-    persona_builder_ingest::private::validate_name(&out)?;
+    use voice_ingest::{filters::Filters, mine, private::write_private};
+    voice_ingest::private::validate_name(&out)?;
     let split = split_choice(holdout, cutoff)?;
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
@@ -853,14 +849,14 @@ fn mine(
     Ok(())
 }
 fn claudeai_inspect(export: PathBuf) -> Result<()> {
-    use persona_builder_ingest::claudeai;
+    use voice_ingest::claudeai;
     let home = home()?;
     let export = claudeai::read_export(&expand_home(export, &home), &DenyList::new(&home, &[])?)?;
     let inspection = claudeai::inspect(&export)?;
     print!("{}", inspection.text);
     if !inspection.missing.is_empty() {
         return Err(Error::Invalid(format!(
-            "the export is missing fields Persona Builder reads: {}",
+            "the export is missing fields Voice reads: {}",
             inspection.missing.join(", ")
         )));
     }
@@ -871,8 +867,8 @@ fn existing_review(
     home: &std::path::Path,
     slug: &str,
     review: &str,
-) -> Result<Vec<persona_builder_ingest::claudeai::ReviewRow>> {
-    use persona_builder_ingest::{claudeai::read_review, private::read_private};
+) -> Result<Vec<voice_ingest::claudeai::ReviewRow>> {
+    use voice_ingest::{claudeai::read_review, private::read_private};
     let bytes = read_private(home, slug, review).map_err(|error| match error {
         Error::Invalid(message) if message.ends_with("doesn't exist") => no_review(),
         other => other,
@@ -886,7 +882,7 @@ fn claudeai_titles(
     project_field: Option<String>,
     dry_run: bool,
 ) -> Result<()> {
-    use persona_builder_ingest::{
+    use voice_ingest::{
         claudeai::{self, review_text},
         filters::Filters,
         private::{validate_review_name, write_private},
@@ -944,7 +940,7 @@ struct MarkArgs {
     all: bool,
 }
 fn claudeai_mark(member_dir: PathBuf, args: MarkArgs) -> Result<()> {
-    use persona_builder_ingest::{
+    use voice_ingest::{
         claudeai::{self, Selector, review_text},
         private::{validate_review_name, write_private},
     };
@@ -991,7 +987,7 @@ fn claudeai_mine(
     cutoff: Option<String>,
     dry_run: bool,
 ) -> Result<()> {
-    use persona_builder_ingest::{
+    use voice_ingest::{
         claudeai,
         filters::Filters,
         mine::to_jsonl,
@@ -1032,13 +1028,13 @@ fn claudeai_mine(
 }
 fn merge(
     member_dir: PathBuf,
-    mut inputs: Vec<(String, persona_builder_ingest::corpus::Mode)>,
+    mut inputs: Vec<(String, voice_ingest::corpus::Mode)>,
     out: String,
     holdout: Option<String>,
     cutoff: Option<String>,
     dry_run: bool,
 ) -> Result<()> {
-    use persona_builder_ingest::{
+    use voice_ingest::{
         corpus::{self, Input, Mode},
         filters::Filters,
         mine::to_jsonl,
@@ -1120,7 +1116,7 @@ fn split_corpus(
     answers: String,
     dry_run: bool,
 ) -> Result<()> {
-    use persona_builder_ingest::{
+    use voice_ingest::{
         corpus as corpus_ops,
         mine::to_jsonl,
         private::{read_private, validate_name, write_private},
@@ -1173,16 +1169,14 @@ fn split_corpus(
     Ok(())
 }
 /// A member whose state folder is the private one, with the home it lives under.
-fn member_and_home(
-    member_dir: &std::path::Path,
-) -> Result<(persona_builder::member::Member, PathBuf)> {
+fn member_and_home(member_dir: &std::path::Path) -> Result<(voice_core::member::Member, PathBuf)> {
     let home = home()?;
     let member = checked_member(member_dir, &home)?;
     Ok((member, home))
 }
 /// A corpus file, `NAME` or `FOLDER/NAME` inside the state folder.
 fn corpus_at(home: &std::path::Path, slug: &str, argument: &str) -> Result<Records> {
-    use persona_builder_ingest::{corpus::read_records, private};
+    use voice_ingest::{corpus::read_records, private};
     let (folder, name) = private::place(argument)?;
     private::validate_name(name)?;
     read_records(
@@ -1192,18 +1186,18 @@ fn corpus_at(home: &std::path::Path, slug: &str, argument: &str) -> Result<Recor
 }
 /// A JSON file, `NAME` or `FOLDER/NAME` inside the state folder.
 fn json_at(home: &std::path::Path, slug: &str, argument: &str) -> Result<Vec<u8>> {
-    use persona_builder_ingest::private;
+    use voice_ingest::private;
     let (folder, name) = private::place(argument)?;
     private::validate_json_name(name)?;
     private::read_private_at(home, slug, folder, name)
 }
 fn chunk(member_dir: PathBuf, corpus: String, out_dir: String, size: u64) -> Result<()> {
-    use persona_builder_ingest::private::{private_folder, write_private_at};
+    use voice_ingest::private::{private_folder, write_private_at};
     let (member, home) = member_and_home(&member_dir)?;
     let _lock = history_lock_existing(&home, &member.slug, || nothing_yet(&member.slug))?;
     let records = corpus_at(&home, &member.slug, &corpus)?;
     let size = usize::try_from(size).map_err(|_| Error::Invalid("--size is too large".into()))?;
-    let chunks = persona_builder_steps::chunk::chunk(&corpus, &records, size)?;
+    let chunks = voice_steps::chunk::chunk(&corpus, &records, size)?;
     private_folder(&home, &member.slug, &out_dir)?;
     for (name, text) in chunks.files() {
         write_private_at(&home, &member.slug, Some(&out_dir), &name, text.as_bytes())?;
@@ -1218,7 +1212,7 @@ fn check_labels(
     labels: String,
     mode: String,
 ) -> Result<std::process::ExitCode> {
-    use persona_builder_steps::{book::book, input::read_object, labels as steps};
+    use voice_steps::{book::book, input::read_object, labels as steps};
     let (member, home) = member_and_home(&member_dir)?;
     let book = book(&member)?;
     let records = corpus_at(&home, &member.slug, &chunk)?;
@@ -1237,7 +1231,7 @@ fn check_labels(
     })
 }
 fn tally(member_dir: PathBuf, corpus: String, labels: String, json: bool) -> Result<()> {
-    use persona_builder_steps::{input::read_objects, labels as steps};
+    use voice_steps::{input::read_objects, labels as steps};
     let (member, home) = member_and_home(&member_dir)?;
     let records = corpus_at(&home, &member.slug, &corpus)?;
     let given = read_objects(&labels, &json_at(&home, &member.slug, &labels)?)?;
@@ -1253,11 +1247,11 @@ fn tally(member_dir: PathBuf, corpus: String, labels: String, json: bool) -> Res
     Ok(())
 }
 fn distil_in(member_dir: PathBuf, corpus: String, labels: String, out_dir: String) -> Result<()> {
-    use persona_builder_ingest::{
+    use voice_ingest::{
         mine::to_jsonl,
         private::{private_folder, write_private_at},
     };
-    use persona_builder_steps::{book::book, distil, input::read_objects};
+    use voice_steps::{book::book, distil, input::read_objects};
     let (member, home) = member_and_home(&member_dir)?;
     let _lock = history_lock_existing(&home, &member.slug, || nothing_yet(&member.slug))?;
     let book = book(&member)?;
@@ -1285,7 +1279,7 @@ fn score(
     predictions: String,
     json: bool,
 ) -> Result<()> {
-    use persona_builder_steps::{input::read_objects, score as steps};
+    use voice_steps::{input::read_objects, score as steps};
     let (member, home) = member_and_home(&member_dir)?;
     let records = corpus_at(&home, &member.slug, &answers)?;
     let given = read_objects(&labels, &json_at(&home, &member.slug, &labels)?)?;
@@ -1315,14 +1309,14 @@ fn similar(
     k: usize,
     json: bool,
 ) -> Result<()> {
-    use persona_builder_steps::similar as steps;
+    use voice_steps::similar as steps;
     let query = if stdin {
         let cli = Cli::command();
         let command = cli
             .find_subcommand("similar")
             .expect("similar command")
             .clone()
-            .bin_name("persona-builder similar");
+            .bin_name("voice similar");
         stdin_json::read::<SimilarInput>(&command).query
     } else {
         query.expect("clap requires --query without --stdin")
@@ -1346,7 +1340,7 @@ fn shingle(
     corpora: Vec<String>,
     n: u64,
 ) -> Result<std::process::ExitCode> {
-    use persona_builder_steps::shingle;
+    use voice_steps::shingle;
     let (member, home) = member_and_home(&member_dir)?;
     let doc = expand_home(doc, &home);
     DenyList::for_member(&member, &home)?.check(&doc)?;
@@ -1382,12 +1376,12 @@ fn round(
     heldout: bool,
     out: Option<String>,
 ) -> Result<()> {
-    use persona_builder_ingest::{
+    use voice_ingest::{
         filters::Filters,
         mine::to_jsonl,
         private::{validate_name, write_private},
     };
-    use persona_builder_steps::{input::read_object, round as steps};
+    use voice_steps::{input::read_object, round as steps};
     steps::validate_name(&name)?;
     let out = out.unwrap_or_else(|| steps::default_out(&name));
     validate_name(&out)?;
@@ -1408,7 +1402,7 @@ fn round(
     Ok(())
 }
 fn folders(member_dir: PathBuf, projects: Option<PathBuf>) -> Result<()> {
-    use persona_builder_ingest::{filters::Filters, mine};
+    use voice_ingest::{filters::Filters, mine};
     let home = home()?;
     let member = read_member(&member_dir.join("member.json"))?;
     let filters = Filters::compile(&member.filters)?;
@@ -1425,13 +1419,13 @@ fn folders(member_dir: PathBuf, projects: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 fn agents() -> Result<()> {
-    for agent in persona_builder_agent::agents::AGENTS {
+    for agent in voice_agent::agents::AGENTS {
         println!("{}  {}", agent.id, agent.name);
     }
     Ok(())
 }
 fn claude_check() -> Result<()> {
-    use persona_builder_agent::{claude, text};
+    use voice_agent::{claude, text};
     let home = home()?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
@@ -1453,7 +1447,7 @@ fn claude_check() -> Result<()> {
     Ok(())
 }
 fn claude_sign_in() -> Result<()> {
-    use persona_builder_agent::{claude, text};
+    use voice_agent::{claude, text};
     let home = home()?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
@@ -1479,8 +1473,8 @@ fn cap_for(
     slug: &str,
     daily: Option<f64>,
     call: Option<f64>,
-) -> Result<persona_builder_agent::ledger::Cap> {
-    use persona_builder_agent::ledger::Cap;
+) -> Result<voice_agent::ledger::Cap> {
+    use voice_agent::ledger::Cap;
     let saved = Cap::load(home, slug)?;
     let daily = daily.unwrap_or(saved.daily_usd());
     let call = call.unwrap_or_else(|| {
@@ -1494,16 +1488,16 @@ fn cap_for(
     Cap::new(daily, call)
 }
 fn limit_show(member_dir: PathBuf) -> Result<()> {
-    use persona_builder_agent::{ledger::Cap, text};
+    use voice_agent::{ledger::Cap, text};
     let (member, home) = member_and_home(&member_dir)?;
     println!("{}", text::limit(Cap::load(&home, &member.slug)?));
     Ok(())
 }
 fn limit_set(member_dir: PathBuf, daily_usd: f64, step_usd: f64) -> Result<()> {
-    use persona_builder_agent::{ledger::Cap, text};
+    use voice_agent::{ledger::Cap, text};
     let (member, home) = member_and_home(&member_dir)?;
     let cap = Cap::new(daily_usd, step_usd)?;
-    let _lock = persona_builder_ingest::private::lock_existing_state(&home, &member.slug).map_err(
+    let _lock = voice_ingest::private::lock_existing_state(&home, &member.slug).map_err(
         |error| match error {
             Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
                 Error::Invalid(text::NO_STATE_FOR_LIMIT.into())
@@ -1516,7 +1510,7 @@ fn limit_set(member_dir: PathBuf, daily_usd: f64, step_usd: f64) -> Result<()> {
     Ok(())
 }
 fn spend(member_dir: PathBuf, daily_cap_usd: Option<f64>) -> Result<()> {
-    use persona_builder_agent::{ledger::Session, text};
+    use voice_agent::{ledger::Session, text};
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
     let cap = cap_for(&home, &member.slug, daily_cap_usd, None)?;
@@ -1531,8 +1525,8 @@ struct BuildArgs {
     call_cap_usd: Option<f64>,
 }
 fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
-    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
-    use persona_builder_build::{build, interview, report, run, text};
+    use voice_agent::{claude, ledger::Session, text as spend_text};
+    use voice_build::{build, interview, report, run, text};
     let (member, home) = member_and_home(&member_dir)?;
     run::prepare(&member, &member_dir, &home, &args.corpus)?;
     let cap = cap_for(&home, &member.slug, args.daily_cap_usd, args.call_cap_usd)?;
@@ -1576,7 +1570,7 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     Ok(())
 }
 fn report(member_dir: PathBuf) -> Result<()> {
-    use persona_builder_build::{report, text};
+    use voice_build::{report, text};
     let (member, home) = member_and_home(&member_dir)?;
     let built = report::read(&home, &member.slug)?;
     if let Some(report) = &built {
@@ -1587,11 +1581,10 @@ fn report(member_dir: PathBuf) -> Result<()> {
     } else {
         println!("{}", text::no_report(&member_dir.display().to_string()));
     }
-    let store = persona_builder_grow::store::Store::open(&home, &member)?;
-    if let Some(line) = persona_builder_grow::apply::growth(
-        &store,
-        built.as_ref().map(|report| report.built.as_str()),
-    )? {
+    let store = voice_grow::store::Store::open(&home, &member)?;
+    if let Some(line) =
+        voice_grow::apply::growth(&store, built.as_ref().map(|report| report.built.as_str()))?
+    {
         println!("{line}");
     }
     Ok(())
@@ -1606,19 +1599,19 @@ struct DraftArgs {
 }
 struct DraftPlan {
     answered: usize,
-    form: persona_builder_build::interview::Form,
+    form: voice_build::interview::Form,
     weights: Vec<(String, Option<usize>)>,
     weighted: bool,
 }
 fn draft_plan(
     home: &Path,
-    member: &persona_builder::member::Member,
-    book: &persona_builder_steps::book::Book,
+    member: &voice_core::member::Member,
+    book: &voice_steps::book::Book,
     args: &DraftArgs,
 ) -> Result<DraftPlan> {
-    use persona_builder_build::{interview, report};
-    use persona_builder_ingest::{corpus::read_records, private::read_private_optional};
-    use persona_builder_steps::{input::read_objects, labels::tally};
+    use voice_build::{interview, report};
+    use voice_ingest::{corpus::read_records, private::read_private_optional};
+    use voice_steps::{input::read_objects, labels::tally};
     let records = match read_private_optional(home, &member.slug, &args.corpus)? {
         Some(bytes) => read_records(&args.corpus, &bytes)?,
         None => Vec::new(),
@@ -1655,13 +1648,13 @@ fn draft_plan(
     })
 }
 fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
-    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
-    use persona_builder_build::{interview, text};
-    use persona_builder_ingest::private::{read_private_optional, write_private};
-    use persona_builder_steps::{book::book, input::pretty};
+    use voice_agent::{claude, ledger::Session, text as spend_text};
+    use voice_build::{interview, text};
+    use voice_ingest::private::{read_private_optional, write_private};
+    use voice_steps::{book::book, input::pretty};
     let (member, home) = member_and_home(&member_dir)?;
     let book = book(&member)?;
-    let existed = persona_builder::member::private_state_dir(&member, &home)
+    let existed = voice_core::member::private_state_dir(&member, &home)
         .is_some_and(|dir| dir.symlink_metadata().is_ok());
     let DraftPlan {
         answered,
@@ -1745,17 +1738,17 @@ fn interview_answer(
     questions: Option<String>,
     replace: bool,
 ) -> Result<()> {
-    use persona_builder_build::{interview, text};
-    use persona_builder_ingest::{
+    use voice_build::{interview, text};
+    use voice_ingest::{
         filters::Filters,
         mine::to_jsonl,
         private::{read_private_optional, write_private},
     };
-    use persona_builder_steps::input::read_object;
+    use voice_steps::input::read_object;
     let (member, home) = member_and_home(&member_dir)?;
     let _lock = history_lock_existing(&home, &member.slug, || nothing_yet(&member.slug))?;
     let records = match read_private_optional(&home, &member.slug, &corpus)? {
-        Some(bytes) => persona_builder_ingest::corpus::read_records(&corpus, &bytes)?,
+        Some(bytes) => voice_ingest::corpus::read_records(&corpus, &bytes)?,
         None => Vec::new(),
     };
     let form = interview::Form::for_answered(interview::answered(&records));
@@ -1785,13 +1778,13 @@ fn refresh_propose(
     daily_cap_usd: Option<f64>,
     call_cap_usd: Option<f64>,
 ) -> Result<()> {
-    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
-    use persona_builder_grow::{
+    use voice_agent::{claude, ledger::Session, text as spend_text};
+    use voice_grow::{
         refresh::{self, Proposed},
         store::{Store, utc_now},
         text,
     };
-    use persona_builder_ingest::filters::Filters;
+    use voice_ingest::filters::Filters;
     let (member, home) = member_and_home(&member_dir)?;
     let filters = Filters::compile(&member.filters)?;
     let cap = cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd)?;
@@ -1836,15 +1829,15 @@ fn refresh_apply(
     call_cap_usd: Option<f64>,
     id: String,
 ) -> Result<()> {
-    use persona_builder_agent::{claude, ledger::Session, text as spend_text};
-    use persona_builder_build::report;
-    use persona_builder_grow::{
+    use voice_agent::{claude, ledger::Session, text as spend_text};
+    use voice_build::report;
+    use voice_grow::{
         apply::{self, Measured},
         record::KeepOrRevert,
         store::{Store, utc_now},
         text,
     };
-    use persona_builder_ingest::filters::Filters;
+    use voice_ingest::filters::Filters;
     let (member, home) = member_and_home(&member_dir)?;
     let filters = Filters::compile(&member.filters)?;
     let cap = cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd)?;
@@ -1920,7 +1913,7 @@ fn refresh_apply(
     Ok(())
 }
 fn refresh_show(member_dir: PathBuf, proposal: Option<String>) -> Result<()> {
-    use persona_builder_grow::{refresh, store::Store, text};
+    use voice_grow::{refresh, store::Store, text};
     let (member, home) = member_and_home(&member_dir)?;
     let store = Store::open(&home, &member)?;
     if let Some(proposal) = refresh::show(&store, &member_dir, proposal.as_deref())? {
@@ -1935,9 +1928,9 @@ fn refresh_show(member_dir: PathBuf, proposal: Option<String>) -> Result<()> {
 fn refresh_answer(
     member_dir: PathBuf,
     proposal: String,
-    decision: persona_builder_grow::record::Decision,
+    decision: voice_grow::record::Decision,
 ) -> Result<()> {
-    use persona_builder_grow::{
+    use voice_grow::{
         record::Decision,
         refresh,
         store::{Store, utc_now},
@@ -1956,24 +1949,19 @@ fn refresh_answer(
     Ok(())
 }
 fn keep_answer(member_dir: PathBuf, signal: String) -> Result<()> {
-    use persona_builder_grow::{
+    use voice_grow::{
         keep,
         store::{Store, utc_now},
         text,
     };
-    use persona_builder_ingest::filters::Filters;
+    use voice_ingest::filters::Filters;
     let (member, home) = member_and_home(&member_dir)?;
     let filters = Filters::compile(&member.filters)?;
-    let (folder, name) = persona_builder_ingest::private::place(&signal)?;
-    persona_builder_ingest::private::validate_json_name(name)?;
+    let (folder, name) = voice_ingest::private::place(&signal)?;
+    voice_ingest::private::validate_json_name(name)?;
     let _lock = history_lock_existing(&home, &member.slug, || nothing_yet(&member.slug))?;
-    let input = persona_builder_ingest::private::read_private_at_max(
-        &home,
-        &member.slug,
-        folder,
-        name,
-        64 * 1024,
-    )?;
+    let input =
+        voice_ingest::private::read_private_at_max(&home, &member.slug, folder, name, 64 * 1024)?;
     let store = Store::open(&home, &member)?;
     keep::keep_locked(&store, &member, &filters, &input, &utc_now())?;
     println!("{}", text::KEPT);
@@ -1981,9 +1969,9 @@ fn keep_answer(member_dir: PathBuf, signal: String) -> Result<()> {
     Ok(())
 }
 fn cases(member_dir: PathBuf) -> Result<()> {
-    use persona_builder_grow::{store::Store, text};
+    use voice_grow::{store::Store, text};
     let (member, home) = member_and_home(&member_dir)?;
-    let categories = persona_builder_steps::book::book(&member)?.categories;
+    let categories = voice_steps::book::book(&member)?.categories;
     let store = Store::open(&home, &member)?;
     println!("{}", text::cases_summary(&store.cases()?, &categories));
     Ok(())
@@ -2088,14 +2076,14 @@ fn save_push(path: PathBuf) -> Result<()> {
     let remotes = github.as_ref().map(|github| GithubRemotes { github });
     let check: &dyn RemoteCheck = match &remotes {
         Some(remotes) => remotes,
-        None => &persona_builder_api::UnavailableRemotes,
+        None => &voice_api::UnavailableRemotes,
     };
     let saved = Saver {
         git: &Git::system(),
         github: github.as_ref(),
         tokens: &Keychain::github(),
     }
-    .save_now(&member, &home, &persona_builder_api::FolderPrivacy, check)?;
+    .save_now(&member, &home, &voice_api::FolderPrivacy, check)?;
     match saved {
         Saved::KeptLocal => println!("{}", text::KEPT_LOCAL),
         Saved::Pushed { message } => println!("{message}"),
@@ -2109,17 +2097,16 @@ fn places(claude_home: Option<PathBuf>) -> Result<Places> {
         .ok_or_else(|| Error::Invalid("HOME is not set".into()))?;
     let home = PathBuf::from(home);
     let claude_home = claude_home.unwrap_or_else(|| {
-        persona_builder_api::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref())
+        voice_api::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref())
     });
     Ok(Places { home, claude_home })
 }
 fn forget(member_dir: PathBuf, yes: bool) -> Result<()> {
     let home = places(None)?.home;
     let member = read_member(&member_dir.join("member.json"))?;
-    let mut forgotten = persona_builder::forget::forget(&member_dir, &home, false)?;
+    let mut forgotten = voice_core::forget::forget(&member_dir, &home, false)?;
     if yes && forgotten.existed {
-        let _lock = match persona_builder_ingest::private::lock_existing_state(&home, &member.slug)
-        {
+        let _lock = match voice_ingest::private::lock_existing_state(&home, &member.slug) {
             Ok(lock) => lock,
             Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
                 println!(
@@ -2130,7 +2117,7 @@ fn forget(member_dir: PathBuf, yes: bool) -> Result<()> {
             }
             Err(error) => return Err(error),
         };
-        forgotten = persona_builder::forget::forget(&member_dir, &home, true)?;
+        forgotten = voice_core::forget::forget(&member_dir, &home, true)?;
     }
     if !forgotten.existed {
         println!(
@@ -2157,16 +2144,13 @@ fn forget(member_dir: PathBuf, yes: bool) -> Result<()> {
             member.name,
             member_dir.display()
         );
-        println!(
-            "To go ahead: persona-builder forget {} --yes",
-            member_dir.display()
-        );
+        println!("To go ahead: voice forget {} --yes", member_dir.display());
     }
     Ok(())
 }
 fn pack(member_dir: PathBuf, out: PathBuf) -> Result<()> {
     let member = read_member(&member_dir.join("member.json"))?;
-    let paths = persona_builder::pack::pack(&member_dir, &out)?;
+    let paths = voice_core::pack::pack(&member_dir, &out)?;
     println!(
         "Made {}'s claude.ai Project pack in {}:",
         member.name,
@@ -2193,7 +2177,7 @@ fn turn_on(member_dir: PathBuf, claude_home: Option<PathBuf>) -> Result<()> {
     println!("Added one line to {}:", on.claude_md.display());
     println!("  {}", on.import_line);
     println!(
-        "Start a new Claude Code session to use {0}. To turn {0} off: persona-builder off",
+        "Start a new Claude Code session to use {0}. To turn {0} off: voice off",
         on.name
     );
     Ok(())
@@ -2203,7 +2187,7 @@ fn turn_off(claude_home: Option<PathBuf>) -> Result<()> {
     match off.name {
         None => println!("No assistant is on in Claude Code."),
         Some(name) if off.left.is_empty() => {
-            println!("{name} is off. Everything Persona Builder added is removed.")
+            println!("{name} is off. Everything Voice added is removed.")
         }
         Some(name) => {
             println!("{name} is off. These were left in place:");
@@ -2233,7 +2217,7 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
             }
             if status.out_of_date {
                 println!(
-                    "{} has changed since it was turned on. To update it: persona-builder on {}",
+                    "{} has changed since it was turned on. To update it: voice on {}",
                     status.name,
                     status.member_dir.display()
                 );
@@ -2264,8 +2248,8 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             ConsentCommand::Agree { member_dir } => assistants::agree(member_dir),
         },
         Some(Command::PrivacyCheck { folder }) => {
-            let report = persona_builder_ingest::check::privacy_check(&folder)?;
-            print!("{}", persona_builder_ingest::check::render(&report));
+            let report = voice_ingest::check::privacy_check(&folder)?;
+            print!("{}", voice_ingest::check::render(&report));
             return Ok(if report.hits.is_empty() {
                 std::process::ExitCode::SUCCESS
             } else {
@@ -2337,7 +2321,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             cutoff,
             dry_run,
         }) => {
-            use persona_builder_ingest::corpus::Mode;
+            use voice_ingest::corpus::Mode;
             let inputs = inputs
                 .into_iter()
                 .map(|n| (n, Mode::History))
@@ -2487,19 +2471,11 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             RefreshCommand::Approve {
                 member_dir,
                 proposal,
-            } => refresh_answer(
-                member_dir,
-                proposal,
-                persona_builder_grow::record::Decision::Approved,
-            ),
+            } => refresh_answer(member_dir, proposal, voice_grow::record::Decision::Approved),
             RefreshCommand::Reject {
                 member_dir,
                 proposal,
-            } => refresh_answer(
-                member_dir,
-                proposal,
-                persona_builder_grow::record::Decision::Rejected,
-            ),
+            } => refresh_answer(member_dir, proposal, voice_grow::record::Decision::Rejected),
         },
         Some(Command::Keep { member_dir, signal }) => keep_answer(member_dir, signal),
         Some(Command::Cases { member_dir }) => cases(member_dir),
@@ -2541,7 +2517,7 @@ fn main() -> std::process::ExitCode {
     match run(Cli::parse()) {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("persona-builder: {error}");
+            eprintln!("voice: {error}");
             std::process::ExitCode::FAILURE
         }
     }

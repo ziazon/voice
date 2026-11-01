@@ -1,6 +1,4 @@
 //! Stdin texts stay data and agree with the guided build's command.
-use persona_builder::crew::{Decisions, NewMember, new_member};
-use persona_builder_ingest::private;
 use serde_json::json;
 use std::{
     fs,
@@ -9,6 +7,8 @@ use std::{
     process::{Command, Output, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use voice_core::crew::{Decisions, NewMember, new_member};
+use voice_ingest::private;
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 const HOSTILE: &str = "$(touch pwned-dollar) `touch pwned-tick` ${HOME} \"double\" 'single' back\\slash café\nEND_OF_TEXT\nafter";
@@ -45,7 +45,7 @@ impl Fixture {
         Self { home, member }
     }
     fn rust(&self, args: &[&str], input: &[u8]) -> Output {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_persona-builder"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_voice"));
         command
             .env("HOME", &self.home)
             .arg("similar")
@@ -105,7 +105,7 @@ fn stdin_matches_query_flags_with_and_without_json() {
 fn stdin_matches_python_with_and_without_json() {
     if Command::new("python3").arg("--version").output().is_err() {
         assert_ne!(
-            std::env::var("PERSONA_BUILDER_REQUIRE_PARITY").as_deref(),
+            std::env::var("VOICE_REQUIRE_PARITY").as_deref(),
             Ok("1"),
             "python3 required for parity"
         );
@@ -162,10 +162,7 @@ fn invalid_stdin_is_a_usage_error_before_searching() {
         );
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert!(stderr.contains(problem), "missing {problem}: {stderr}");
-        assert!(
-            stderr.contains("Usage: persona-builder similar"),
-            "{stderr}"
-        );
+        assert!(stderr.contains("Usage: voice similar"), "{stderr}");
         assert!(out.stdout.is_empty());
     }
     for args in [vec![], vec!["--stdin", "--query", "x"]] {

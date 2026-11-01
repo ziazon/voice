@@ -1,17 +1,17 @@
 mod common;
 
 use common::{Scratch, Stub};
-use persona_builder_agent::{
-    agents::{AGENTS, agent},
-    claude::{Ready, fallbacks, find_in},
-    text,
-};
 use std::{
     ffi::OsString,
     fs,
     os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
     time::Duration,
+};
+use voice_agent::{
+    agents::{AGENTS, agent},
+    claude::{Ready, fallbacks, find_in},
+    text,
 };
 
 fn executable(path: &Path) {
@@ -28,10 +28,7 @@ fn the_agent_list_has_claude_code_then_the_model_server() {
     assert_eq!(AGENTS.len(), 2);
     assert_eq!(AGENTS[1].id, "self-hosted");
     assert_eq!(AGENTS[1].name, "A model server on your own machines");
-    assert_eq!(
-        AGENTS[1].reach,
-        persona_builder_agent::provider::Reach::OwnMachines
-    );
+    assert_eq!(AGENTS[1].reach, voice_agent::provider::Reach::OwnMachines);
     assert_eq!(AGENTS[0].id, "claude-code");
     assert_eq!(AGENTS[0].name, "Claude, through your own Claude Code");
     assert_eq!(agent("claude-code").unwrap().id, "claude-code");

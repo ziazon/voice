@@ -1,6 +1,6 @@
 //! Exact unified changes to a text file.
 use crate::text;
-use persona_builder::error::{Error, Result};
+use voice_core::error::{Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Line<'a> {

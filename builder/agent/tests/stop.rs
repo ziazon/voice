@@ -1,7 +1,5 @@
 mod common;
 use common::*;
-use persona_builder::ceilings::Ceilings;
-use persona_builder_agent::guard::Guard;
 use std::{
     sync::{
         Arc,
@@ -10,7 +8,9 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-const STOPPED: &str = "Persona Builder stopped Claude Code, as you asked.";
+use voice_agent::guard::Guard;
+use voice_core::ceilings::Ceilings;
+const STOPPED: &str = "Voice stopped Claude Code, as you asked.";
 #[test]
 fn stopped_call_kills_its_group_and_counts_the_budget() {
     let home = Scratch::new("stop");

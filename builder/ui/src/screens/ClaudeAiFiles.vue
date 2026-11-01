@@ -19,7 +19,7 @@ async function load() {
   try {
     files.value = (await backend.claudeAiFiles({ slug: props.assistant.slug })).files
   } catch (failure) {
-    loadError.value = failureMessage(failure, "Persona Builder couldn't look for the claude.ai files. Close it and open it again.")
+    loadError.value = failureMessage(failure, "Voice couldn't look for the claude.ai files. Close it and open it again.")
   } finally { loading.value = false }
 }
 onMounted(load)
@@ -31,7 +31,7 @@ async function make() {
   try {
     files.value = (await backend.makeClaudeAiFiles({ slug: props.assistant.slug })).files
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't make the claude.ai files. Check there's space on this computer, then try again.")
+    error.value = failureMessage(failure, "Voice couldn't make the claude.ai files. Check there's space on this computer, then try again.")
   } finally { making.value = false }
 }
 async function show() {
@@ -41,7 +41,7 @@ async function show() {
   try {
     await backend.showClaudeAiFiles({ slug: props.assistant.slug })
   } catch (failure) {
-    showError.value = failureMessage(failure, "Persona Builder couldn't open the folder.")
+    showError.value = failureMessage(failure, "Voice couldn't open the folder.")
   } finally { showing.value = false }
 }
 </script>
@@ -50,7 +50,7 @@ async function show() {
   <section class="card mt-4">
     <div class="card-body p-5">
       <h2 class="mb-3">Use it in claude.ai</h2>
-      <p>claude.ai can't read your Claude folder, so Persona Builder makes files you add to a claude.ai Project yourself.</p>
+      <p>claude.ai can't read your Claude folder, so Voice makes files you add to a claude.ai Project yourself.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Looking for the claude.ai files…</span></div>
       <template v-else-if="loadError">
         <div class="alert alert-warning" role="alert">{{ loadError }}</div>

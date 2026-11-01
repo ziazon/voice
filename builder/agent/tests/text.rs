@@ -1,4 +1,4 @@
-use persona_builder_agent::text;
+use voice_agent::text;
 
 #[test]
 fn the_wording_says_this_computer_never_this_mac() {

@@ -27,7 +27,7 @@ it('loads answers, replaces every child status when one changes, and relays runn
 it('shows the review settings fallback on failure', async () => {
   const wrapper = screen(Review, fakeBackend({ reviewStatus: vi.fn().mockRejectedValue(new Error('private detail')) }), { assistant, active: true })
   await flushPromises()
-  expect(wrapper.get('.alert-danger').text()).toBe("Something in this assistant's settings stops the review. Use the persona-builder command to see what.")
+  expect(wrapper.get('.alert-danger').text()).toBe("Something in this assistant's settings stops the review. Use the voice command to see what.")
 })
 
 it('reloads status for every child when active again after the first load', async () => {
@@ -62,7 +62,7 @@ it('shows the same fallback on a failed reload and clears it after a successful 
   await flushPromises()
   await wrapper.setProps({ active: false })
   await wrapper.setProps({ active: true }); await flushPromises()
-  expect(wrapper.get('.alert-danger').text()).toBe("Something in this assistant's settings stops the review. Use the persona-builder command to see what.")
+  expect(wrapper.get('.alert-danger').text()).toBe("Something in this assistant's settings stops the review. Use the voice command to see what.")
   await wrapper.setProps({ active: false })
   await wrapper.setProps({ active: true }); await flushPromises()
   expect(wrapper.find('.alert-danger').exists()).toBe(false)

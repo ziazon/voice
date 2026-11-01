@@ -5,10 +5,10 @@ use crate::{
     input::{Record, Records, pretty},
     share::{percent, share},
 };
-use persona_builder::error::{Error, Result};
-use persona_builder_ingest::python::py_space;
 use serde_json::{Map, Value};
 use std::collections::{BTreeSet, HashMap};
+use voice_core::error::{Error, Result};
+use voice_ingest::python::py_space;
 
 /// The most words a training label's reason may have.
 pub const MAX_REASON_WORDS: usize = 25;

@@ -1,13 +1,13 @@
 use super::terms::{self, Term};
-use persona_builder::{
-    error::{Error, Result},
-    member::Member,
-};
 use regex::{Regex, RegexBuilder};
 use serde_json::Value;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
+};
+use voice_core::{
+    error::{Error, Result},
+    member::Member,
 };
 
 pub struct Rules {
@@ -118,7 +118,7 @@ impl Rules {
                     "patterns" => {
                         let error = || {
                             bad(format!(
-                                "{at} is not a valid regex, or it uses look-around or a backreference, which Persona Builder can't read"
+                                "{at} is not a valid regex, or it uses look-around or a backreference, which Voice can't read"
                             ))
                         };
                         if s.len() > 1000 {

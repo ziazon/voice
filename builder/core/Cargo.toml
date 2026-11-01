@@ -1,5 +1,5 @@
 [package]
-name = "persona-builder"
+name = "voice-core"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -12,3 +12,6 @@ serde_json = { version = "1", features = ["preserve_order"] }
 
 [dev-dependencies]
 sha1_smol = "=1.0.1"
+
+[lib]
+name = "voice_core"

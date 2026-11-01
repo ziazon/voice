@@ -1,8 +1,6 @@
 //! Final public-API specifications for running panels on an invented person's Mac.
 #![cfg(unix)]
 
-use persona_builder::crew::{Decisions, NewMember, new_member_embedded};
-use persona_builder_agent::ledger::{Cap, Session};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -14,6 +12,8 @@ use std::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
 };
+use voice_agent::ledger::{Cap, Session};
+use voice_core::crew::{Decisions, NewMember, new_member_embedded};
 use voice_panel_runner::{
     Clock, Convene, Convened, Progress, Ran, Resume, TimedRound, Turn, TurnUsage, Turns, convene,
     detail, list, resume, status,
@@ -47,7 +47,7 @@ impl Home {
                     principal_pronouns: "they/them",
                     repo_shown: "~/.claude",
                     date: "2026-10-30",
-                    decisions: Decisions::Cli("persona-builder"),
+                    decisions: Decisions::Cli("voice"),
                 },
             )
             .unwrap();

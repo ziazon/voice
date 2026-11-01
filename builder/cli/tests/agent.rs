@@ -1,5 +1,3 @@
-use persona_builder::crew::{NewMember, new_member};
-use persona_builder_agent::ledger::{Cap, Session};
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -8,6 +6,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+use voice_agent::ledger::{Cap, Session};
+use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -31,7 +31,7 @@ impl Fixture {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template"),
             &member,
             &NewMember {
-                decisions: persona_builder::crew::Decisions::Python,
+                decisions: voice_core::crew::Decisions::Python,
                 name: "Wren",
                 pronouns: "she/her",
                 principal: "Robin",
@@ -51,7 +51,7 @@ impl Fixture {
         fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
     }
     fn command(&self, args: &[&str]) -> Command {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_persona-builder"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_voice"));
         command
             .env("HOME", &self.home)
             .env("PATH", format!("{}:/usr/bin:/bin", self.bin.display()))
@@ -110,7 +110,7 @@ fn claude_check_says_ready_or_what_to_do() {
         text(&out.stdout),
         format!(
             "Claude Code 2.1.292 is installed and signed in.\n{}\n",
-            persona_builder_agent::text::API_KEY_SET
+            voice_agent::text::API_KEY_SET
         )
     );
     assert!(!text(&out.stdout).contains("not-a-real-key"));
@@ -121,8 +121,8 @@ fn claude_check_says_ready_or_what_to_do() {
     assert_eq!(
         text(&out.stderr),
         format!(
-            "persona-builder: {}\n",
-            "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Persona Builder yet. Persona Builder keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account. Run persona-builder claude sign-in to sign in."
+            "voice: {}\n",
+            "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account. Run voice claude sign-in to sign in."
         )
     );
 }
@@ -163,18 +163,16 @@ esac"#);
         "auth\nlogin\n--claudeai\n"
     );
     #[cfg(target_os = "macos")]
-    let profile = f
-        .home
-        .join("Library/Application Support/Persona Builder/claude-code");
+    let profile = f.home.join("Library/Application Support/Voice/claude-code");
     #[cfg(not(target_os = "macos"))]
-    let profile = f.home.join(".local/share/persona-builder/claude-code");
+    let profile = f.home.join(".local/share/voice/claude-code");
     assert_eq!(
         fs::read_to_string(f.bin.join("profile")).unwrap(),
         profile.to_str().unwrap()
     );
     assert_eq!(
         text(&out.stdout),
-        "Finish signing in on the Claude page that opened in your browser. Persona Builder carries on when you're done.\nClaude Code 2.1.292 is installed and signed in.\n"
+        "Finish signing in on the Claude page that opened in your browser. Voice carries on when you're done.\nClaude Code 2.1.292 is installed and signed in.\n"
     );
 }
 
@@ -186,13 +184,13 @@ fn claude_sign_in_fails_when_login_does_not_sign_in() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        "persona-builder: Claude Code didn't finish signing in. Try again. If no Claude page opened in your browser, check that this computer has a default browser.\n"
+        "voice: Claude Code didn't finish signing in. Try again. If no Claude page opened in your browser, check that this computer has a default browser.\n"
     );
 }
 
 fn day_of(home: &Path) -> String {
     let _ = home;
-    persona_builder_agent::ledger::local_day(SystemTime::now())
+    voice_agent::ledger::local_day(SystemTime::now())
 }
 
 #[test]
@@ -207,9 +205,8 @@ fn spend_reports_today_against_the_cap() {
     );
 
     let today = day_of(&f.home);
-    let earlier = persona_builder_agent::ledger::local_day(
-        UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000),
-    );
+    let earlier =
+        voice_agent::ledger::local_day(UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000));
     let line = |day: &str, cost: f64| {
         format!(
             r#"{{"at":"x","day":"{day}","agent":"claude-code","step":"label","model":"sonnet","outcome":"ok","seconds":1.0,"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cost_usd":{cost},"cost_from":"claude"}}"#
@@ -322,7 +319,7 @@ fn limit_set_needs_existing_state_and_refuses_a_running_session() {
     let out = f.run(&args);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
     let stderr = text(&out.stderr);
-    assert!(stderr.contains("This assistant has no private folder yet, so there's nowhere to keep its limit. Run `persona-builder consent agree` first."), "{stderr}");
+    assert!(stderr.contains("This assistant has no private folder yet, so there's nowhere to keep its limit. Run `voice consent agree` first."), "{stderr}");
     assert!(!stderr.contains(f.home.to_str().unwrap()), "{stderr}");
     assert!(!stderr.contains("os error"), "{stderr}");
     assert!(!f.state().exists());
@@ -368,7 +365,7 @@ fn no_limit_is_saved_shown_and_used_by_spend() {
         "0",
     ]);
     assert!(out.status.success(), "{}", text(&out.stderr));
-    let expected = "No limit: Persona Builder doesn't stop for the day or for one step.\n";
+    let expected = "No limit: Voice doesn't stop for the day or for one step.\n";
     assert_eq!(text(&out.stdout), expected);
     let out = f.run(&["limit", "show", member]);
     assert!(out.status.success(), "{}", text(&out.stderr));

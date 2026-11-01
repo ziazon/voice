@@ -15,7 +15,7 @@ onMounted(async () => {
   try {
     assistants.value = await backend.listAssistants()
   } catch (failure) {
-    error.value = failureMessage(failure, "Persona Builder couldn't look for your assistants. Close it and open it again.")
+    error.value = failureMessage(failure, "Voice couldn't look for your assistants. Close it and open it again.")
   } finally {
     loading.value = false
   }
@@ -25,7 +25,7 @@ async function showFolder(assistant: Assistant) {
   try {
     await backend.showAssistantFolder({ slug: assistant.slug })
   } catch (failure) {
-    folderErrors.value[assistant.slug] = failureMessage(failure, "Persona Builder couldn't open the folder.")
+    folderErrors.value[assistant.slug] = failureMessage(failure, "Voice couldn't open the folder.")
   }
 }
 </script>

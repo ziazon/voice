@@ -23,7 +23,7 @@ fn template_embedded_matches_every_file_and_byte() {
     let base = common::repo().join("crew/_template");
     let mut expected = BTreeMap::new();
     walk(&base, &base, &mut expected);
-    let actual = persona_builder::template::FILES;
+    let actual = voice_core::template::FILES;
     assert_eq!(
         actual.iter().map(|(path, _)| *path).collect::<Vec<_>>(),
         expected.keys().map(String::as_str).collect::<Vec<_>>(),

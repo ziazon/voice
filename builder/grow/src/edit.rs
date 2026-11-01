@@ -1,6 +1,6 @@
 //! Structured edits to the decision model; this never writes the member's files.
 use crate::text;
-use persona_builder::error::{Error, Result};
+use voice_core::error::{Error, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditKind {
     Add,

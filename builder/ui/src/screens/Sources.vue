@@ -11,7 +11,7 @@ const emit = defineEmits<{ next: [] }>()
 <template>
   <section>
     <h2 class="mb-3">What {{ assistant.name }} learns from</h2>
-    <p>Your assistant learns from what you've written to Claude. Persona Builder reads it on this computer and keeps it here.</p>
+    <p>Your assistant learns from what you've written to Claude. Voice reads it on this computer and keeps it here.</p>
     <div class="d-flex flex-column gap-4">
       <ClaudeCode :slug="assistant.slug" />
       <Claudeai :slug="assistant.slug" />

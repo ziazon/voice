@@ -1,19 +1,19 @@
 mod common;
 use common::{Scratch, checked, parity_tools_available, repo};
-use persona_builder::{
-    crew::{NewMember, new_member},
-    error::Error,
-    member::read_member,
-};
-use persona_builder_ingest::{
-    check::{privacy_check, render, scan, tracked_or_walked},
-    filters::Filters,
-};
 use serde_json::{Value, json};
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+};
+use voice_core::{
+    crew::{NewMember, new_member},
+    error::Error,
+    member::read_member,
+};
+use voice_ingest::{
+    check::{privacy_check, render, scan, tracked_or_walked},
+    filters::Filters,
 };
 
 fn member(folder: &Path) {
@@ -21,7 +21,7 @@ fn member(folder: &Path) {
         &repo().join("crew/_template"),
         folder,
         &NewMember {
-            decisions: persona_builder::crew::Decisions::Python,
+            decisions: voice_core::crew::Decisions::Python,
             name: "Wren",
             pronouns: "she/her",
             principal: "Rowan Vale",

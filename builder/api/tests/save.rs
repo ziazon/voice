@@ -1,14 +1,3 @@
-use persona_builder::{assistants, error::Result};
-use persona_builder_api::{dto::*, *};
-use persona_builder_save::{
-    flow::MemberPaths,
-    git::Git,
-    github::{Endpoints, Github, Http, HttpRequest, HttpResponse},
-    keychain::{MemoryStore, TokenStore},
-    record::{SaveRecord, read_record, write_record},
-    secret::Secret,
-    text,
-};
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
@@ -22,12 +11,23 @@ use std::{
     },
     time::Duration,
 };
+use voice_api::{dto::*, *};
+use voice_core::{assistants, error::Result};
+use voice_save::{
+    flow::MemberPaths,
+    git::Git,
+    github::{Endpoints, Github, Http, HttpRequest, HttpResponse},
+    keychain::{MemoryStore, TokenStore},
+    record::{SaveRecord, read_record, write_record},
+    secret::Secret,
+    text,
+};
 
-const FIND: &str = "Persona Builder couldn't find that assistant. Close it and open it again.";
+const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
 const CHANGED: &str =
     "The places to keep your assistant have changed. Look at them again, then choose.";
 const SAVE: &str =
-    "Persona Builder couldn't save your assistant. Try again, or keep it on this computer only.";
+    "Voice couldn't save your assistant. Try again, or keep it on this computer only.";
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Home(PathBuf);
 impl Home {
@@ -50,7 +50,7 @@ impl Home {
                 principal_pronouns: "they/them",
             },
             "2026-10-25",
-            "persona-builder",
+            "voice",
         )
         .unwrap();
         MemberPaths::load(&made.dir.join("member.json"), &self.0).unwrap()
@@ -548,7 +548,7 @@ fn links_use_fixed_pages_and_page_specific_failure() {
             })
             .unwrap_err()
             .message,
-            format!("Persona Builder couldn't open your web browser. Go to {page} yourself.")
+            format!("Voice couldn't open your web browser. Go to {page} yourself.")
         );
     }
 }

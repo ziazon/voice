@@ -1,14 +1,5 @@
 //! App boundary: only the fixed, public sentences here can reach the webview.
 use crate::dto;
-use persona_builder::consent::Record;
-use persona_builder::{
-    assistants,
-    cli_command::{CLI_FOLDER, CLI_PLACE, shipped_cli_word},
-    consent, crew,
-    error::Error,
-};
-use persona_builder_agent::{claude, ledger::local_day, text};
-use persona_builder_ingest::private::{read_private_optional, remove_private, write_private};
 use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
@@ -19,13 +10,22 @@ use std::{
     },
     time::{Duration, Instant, SystemTime},
 };
+use voice_agent::{claude, ledger::local_day, text};
+use voice_core::consent::Record;
+use voice_core::{
+    assistants,
+    cli_command::{CLI_FOLDER, CLI_PLACE, shipped_cli_word},
+    consent, crew,
+    error::Error,
+};
+use voice_ingest::private::{read_private_optional, remove_private, write_private};
 
 type Result<T> = std::result::Result<T, dto::Failure>;
-const LOOK: &str = "Persona Builder couldn't look for your assistants. Close it and open it again.";
-pub(crate) const FIND: &str =
-    "Persona Builder couldn't find that assistant. Close it and open it again.";
-const MAKE: &str = "Persona Builder couldn't make the assistant's folder. Check there's space on this computer, then try again.";
-const KEEP: &str = "Persona Builder couldn't keep your answer. Check there's space on this computer, then try again.";
+const LOOK: &str = "Voice couldn't look for your assistants. Close it and open it again.";
+pub(crate) const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
+const MAKE: &str = "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.";
+const KEEP: &str =
+    "Voice couldn't keep your answer. Check there's space on this computer, then try again.";
 pub(crate) fn failure(message: &str) -> dto::Failure {
     dto::Failure {
         message: message.into(),
@@ -64,7 +64,7 @@ fn valid_date(date: &str) -> bool {
     let year = date[..4].parse::<u32>().unwrap_or(0);
     let month = date[5..7].parse::<u32>().unwrap_or(0);
     let day = date[8..].parse::<u32>().unwrap_or(0);
-    let days = persona_builder_ingest::dates::days_in_month(i64::from(year), i64::from(month));
+    let days = voice_ingest::dates::days_in_month(i64::from(year), i64::from(month));
     year > 0 && (1..=12).contains(&month) && day > 0 && i64::from(day) <= days
 }
 /// Invalid, unavailable or superseded permission records never count as agreement.
@@ -80,7 +80,7 @@ pub fn read_consent(home: &Path, slug: &str) -> dto::Consent {
     }
 }
 /// The shared private record writer; the caller validates the member first.
-pub fn write_consent(home: &Path, slug: &str) -> persona_builder::error::Result<dto::Consent> {
+pub fn write_consent(home: &Path, slug: &str) -> voice_core::error::Result<dto::Consent> {
     let record = Record {
         version: consent::VERSION,
         agreed_on: local_day(SystemTime::now()),
@@ -191,7 +191,7 @@ pub fn show_assistant_folder_in(
 ) -> Result<()> {
     let dir = listed(home, &request.slug)?.dir;
     let dir = dir.canonicalize().map_err(|_| failure(FIND))?;
-    open(&dir).map_err(|_| failure("Persona Builder couldn't open the folder."))
+    open(&dir).map_err(|_| failure("Voice couldn't open the folder."))
 }
 pub fn show_assistant_folder(request: dto::SlugRequest) -> Result<()> {
     show_assistant_folder_in(&home(FIND)?, request, |dir| {
@@ -251,7 +251,7 @@ pub fn claude_check() -> Result<dto::ClaudeStatus> {
 }
 
 /// Clear permission before returning a newly made assistant.
-pub fn clear_consent(home: &Path, slug: &str) -> persona_builder::error::Result<bool> {
+pub fn clear_consent(home: &Path, slug: &str) -> voice_core::error::Result<bool> {
     remove_private(home, slug, "consent.json")
 }
 
@@ -314,7 +314,7 @@ impl ClaudeSignIns {
     }
 }
 pub const SIGN_IN_BUSY: &str =
-    "Persona Builder is already waiting for you to sign in on Claude's page in your browser.";
+    "Voice is already waiting for you to sign in on Claude's page in your browser.";
 pub fn claude_sign_ins() -> &'static ClaudeSignIns {
     static SIGN_INS: OnceLock<ClaudeSignIns> = OnceLock::new();
     SIGN_INS.get_or_init(ClaudeSignIns::new)

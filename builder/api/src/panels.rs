@@ -308,7 +308,7 @@ pub fn convene_panel(
         panels(),
         &home,
         std::env::var_os("PATH").as_deref(),
-        &persona_builder_agent::claude::fallbacks(&home),
+        &voice_agent::claude::fallbacks(&home),
         request,
         progress,
     )
@@ -323,7 +323,7 @@ pub fn resume_panel(
         panels(),
         &home,
         std::env::var_os("PATH").as_deref(),
-        &persona_builder_agent::claude::fallbacks(&home),
+        &voice_agent::claude::fallbacks(&home),
         request,
         progress,
     )

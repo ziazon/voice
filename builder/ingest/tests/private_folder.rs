@@ -1,13 +1,13 @@
 mod common;
 
 use common::Scratch;
-use persona_builder_ingest::private::{
-    lock_state, private_folder, read_private_optional, read_private_optional_at, write_private,
-    write_private_at,
-};
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
+};
+use voice_ingest::private::{
+    lock_state, private_folder, read_private_optional, read_private_optional_at, write_private,
+    write_private_at,
 };
 
 fn mode(path: &std::path::Path) -> u32 {
