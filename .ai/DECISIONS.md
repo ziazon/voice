@@ -180,7 +180,8 @@ The VO11 spike (`docs/spikes/VO11-os-sandbox.md`) decides how the broker is pack
   Words with neither inside a term (a sign-off dash)
   are left out of its search, and a term with no letter or digit at all is refused when the rules
   load. Separators between a term's words have no length cap.
-- **No hashes yet.** Refreshing on change, and the review screen for new skills, are VO4.
+- **No hashes yet.** Refreshing on change, and the review screen for new skills, are VO4 (the
+  mirror and its hashes: VO4.1, below).
 
 ## 2026-10-31: the app is Voice, and nothing is migrated (VO2)
 
@@ -203,6 +204,26 @@ The app in `builder/` was Persona Builder; it is Voice now, everywhere (brief
 - **The consent wording names Voice, so it is version 2**: a yes given to version 1 is asked again.
 - **`.ai/handoffs/persona-builder.md` keeps its name and its old wording:** it is the dated record
   of what was built, under the names of the day.
+
+## 2026-11-01: the skill mirror is fresh, absent, or marked out of date (VO4.1)
+
+- **The mirror lives in private state**, `~/.claude/state/<slug>/mirror/` (0700 folders, 0600
+  files), so `voice forget` deletes it with the rest.
+- **Hashes of the copies only.** `.manifest.json` lists the SHA-256 of each file as written in the
+  copy. A hash of a private source file would let a reader test a guess about what it says.
+- **Every refresh starts from nothing**, so no copy made under older rules survives a refresh that
+  succeeds. Withdrawing a skill removes the mirror at once.
+- **A failed refresh never leaves the mirror looking fresh.** Once the overlap check has passed,
+  a failure removes Voice's own copy (only a folder bearing its exact stamp, never a link). Before
+  that check (the rules or the saved placeholders can't be read) or when the check refuses, Voice
+  removes nothing and only drops the manifest. Each message says which happened, and none tells
+  the person to delete a folder that may hold their own files.
+- **Voice never empties a folder that overlaps the person's own**: a skill root, anything listed
+  in one (even an entry discovery skips), a skill's folder, or a project listed in `private.json`.
+- **Readers trust the mirror only with Voice's stamp and a regular, valid manifest**, and refresh
+  first anyway (VO4.2).
+- **The mirror's path is shown starred** (`~/.claude/state/*/mirror`) whenever the slug holds a
+  term, or the rules didn't load and the terms are unknown.
 
 ## Recordings
 

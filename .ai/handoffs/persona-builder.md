@@ -2,6 +2,46 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO4.1: the skill mirror and its hashes (2026-11-01, lane: V1)
+
+- **What:** `voice skills refresh <member_dir>` copies every skill the person agreed to, through
+  VO3's engine, into the assistant's private mirror `~/.claude/state/<slug>/mirror/`, with
+  `.manifest.json` holding the SHA-256 of each copied file (the copies only). Every refresh starts
+  from nothing; the report adds counts since the last refresh (new, updated, unchanged, removed),
+  never a removed skill's name. Withdrawing a skill removes the mirror. `voice anonymize --out`
+  shares the copying loop and writes the manifest too. `voice forget` already deletes it. Brief
+  `plans/briefs/VO4.1-skill-mirror.md`; § 8 holds every review round. DECISIONS has the rules.
+- **Who built it:** Codex, test first: the mirror (`a187de5`), then the fixes after each review
+  round (`2984159`, `0b30b89`, `50c7f40`, `2b7ddbe`, `4397690`).
+- **The rounds** (each finding reproduced before it was briefed):
+  - First security review (Opus): 2 medium (a refresh that couldn't remove the mirror still said
+    it had; withdraw left the copy until the next refresh), 2 low. First Verifier (Fable): PASS,
+    one should-fix (a term in the assistant's own name printed in the mirror's path). → § 8.1–8.3,
+    and V1's § 8.5: no message tells the person to delete a folder holding their own files.
+  - Repeat Verifier (Opus) FAIL and a second review: error paths printed the real path, a stale
+    stamp, withdraw's `?`. → § 8.6 (`0b30b89`).
+  - Verifier PASS, third review MEDIUM: an overlap refusal emptied a project the person had listed
+    inside the mirror. → § 8.7 (`50c7f40`): `check_output` / `finish_output`, `drop_manifest`,
+    the whole state folder masked.
+  - Delta Verifier (Opus) FAIL and review HIGH, the same bug one step earlier: a refresh failing
+    before the overlap check (bad `private.json`, unreadable `placeholders.json`) still emptied it.
+    → § 8.8 (`2b7ddbe`): such a failure leaves every file, drops only the manifest, and says the
+    copy is out of date; § 8.8.1 kept the removed-copy sentence tested.
+  - Delta review on `2b7ddbe`: HIGH fixed, 3 LOW. → § 8.9: never claim "marked out of date" when
+    the manifest stayed; nothing a skill root lists (a root itself, a deny-listed or non-skill
+    folder, `synced`, a plugin entry) may sit inside the mirror when it is emptied (`4397690`).
+    V1's review added § 8.9.5: hidden entries too, and a deny-listed project to prove the roots are
+    checked both ways (a mutation of that check had survived). LOW 3 accepted (SECURITY).
+- **Verified:** `bash scripts/ci-local.sh` all passed at `a187de5`, `2984159`, `0b30b89`,
+  `50c7f40`, `2b7ddbe` and `4397690`. Mutations by V1 (`cp` backup, `cmp` restore): 11 before § 8.8, all
+  caught; § 8.8's four (each pre-check error back to `Other`, the raw slug shown, the manifest
+  kept), all caught; Codex's for § 8.8.1 (the removed sentence) caught; § 8.9's: protected
+  entries ignored (5 red), `drop_manifest` always `true` (2 red), roots one way (survived, so
+  § 8.9.5's test; then red), `protect` dropped from the roots (5 red).
+- **Not verified:** Linux; running as root (the mode tests skip there).
+- **For VO4.2:** a mirror without Voice's stamp and a valid manifest is out of date: never read
+  it. Refresh first, as the spec says.
+
 ## VO2: Persona Builder is Voice (2026-10-31, lane: V1)
 
 - **What:** the app is Voice everywhere: the `voice` command, crates `voice-core` (`voice_core`)
