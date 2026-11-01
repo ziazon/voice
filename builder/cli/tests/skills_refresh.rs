@@ -171,7 +171,11 @@ fn withdrawn_never_copied_moved_and_gone_are_removed() {
         );
         let text = String::from_utf8_lossy(&output.stdout);
         assert!(
-            text.contains("0 new, 0 updated, 0 unchanged, 1 removed."),
+            text.contains(if reason == "withdrawn" {
+                "0 new, 0 updated, 0 unchanged, 0 removed."
+            } else {
+                "0 new, 0 updated, 0 unchanged, 1 removed."
+            }),
             "{text}"
         );
         if matches!(reason, "withdrawn" | "moved") {
@@ -232,12 +236,13 @@ fn unstamped_folder_is_left_alone() {
     fs::write(mirror(&home).join("notes.md"), "Keep this.").unwrap();
     let output = refresh(&home);
     assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
     assert_eq!(
-        String::from_utf8(output.stderr).unwrap(),
-        format!(
-            "voice: ~/.claude/state/pebble/mirror holds files Voice didn't put there. Move them away. {REMOVED}\n"
-        )
+        stderr,
+        "voice: ~/.claude/state/pebble/mirror holds files Voice didn't put there. Move them away, then run voice skills refresh again.\n"
     );
+    assert!(!stderr.contains("couldn't remove"));
+    assert!(!stderr.contains("Delete"));
     assert_eq!(
         fs::read_to_string(mirror(&home).join("notes.md")).unwrap(),
         "Keep this."
@@ -285,4 +290,194 @@ fn forget_removes_mirror() {
     success(refresh(&home));
     success(run(&home, &["forget", "member", "--yes"]));
     assert!(!mirror(&home).exists());
+}
+
+struct RestoreMode(PathBuf, u32);
+impl RestoreMode {
+    fn set(path: PathBuf, mode: u32) -> Self {
+        let old = fs::metadata(&path).unwrap().permissions().mode();
+        fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+        Self(path, old)
+    }
+}
+impl Drop for RestoreMode {
+    fn drop(&mut self) {
+        fs::set_permissions(&self.0, fs::Permissions::from_mode(self.1)).unwrap();
+    }
+}
+fn not_removed(path: &str) -> String {
+    format!(
+        "Voice couldn't remove your assistant's copy of your skills, so it may be out of date. Move anything you want to keep out of the folder {path}, delete the folder, then run voice skills refresh again."
+    )
+}
+#[test]
+fn unreadable_stamp_reports_mirror_not_removed() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-unreadable-stamp");
+    two(&home);
+    success(refresh(&home));
+    let _mode = RestoreMode::set(mirror(&home).join(".anonymized-copy"), 0o000);
+    rules(&home, json!({"unknown":true}));
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr
+            .trim_end()
+            .ends_with(&not_removed("~/.claude/state/pebble/mirror")),
+        "{stderr}"
+    );
+    assert!(mirror(&home).join(".manifest.json").exists());
+}
+
+#[test]
+fn partial_removal_drops_manifest_keeps_stamp_and_recovers() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-partial-removal");
+    two(&home);
+    success(refresh(&home));
+    let mode = RestoreMode::set(mirror(&home).join("notes"), 0o500);
+    rules(&home, json!({"unknown":true}));
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        !mirror(&home).join(".manifest.json").exists(),
+        "manifest survived failed removal"
+    );
+    assert!(mirror(&home).join(".anonymized-copy").exists());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr
+            .trim_end()
+            .ends_with(&not_removed("~/.claude/state/pebble/mirror")),
+        "{stderr}"
+    );
+    drop(mode);
+    rules(
+        &home,
+        json!({"terms":[{"term":"Pebble Freight","kind":"company"}]}),
+    );
+    success(refresh(&home));
+    check_manifest(&mirror(&home));
+    private_tree(&mirror(&home));
+}
+
+#[test]
+fn withdrawal_removes_mirror_only_for_recorded_ids() {
+    for recorded in [false, true] {
+        let home = Scratch::new("mirror-withdraw");
+        two(&home);
+        success(refresh(&home));
+        let id = if recorded {
+            "claude:notes"
+        } else {
+            "claude:unknown"
+        };
+        let output = success(run(&home, &["skills", "withdraw", "member", id]));
+        let mut expected = format!("{id}: no longer copied.\n");
+        if recorded {
+            expected.push_str("Your assistant's copy of your skills was removed, so nothing you withdrew stays in it. Make it again with: voice skills refresh member\n");
+        }
+        assert_eq!(output, expected);
+        assert_eq!(mirror(&home).exists(), !recorded);
+        if recorded {
+            let output = success(refresh(&home));
+            assert!(output.contains("1 new, 0 updated, 0 unchanged, 0 removed."));
+            assert!(!mirror(&home).join("notes").exists());
+        }
+    }
+}
+
+#[test]
+fn withdrawal_leaves_unstamped_mirror_and_returns_failure() {
+    let home = Scratch::new("mirror-withdraw-unstamped");
+    two(&home);
+    success(refresh(&home));
+    fs::remove_dir_all(mirror(&home)).unwrap();
+    fs::create_dir(mirror(&home)).unwrap();
+    fs::set_permissions(mirror(&home), fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(mirror(&home).join("notes.md"), "Keep this.").unwrap();
+    let output = run(&home, &["skills", "withdraw", "member", "claude:notes"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "claude:notes: no longer copied.\nVoice couldn't remove your assistant's copy of your skills. Move anything you want to keep out of the folder ~/.claude/state/pebble/mirror, delete the folder, then run voice skills refresh member\n"
+    );
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        fs::read_to_string(mirror(&home).join("notes.md")).unwrap(),
+        "Keep this."
+    );
+}
+
+fn private_slug(home: &Scratch) -> PathBuf {
+    setup(home, json!({"terms":["Pebble Freight"]}));
+    let path = home.0.join("member/member.json");
+    let mut member: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    member["slug"] = json!("pebble-freight");
+    member["state_dir"] = json!("~/.claude/state/pebble-freight");
+    fs::write(path, member.to_string()).unwrap();
+    skill(home, ".claude/skills/notes", "Write plainly.\n");
+    agree(home, &["claude:notes"]);
+    home.0.join(".claude/state/pebble-freight/mirror")
+}
+#[test]
+fn refresh_masks_private_slug_in_success_and_refusal() {
+    let home = Scratch::new("mirror-private-slug");
+    let path = private_slug(&home);
+    let output = success(refresh(&home));
+    assert!(output.contains("~/.claude/state/*/mirror."), "{output}");
+    assert!(!output.contains("pebble-freight"));
+    fs::remove_file(path.join(".anonymized-copy")).unwrap();
+    fs::write(path.join("notes.md"), "Keep this.").unwrap();
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(
+        stderr,
+        "voice: ~/.claude/state/*/mirror holds files Voice didn't put there. Move them away, then run voice skills refresh again.\n"
+    );
+    assert!(!stderr.contains("couldn't remove"));
+    assert!(!stderr.contains("Delete"));
+    assert_eq!(
+        fs::read_to_string(path.join("notes.md")).unwrap(),
+        "Keep this."
+    );
+    assert!(!stderr.contains("pebble-freight"));
+}
+#[test]
+fn withdrawal_masks_private_paths() {
+    for stamped in [true, false] {
+        let home = Scratch::new("mirror-withdraw-private-paths");
+        let path = private_slug(&home);
+        success(refresh(&home));
+        fs::rename(home.0.join("member"), home.0.join("pebble-freight")).unwrap();
+        if !stamped {
+            fs::remove_file(path.join(".anonymized-copy")).unwrap();
+        }
+        let output = run(
+            &home,
+            &["skills", "withdraw", "~/pebble-freight", "claude:notes"],
+        );
+        assert_eq!(output.status.code(), Some(if stamped { 0 } else { 1 }));
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(stdout.contains("voice skills refresh ~/*"), "{stdout}");
+        if !stamped {
+            assert!(stdout.contains("~/.claude/state/*/mirror"), "{stdout}");
+        }
+        assert!(!stdout.contains("pebble-freight"));
+        assert!(output.stderr.is_empty());
+    }
 }

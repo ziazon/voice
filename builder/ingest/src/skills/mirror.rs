@@ -1,9 +1,12 @@
 //! Fresh private skill copies and hashes of their written bytes.
 use super::{
-    Copied, copy::load_copy, copy_agreed, display_path, prepare_output_with_projects, remove_copy,
-    write_manifest,
+    Copied, copy::load_agreed, copy_agreed, display_path, prepare_output_with_projects,
+    remove_copy, write_manifest,
 };
-use crate::private;
+use crate::{
+    anonymize::{self, Rules},
+    private,
+};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -77,6 +80,7 @@ impl Manifest {
 
 pub struct Refreshed {
     pub copied: Copied,
+    pub rules: Rules,
     pub mirror: PathBuf,
     pub new: usize,
     pub updated: usize,
@@ -85,20 +89,47 @@ pub struct Refreshed {
 }
 pub const MIRROR_REMOVED: &str = "Voice removed your assistant's copy of your skills, so it can't be out of date. Fix this, then run voice skills refresh again.";
 
+pub fn mirror_not_removed(path: &str) -> String {
+    format!(
+        "Voice couldn't remove your assistant's copy of your skills, so it may be out of date. Move anything you want to keep out of the folder {path}, delete the folder, then run voice skills refresh again."
+    )
+}
+
+#[derive(Debug)]
+enum Failure {
+    Foreign,
+    Other(Error),
+}
+impl From<Error> for Failure {
+    fn from(error: Error) -> Self {
+        Self::Other(error)
+    }
+}
+
+fn output_error(error: Error) -> Failure {
+    match error {
+        Error::Invalid(ref message) if matches!(super::output::output_bad(), Error::Invalid(own) if *message == own) => {
+            Failure::Foreign
+        }
+        other => Failure::Other(other),
+    }
+}
+
 /// The caller holds `private::lock_state(home, &member.slug)`.
 pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
     let mirror = private::private_folder(home, &member.slug, "mirror")?;
+    let rules = Rules::for_member(member, home);
+    let path = PathBuf::from(display_path(&mirror, home));
+    let shown = match &rules {
+        Ok(rules) => anonymize::report_path(&path, rules).display().to_string(),
+        Err(_) => path.display().to_string(),
+    };
     let result = (|| {
-        let (rules, found, agreements, mut mapping) = load_copy(home, member)?;
+        let rules = rules?;
+        let (found, agreements, mut mapping) = load_agreed(home, member, &rules)?;
         let old = Manifest::read(&mirror.join(".manifest.json"));
         let out = prepare_output_with_projects(&mirror, home, &found.skills, rules.projects())
-            .map_err(|error| match error {
-                Error::Invalid(_) => Error::Invalid(format!(
-                    "{} holds files Voice didn't put there. Move them away",
-                    display_path(&mirror, home)
-                )),
-                other => other,
-            })?;
+            .map_err(output_error)?;
         let copied = copy_agreed(
             home,
             &member.slug,
@@ -126,6 +157,7 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
             .count();
         Ok(Refreshed {
             copied,
+            rules,
             mirror: mirror.clone(),
             new,
             updated,
@@ -133,13 +165,27 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
             removed,
         })
     })();
-    result.map_err(|error| {
-        let _ = remove_copy(&mirror);
+    result.map_err(|failure| {
+        let error = match failure {
+            Failure::Foreign => {
+                return Error::Invalid(format!(
+                    "{shown} holds files Voice didn't put there. Move them away, then run voice skills refresh again."
+                ));
+            }
+            Failure::Other(error) => error,
+        };
+        let removed = matches!(remove_copy(&mirror), Ok(true))
+            || matches!(std::fs::symlink_metadata(&mirror), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        let outcome = if removed {
+            MIRROR_REMOVED.to_owned()
+        } else {
+            mirror_not_removed(&shown)
+        };
         let message = match error {
             Error::Invalid(message) => message.strip_suffix('.').unwrap_or(&message).to_owned(),
             other => other.to_string(),
         };
-        Error::Invalid(format!("{message}. {MIRROR_REMOVED}"))
+        Error::Invalid(format!("{message}. {outcome}"))
     })
 }
 
@@ -154,6 +200,27 @@ mod tests {
     use crate::skills::remove_copy;
     use serde_json::json;
     use std::{fs, os::unix::fs::symlink};
+
+    #[test]
+    fn only_output_folder_refusals_are_reworded() {
+        use voice_core::error::Error;
+        let other = Error::Invalid("The stamp is a link".into());
+        assert!(matches!(
+            super::output_error(other),
+            super::Failure::Other(Error::Invalid(message)) if message == "The stamp is a link"
+        ));
+        let own = super::super::output::output_bad();
+        assert!(matches!(super::output_error(own), super::Failure::Foreign));
+        let error = Error::Io {
+            path: "mirror".into(),
+            source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+        };
+        let message = error.to_string();
+        assert!(matches!(
+            super::output_error(error),
+            super::Failure::Other(error) if error.to_string() == message
+        ));
+    }
 
     #[test]
     fn bad_manifest_shapes_are_empty() {
@@ -227,7 +294,7 @@ mod tests {
         assert!(Manifest::read(&fifo).skills.is_empty());
     }
     #[test]
-    fn unreadable_stamp_returns_an_io_error() {
+    fn unreadable_stamp_is_not_voices_copy() {
         use std::os::unix::fs::PermissionsExt;
         // SAFETY: geteuid reads the effective user id and has no preconditions.
         if unsafe { libc::geteuid() } == 0 {
@@ -239,7 +306,7 @@ mod tests {
         fs::set_permissions(&stamp, fs::Permissions::from_mode(0o000)).unwrap();
         let result = remove_copy(&path);
         fs::set_permissions(&stamp, fs::Permissions::from_mode(0o600)).unwrap();
-        assert!(matches!(result, Err(voice_core::error::Error::Io { .. })));
+        assert!(matches!(result, Ok(false)), "{result:?}");
         assert!(path.exists());
     }
 

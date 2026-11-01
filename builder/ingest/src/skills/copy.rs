@@ -23,7 +23,16 @@ pub struct Copied {
 
 pub fn load_copy(home: &Path, member: &Member) -> Result<(Rules, Found, Agreements, Mapping)> {
     let rules = Rules::for_member(member, home)?;
-    let found = skills::discover(home, &rules)?;
+    let (found, agreements, mapping) = load_agreed(home, member, &rules)?;
+    Ok((rules, found, agreements, mapping))
+}
+
+pub(super) fn load_agreed(
+    home: &Path,
+    member: &Member,
+    rules: &Rules,
+) -> Result<(Found, Agreements, Mapping)> {
+    let found = skills::discover(home, rules)?;
     let agreements = Agreements::load(home, &member.slug)?;
     let mapping = match private::read_private_optional_at_max(
         home,
@@ -35,7 +44,7 @@ pub fn load_copy(home: &Path, member: &Member) -> Result<(Rules, Found, Agreemen
         Some(bytes) => Mapping::from_json(&bytes)?,
         None => Mapping::default(),
     };
-    Ok((rules, found, agreements, mapping))
+    Ok((found, agreements, mapping))
 }
 
 pub fn copy_agreed(
@@ -111,7 +120,7 @@ pub fn copy_agreed(
                     .map(|(path, text)| {
                         (
                             path.components()
-                                .map(|part| part.as_os_str().to_str().expect("UTF-8 skill path"))
+                                .map(|part| part.as_os_str().to_string_lossy())
                                 .collect::<Vec<_>>()
                                 .join("/"),
                             format!("{:x}", Sha256::digest(text.as_bytes())),

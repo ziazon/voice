@@ -394,8 +394,8 @@ impl Agreements {
         self.records
             .insert(skill.id.clone(), (date.into(), skill.shown.clone()));
     }
-    pub fn withdraw(&mut self, id: &str) {
-        self.records.remove(id);
+    pub fn withdraw(&mut self, id: &str) -> bool {
+        self.records.remove(id).is_some()
     }
     pub fn state(&self, skill: &Skill, rules: &Rules) -> State {
         if rules.never_copy(&skill.name) {

@@ -14,7 +14,7 @@ use std::{
 use voice_core::error::{Error, Result};
 
 const STAMP: &str = "Made by voice anonymize. Running it again replaces this folder.\n";
-fn output_bad() -> Error {
+pub(super) fn output_bad() -> Error {
     invalid(
         "Choose an output folder that is empty or was made by voice anonymize, outside your skill folders.",
     )
@@ -150,7 +150,7 @@ pub fn remove_copy(path: &Path) -> Result<bool> {
         if !metadata.is_file()
             || metadata.file_type().is_symlink()
             || metadata.len() != STAMP.len() as u64
-            || check::read(&stamp)? != STAMP.as_bytes()
+            || check::read(&stamp).ok().as_deref() != Some(STAMP.as_bytes())
         {
             return Ok(false);
         }
@@ -158,7 +158,27 @@ pub fn remove_copy(path: &Path) -> Result<bool> {
         if !metadata.is_dir() || metadata.file_type().is_symlink() {
             return Ok(false);
         }
-        fs::remove_dir_all(path).map_err(|e| io(path, e))?;
+        let manifest = path.join(".manifest.json");
+        match fs::remove_file(&manifest) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io(&manifest, error)),
+        }
+        for entry in fs::read_dir(path).map_err(|e| io(path, e))? {
+            let entry = entry.map_err(|e| io(path, e))?;
+            if entry.file_name() == ".anonymized-copy" {
+                continue;
+            }
+            let child = entry.path();
+            let metadata = fs::symlink_metadata(&child).map_err(|e| io(&child, e))?;
+            if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                fs::remove_dir_all(&child).map_err(|e| io(&child, e))?;
+            } else {
+                fs::remove_file(&child).map_err(|e| io(&child, e))?;
+            }
+        }
+        fs::remove_file(&stamp).map_err(|e| io(&stamp, e))?;
+        fs::remove_dir(path).map_err(|e| io(path, e))?;
     }
     Ok(true)
 }
