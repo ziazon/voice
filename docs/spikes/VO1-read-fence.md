@@ -44,7 +44,8 @@ holds them in one place (`FENCE_FLAGS`, `deny_rules()`), and a test keeps them e
 
 Each was seen without a sign-in, so it needed no usage:
 
-- The `init` event (the first line of `stream-json --verbose`, printed even signed out) lists
+- The `system`/`init` event of `stream-json --verbose` (printed before any reply, even signed out;
+  on a Mac with hooks, the hooks' own events come first) lists
   `tools: ["Glob","Grep","Read"]`, `mcp_servers: []` and `permissionMode: "default"` for the flags
   above.
 - `--settings` with a valid file or JSON string writes the line above, with the rules sent, before
@@ -80,11 +81,11 @@ whether `.env` was readable with no rules at all.
   measures Grep over one folder, not every way a search can be phrased.
 - The person's own Claude Code settings still load into a read-wide turn: hooks, `env`,
   `apiKeyHelper` and turned-on plugins (the probe counts them, never printing a value). VO6 decides
-  whether to drop them (`--setting-sources` or `--restricted`, which an earlier probe found also
-  stops host skills loading) or to refuse such a Mac in `doctor`.
+  whether to drop them (`--setting-sources` or `--restricted`, which was measured on 2026-10-26 to
+  also stop installed skills loading) or to refuse such a Mac in `doctor`.
 - A folder added with `--add-dir` can bring its own `.claude/skills`, `commands` and `agents` into
   the turn (Claude Code's docs, *Working directories*). That is VO6's to handle for each root.
-- Claude Code drops a malformed rule and keeps the rest of the list (the Verifier measured
+- Claude Code drops a malformed rule and keeps the rest of the list (a check measured
   `["Read(//**/.env)", "NotATool(x"]` logging one rule added), so a caller must compare the whole
   list it sent, not only the count; and a good `deny` list beside an `allow` that isn't a list
   was dropped whole (no line logged).

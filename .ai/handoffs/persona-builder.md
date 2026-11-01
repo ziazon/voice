@@ -27,7 +27,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   list not compared, a leaked word ignored, a later try's leak ignored, the broken check always
   passing, a fenced turn skipping the guard, an API key passed to the child, extra tools allowed,
   words not scrubbed, full-path symlink matching, the broken check's tautology, a glob leak not
-  counted, the relative rules beside the folder, the Grep path and filters unchecked, each turn's
+  counted, the relative rules beside the folder, the Grep path unchecked, the Grep filters unchecked, each turn's
   offer unchecked (read, grep, glob), the control word read from the whole stream, an error
   result accepted, a Grep refusal ignored. `ci-local.sh`: see the land.
 - **Reviews:** security review (Opus): two MEDIUM and four LOW, all fixed (brief § 4): symlink
@@ -41,6 +41,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   Two notes accepted: a glob turn that times out isn't counted as failed (a leak there could go
   unseen only if a process outside the killed group held the pipe), and the Grep refusal check
   doesn't test that `permission_denials` is a list (a `None` crashes, fail-closed).
+  Records Verifier (Opus, `9fe61eb`): two one-line fixes in the spike doc, made: the `init` event
+  isn't always the first line (hooks' events come first), and a private-tool word in a public doc.
 - **Not verified:** everything that needs a signed-in Claude Code: whether the `//**/` rules
   actually deny each canary, whether Grep is fenced inside the folder (the docs promise only
   "best-effort"; it may well not be), letter case, symlinks, and the `permission_denials` shape

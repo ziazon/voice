@@ -23,8 +23,8 @@ Run tests with at most 2 workers.
 
 ## What was measured (V1, 2026-11-01, Claude Code 2.1.292 on macOS, signed out), so you don't re-derive it
 
-- The `system`/`init` event of `--output-format stream-json --verbose` (always its first line,
-  printed even when signed out) carries `tools` (a list of names), `permissionMode` and
+- The `system`/`init` event of `--output-format stream-json --verbose` (printed before any
+  reply, even when signed out; on a Mac with hooks, the hooks' events come before it) carries `tools` (a list of names), `permissionMode` and
   `mcp_servers` (a list). With `--tools Read,Grep,Glob --strict-mcp-config --mcp-config
   '{"mcpServers":{}}'` it reads `tools: ["Glob","Grep","Read"]`, `mcp_servers: []`.
 - `--permission-mode` takes `acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`,
