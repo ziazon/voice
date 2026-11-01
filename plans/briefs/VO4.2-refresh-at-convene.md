@@ -52,8 +52,8 @@ shows every progress `line` as it comes; `PanelRun.vue` needs no change).
   dropped unread, never formatted, logged or saved) emits one progress event before the first
   round's "Round N is starting.":
   `Progress::SkillsNotRefreshed { round: u32, seat: String }`, where `round` is the round about to
-  start (`state.round_no.saturating_add(1)`) and `seat` is `seat.member.name` (the name the
-  failures in `RoundDone` already use). `refresh` itself already removed the mirror or dropped its
+  start (`state.round_no.saturating_add(1)`) and `seat` is `seat.member.name` (the person's
+  name for the assistant; `RoundDone`'s failures show slugs; see § 5 for how it is cleaned). `refresh` itself already removed the mirror or dropped its
   manifest (VO4.1): do nothing more to the mirror here. Success emits nothing.
 - **The sentence**, in `builder/panel-runner/src/text.rs`, as a `pub fn
   skills_not_refreshed(seat: &str) -> String` used by `text::progress` for the new variant:
@@ -129,3 +129,20 @@ the sentence exactly.
 - Every existing panel and skills test passes unchanged (the runner's fixture homes have no skills,
   so `mirror_in_use` is false for them and their progress is unchanged).
 - Report: the files changed, each test and what it pins, and the ci-local result.
+
+## 5. Review fix: the name is cleaned (security review, LOW)
+
+Nothing checks `member.name` when it is read, and `private.json` can override it, so a name could
+hold terminal escapes, a carriage return or a newline and fake extra progress lines in the CLI and
+the app. Every other place that shows the name cleans it (`text::assistant_problem` uses
+`voice_panels::clean(name, 64)`).
+
+- `text::skills_not_refreshed(seat)` cleans the name itself, so every caller gets it:
+  `voice_panels::clean(seat, 64)`, then every run of whitespace (newlines and tabs included, which
+  `clean` keeps) becomes one space: `.split_whitespace().collect::<Vec<_>>().join(" ")`. The
+  sentence is otherwise unchanged.
+- Test, red first, in `text.rs`'s tests: `skills_not_refreshed("Peb\u{1b}[2K\rble\nRound 1 is
+  done.\tX")` contains no `char::is_control` character and no newline, starts with
+  `Voice couldn't bring Peb`, and ends with the sentence's fixed ending; and a 100-character name is
+  cut to 64 characters plus `…`. The existing exact-sentence test stays.
+- Nothing else changes.
