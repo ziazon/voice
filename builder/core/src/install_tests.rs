@@ -1069,3 +1069,96 @@ fn voice_record_cannot_claim_panel_file() {
     );
     assert_eq!(tree(&f.places.claude_home), before);
 }
+
+#[test]
+fn voice_record_cannot_claim_panel_file_with_different_case() {
+    let f = Fixture::new();
+    f.on();
+    let panel_file = f.path("Voice/panels/dl-x/f");
+    fs::create_dir_all(panel_file.parent().unwrap()).unwrap();
+    fs::write(&panel_file, "keep").unwrap();
+    let record_path = f.path("voice/installed.json");
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    record["added"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "kind": "file", "path": panel_file, "text": "keep"
+        }));
+    fs::write(&record_path, serde_json::to_string(&record).unwrap()).unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_off(&f.places);
+    assert!(
+        matches!(&result, Err(Error::Invalid(_))),
+        "panel file claim with different case was not refused: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{} lists {} as added: fix or remove installed.json",
+            record_path.display(),
+            panel_file.display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
+}
+
+#[test]
+fn voice_record_cannot_claim_claude_file_with_different_case() {
+    let f = Fixture::new();
+    f.on();
+    let claude_file = f.path("claude.md");
+    fs::write(&claude_file, "keep").unwrap();
+    let record_path = f.path("voice/installed.json");
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    record["added"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "kind": "file", "path": claude_file, "text": "keep"
+        }));
+    fs::write(&record_path, serde_json::to_string(&record).unwrap()).unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_off(&f.places);
+    assert!(
+        matches!(&result, Err(Error::Invalid(_))),
+        "Claude file claim with different case was not refused: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{} lists {} as added: fix or remove installed.json",
+            record_path.display(),
+            claude_file.display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
+}
+
+#[test]
+fn voice_public_assistants_folder_refuses_turning_on_without_writes() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.path("voice/assistants")).unwrap();
+    fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(
+        f.path("voice/assistants"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_on(&f.member, &f.places);
+    assert!(
+        matches!(&result, Err(Error::Invalid(_))),
+        "public assistants folder was not refused: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{0} can be opened by other people on this computer, so Voice won't use it. Make it yours alone (chmod 700 {0}), then try again",
+            f.path("voice/assistants").display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
+}

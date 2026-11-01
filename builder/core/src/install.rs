@@ -81,6 +81,11 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
     refuse_symlink(&source)?;
     let skill_text = io(&source, fs::read_to_string(&source))?;
     check_skill(&source, &skill_text, &member.slug, &member.name)?;
+    let assistants = places.claude_home.join("voice/assistants");
+    refuse_symlink(&assistants)?;
+    if exists(&assistants)? {
+        install_record::private_root(&assistants)?;
+    }
     let mut journal = Journal::default();
     if let Some(record) = install_record::read(&places.claude_home)? {
         if record.slug != member.slug {
@@ -102,10 +107,7 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
         }
     }
     let skill = places.claude_home.join("skills").join(&member.slug);
-    let rules_folder = places
-        .claude_home
-        .join("voice/assistants")
-        .join(&member.slug);
+    let rules_folder = assistants.join(&member.slug);
     for path in [&skill, &rules_folder] {
         install_record::check_path(path, &places.claude_home)?;
         refuse_symlink(path)?;

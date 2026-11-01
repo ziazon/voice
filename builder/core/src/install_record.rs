@@ -125,10 +125,18 @@ pub(super) fn read(claude_home: &Path) -> Result<Option<Record>> {
     block::validate_id(&record.slug)
         .map_err(|error| Error::Invalid(format!("{}: {error}", path.display())))?;
     for added in &record.added {
-        if added.path() == claude_home.join("CLAUDE.md")
-            || added.path() == path
-            || (added.path().starts_with(&folder)
-                && !added.path().starts_with(folder.join("assistants")))
+        let relative = added.path().strip_prefix(claude_home).ok();
+        let parts: Vec<_> = relative.iter().flat_map(|path| path.components()).collect();
+        let matches = |index: usize, expected: &[u8]| {
+            parts.get(index).is_some_and(|part| {
+                part.as_os_str()
+                    .as_encoded_bytes()
+                    .eq_ignore_ascii_case(expected)
+            })
+        };
+        if (parts.len() == 1 && matches(0, b"CLAUDE.md"))
+            || (parts.len() == 2 && matches(0, b"voice") && matches(1, b"installed.json"))
+            || (matches(0, b"voice") && !matches(1, b"assistants"))
         {
             return Err(Error::Invalid(format!(
                 "{} lists {} as added: fix or remove installed.json",
