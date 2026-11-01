@@ -134,8 +134,18 @@ for the record path), each red before you change `install.rs`:
   `builder/panel-runner/tests/`, after a turn-on into a temporary home, `Room::open(home, id, true)`
   succeeds (use whatever public entry the existing room tests use).
 
-Run `cargo test -p voice-core -p voice-api -p voice-panel-runner --locked` and clippy on them;
-report each. Keep each change minimal and in the style of the file.
+Also in this dispatch, a fix-up to § 2: the consent wording changed (it names Voice now), and
+`builder/core/src/consent.rs` says "When changing the wording, bump VERSION and update this". § 2
+updated `WORDING_SHA1` but not `VERSION`. Bump `VERSION` to 2, so a consent given to the old
+wording asks again (`builder/api/src/assistants.rs` accepts only `consent::VERSION`). A test that
+writes a literal version-1 consent meaning "the current one" uses `consent::VERSION` instead; a
+test that means "an old consent" keeps 1 and should now see the consent asked again. Add one test
+in `builder/api/tests/assistants.rs` (beside the existing consent tests): a version-1 record
+reads as no permission given.
+
+Run `cargo test -p voice-core -p voice-api -p voice-cli -p voice-panel-runner --locked` and
+clippy on them; report each (sockets your sandbox refuses: say which tests). Keep each change
+minimal and in the style of the file.
 
 ## 4. Dispatch C: the docs
 
