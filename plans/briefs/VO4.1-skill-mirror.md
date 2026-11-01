@@ -225,3 +225,73 @@ leaves an unstamped non-empty folder and a link alone (returns `false`).
 Then run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
 `cargo test -p voice-ingest -p voice-cli`, and `bash scripts/ci-local.sh`, and report each command
 with its result, the red output you saw before implementing, and every file you changed.
+
+## 8. After the security review and the Verifier (V1, 2026-11-01): decision-complete
+
+Same rules as the top of this brief (invented names only, commit nothing). Red first for every
+item: write the test, run it, see it fail on its assertion, then fix. Touch only the files named
+here and their tests.
+
+### 8.1 A failed refresh that couldn't remove the mirror says so (security review MEDIUM 1)
+
+- `remove_copy` removes in an order that never leaves something that looks like a whole copy:
+  after the stamp check passes, delete `.manifest.json` first (when present), then every other
+  entry except `.anonymized-copy` (folders with `fs::remove_dir_all`, after `symlink_metadata`;
+  files and links with `fs::remove_file`), then the stamp, then the folder itself with
+  `fs::remove_dir`. A failure part way returns `Err` and leaves the stamp in place, so the next
+  run still recognises the folder as Voice's and can finish removing it.
+- A stamp that exists but can't be read (`check::read` fails) is `Ok(false)`, not `Err` (this also
+  puts back `voice anonymize --out`'s friendly "Choose an output folder…" message for that case,
+  security LOW 3).
+- In `refresh`'s error path, append `MIRROR_REMOVED` only when `remove_copy` returned `Ok(true)`
+  or the mirror no longer exists. Otherwise append the new sentence
+  `Voice couldn't remove your assistant's copy of your skills, so it may be out of date. Delete the folder <path> yourself, then run voice skills refresh again.`
+  (a `pub const MIRROR_NOT_REMOVED` holding the text around `<path>`, or a `pub fn`), with
+  `<path>` the mirror shown as § 8.3 says.
+- Tests (`builder/cli/tests/skills_refresh.rs`, skip when `geteuid() == 0`, restore modes in a
+  guard that runs on panic too): after a good refresh, (a) `chmod 000` the stamp and break
+  `private.json`: the refresh fails, stderr ends with the not-removed sentence naming
+  `~/.claude/state/pebble/mirror`; (b) `chmod 500` one copied skill's folder and break
+  `private.json`: the refresh fails with the not-removed sentence, and `.manifest.json` is gone
+  while `.anonymized-copy` is still there; after restoring the mode and fixing `private.json`, the
+  next refresh succeeds and the mirror is whole again.
+
+### 8.2 Withdrawing a skill removes the mirror (security review MEDIUM 2)
+
+A withdrawn skill must not stay in the mirror until someone refreshes. In the `Withdraw` arm, after
+`agreements.save`: if any listed id had a record before the withdraw, and the mirror folder exists
+(`private::private_folder_exists(home, slug, "mirror")`), call `remove_copy` on it. Print the usual
+`<id>: no longer copied.` lines, then:
+- removed: `Your assistant's copy of your skills was removed, so nothing you withdrew stays in it. Make it again with: voice skills refresh <member_dir, home as ~>`;
+- not removed (`Ok(false)` or `Err`): `Voice couldn't remove your assistant's copy of your skills. Delete the folder <mirror, home as ~> yourself, then run voice skills refresh <member_dir, home as ~>`, and exit 1.
+
+Both paths go through `report_path` as § 8.3 says. Nothing is printed about the mirror when no
+listed id had a record or there is no mirror. Tests: withdraw after a refresh removes `mirror/` and
+prints the line; withdraw of an id with no record leaves the mirror; a mirror holding someone
+else's file is left and the command exits 1.
+
+### 8.3 Small cleanups (V1's review, the Verifier's should-fix)
+
+- `builder/cli/src/skills.rs`: move refresh into its own `fn refresh(member_dir: PathBuf) -> Result<ExitCode>`
+  called from `run` the way `anonymize` is, so `run`'s `match` has no `unreachable!` arm. Load the
+  rules once: return them in `Refreshed` (`pub rules: Rules`) instead of calling
+  `Rules::for_member` a second time for the waiting line.
+- Print the mirror path through `anonymize::report_path(&PathBuf::from(display_path(...)), &rules)`,
+  as `anonymize` prints its `--out`. This is the Verifier's should-fix: an assistant whose own name
+  holds a listed term (slug `pebble-freight`, term `Pebble Freight`) must print
+  `~/.claude/state/*/mirror`, as `anonymize --out ~/pebble-freight-out` prints `~/*`. Apply the same
+  wrap to the path in § 4 step 5's message and in 8.1's not-removed sentence (the rules are loaded
+  by then; when the error came from loading the rules themselves, use `display_path` alone). Test
+  it with that slug.
+- `mirror.rs` § 4 step 5: replace the refusal message only when the error is
+  `prepare_output_with_projects`' own "Choose an output folder…" refusal (compare the message);
+  any other error (a stamp that is a link, an I/O error) passes through unchanged.
+- `copy.rs`: the manifest path uses `to_string_lossy()` instead of `.expect("UTF-8 skill path")`
+  (`write_skill` already refused a non-UTF-8 path), so this code has no panic path.
+
+### 8.4 Verify and report
+
+Run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo test -p voice-ingest -p voice-cli`, then `bash scripts/ci-local.sh` (its macOS sandbox
+tests can't run inside your own sandbox; say so if that is where it stops). Report each command
+and its result, the red output you saw before each fix, and every file you changed.
