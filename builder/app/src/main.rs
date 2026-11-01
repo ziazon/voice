@@ -64,6 +64,10 @@ fn main() {
             commands::stop_panel,
             commands::list_panels,
             commands::panel,
+            commands::list_skills,
+            commands::agree_skills,
+            commands::withdraw_skills,
+            commands::refresh_skills,
         ])
         .build(tauri::generate_context!());
     match app {

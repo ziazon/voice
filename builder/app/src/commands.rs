@@ -377,3 +377,31 @@ pub fn panel(
 ) -> Result<voice_api::dto::PanelDetail, voice_api::dto::Failure> {
     voice_api::panel(request)
 }
+
+#[tauri::command(async)]
+pub fn list_skills(
+    request: voice_api::dto::SlugRequest,
+) -> Result<voice_api::dto::Skills, voice_api::dto::Failure> {
+    voice_api::list_skills(request)
+}
+
+#[tauri::command(async)]
+pub fn agree_skills(
+    request: voice_api::dto::SkillsRequest,
+) -> Result<voice_api::dto::Skills, voice_api::dto::Failure> {
+    voice_api::agree_skills(request)
+}
+
+#[tauri::command(async)]
+pub fn withdraw_skills(
+    request: voice_api::dto::SkillsRequest,
+) -> Result<voice_api::dto::SkillsWithdrawn, voice_api::dto::Failure> {
+    voice_api::withdraw_skills(request)
+}
+
+#[tauri::command(async)]
+pub fn refresh_skills(
+    request: voice_api::dto::SlugRequest,
+) -> Result<voice_api::dto::SkillsRefreshed, voice_api::dto::Failure> {
+    voice_api::refresh_skills(request)
+}

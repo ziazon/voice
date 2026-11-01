@@ -97,6 +97,10 @@ fn lockdown_1_command_lists_agree_in_order() {
             "stop_panel",
             "list_panels",
             "panel",
+            "list_skills",
+            "agree_skills",
+            "withdraw_skills",
+            "refresh_skills",
         ]
     );
     let capability = json("capabilities/default.json");

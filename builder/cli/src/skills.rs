@@ -111,34 +111,21 @@ fn manage(member_dir: PathBuf, action: Action) -> Result<ExitCode> {
                 println!("{id}: no longer copied.");
             }
             if withdrew {
-                let exists = private::private_folder_exists(&home, &member.slug, "mirror");
-                if matches!(exists, Ok(false)) {
+                let removal = skills::remove_after_withdraw(&home, &member.slug, &found, &rules);
+                if removal == skills::Removal::NotThere {
                     return Ok(ExitCode::SUCCESS);
                 }
                 let mirror = home.join(".claude/state").join(&member.slug).join("mirror");
-                let removed = exists
-                    .and_then(|_| private::private_folder(&home, &member.slug, "mirror"))
-                    .and_then(|path| {
-                        skills::check_output(
-                            &path,
-                            &home,
-                            &found.skills,
-                            &found.protected,
-                            rules.projects(),
-                        )
-                    })
-                    .and_then(|path| skills::remove_copy(&path));
                 let member_path = anonymize::report_path(
                     &PathBuf::from(skills::display_path(&member_dir, &home)),
                     &rules,
                 );
-                if matches!(removed, Ok(true)) {
+                if removal == skills::Removal::Removed {
                     println!(
                         "Your assistant's copy of your skills was removed, so nothing you withdrew stays in it. Make it again with: voice skills refresh {}",
                         member_path.display()
                     );
                 } else {
-                    skills::drop_manifest(&mirror);
                     println!(
                         "Voice couldn't remove your assistant's copy of your skills. Move anything you want to keep out of the folder {}, delete the folder, then run voice skills refresh {}",
                         anonymize::report_path(

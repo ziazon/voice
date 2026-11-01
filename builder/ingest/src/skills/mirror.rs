@@ -288,6 +288,48 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Removal {
+    /// There was no mirror.
+    NotThere,
+    /// The mirror was removed.
+    Removed,
+    /// It couldn't be removed; its manifest was dropped.
+    NotRemoved,
+}
+/// After a withdrawal: remove the assistant's mirror so nothing withdrawn stays in it.
+/// The caller holds `private::lock_state(home, slug)`.
+pub fn remove_after_withdraw(
+    home: &Path,
+    slug: &str,
+    found: &super::Found,
+    rules: &Rules,
+) -> Removal {
+    let exists = private::private_folder_exists(home, slug, "mirror");
+    if matches!(exists, Ok(false)) {
+        return Removal::NotThere;
+    }
+    let mirror = home.join(".claude/state").join(slug).join("mirror");
+    let removed = exists
+        .and_then(|_| private::private_folder(home, slug, "mirror"))
+        .and_then(|path| {
+            check_output(
+                &path,
+                home,
+                &found.skills,
+                &found.protected,
+                rules.projects(),
+            )
+        })
+        .and_then(|path| remove_copy(&path));
+    if matches!(removed, Ok(true)) {
+        Removal::Removed
+    } else {
+        drop_manifest(&mirror);
+        Removal::NotRemoved
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../core/tests/common/mod.rs"]
 pub(super) mod common;

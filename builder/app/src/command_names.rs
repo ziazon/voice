@@ -53,4 +53,8 @@ pub const COMMANDS: &[&str] = &[
     "stop_panel",
     "list_panels",
     "panel",
+    "list_skills",
+    "agree_skills",
+    "withdraw_skills",
+    "refresh_skills",
 ];

@@ -32,3 +32,6 @@ pub use review::*;
 
 pub mod panels;
 pub use panels::*;
+
+pub mod skills;
+pub use skills::*;

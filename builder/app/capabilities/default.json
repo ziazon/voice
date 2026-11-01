@@ -56,6 +56,10 @@
     "allow-resume-panel",
     "allow-stop-panel",
     "allow-list-panels",
-    "allow-panel"
+    "allow-panel",
+    "allow-list-skills",
+    "allow-agree-skills",
+    "allow-withdraw-skills",
+    "allow-refresh-skills"
   ]
 }

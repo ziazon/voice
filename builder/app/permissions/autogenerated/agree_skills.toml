@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agree-skills"
+description = "Enables the agree_skills command without any pre-configured scope."
+commands.allow = ["agree_skills"]
+
+[[permission]]
+identifier = "deny-agree-skills"
+description = "Denies the agree_skills command without any pre-configured scope."
+commands.deny = ["agree_skills"]

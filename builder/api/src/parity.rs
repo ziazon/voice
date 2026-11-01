@@ -216,4 +216,20 @@ pub const PARITY: &[Parity] = &[
         app: "panel",
         cli: &[&["panel", "status"]],
     },
+    Parity {
+        app: "list_skills",
+        cli: &[&["skills", "list"]],
+    },
+    Parity {
+        app: "agree_skills",
+        cli: &[&["skills", "agree"]],
+    },
+    Parity {
+        app: "withdraw_skills",
+        cli: &[&["skills", "withdraw"]],
+    },
+    Parity {
+        app: "refresh_skills",
+        cli: &[&["skills", "refresh"]],
+    },
 ];

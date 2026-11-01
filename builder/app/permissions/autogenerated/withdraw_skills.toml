@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-withdraw-skills"
+description = "Enables the withdraw_skills command without any pre-configured scope."
+commands.allow = ["withdraw_skills"]
+
+[[permission]]
+identifier = "deny-withdraw-skills"
+description = "Denies the withdraw_skills command without any pre-configured scope."
+commands.deny = ["withdraw_skills"]

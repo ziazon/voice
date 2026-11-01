@@ -724,3 +724,73 @@ pub struct PanelDissent {
     pub holdout: bool,
     pub objections: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct SkillsRequest {
+    pub slug: String,
+    pub ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SkillRow {
+    pub id: String,
+    pub name: String,
+    pub place: String,
+    pub state: SkillState,
+    pub agreed_on: Option<String>,
+    pub number: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Skills {
+    pub skills: Vec<SkillRow>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SkillsWithdrawn {
+    pub skills: Skills,
+    pub mirror: MirrorAfter,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SkillsRefreshed {
+    pub lines: Vec<String>,
+    pub copied: u32,
+    pub agreed: u32,
+    pub waiting: u32,
+    pub new: u32,
+    pub updated: u32,
+    pub unchanged: u32,
+    pub removed: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum SkillState {
+    Waiting,
+    Agreed,
+    Moved,
+    NotOffered,
+    NeverCopied,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MirrorAfter {
+    NotThere,
+    Removed,
+    NotRemoved,
+}

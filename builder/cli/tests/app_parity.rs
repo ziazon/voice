@@ -31,3 +31,22 @@ fn claude_sign_in_commands_share_the_terminal_sign_in_command() {
         assert_eq!(row.cli, &[&["claude", "sign-in"][..]]);
     }
 }
+
+#[test]
+fn skills_commands_share_the_terminal_skills_commands() {
+    let expected = [
+        ("list_skills", "list"),
+        ("agree_skills", "agree"),
+        ("withdraw_skills", "withdraw"),
+        ("refresh_skills", "refresh"),
+    ];
+    let skills: Vec<_> = PARITY
+        .iter()
+        .filter(|row| row.app.ends_with("_skills"))
+        .collect();
+    assert_eq!(skills.len(), expected.len());
+    for (row, (app, action)) in skills.iter().zip(expected) {
+        assert_eq!(row.app, app);
+        assert_eq!(row.cli, &[&["skills", action][..]]);
+    }
+}
