@@ -85,6 +85,34 @@ run --no-open
 [ -x "$installed/Contents/MacOS/voice-app" ] || fail 'new executable is missing'
 echo 'mac_install_test: replaces passed'
 
+# Another app with the same name, or one without an identifier, must stay untouched.
+collision_failed=false
+for identity in different missing; do
+  kit "collision-$identity" "$arch"
+  fake_app "$installed" "$arch"
+  if [ "$identity" = different ]; then
+    /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier dev.other.test' "$installed/Contents/Info.plist"
+  else
+    /usr/libexec/PlistBuddy -c 'Delete :CFBundleIdentifier' "$installed/Contents/Info.plist"
+  fi
+  ditto "$installed" "$scratch/before-$identity.app"
+  run --no-open
+  if [ "$status" != 1 ]; then
+    echo "FAIL: $identity identifier was not refused" >&2
+    collision_failed=true
+  fi
+  if ! grep -Fq "There's already an app called Voice in your Applications folder, and it isn't this one. Move it somewhere else, then run the installer again." "$scratch/err"; then
+    echo "FAIL: $identity identifier explanation missing" >&2
+    collision_failed=true
+  fi
+  if ! diff -r "$scratch/before-$identity.app" "$installed"; then
+    echo "FAIL: $identity identifier app was changed" >&2
+    collision_failed=true
+  fi
+done
+"$collision_failed" && fail 'app-name collision checks failed'
+echo 'mac_install_test: app-name collisions passed'
+
 kit wrong-chip "$other_arch"
 run --no-open
 [ "$status" = 1 ] || fail 'wrong chip was not refused'

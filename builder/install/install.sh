@@ -77,6 +77,12 @@ attributes=$(xattr -lr "$copy" 2>/dev/null) || fail "$not_ready"
 codesign --verify --deep --strict "$copy" >/dev/null 2>&1 || fail "$damaged"
 
 installed="$HOME/Applications/Voice.app"
+identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$copy/Contents/Info.plist" 2>/dev/null) || fail "$damaged"
+if [ -e "$installed" ] || [ -L "$installed" ]; then
+  collision="There's already an app called Voice in your Applications folder, and it isn't this one. Move it somewhere else, then run the installer again."
+  installed_identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$installed/Contents/Info.plist" 2>/dev/null) || fail "$collision"
+  [ "$installed_identifier" = "$identifier" ] || fail "$collision"
+fi
 rm -rf "$installed"
 mv "$copy" "$installed"
 echo "Voice is installed in your Applications folder: $installed"

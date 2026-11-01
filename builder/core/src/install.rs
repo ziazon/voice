@@ -150,6 +150,7 @@ pub fn turn_on(member_dir: &Path, places: &Places) -> Result<TurnedOn> {
     refuse_symlink(&shared_root)?;
     // Shared with Panels: undo a new root on failure, but never claim it for turn-off.
     journal.directory(&shared_root, false)?;
+    install_record::private_root(&shared_root)?;
     for (folder, file, text) in [
         (&skill, "SKILL.md", &skill_text),
         (&rules_folder, "RULES.md", &rules),

@@ -7,6 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Component, Path, PathBuf},
 };
 
@@ -83,6 +84,19 @@ pub(super) fn check_path(path: &Path, claude_home: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn private_root(path: &Path) -> Result<()> {
+    let metadata = io(path, fs::metadata(path))?;
+    // SAFETY: geteuid has no preconditions.
+    let uid = unsafe { libc::geteuid() };
+    if metadata.uid() != uid || metadata.permissions().mode() & 0o077 != 0 {
+        return Err(Error::Invalid(format!(
+            "{0} can be opened by other people on this computer, so Voice won't use it. Make it yours alone (chmod 700 {0}), then try again",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
 pub(super) fn read(claude_home: &Path) -> Result<Option<Record>> {
     let folder = claude_home.join("voice");
     refuse_symlink(&folder)?;
@@ -95,6 +109,7 @@ pub(super) fn read(claude_home: &Path) -> Result<Option<Record>> {
             folder.display()
         )));
     }
+    private_root(&folder)?;
     let path = record_path(claude_home);
     refuse_symlink(&path)?;
     if !exists(&path)? {
@@ -110,7 +125,11 @@ pub(super) fn read(claude_home: &Path) -> Result<Option<Record>> {
     block::validate_id(&record.slug)
         .map_err(|error| Error::Invalid(format!("{}: {error}", path.display())))?;
     for added in &record.added {
-        if added.path() == claude_home.join("CLAUDE.md") || added.path() == path {
+        if added.path() == claude_home.join("CLAUDE.md")
+            || added.path() == path
+            || (added.path().starts_with(&folder)
+                && !added.path().starts_with(folder.join("assistants")))
+        {
             return Err(Error::Invalid(format!(
                 "{} lists {} as added: fix or remove installed.json",
                 path.display(),

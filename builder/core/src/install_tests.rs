@@ -141,6 +141,7 @@ fn on_off_restores_user_bytes_and_other_skills() {
         fs::create_dir_all(f.path("skills/other")).unwrap();
         fs::write(f.path("skills/other/SKILL.md"), "other").unwrap();
         fs::create_dir(f.path("voice")).unwrap();
+        fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o700)).unwrap();
         let before = tree(&f.places.claude_home);
         f.on();
         f.off();
@@ -201,6 +202,7 @@ fn refuses_symlink_skill_and_record_and_leaves_recorded_symlink() {
         fs::write(&target, "untouched").unwrap();
         let path = f.path(item);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::set_permissions(path.parent().unwrap(), fs::Permissions::from_mode(0o700)).unwrap();
         symlink(&target, &path).unwrap();
         let before = tree(&f.places.claude_home);
         assert_eq!(
@@ -384,6 +386,7 @@ fn late_install_failure_restores_claude_and_keeps_existing_temporary() {
     let f = Fixture::new();
     fs::write(f.path("CLAUDE.md"), "notes").unwrap();
     fs::create_dir(f.path("voice")).unwrap();
+    fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o700)).unwrap();
     let temporary = f.path(&format!("voice/.installed.json.tmp-{}", std::process::id()));
     fs::write(&temporary, "leave this alone").unwrap();
     let before = tree(&f.places.claude_home);
@@ -433,6 +436,7 @@ fn rollback_preserves_claude_write_kind_for_an_arbitrarily_named_target() {
     )
     .unwrap();
     fs::create_dir(f.path("voice")).unwrap();
+    fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o700)).unwrap();
     fs::write(
         f.path(&format!("voice/.installed.json.tmp-{}", std::process::id())),
         "user file",
@@ -621,6 +625,7 @@ fn symlinked_skills_outside_claude_home_supports_on_and_off() {
     fs::write(target.join("other.md"), "keep").unwrap();
     symlink(&target, f.path("skills")).unwrap();
     fs::create_dir(f.path("voice")).unwrap();
+    fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o700)).unwrap();
     let before = tree(&f.places.claude_home);
     let target_before = tree(&target);
     f.on();
@@ -911,6 +916,7 @@ fn voice_off_removes_assistants_but_keeps_shared_root() {
 fn voice_panels_survive_on_refresh_and_off() {
     let f = Fixture::new();
     fs::create_dir_all(f.path("voice/panels/dl-x")).unwrap();
+    fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o700)).unwrap();
     fs::write(f.path("voice/panels/dl-x/notes"), "keep").unwrap();
     let before = tree(&f.path("voice/panels"));
     f.on();
@@ -928,6 +934,7 @@ fn voice_assistant_named_panels_has_separate_rules() {
     let member = f.scratch.path().join("crew/panels");
     make_member(&member, "Panels");
     fs::create_dir_all(f.path("voice/panels/dl-x")).unwrap();
+    fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o700)).unwrap();
     fs::write(f.path("voice/panels/dl-x/notes"), "keep").unwrap();
     let before = tree(&f.path("voice/panels"));
     turn_on(&member, &f.places).unwrap();
@@ -954,4 +961,111 @@ fn voice_root_symlink_is_refused_without_writes() {
         format!("{}: symlink refused", f.path("voice").display())
     );
     assert_eq!(tree(f.scratch.path()), before);
+}
+
+#[test]
+fn voice_public_root_refuses_turning_on_without_writes() {
+    let f = Fixture::new();
+    fs::create_dir(f.path("voice")).unwrap();
+    fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o755)).unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_on(&f.member, &f.places);
+    assert!(
+        matches!(&result, Err(Error::Invalid(_))),
+        "public root was not refused: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{0} can be opened by other people on this computer, so Voice won't use it. Make it yours alone (chmod 700 {0}), then try again",
+            f.path("voice").display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
+}
+
+#[test]
+fn voice_public_root_refuses_turning_off_without_writes() {
+    let f = Fixture::new();
+    f.on();
+    fs::set_permissions(f.path("voice"), fs::Permissions::from_mode(0o755)).unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_off(&f.places);
+    assert!(
+        matches!(&result, Err(Error::Invalid(_))),
+        "public root was not refused: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{0} can be opened by other people on this computer, so Voice won't use it. Make it yours alone (chmod 700 {0}), then try again",
+            f.path("voice").display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
+}
+
+#[test]
+fn voice_record_cannot_claim_shared_root() {
+    let f = Fixture::new();
+    f.on();
+    let record_path = f.path("voice/installed.json");
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    record["added"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "kind": "dir", "path": f.path("voice")
+        }));
+    fs::write(&record_path, serde_json::to_string(&record).unwrap()).unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_off(&f.places);
+    assert!(
+        matches!(&result, Err(Error::Invalid(_))),
+        "shared root claim was not refused: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{} lists {} as added: fix or remove installed.json",
+            record_path.display(),
+            f.path("voice").display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
+}
+
+#[test]
+fn voice_record_cannot_claim_panel_file() {
+    let f = Fixture::new();
+    f.on();
+    let panel_file = f.path("voice/panels/dl-x/notes");
+    fs::create_dir_all(panel_file.parent().unwrap()).unwrap();
+    fs::write(&panel_file, "keep").unwrap();
+    let record_path = f.path("voice/installed.json");
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    record["added"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "kind": "file", "path": panel_file, "text": "keep"
+        }));
+    fs::write(&record_path, serde_json::to_string(&record).unwrap()).unwrap();
+    let before = tree(&f.places.claude_home);
+    let result = turn_off(&f.places);
+    assert!(
+        matches!(&result, Err(Error::Invalid(_))),
+        "panel file claim was not refused: {result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        format!(
+            "{} lists {} as added: fix or remove installed.json",
+            record_path.display(),
+            panel_file.display()
+        )
+    );
+    assert_eq!(tree(&f.places.claude_home), before);
 }
