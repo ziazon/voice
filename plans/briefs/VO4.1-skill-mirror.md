@@ -34,7 +34,7 @@ Out of scope (later slices): refreshing when a panel is convened (VO4.2), a scre
   the mirror test a guess about what the private file says.)
 - **A failed refresh removes the mirror.** Once the member is read, any error removes the mirror
   folder (only when it is Voice's own: see § 4) before the error is returned. A mirror is either
-  fresh or absent, never stale.
+  fresh or absent, never stale. *(Superseded by § 8.9.4: fresh, absent, or marked out of date.)*
 - **One copying loop.** `voice anonymize --out` and `voice skills refresh` share one function, and
   both write the manifest.
 - **New dependency:** `sha2 = "=0.10.9"` in `builder/ingest/Cargo.toml` `[dependencies]` (and in
@@ -486,6 +486,65 @@ is restored, a refresh succeeds again. If 0500 fails before the check instead (s
 `refresh_masks_anonymizer_folder_errors_and_drops_manifest` (`anonymizer/` at 0755, before the
 check), assert that stderr ends with `MIRROR_STALE`, `notes/SKILL.md` is still there and
 `.anonymized-copy` stays. Test-only: no change to `mirror.rs`.
+
+### 8.9 The delta security review on `2b7ddbe` (V1, 2026-11-01)
+
+The HIGH is fixed. Three LOWs, each reproduced by the reviewer with the built binary. Same rules:
+red first, invented names, commit nothing, `voice anonymize --out`'s tests stay green.
+
+**8.9.1 Never say "marked out of date" when the manifest is still there (LOW 1).** With the mirror
+at 0500 (private, so `private_folder` accepts it) and a bad `private.json`, refresh says
+`MIRROR_STALE` but `.manifest.json` stays.
+- `drop_manifest` returns `bool`: `true` when `.manifest.json` is absent afterwards (removed now,
+  or not there to begin with), `false` otherwise (including when its checks refuse a link or an
+  unstamped folder that holds a manifest). Callers that don't need it ignore it.
+- `pub fn mirror_not_marked(path: &str) -> String` in `mirror.rs`:
+  `Voice couldn't mark your assistant's copy of your skills as out of date, so it may be out of date. Make sure you can change the folder {path}, fix this, then run voice skills refresh again.`
+- `Failure::Unchecked`: `MIRROR_STALE` when `drop_manifest` returned `true`, else
+  `mirror_not_marked(&shown)`. `Failure::Overlap`: its sentence as now, then, only when
+  `drop_manifest` returned `false`, a space and `mirror_not_marked(&shown)`. `Failure::Other` and
+  withdraw keep their sentences (both already say the copy may be out of date or wasn't removed).
+- Tests: slug `pebble`, a refresh, mirror at 0500 (restored in a guard), (a) an unknown key in
+  `private.json`: stderr ends with `mirror_not_marked("~/.claude/state/*/mirror")` and not with
+  `MIRROR_STALE`, the manifest is still there; (b) valid rules and a project listed inside the
+  mirror (as 8.7's test): stderr starts with the `Overlap` sentence and ends with
+  `mirror_not_marked("~/.claude/state/pebble/mirror")`. A unit test for `drop_manifest`'s return:
+  `true` after removing, `true` with no manifest, `false` for a link as the mirror.
+
+**8.9.2 Nothing a skill root lists is ever inside the mirror when it is emptied (LOW 2).** Today
+the roots are checked one way (the output inside a root), and only folders discovery kept as
+skills are checked against the output. So a skill root, or anything listed in one that discovery
+then skips (a deny-listed name like `release.key`, a folder with no `SKILL.md`, `synced`, a
+plugin entry outside its install), can be a link into the mirror, and a normal refresh (or
+withdraw, or `anonymize --out`) deletes what it points at.
+- `check_output`: for each root, refuse when `within(&out, &root)` **or** `within(&root, &out)`.
+- `Found` gains `pub protected: Vec<PathBuf>`: the canonical path (when `canonicalize` succeeds)
+  of **every** entry `children` lists under every root, pushed in `root_skills` (and wherever else
+  `children` of a root is walked) before any filter or `continue`, deduplicated. Kept skills are
+  in it too; that's fine.
+- `check_output` gains a `protected: &[PathBuf]` parameter after `skills`, and refuses when
+  `within(&out, p) || within(p, &out)` for any of them, as it does for skill folders.
+  `prepare_output_with_projects` gains it too (and passes it on); `prepare_output` passes `&[]`.
+  Refresh, withdraw and `anonymize --out` (`builder/cli/src/skills.rs:200`) pass
+  `&found.protected`. Every other caller (tests) passes `&[]`.
+- Tests (`builder/cli/tests/skills_refresh.rs`), each after one good refresh with slug `pebble`,
+  each asserting the refresh exits 1 with the `Overlap` sentence and the linked files keep their
+  text: (a) `~/.codex/skills` a link to `mirror/codex` holding `README.md`; (b) a project listed in
+  `private.json` whose `.claude/skills` is a link to `mirror/proj-skills` holding `wip/plan.md`;
+  (c) `~/.claude/skills/release.key` a link to `mirror/release.key` holding `SKILL.md`; (d)
+  `~/.claude/skills/drafts` a link to `mirror/drafts` holding `ideas.md` (no `SKILL.md`). Withdraw
+  of a recorded id with (c): exits 1 with 8.5's line, the files kept. A control: `voice anonymize
+  --out` into a fresh folder still works with these roots in place when nothing links into it.
+
+**8.9.3 Accepted, not fixed (LOW 3), recorded by V1 in `.ai/SECURITY.md`.** When the rules load
+but `load_agreed` fails (an unreadable `placeholders.json` or `skills.json`), the old copies stay,
+even one a just-added term would now refuse. They are no worse than before the failed refresh,
+they stay in the 0700 private folder, and the manifest is dropped so no reader trusts them.
+
+**8.9.4 Brief § 1 (V1).** § 1's "a failed refresh removes the mirror … fresh or absent, never
+stale" is superseded by §§ 8.7–8.9: a failed refresh leaves the mirror fresh, absent, or marked
+out of date (no manifest), and says which. A reader trusts the mirror only when it holds Voice's
+exact stamp and a regular, valid `.manifest.json`, and should refresh first anyway (VO4.2 does).
 
 ### 8.4 Verify and report
 
