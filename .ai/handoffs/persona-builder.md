@@ -2,6 +2,50 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO1: prove the read-wide fence, the probe (2026-11-01, lane: V1)
+
+- **What:** `scripts/read_fence_probe.py`, the instrument that proves a read-wide `claude -p`
+  turn's fence on a person's own Mac, and its offline tests. `check` (no files; needs no sign-in)
+  shows the turn is offered only Glob, Grep and Read, no MCP server, the default mode, that the 34
+  deny rules were applied, and that a broken settings file is caught. `run` (signed in, a few
+  Haiku turns) adds invented canaries for every deny-list entry inside the granted folder and
+  passes only when each read is denied in `permission_denials`, no canary's word reaches any
+  fenced turn's output, and a whole-folder Grep's own result holds only the control word. The
+  flags and rules VO6 copies, what was measured, and what is left out: `docs/spikes/VO1-read-fence.md`
+  and DECISIONS. Brief `plans/briefs/VO1-read-fence-probe.md`.
+- **The live runs are attended.** This run's nested `claude` reads `loggedIn: false` and no token
+  reaches it (as X-Q124 and X-Q135 found), so `run` on Mimi and on Teo are the person's (V-Q11).
+  The card is Parked on them; nothing relies on the fence until both pass.
+- **Who built it:** Codex, test first (`06e6a5a`), then three review rounds (`e204b1f`,
+  `c0b09e5`, `d67301e`).
+- **Verified:** 26 offline tests on Python 3.9.6 and 3.12. Live, signed out: `check` printed every
+  line `pass` and exited 0 (on Mimi, this Mac's own settings bring 18 hooks and 7 plugins into
+  every turn, reported by count); `run` stopped at *Sign in to Claude Code first*. Measured by V1
+  before the brief, signed out: the `init` event's `tools`, `mcp_servers` and `permissionMode`
+  (`manual` shows as `default`); the debug log's `flagSettings` line for a valid settings file and
+  nothing for an invalid one. Mutations by V1 (`cp` backup, `cmp` restore), all 20 caught: the rule
+  list not compared, a leaked word ignored, a later try's leak ignored, the broken check always
+  passing, a fenced turn skipping the guard, an API key passed to the child, extra tools allowed,
+  words not scrubbed, full-path symlink matching, the broken check's tautology, a glob leak not
+  counted, the relative rules beside the folder, the Grep path and filters unchecked, each turn's
+  offer unchecked (read, grep, glob), the control word read from the whole stream, an error
+  result accepted, a Grep refusal ignored. `ci-local.sh`: see the land.
+- **Reviews:** security review (Opus): two MEDIUM and four LOW, all fixed (brief § 4): symlink
+  canaries passing untried; the person's own settings (hooks, `env`, `apiKeyHelper`, plugins) still
+  reaching the turn, now reported by count and left to VO6; a bounded second read; SIGTERM and
+  SIGHUP clean-up; the glob turn scanned; bidi and zero-width controls removed. Verifier (Fable,
+  first pass, `06e6a5a`): FAIL, three should-fix (the symlink false pass; the broken-settings
+  check true by construction; the relative rules' file anchored above the folder), fixed in
+  § 4. Repeat (Opus, `e204b1f`): FAIL, the Grep counted on any call (§ 5). Repeat (Opus,
+  `c0b09e5`): FAIL, the control word from another call (§ 6). Repeat (Opus, `d67301e`): **PASS**.
+  Two notes accepted: a glob turn that times out isn't counted as failed (a leak there could go
+  unseen only if a process outside the killed group held the pipe), and the Grep refusal check
+  doesn't test that `permission_denials` is a list (a `None` crashes, fail-closed).
+- **Not verified:** everything that needs a signed-in Claude Code: whether the `//**/` rules
+  actually deny each canary, whether Grep is fenced inside the folder (the docs promise only
+  "best-effort"; it may well not be), letter case, symlinks, and the `permission_denials` shape
+  (a different shape fails closed as *refused another way*). Teo. Linux.
+
 ## VO4.2: refresh the skill mirror at convene (2026-11-01, lane: V1)
 
 - **What:** before a panel's first round, in `voice panel convene`, in a `resume` that will run a

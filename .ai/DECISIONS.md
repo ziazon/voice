@@ -231,6 +231,23 @@ The app in `builder/` was Persona Builder; it is Voice now, everywhere (brief
 - **The mirror's path is shown starred** (`~/.claude/state/*/mirror`) whenever the slug holds a
   term, or the rules didn't load and the terms are unknown.
 
+## 2026-11-01: a read-wide turn's fence, and how it is proven (VO1)
+
+- **The fence is Claude Code's own permission rules**, given per turn: `--tools Read,Grep,Glob`,
+  no MCP server, `--permission-mode manual` with `--permission-prompts none`, `--add-dir` per
+  root, and the built-in deny list as `Read(//**/<name>)` and `Read(//**/<name>/**)` rules in a
+  `--settings` file. `docs/spikes/VO1-read-fence.md` has the full argv; `scripts/read_fence_probe.py`
+  holds it in one place and a test keeps its rules equal to `voice_core::deny`.
+- **Anchored at `//`**, because Claude Code reads `**/.env` as "under the current directory", which
+  a folder added with `--add-dir` is not.
+- **A turn whose settings weren't applied is refused.** `-p` ignores a broken settings file
+  silently, so the caller passes `--debug-file` and requires Claude Code's line saying it added
+  exactly the rules sent. The line isn't documented, so this fails closed.
+- **Proven on a person's own Mac, attended.** An unattended run's nested `claude` can't sign in, so the
+  live runs are the person's: `python3 scripts/read_fence_probe.py run`, which passes only when
+  every deny-list canary's read is denied by Claude Code (`permission_denials`) and no canary's
+  contents appear in the turn's output. Until both Macs have passed, nothing relies on the fence.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
