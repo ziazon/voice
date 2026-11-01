@@ -314,6 +314,66 @@ refused), and deleting it would delete the person's own files.
   the source's text, not what the program does. 8.3's behaviour is covered by the `pebble-freight`
   slug tests, and the absence of `unreachable!`/`expect` needs no test.
 
+### 8.6 The repeat Verifier and the second security review (V1, 2026-11-01)
+
+Both reproduced these on `2984159`. Same rules: red first, invented names, commit nothing.
+
+**8.6.1 No error names the mirror's real path (Verifier must-fix; security MEDIUM).** With slug
+`pebble-freight` and term `Pebble Freight`, a refresh that fails inside `remove_copy` (a copied
+skill's folder at 0500) prints `voice: /…/.claude/state/pebble-freight/mirror/notes: Permission
+denied (os error 13). …`: the home folder, the slug and a skill's name. A mirror that is a link or
+0755 leaks the same way through `private::private_folder`'s own message.
+- In `mirror.rs`, add `fn masked(error: Error, raw: &Path, shown: &str) -> Error`:
+  - `Error::Io { source, .. }` becomes `Error::Invalid(format!("Voice couldn't change {shown}: {source}"))`
+    (the OS reason only; the error's own path is never shown);
+  - `Error::Invalid(m)` becomes `Error::Invalid(m.replace(<raw as text>, shown))`, where `<raw as
+    text>` is each of `raw.display()` and `display_path(raw, home)` (pass `home` in too);
+  - any other variant: its `Display`, with the same two replacements.
+- `refresh` computes the mirror's path **before** opening it (`home/.claude/state/<slug>/mirror`,
+  the path `private_folder` returns; reuse the helper `private.rs` uses for it if there is one,
+  else build it the same way) and `shown` from it, then calls `private_folder` inside the masked
+  handling: its error goes through `masked` and gets no removal sentence (nothing was opened).
+  Every `Failure::Other` error goes through `masked` before 8.1's sentence is appended.
+- `voice anonymize --out` is out of scope here (its `--out` is a folder the person names).
+
+**8.6.2 Withdraw never stops before the mirror line (Verifier should-fix; security LOW).** In the
+`Withdraw` arm, an `Err` from `private_folder_exists`, `private_folder` or `remove_copy` is the
+not-removed case: print 8.5's withdraw line (mirror path through `report_path`) and exit 1, never
+`?`. Nothing is printed about the mirror only when no id had a record or `private_folder_exists`
+is `Ok(false)`.
+
+**8.6.3 A copy whose stamp can't be read is a stale copy, not someone else's files (Verifier
+should-fix; security LOW).** `Failure::Foreign` only when, at the moment
+`prepare_output_with_projects` returns `output_bad()`, the mirror holds at least one entry and none
+named `.anonymized-copy` (check with `symlink_metadata` on `mirror/.anonymized-copy`: any kind of
+entry there, readable or not, means *not* Foreign; read the folder with `fs::read_dir` for the
+"at least one entry"). Every other `output_bad()` is `Failure::Other` and takes 8.1's path.
+- In 8.1's path, when `remove_copy` did not remove the mirror and the mirror is a real folder (not
+  a link) with an entry named `.anonymized-copy`, also remove `mirror/.manifest.json` when
+  `symlink_metadata` shows a regular file (ignore that removal's result), so no stale copy keeps a
+  manifest a reader would trust.
+
+**8.6.4 Never drop the stamp while something else is left (security LOW).** In `remove_copy`,
+after the loop and before removing the stamp, list the folder again: if any entry other than
+`.anonymized-copy` is there (a `.DS_Store` written meanwhile), return an `Err` (the `Io`
+`DirectoryNotEmpty` kind on the folder) and leave the stamp, so the next run finishes the job.
+The same-user swap of the folder for a link between the check and the deletes stays a known limit
+(the parents are 0700, only the person can do it); V1 records it in `.ai/SECURITY.md`.
+
+**Tests** (`builder/cli/tests/skills_refresh.rs`, skip when `geteuid() == 0`, modes restored in a
+guard):
+- slug `pebble-freight`: refresh, then `chmod 500` the copied skill's folder and refresh again
+  (every refresh empties the mirror first, so this one fails inside `remove_copy`): exit 1, stderr contains
+  `~/.claude/state/*/mirror`, ends with the not-removed sentence, and contains neither
+  `pebble-freight`, `notes` (the skill's folder name) nor the scratch home's path;
+- slug `pebble-freight`, mirror set to 0755 after a refresh: refresh exits non-zero and stderr has
+  no `pebble-freight` and no scratch home path; `withdraw` of a recorded id prints 8.5's withdraw
+  line with `~/.claude/state/*/mirror`, exits 1, stderr empty;
+- slug `pebble`, valid rules, stamp at `chmod 000` after a refresh: refresh exits 1, stderr ends
+  with the not-removed sentence and does not contain `didn't put there`; `.manifest.json` is gone
+  and `.anonymized-copy` is still there. Update 8.1(a)'s test the same way (manifest now gone).
+- 8.6.4 needs no new test (a file can't be slipped in mid-loop from a test); say so.
+
 ### 8.4 Verify and report
 
 Run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
