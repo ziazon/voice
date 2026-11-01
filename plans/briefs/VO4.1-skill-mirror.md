@@ -374,6 +374,15 @@ guard):
   and `.anonymized-copy` is still there. Update 8.1(a)'s test the same way (manifest now gone).
 - 8.6.4 needs no new test (a file can't be slipped in mid-loop from a test); say so.
 
+**8.6.5 The real path too (V1's review of 8.6.1).** `private.rs` builds its paths from
+`fs::canonicalize(home)`, so on macOS a home under `/var/folders/…` or `/tmp` shows up as
+`/private/var/…`, and replacing the non-canonical text leaves `voice: /private~/.claude/state/*/mirror
+can be opened by others…`. In `masked`, first replace the canonical mirror path
+(`fs::canonicalize(home)` joined with `.claude/state/<slug>/mirror`, when `canonicalize` succeeds),
+then the two 8.6.1 forms. Test: in `refresh_masks_errors_while_removing_or_opening_mirror`'s 0755
+case, assert stderr starts with `voice: ~/.claude/state/*/mirror can be opened by others` and
+contains no `/private`; red first (it fails today with `/private~/…`).
+
 ### 8.4 Verify and report
 
 Run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
