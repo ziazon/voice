@@ -2,6 +2,33 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO4.3: the skills screen (2026-11-01, lane: V1)
+
+- **What:** a "Your skills" card on the Save page (`screens/Skills.vue`, words in
+  `screens/skills/words.ts`), per assistant: every skill on this computer with its state, those
+  waiting for a yes first; a yes or a stop per skill; and "Bring the copy up to date", whose
+  report shows as plain text. Four app commands in `builder/api/src/skills.rs` (`list_skills`,
+  `agree_skills`, `withdraw_skills`, `refresh_skills`) call the same library as `voice skills`,
+  under the same lock, with no history permission (they never read the history). Withdraw's mirror
+  removal is now one shared step, `voice_ingest::skills::remove_after_withdraw`; the CLI's output
+  is unchanged. The discovery notes are ingest consts, and the screen keeps only those three.
+  Brief `plans/briefs/VO4.3-skills-screen.md`.
+- **Who built it:** Codex, test first: the api, app and parity (`2e368ed`), then the screen
+  (`85e838d`, brief § 10: red at assertions first, with `node_modules` installed). Codex changed
+  one UI error fixture (`private detail` → `hidden backend diagnostic`), because the intro itself
+  says "private details".
+- **Reviews:** security review (Opus): no findings; it noted that the attribute-binding allowlist in
+  `plain-text.test.ts` covers only the panel screens. That is on purpose (panels show model
+  output); the skills screen is covered by the no-`v-html` scan and the literal-`<img>` test.
+  Verifier (Fable, first pass): PASS, one LOW: when a choice is saved but reading the list again
+  fails, the screen says it couldn't look through the skills; accepted and recorded in SECURITY.
+  Her note that skill places now cross to the webview is in SECURITY's webview row.
+- **Verified:** `bash scripts/ci-local.sh` all passed at `85e838d` and again with these records.
+  Mutations by V1 (`cp` backup, `cmp` restore), all caught: the stale refresh failure mapped to the
+  generic sentence (2 red), the waiting-first sort dropped (1 red), agree sending the skill's
+  name instead of its id (4 red).
+- **Not verified:** the card in the running app (a walk is owed, both themes); Linux.
+
 ## VO4.1: the skill mirror and its hashes (2026-11-01, lane: V1)
 
 - **What:** `voice skills refresh <member_dir>` copies every skill the person agreed to, through
