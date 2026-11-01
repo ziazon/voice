@@ -383,6 +383,64 @@ then the two 8.6.1 forms. Test: in `refresh_masks_errors_while_removing_or_openi
 case, assert stderr starts with `voice: ~/.claude/state/*/mirror can be opened by others` and
 contains no `/private`; red first (it fails today with `/private~/…`).
 
+### 8.7 The third security review and the delta Verifier (V1, 2026-11-01)
+
+Reproduced on `0b30b89`. Same rules: red first, invented names, commit nothing.
+
+**8.7.1 A containment refusal never removes anything (security MEDIUM, a regression from 8.6.3).**
+`prepare_output_with_projects` refuses (`output_bad()`) when the output is inside a skill root,
+overlaps a skill folder, or holds a project, *before* its own `remove_copy`, to protect those
+folders. Since 8.6.3 a stamped mirror's refusal is `Failure::Other`, so refresh's error path calls
+`remove_copy` and deletes them: with `"projects":["~/.claude/state/pebble-freight/mirror/proj"]`
+and `mirror/proj/work.txt`, a refresh deletes `work.txt`. Withdraw (8.2) calls `remove_copy` with
+no containment check at all.
+- `output.rs`: split `prepare_output_with_projects` into
+  `pub fn check_output(out, home, skills, projects) -> Result<PathBuf>` (everything up to and
+  including the `projects` loop; returns the canonical `out`) and
+  `pub fn finish_output(out: &Path) -> Result<PathBuf>` (the `out.exists() && !remove_copy` step,
+  `make_dirs`, the stamp). `prepare_output_with_projects` becomes the two in a row, unchanged in
+  behaviour for `voice anonymize --out` (its tests stay green as they are).
+- `mirror.rs` `refresh`: call `check_output`; its error is a new `Failure::Overlap` (no
+  `remove_copy`). Then `finish_output`; only its `output_bad()` is classified by 8.6.3's rule
+  (entries and no stamp entry: `Foreign`; else `Other`). Drop the message comparison in
+  `output_error`: classify by which call failed. `Overlap`'s whole message is
+  `<shown> overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again.`
+- A shared `pub fn drop_manifest(mirror: &Path)` in `mirror.rs`: 8.6.3's removal (a real folder,
+  not a link, with a `.anonymized-copy` entry; `.manifest.json` a regular file; result ignored).
+  Refresh calls it on every failure except `Foreign` (so on `Overlap`, on 8.1's not-removed path,
+  and when `private_folder` fails, on the unopened path).
+- Withdraw (`builder/cli/src/skills.rs`): before `remove_copy`, call `skills::check_output(&mirror,
+  &home, &found.skills, rules.projects())`; an `Err` is the not-removed case. On every not-removed
+  case, call `drop_manifest` on the mirror's path before printing 8.5's line.
+
+**8.7.2 Mask the whole state folder, not only the mirror (Verifier should-fix; security LOW).** A
+state folder at 0775, or `anonymizer/` at 0755, prints `/private/…/.claude/state/pebble-freight…`.
+In `masked`, replace the state folder's three forms (canonical, raw, `~`), longest first, with
+`shown` minus its trailing `/mirror` (so `~/.claude/state/*` for slug `pebble-freight`, and
+`~/.claude/state/pebble` when the slug holds no term). That covers the mirror forms too. Errors
+raised before `skills::refresh` (`lock_state`, `checked_member`) and withdraw's `agreements.save`
+are out of scope; V1 records them in `.ai/SECURITY.md`.
+
+**8.7.3 An I/O error names its own file (Verifier should-fix).** `masked`'s `Error::Io { path,
+source }` arm: when `path` is under the state folder (any form), show it masked as 8.7.2 says, cut
+to the mirror folder when it is inside the mirror (no skill name below it):
+`Voice couldn't change <masked path>: <source>`. A path outside the state folder:
+`Voice couldn't read or change a file: <source>`.
+
+**Tests** (`builder/cli/tests/skills_refresh.rs`; skip when `geteuid() == 0`; modes restored in a
+guard):
+- slug `pebble-freight`: refresh, then `mirror/proj/work.txt` and the project listed as above:
+  refresh exits 1, stderr is exactly `voice: ` + the `Overlap` message with `~/.claude/state/*/mirror`,
+  `work.txt` is still there with its text, `.manifest.json` is gone; withdraw of a recorded id
+  exits 1 with 8.5's line, `work.txt` still there, `.manifest.json` gone.
+- slug `pebble-freight`: state folder at 0775 after a refresh: refresh stderr has no
+  `pebble-freight`, no `/private` and no scratch home path. If the error comes from a step before
+  `skills::refresh` (so 8.7.2 can't reach it), drop this test and say so in the report.
+- slug `pebble`: `anonymizer/placeholders.json` at 0000 after a refresh: stderr contains
+  `~/.claude/state/pebble/anonymizer/placeholders.json` and not `couldn't change ~/.claude/state/pebble/mirror:`.
+- Unit (`output.rs`): `check_output` refuses a project inside `out` and leaves it; `finish_output`
+  still removes a stamped copy.
+
 ### 8.4 Verify and report
 
 Run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
