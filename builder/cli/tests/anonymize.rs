@@ -414,7 +414,7 @@ impl RestoreModes {
 impl Drop for RestoreModes {
     fn drop(&mut self) {
         for (path, permissions) in self.0.iter().rev() {
-            fs::set_permissions(path, permissions.clone()).unwrap();
+            let _ = fs::set_permissions(path, permissions.clone());
         }
     }
 }
@@ -487,4 +487,39 @@ fn unreadable_file_without_private_name_is_left_out_and_skill_still_copies() {
     );
     assert!(home.0.join("copy/notes/SKILL.md").is_file());
     assert!(!home.0.join("copy/notes/notes-extra.md").exists());
+}
+
+#[test]
+fn unreadable_agreed_skill_folder_is_noted_without_leaking_its_name() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid has no preconditions and only reads the effective user id.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("anonymize-unreadable-folder");
+    setup(&home, json!({"terms":["Pebble Freight"]}));
+    skill(
+        &home,
+        ".claude/skills/pebble-freight-skill",
+        "Public notes\n",
+    );
+    skill(&home, ".claude/skills/fine", "Useful notes\n");
+    agree(&home, &["claude:pebble-freight-skill", "claude:fine"]);
+    let _restore = RestoreModes::deny(&[home.0.join(".claude/skills/pebble-freight-skill")]);
+    let output = anonymize(&home, "copy");
+    let report = String::from_utf8_lossy(&output.stdout);
+    let errors = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{report}\n{errors}");
+    let note = "A skill folder on this computer couldn't be read, so it isn't listed.";
+    assert_eq!(report.matches(note).count(), 1, "{report}");
+    assert!(report.find("fine: copied, 1 files").unwrap() < report.find(note).unwrap());
+    assert!(report.find(note).unwrap() < report.find("Copied 1 of 1 skills into").unwrap());
+    assert!(!report.contains("pebble-freight-skill"));
+    assert!(!errors.contains("pebble-freight-skill"));
+    assert_eq!(
+        fs::read_to_string(home.0.join("copy/fine/SKILL.md")).unwrap(),
+        "Useful notes\n"
+    );
 }

@@ -188,6 +188,9 @@ pub fn anonymize(member_dir: PathBuf, out: PathBuf) -> Result<ExitCode> {
         "placeholders.json",
         &mapping.to_json(),
     )?;
+    for note in found.notes {
+        println!("{note}");
+    }
     println!(
         "Copied {copied} of {agreed} skills into {}.",
         anonymize::report_path(&PathBuf::from(skills::display_path(&out, &home)), &rules).display()

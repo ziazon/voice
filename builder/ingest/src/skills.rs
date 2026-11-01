@@ -91,6 +91,7 @@ fn children(path: &Path) -> Result<Vec<(String, PathBuf)>> {
 }
 fn add(
     found: &mut BTreeMap<String, Skill>,
+    notes: &mut Vec<String>,
     home: &Path,
     root: Root,
     prefix: &str,
@@ -100,9 +101,20 @@ fn add(
     let Ok(folder) = path.canonicalize() else {
         return;
     };
-    if DenyList::builtin().denied(&folder) || !folder.is_dir() || !folder.join("SKILL.md").is_file()
-    {
+    if DenyList::builtin().denied(&folder) || !folder.is_dir() {
         return;
+    }
+    match fs::metadata(folder.join("SKILL.md")) {
+        Ok(metadata) if metadata.is_file() => {}
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            let note =
+                "A skill folder on this computer couldn't be read, so it isn't listed.".to_owned();
+            if !notes.contains(&note) {
+                notes.push(note);
+            }
+            return;
+        }
+        _ => return,
     }
     let id = format!("{prefix}:{name}");
     found.entry(id.clone()).or_insert_with(|| Skill {
@@ -115,6 +127,7 @@ fn add(
 }
 fn root_skills(
     found: &mut BTreeMap<String, Skill>,
+    notes: &mut Vec<String>,
     home: &Path,
     root: Root,
     prefix: &str,
@@ -139,7 +152,7 @@ fn root_skills(
                 continue;
             }
         }
-        add(found, home, root, prefix, &name, &path);
+        add(found, notes, home, root, prefix, &name, &path);
     }
     Ok(())
 }
@@ -200,6 +213,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
     let mut notes = vec![];
     root_skills(
         &mut skills,
+        &mut notes,
         home,
         Root::Claude,
         "claude",
@@ -212,7 +226,15 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
         for (name, path) in children(&account)? {
             let id = format!("synced:{name}");
             let existed = skills.contains_key(&id);
-            add(&mut skills, home, Root::Synced, "synced", &name, &path);
+            add(
+                &mut skills,
+                &mut notes,
+                home,
+                Root::Synced,
+                "synced",
+                &name,
+                &path,
+            );
             if existed && path.join("SKILL.md").is_file() && !DenyList::builtin().denied(&path) {
                 let note = "Some claude.ai skills are in more than one synced folder; each is listed once, from the first folder by name.".to_owned();
                 if !notes.contains(&note) {
@@ -226,6 +248,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
             for (name, path) in roots {
                 root_skills(
                     &mut skills,
+                    &mut notes,
                     home,
                     Root::Plugin,
                     &format!("plugin:{name}"),
@@ -244,6 +267,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
         }
         root_skills(
             &mut skills,
+            &mut notes,
             home,
             Root::Project,
             &format!("project:{name}"),
@@ -252,6 +276,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
     }
     root_skills(
         &mut skills,
+        &mut notes,
         home,
         Root::Codex,
         "codex",

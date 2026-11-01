@@ -572,9 +572,7 @@ fn verifier_11_term_complexity_is_an_error() {
         result.err().expect("must refuse").to_string(),
         "member config: private.json: anonymizer.terms[0] must have at most 12 words"
     );
-    let complex = std::iter::repeat_n("letter", 12)
-        .collect::<Vec<_>>()
-        .join(" ");
+    let complex = std::iter::repeat_n("a", 100).collect::<Vec<_>>().join("-");
     let result = Rules::from_value(
         Some(&json!({"terms":[complex]})),
         Path::new("/fictional-home"),
@@ -626,4 +624,44 @@ fn verifier_04_accent_report_explains_how_to_rewrite() {
         "accent mark",
         1,
     );
+}
+
+#[test]
+fn five_run_host_loads_and_substring_is_refused() {
+    let term = ["mail", "pebble-freight", "co", "uk"].join(".");
+    let r = rules(json!({"terms":[term]}));
+    let text = format!("x{term}x");
+    assert!(
+        matches!(anonymize::file(Path::new("SKILL.md"), text.as_bytes(), &r, &mut Mapping::default()), FileResult::Refused(found) if found.iter().any(|f| f.kind == "your term"))
+    );
+}
+
+#[test]
+fn multi_run_email_term_loads() {
+    let term = format!("rowan.vale@{}.com", "pebble-freight");
+    rules(json!({"terms":[term]}));
+}
+
+#[test]
+fn twelve_word_term_loads_and_is_replaced() {
+    let term = "zindle vorpet glimnar frindle plomvek snorbil drempik flontra brelvic quarnet spindal wexnor";
+    assert_eq!(kept(term, &rules(json!({"terms":[term]}))), "<term-1>");
+}
+
+fn assert_mixed_sharp_s_refused(term: &str, text: &str) {
+    let r = rules(json!({"terms":[term]}));
+    assert!(
+        matches!(anonymize::file(Path::new("SKILL.md"), text.as_bytes(), &r, &mut Mapping::default()), FileResult::Refused(found) if found.iter().any(|f| f.kind == "your term")),
+        "{term}: {text}"
+    );
+}
+
+#[test]
+fn mixed_sharp_s_messestrasse_is_refused() {
+    assert_mixed_sharp_s_refused("Messestrasse", "Messestraße 4");
+}
+
+#[test]
+fn mixed_sharp_s_grossstrasse_is_refused() {
+    assert_mixed_sharp_s_refused("Grossstrasse", "Grossstraße");
 }

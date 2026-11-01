@@ -27,20 +27,32 @@ impl Term {
                 .map(regex::escape)
                 .collect::<Vec<_>>()
         };
-        let exact = compile(&words(text).join(r"[^\p{L}\p{N}\n]{1,8}"))?;
+        let exact = compile(&words(text).join(r"[^\p{L}\p{N}\n]+"))?;
         let mut rescans = Vec::new();
         let lowercase = text.to_lowercase();
         let folded = lowercase.replace('ß', "ss");
-        let sharp_s = lowercase.replace("ss", "ß");
-        let mut variants = vec![text];
-        if lowercase.contains('ß') {
-            variants.push(&folded);
+        let mut variants = vec![(text, false)];
+        if lowercase.contains("ss") || lowercase != folded {
+            variants = vec![(folded.as_str(), true)];
+            if text != folded {
+                variants.push((text, false));
+            }
         }
-        if lowercase.contains("ss") {
-            variants.push(&sharp_s);
-        }
-        for variant in variants {
-            rescans.push((compile(&words(variant).join(r"[^\p{L}\p{N}]{1,8}"))?, true));
+        for (variant, fold_sharp_s) in variants {
+            let escape = |piece: &str| {
+                let escaped = regex::escape(piece);
+                if fold_sharp_s {
+                    escaped.replace("ss", "(?:ss|ß)")
+                } else {
+                    escaped
+                }
+            };
+            let pattern = variant
+                .split_whitespace()
+                .map(escape)
+                .collect::<Vec<_>>()
+                .join(r"[^\p{L}\p{N}]+");
+            rescans.push((compile(&pattern)?, true));
             let runs: Vec<_> = variant
                 .split(|c: char| !c.is_alphanumeric())
                 .filter(|run| !run.is_empty())
@@ -48,9 +60,9 @@ impl Term {
             if runs.iter().map(|run| run.chars().count()).sum::<usize>() >= 4 {
                 let pattern = runs
                     .iter()
-                    .map(|run| regex::escape(run))
+                    .map(|run| escape(run))
                     .collect::<Vec<_>>()
-                    .join(r"[^\p{L}\p{N}]{0,8}");
+                    .join(r"[^\p{L}\p{N}]*");
                 rescans.push((compile(&pattern)?, false));
             }
         }

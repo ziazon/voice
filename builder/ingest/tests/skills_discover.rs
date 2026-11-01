@@ -509,7 +509,7 @@ impl RestoreModes {
 impl Drop for RestoreModes {
     fn drop(&mut self) {
         for (path, permissions) in self.0.iter().rev() {
-            fs::set_permissions(path, permissions.clone()).unwrap();
+            let _ = fs::set_permissions(path, permissions.clone());
         }
     }
 }
@@ -557,4 +557,27 @@ fn unreadable_skill_root_reports_no_path() {
         skills::read(&found.skills[0]).unwrap_err().to_string(),
         "a folder in it couldn't be read"
     );
+}
+
+#[test]
+fn unreadable_skill_folders_are_noted_once_without_names() {
+    // SAFETY: geteuid has no preconditions and only reads the effective user id.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let scratch = Scratch::new("skills-unreadable-discovery");
+    skill(&scratch.0, ".claude/skills/pebble-freight-skill");
+    skill(&scratch.0, ".codex/skills/other-unreadable");
+    skill(&scratch.0, ".codex/skills/fine");
+    let _restore = RestoreModes::deny(&[
+        scratch.0.join(".claude/skills/pebble-freight-skill"),
+        scratch.0.join(".codex/skills/other-unreadable"),
+    ]);
+    let found = skills::discover(&scratch.0, &Rules::builtin()).unwrap();
+    assert_eq!(
+        found.notes,
+        vec!["A skill folder on this computer couldn't be read, so it isn't listed."]
+    );
+    assert_eq!(found.skills.len(), 1);
+    assert_eq!(found.skills[0].name, "fine");
 }

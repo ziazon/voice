@@ -236,3 +236,30 @@ fn mapping_round_trip_accepts_expanded_unicode_lowercase() {
     let mut restored = Mapping::from_json(&mapping.to_json()).unwrap();
     assert_eq!(restored.placeholder("term", &term), "<term-1>");
 }
+
+#[test]
+fn thirteen_word_term_is_refused_by_word_cap() {
+    let value = json!({"terms":["zindle vorpet glimnar frindle plomvek snorbil drempik flontra brelvic quarnet spindal wexnor truvnik"]});
+    let error = Rules::from_value(Some(&value), Path::new("/fictional-home"))
+        .err()
+        .expect("word cap");
+    assert_eq!(
+        error.to_string(),
+        "member config: private.json: anonymizer.terms[0] must have at most 12 words"
+    );
+}
+
+#[test]
+fn two_hundred_three_run_terms_load_within_five_seconds() {
+    let terms: Vec<_> = (0..200)
+        .map(|n| format!("zindle{n}-vorpet-glimnar"))
+        .collect();
+    let value = json!({"terms":terms});
+    let started = std::time::Instant::now();
+    Rules::from_value(Some(&value), Path::new("/fictional-home")).unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "loading took {:?}",
+        started.elapsed()
+    );
+}
