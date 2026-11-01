@@ -2,6 +2,50 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO2: Persona Builder is Voice (2026-10-31, lane: V1)
+
+- **What:** the app is Voice everywhere: the `voice` command, crates `voice-core` (`voice_core`)
+  and `voice-<x>`, `Voice.app`, `@voice/screens` with `VoiceApp`, `VOICE_*` variables, the bundle id
+  `dev.voice.desktop`, and every name on disk (brief `plans/briefs/VO2-rename-to-voice.md` § 1).
+  Nothing is migrated (DECISIONS, 2026-10-31). This file keeps its name and its older entries
+  keep the old names.
+- **Beyond a rename:** turning on now keeps rules in `~/.claude/voice/assistants/<slug>/` and
+  the record in `~/.claude/voice/installed.json`, beside Panels' `~/.claude/voice/panels/`. A
+  plain rename to `~/.claude/voice/<slug>/` would have put an assistant named "Panels" inside the
+  panels' folder, and once turning on had created `~/.claude/voice` itself, every later refresh
+  would fail "left in place" as soon as a panel existed. The shared root is created 0700 and never
+  counted as the install's. The consent wording names Voice, so its version is 2.
+- **Commits:** `558d770`, `cd5891e` brief; `b5438ac` code rename (Codex, 282 files); `b7d6ed1`
+  docs (Codex, 64 files; three record-path lines restored by hand); `8974b92` the shared root and
+  consent version (Codex, test first); `4e8401f` brief § 5 and DECISIONS; `5c4467b` the security
+  review's fixes (Codex, test first).
+- **Review of the mechanical part:** every removed line was put through the name map and
+  compared, token for token, with the added lines of its file. The only differences were Cargo
+  dependency names (`voice-core`), rustfmt moving imports, the consent digest, and the two moved
+  Vue files (identical after the map). The Cargo.lock diff changes names only.
+- **Security review** (sub-agent, Opus): 0 high, 1 medium, 6 low. Fixed: the installer deleted any
+  `Voice.app` already in `~/Applications` (now only one with this app's bundle id); turning on
+  accepted a `~/.claude/voice` others could open (now refused, as Panels refuse it); a hand-edited
+  record could claim the shared root or a panel's file (now refused). Refuted: the VO11 sandbox
+  test still reading the old variable (it reads `VOICE_REQUIRE_SANDBOX`). Accepted, not fixed:
+  `Application Support/Voice/` and the password-store service `voice.github` are generic names
+  another app could share (same user, no privilege boundary crossed; `ensure_profile` makes an
+  existing `Voice/` folder 0700). Left on testers' Macs: see below.
+- **Verified:** red first on every new test (eight in `8974b92`, six in `5c4467b`); a mutation that
+  records the shared root as the install's failed five tests and was restored (`cmp`);
+  `bash scripts/ci-local.sh` all passed at `8974b92` and `5c4467b`. Live, with the built `voice` in a throwaway
+  home: `new`, `consent agree`, `on` wrote `voice/assistants/wren/RULES.md` and
+  `voice/installed.json` with the root at 0700 and the CLAUDE.md line
+  `@~/.claude/voice/assistants/wren/RULES.md`; with a panel folder added, `off` removed both and
+  kept `voice/` and `voice/panels/`.
+- **Not verified:** the app built as `Voice.app` and opened (owed walk); Linux and Windows builds.
+- **Left for an attended pass:** the GitHub OAuth app behind the shipped client id may still be
+  called Persona Builder on GitHub; the app now says Voice. On a Mac that ran an older build:
+  `security delete-generic-password -s persona-builder.github -a persona-builder` (and revoke that
+  token on GitHub), delete `~/Library/Application Support/Persona Builder/` and
+  `~/.claude/persona-builder/`, and remove any `<!-- persona-builder:` block from
+  `~/.claude/CLAUDE.md`. Mimi has none of these (checked 2026-10-31).
+
 ## VO3: the anonymizer engine (2026-10-31, lane: V1)
 
 - **What:** `persona-builder skills list|agree|withdraw` and `persona-builder anonymize`: find
