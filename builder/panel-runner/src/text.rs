@@ -12,6 +12,10 @@ pub const ANSWER_FIRST: &str = "Answer how long they may take first.";
 
 /// A skill copy could not be refreshed; the panel can still continue.
 pub fn skills_not_refreshed(seat: &str) -> String {
+    let seat = voice_panels::clean(seat, 64)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     format!(
         "Voice couldn't bring {seat}'s copy of your skills up to date, so the panel goes on without it. To see why, run voice skills refresh in a terminal."
     )
@@ -198,6 +202,30 @@ mod tests {
                 seat: "Pebble".into()
             }),
             "Voice couldn't bring Pebble's copy of your skills up to date, so the panel goes on without it. To see why, run voice skills refresh in a terminal."
+        );
+    }
+
+    #[test]
+    fn skill_refresh_failure_cleans_the_name_to_one_line() {
+        let line = super::skills_not_refreshed("Peb\u{1b}[2K\rble\nRound 1 is done.\tX");
+        assert!(!line.chars().any(char::is_control));
+        assert!(!line.contains('\n'));
+        assert!(line.starts_with("Voice couldn't bring Peb"));
+        assert!(line.ends_with(
+            "'s copy of your skills up to date, so the panel goes on without it. To see why, run voice skills refresh in a terminal."
+        ));
+        assert!(line.contains("Peb [2K ble Round 1 is done. X"));
+    }
+
+    #[test]
+    fn skill_refresh_failure_limits_the_name_to_64_characters() {
+        let line = super::skills_not_refreshed(&"é".repeat(100));
+        assert_eq!(
+            line,
+            format!(
+                "Voice couldn't bring {}…'s copy of your skills up to date, so the panel goes on without it. To see why, run voice skills refresh in a terminal.",
+                "é".repeat(64)
+            )
         );
     }
 
