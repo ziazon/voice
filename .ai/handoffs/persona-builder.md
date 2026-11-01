@@ -32,13 +32,25 @@ One record per slice, newest first. Paraphrase only; no real person.
     folder, `synced`, a plugin entry) may sit inside the mirror when it is emptied (`4397690`).
     V1's review added § 8.9.5: hidden entries too, and a deny-listed project to prove the roots are
     checked both ways (a mutation of that check had survived). LOW 3 accepted (SECURITY).
+  - Delta Verifier (Opus) on `4397690` FAIL, narrowly, reproduced: a deny-listed listed project
+    (`~/vault.key`) was skipped before `protect`, so a link in its `.claude/skills` into the mirror
+    was emptied. → § 8.10 (`57c7042`): `protect` runs first in the project loop; tests for
+    `anonymize --out` into the mirror and a synced account's entries; the overlap hint reads right
+    both ways. Plugin skills folders recorded with the depth limit (SECURITY). Repeat Verifier
+    (Opus) on `9b3ec61`: PASS. Delta review: no HIGH or MEDIUM; both found one LOW (an unreadable
+    listed project's skills folder now stops `list`/`agree`/`withdraw`/`anonymize` too, with its
+    real path; fails safe, same as an ordinary project's already did), recorded in SECURITY.
+    Left as nits: withdraw's overlap line still says to delete the folder after moving things out;
+    refresh reports any `check_output` error as an overlap.
 - **Verified:** `bash scripts/ci-local.sh` all passed at `a187de5`, `2984159`, `0b30b89`,
-  `50c7f40`, `2b7ddbe` and `4397690`. Mutations by V1 (`cp` backup, `cmp` restore): 11 before § 8.8, all
+  `50c7f40`, `2b7ddbe`, `4397690` and `9b3ec61`. Mutations by V1 (`cp` backup, `cmp` restore): 11 before § 8.8, all
   caught; § 8.8's four (each pre-check error back to `Other`, the raw slug shown, the manifest
   kept), all caught; Codex's for § 8.8.1 (the removed sentence) caught; § 8.9's: protected
   entries ignored (5 red), `drop_manifest` always `true` (2 red), roots one way (survived, so
-  § 8.9.5's test; then red), `protect` dropped from the roots (5 red).
-- **Not verified:** Linux; running as root (the mode tests skip there).
+  § 8.9.5's test; then red), `protect` dropped from the roots (5 red); § 8.10's three
+  (`protect` after the deny-list skip, `&[]` in `anonymize`, no `protect` on synced accounts),
+  all caught.
+- **Not verified:** Linux; running as root (the mode tests skip there); one `claudeai_parity` failure under heavy load in the Verifier's first run (passed alone and on rerun; cause not checked).
 - **For VO4.2:** a mirror without Voice's stamp and a valid manifest is out of date: never read
   it. Refresh first, as the spec says.
 
