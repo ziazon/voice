@@ -57,11 +57,16 @@ fn list(home: &Path, member: &Member) -> Result<dto::Skills> {
         })
         .collect();
     rows.sort_by_key(|row| row.state != dto::SkillState::Waiting);
-    let notes = found.notes.into_iter().filter(|note| matches!(note.as_str(),
-        "A skill folder on this computer couldn't be read, so it isn't listed." |
-        "Some claude.ai skills are in more than one synced folder; each is listed once, from the first folder by name." |
-        "Couldn't read Claude Code's list of plugins, so their skills aren't listed."
-    )).collect();
+    let notes = found
+        .notes
+        .into_iter()
+        .filter(|note| {
+            matches!(
+                note.as_str(),
+                skills::UNREADABLE_NOTE | skills::SYNCED_TWICE_NOTE | skills::PLUGIN_NOTE
+            )
+        })
+        .collect();
     Ok(dto::Skills {
         skills: rows,
         notes,

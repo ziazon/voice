@@ -1,3 +1,6 @@
+import type { Skills } from '../types/generated/Skills'
+import type { SkillsWithdrawn } from '../types/generated/SkillsWithdrawn'
+import type { SkillsRefreshed } from '../types/generated/SkillsRefreshed'
 import type { PanelProgress } from '../types/generated/PanelProgress'
 import type { PanelRan } from '../types/generated/PanelRan'
 import type { PanelSummary } from '../types/generated/PanelSummary'
@@ -34,6 +37,10 @@ import type { ClaudeaiCounts } from '../types/generated/ClaudeaiCounts'
 import type { MergeCounts } from '../types/generated/MergeCounts'
 
 export const tauriBackend: Backend = {
+  listSkills: request => invoke<Skills>('list_skills', { request }),
+  agreeSkills: request => invoke<Skills>('agree_skills', { request }),
+  withdrawSkills: request => invoke<SkillsWithdrawn>('withdraw_skills', { request }),
+  refreshSkills: request => invoke<SkillsRefreshed>('refresh_skills', { request }),
   convenePanel: (request, onProgress) => {
     const channel = new Channel<PanelProgress>()
     channel.onmessage = onProgress

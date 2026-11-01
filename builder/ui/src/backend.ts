@@ -1,3 +1,7 @@
+import type { Skills } from './types/generated/Skills'
+import type { SkillsRequest } from './types/generated/SkillsRequest'
+import type { SkillsWithdrawn } from './types/generated/SkillsWithdrawn'
+import type { SkillsRefreshed } from './types/generated/SkillsRefreshed'
 import type { ConvenePanelRequest } from './types/generated/ConvenePanelRequest'
 import type { ResumePanelRequest } from './types/generated/ResumePanelRequest'
 import type { PanelIdRequest } from './types/generated/PanelIdRequest'
@@ -57,6 +61,10 @@ import type { MergeCounts } from './types/generated/MergeCounts'
  * A host app must keep the same rule.
  */
 export interface Backend {
+  listSkills(request: SlugRequest): Promise<Skills>
+  agreeSkills(request: SkillsRequest): Promise<Skills>
+  withdrawSkills(request: SkillsRequest): Promise<SkillsWithdrawn>
+  refreshSkills(request: SlugRequest): Promise<SkillsRefreshed>
   convenePanel(request: ConvenePanelRequest, onProgress: (progress: PanelProgress) => void): Promise<PanelRan>
   resumePanel(request: ResumePanelRequest, onProgress: (progress: PanelProgress) => void): Promise<PanelRan>
   stopPanel(request: PanelIdRequest): Promise<void>

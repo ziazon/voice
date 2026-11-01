@@ -9,6 +9,7 @@ import Save from './screens/Save.vue'
 import Sources from './screens/Sources.vue'
 import TurnOn from './screens/TurnOn.vue'
 import ClaudeAiFiles from './screens/ClaudeAiFiles.vue'
+import Skills from './screens/Skills.vue'
 import Forget from './screens/Forget.vue'
 import Build from './screens/Build.vue'
 import Report from './screens/Report.vue'
@@ -130,6 +131,7 @@ function home() {
               <Save :key="`save-${assistant.slug}-${resets}`" :assistant="assistant" />
               <TurnOn :key="`on-${assistant.slug}-${resets}`" :assistant="assistant" />
               <ClaudeAiFiles :key="`files-${assistant.slug}-${resets}`" :assistant="assistant" />
+              <Skills :key="`skills-${assistant.slug}-${resets}`" :assistant="assistant" />
               <Forget :key="`forget-${assistant.slug}`" :assistant="assistant" @forgotten="forgotten" />
             </template>
             <Build v-if="buildOpened && assistant" v-show="view === 'build'" :key="assistant.slug" :assistant="assistant" @running="buildRunning = $event" @report="goToStep('report')" />

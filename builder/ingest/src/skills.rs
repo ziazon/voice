@@ -60,7 +60,10 @@ pub enum Source {
 pub const SKILL_TOO_LARGE: &str =
     "it has more than 500 files, more than 20 MB or more than 8 folders inside each other";
 pub const SKILL_UNREADABLE: &str = "a folder in it couldn't be read";
-const PLUGIN_NOTE: &str =
+pub const UNREADABLE_NOTE: &str =
+    "A skill folder on this computer couldn't be read, so it isn't listed.";
+pub const SYNCED_TWICE_NOTE: &str = "Some claude.ai skills are in more than one synced folder; each is listed once, from the first folder by name.";
+pub const PLUGIN_NOTE: &str =
     "Couldn't read Claude Code's list of plugins, so their skills aren't listed.";
 fn invalid(message: &str) -> Error {
     Error::Invalid(message.into())
@@ -132,8 +135,7 @@ fn add(
     match fs::metadata(folder.join("SKILL.md")) {
         Ok(metadata) if metadata.is_file() => {}
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-            let note =
-                "A skill folder on this computer couldn't be read, so it isn't listed.".to_owned();
+            let note = UNREADABLE_NOTE.to_owned();
             if !notes.contains(&note) {
                 notes.push(note);
             }
@@ -264,7 +266,7 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
                 &path,
             );
             if existed && path.join("SKILL.md").is_file() && !DenyList::builtin().denied(&path) {
-                let note = "Some claude.ai skills are in more than one synced folder; each is listed once, from the first folder by name.".to_owned();
+                let note = SYNCED_TWICE_NOTE.to_owned();
                 if !found.notes.contains(&note) {
                     found.notes.push(note);
                 }

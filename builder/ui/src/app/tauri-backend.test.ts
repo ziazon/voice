@@ -164,3 +164,15 @@ it.each([
   args.onProgress.onmessage(progress)
   expect(onProgress).toHaveBeenCalledExactlyOnceWith(progress)
 })
+
+it.each([
+  ['listSkills', 'list_skills', { slug: 'example' }],
+  ['agreeSkills', 'agree_skills', { slug: 'example', ids: ['claude:notes'] }],
+  ['withdrawSkills', 'withdraw_skills', { slug: 'example', ids: ['claude:writing'] }],
+  ['refreshSkills', 'refresh_skills', { slug: 'example' }],
+] as const)('maps skills method %s with a request', async (method, command, request) => {
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(tauriBackend[method]).toBeTypeOf('function')
+  expect(await (tauriBackend[method] as (value: typeof request) => Promise<unknown>)(request)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
+})

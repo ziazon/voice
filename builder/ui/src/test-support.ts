@@ -31,6 +31,10 @@ export const saveOptions: SaveOptions = {
 export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
   const reviewStatus = { built: false, areas: [], tests: { waiting: 0, inUse: 0, retired: 0 }, byArea: [], change: null }
   return {
+    listSkills: vi.fn().mockResolvedValue({ skills: [], notes: [] }),
+    agreeSkills: vi.fn().mockResolvedValue({ skills: [], notes: [] }),
+    withdrawSkills: vi.fn().mockResolvedValue({ skills: { skills: [], notes: [] }, mirror: 'notThere' }),
+    refreshSkills: vi.fn().mockResolvedValue({ lines: [], copied: 0, agreed: 0, waiting: 0, new: 0, updated: 0, unchanged: 0, removed: 0 }),
     convenePanel: vi.fn().mockResolvedValue({ id: panelDetail.summary.id, status: 'closed', outcome: 'agreed' }),
     resumePanel: vi.fn().mockResolvedValue({ id: panelDetail.summary.id, status: 'closed', outcome: 'agreed' }),
     stopPanel: vi.fn().mockResolvedValue(undefined),
