@@ -162,3 +162,40 @@ Check: `git grep -n -I -i -E 'persona.?builder|personabuilder' -- ':!.ai/handoff
 ':!plans/briefs/VO2-rename-to-voice.md'` prints nothing at all. Read `README.md` and `.ai/PROJECT.md` through once after the swap: the repo is
 "voice, a kit for building AI assistants" and the app inside it is now also Voice; where a
 sentence would read as if the kit and the app were the same thing, say "the Voice app".
+
+## 5. Dispatch D: the security review's fixes
+
+§ 2 to § 4 are done and committed. The security review found three things to fix. Test first for
+each (red on its assertion, then green); keep each change minimal and in the file's style.
+
+1. **The installer must never delete someone else's `Voice.app`** (`builder/install/install.sh`,
+   the `rm -rf "$installed"` before `mv`). Under the old name only our own app could be there;
+   "Voice" is a common name. Before removing `$HOME/Applications/Voice.app`, when it exists, read
+   its `CFBundleIdentifier` with PlistBuddy (the script already reads `CFBundleExecutable` that
+   way) and compare it with the identifier of the app being installed (read from `$copy`'s
+   `Info.plist`, never written out a second time). When they differ, or it can't be read, stop
+   through the script's `fail` with: `There's already an app called Voice in your Applications
+   folder, and it isn't this one. Move it somewhere else, then run the installer again.` and
+   change nothing. Add cases to `tests/mac_install_test.sh`, in its style: another app's
+   `Voice.app` is left in place, byte for byte, and the installer fails with that message; our
+   own earlier `Voice.app` is replaced as today. `shellcheck` both files.
+2. **Turning on refuses a shared root that isn't the person's own private folder**, as Panels do
+   (`builder/panel-runner/src/room.rs` `private()`: owner is the current user, no group or other
+   mode bits). In `builder/core/src/install.rs`, right after the shared root is made or found, and
+   in `install_record::read` when `~/.claude/voice` exists, refuse it otherwise with
+   `Error::Invalid("<path> can be opened by other people on this computer, so Voice won't use
+   it. Make it yours alone (chmod 700 <path>), then try again")` (`<path>` shown as the code shows
+   paths elsewhere in these messages). Nothing is written in that case. Tests in
+   `builder/core/src/install_tests.rs`: a 0755 `~/.claude/voice` refuses turning on and writes
+   nothing; turning off with a record inside a 0755 root refuses; a 0700 root works as today.
+   Never change the mode of a root that already exists.
+3. **A record may not claim the shared root or anything beside `assistants/` in it.** In
+   `install_record.rs`, where a read record's `added` paths are checked (beside the refusal of
+   `CLAUDE.md` and the record itself), also refuse an entry that is `~/.claude/voice` itself, or
+   is under `~/.claude/voice/` but not under `~/.claude/voice/assistants/` (so a panel's files
+   are never touched), with the message that check already gives for a path it refuses. Tests: a
+   hand-edited record listing `~/.claude/voice` as a `dir`, and one listing a file under
+   `~/.claude/voice/panels/`, are each refused, and turning off removes nothing.
+
+Run `cargo test -p voice-core -p voice-cli --locked`, clippy on both, `cargo fmt --check`,
+`bash tests/mac_install_test.sh` and shellcheck; report each. Commit nothing.

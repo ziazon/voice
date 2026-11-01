@@ -182,6 +182,28 @@ The VO11 spike (`docs/spikes/VO11-os-sandbox.md`) decides how the broker is pack
   load. Separators between a term's words have no length cap.
 - **No hashes yet.** Refreshing on change, and the review screen for new skills, are VO4.
 
+## 2026-10-31: the app is Voice, and nothing is migrated (VO2)
+
+The app in `builder/` was Persona Builder; it is Voice now, everywhere (brief
+`plans/briefs/VO2-rename-to-voice.md` holds the whole name map).
+
+- **The names:** the command is `voice`; the crates are `voice-core` (library `voice_core`) and
+  `voice-<x>`; the app is `Voice.app` (`voice-app` inside, with the `voice` command beside it);
+  the screens are `@voice/screens` with `VoiceApp` at the root; variables are `VOICE_*`; the
+  bundle id is `dev.voice.desktop`, still a placeholder until signing.
+- **Nothing is migrated.** The app is not released and no assistant exists outside invented test
+  ones, so every name on disk moved and nothing reads the old ones: Claude Code's own sign-in
+  (`Application Support/Voice/claude-code`), the GitHub sign-in in the password store
+  (`voice.github`), the CLAUDE.md markers (`<!-- voice:`), the report schema (`voice/report/1`).
+  An older build's files under the old names are left where they are.
+- **Turning on uses the shared `~/.claude/voice/`**, which Panels use too: the rules go in
+  `assistants/<slug>/RULES.md` and the record is `installed.json`. Turning on creates the shared
+  folder (0700) when it is missing and never counts it as its own, so turning off never removes
+  it or the panels in it, and an assistant named "Panels" can't land in the panels' folder.
+- **The consent wording names Voice, so it is version 2**: a yes given to version 1 is asked again.
+- **`.ai/handoffs/persona-builder.md` keeps its name and its old wording:** it is the dated record
+  of what was built, under the names of the day.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
