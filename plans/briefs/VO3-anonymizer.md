@@ -422,3 +422,92 @@ Red test first for each; the repeat Verifier reproduced each one.
    to agree), while `anonymize`'s report never shows a found term.
 6. **Nit: `ß` folds one way only** (term `Strasse` misses `Straße`). Also scan the term with `ss`
    written `ß` when it holds `ss`.
+
+## 10. How to fix section 9 (V1, 2026-10-31): decision-complete
+
+Same rules as the top of this brief (invented names only, no real secret in a fixture, no
+dependency, commit nothing). Red first for every item: write the test, run it, see it fail on its
+assertion, then fix. Touch only the files named here and their tests.
+
+### 10.1 Punctuation inside a term (`anonymize/terms.rs`, item 1) and `ß` both ways (item 6)
+
+In `Term::new`, build the variants as: the term itself; if its lowercase holds `ß`, that lowercase
+with every `ß` written `ss` (today's code); and, new, if its lowercase holds `ss`, that lowercase
+with every `ss` written `ß`. For each variant push, as today, the bounded word rescan
+(`words(variant).join(r"[^\p{L}\p{N}]{1,8}")`, `true`). **Replace** the whitespace-stripped
+`compact` rescan with: split the variant into its runs of letters and digits (maximal runs of
+`char::is_alphanumeric`), `regex::escape` each, join them with `[^\p{L}\p{N}]{0,8}`, and push it
+unbounded (`false`) when the runs hold 4 or more letters or digits in total. Leave `exact` alone.
+Tests (`builder/ingest/tests/anonymize_file.rs` for `anonymize::file`, and one end-to-end case in
+`builder/cli/tests/anonymize.rs`): each of these is refused with kind `your term` on its line:
+`mypebble-freight.com` and `xPebble_Freight` (term `Pebble Freight`),
+`github.com/xrowan-vale/x` (term `Rowan Vale`), `mypebble_io` and `mypebbleio` (term `pebble-io`),
+`Straße 5` (term `Strasse`), and the fullwidth `ｍｙｐｅｂｂｌｅ－ｆｒｅｉｇｈｔ` (term
+`Pebble Freight`). Keep every existing test green; a term of 3 or fewer letters and digits gets no
+unbounded rescan (assert `xabx` with term `ab` is kept).
+
+### 10.2 A file that can't be read (`skills/read.rs`, `skills.rs`, `anonymize.rs`, the CLI; item 2)
+
+- Add `Source::Unreadable` to `skills::Source` and `LeftOut::Unreadable` to `anonymize::LeftOut`,
+  with `left_out_reason` text `unreadable`; `anonymize::skill` maps the one to the other, so it is
+  reported through `report_path` like every left-out file.
+- In `walk`, these per-entry failures push `(relative, Source::Unreadable)` and go on to the next
+  entry, never `return Err`: `fstatat` failing; `open_at` failing on a subfolder (the folder is
+  left out whole, its own path pushed once); `open_at`, `metadata()` or `read_to_end` failing on a
+  file. The 500-file count applies to these entries as to any other.
+- Failures of the folder being walked (`fdopendir`, a `readdir` error) and of opening the skill's
+  own root folder return `Error::Invalid(SKILL_UNREADABLE.into())`, a new
+  `pub const SKILL_UNREADABLE: &str = "a folder in it couldn't be read"` beside
+  `SKILL_TOO_LARGE`. After this change no `Error::Io` built in `read.rs` carries a path; delete
+  the `io` import there if it is unused.
+- In `builder/cli/src/skills.rs`'s `anonymize` loop, handle `SKILL_UNREADABLE` exactly as
+  `SKILL_TOO_LARGE` is handled (print `<name>: not copied, <message>` and `continue`).
+- Tests: in `builder/ingest/tests/skills_discover.rs`, a skill holding a mode-000
+  `pebble-freight-notes.md` and a mode-000 subfolder reads without error, both entries
+  `Source::Unreadable`; restore the modes before the test ends (a guard that runs on panic too).
+  Skip the case when running as root (`libc::geteuid() == 0`), since root reads mode-000 files. In
+  `builder/cli/tests/anonymize.rs`, two agreed skills, the first holding that mode-000 file: the
+  run exits 0, the second skill is copied, the report lists the file as `unreadable`, and neither
+  stdout nor stderr holds `pebble-freight` (the term list names `Pebble Freight`, so the report
+  shows `*`).
+
+### 10.3 Allow entries must cover a whole hit, alone (`anonymize/scan.rs`, items 3 and 4)
+
+Rewrite `mask(text, rules, inserted)` to:
+1. Copy `text`'s bytes; blank each `inserted` range (placeholders). Keep that copy as `before`.
+2. Collect every allow match as a range: each `rules.allow` pattern and each `BUILTIN_MASKS`
+   pattern through `terms::matches`. Blank them all in the working copy.
+3. Collect every hit range on the **unmasked** `text`: `detect::find(text)`, each
+   `rules.patterns` pattern's `find_iter(text)`, and every term rescan hit from a new
+   `term_hits(text, rules) -> Vec<Range<usize>>` (below).
+4. A hit is exempt only when one single allow range contains it (`a.start <= h.start &&
+   h.end <= a.end`). For every hit that isn't exempt, copy `before[h]` back into the working copy.
+   Skip steps 3 and 4 when there were no allow matches.
+- `term_hits` runs every term's rescans (bounded through `terms::matches`, unbounded through
+  `find_iter`) over `text` and over the fullwidth-narrowed copy, and returns ranges in `text`'s
+  byte offsets. Build the narrowed copy with a helper `narrow(text) -> (String, Vec<usize>)` whose
+  vector maps each narrowed byte offset (and one past the end) to the original offset. Make
+  `term_findings` use `term_hits` and `text`'s own line starts, so the line-number logic lives
+  once; delete the narrowed line-start code it replaces.
+- Tests in `builder/ingest/tests/anonymize_rules.rs` or `anonymize_file.rs`: `Rowan\nVale` with
+  term `Rowan Vale` and allow `vale` is refused (`your term`); `pebble-12` with pattern
+  `pebble-[0-9]+` and allow `pebble` is refused (`your pattern`); `212 555 0199` with allows `212`
+  and `555 0199` is refused (its phone kind); and still kept: `212 555 0199` with allow
+  `212 555 0199`, and `git@github.com:example/repo` (one built-in mask covers it). Every
+  existing allow test stays green.
+
+### 10.4 Numbered `skills list` (item 5)
+
+In `SkillsCommand::List`, print each line as `{n}. {id}\t{state}\t{shown}` with `n` counting from
+1 over `found.skills`, the same order and count the `anonymize` report's `number {}` uses (it is
+already `index + 1` over `found.skills`; leave it). Update every CLI test that reads list output.
+Add a test: with two skills, the `anonymize` report's number for a skill whose name holds a term
+equals the `n.` that `skills list` printed on that skill's line. Do not touch `.ai/DECISIONS.md`;
+the record is Claude's.
+
+### 10.5 Verify and report
+
+Run `cargo test -p persona-builder-ingest`, `cargo test -p persona-builder-cli`,
+`cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo fmt --all -- --check`, then `bash scripts/ci-local.sh`. Report each command and its result,
+the red output you saw before each fix, and every file you changed.
