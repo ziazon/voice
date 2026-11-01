@@ -2,6 +2,26 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO4.2: refresh the skill mirror at convene (2026-11-01, lane: V1)
+
+- **What:** before a panel's first round, in `voice panel convene`, in a `resume` that will run a
+  round, and in the app (all through `voice_panel_runner`), each seat whose mirror is in use
+  (`voice_ingest::skills::mirror_in_use`: agreements that name a skill or can't be read, or a
+  mirror that is there or can't be checked) is refreshed with VO4.1's `refresh`, under the seat
+  state locks the panel already holds. A failed refresh drops its error unread and the panel goes
+  on; its progress gets one fixed line before "Round N is starting.": "Voice couldn't bring
+  <name>'s copy of your skills up to date, so the panel goes on without it. To see why, run voice
+  skills refresh in a terminal." No panel turn reads the mirror yet. Brief
+  `plans/briefs/VO4.2-refresh-at-convene.md`.
+- **Who built it:** Codex, test first (`533db1f`). Its own `ci-local.sh` stopped at the sandbox
+  profile tests (a sandbox can't start inside Codex's sandbox); V1 ran it outside: all passed.
+- **Verified:** `bash scripts/ci-local.sh` all passed at `533db1f`. Mutations by V1 (`cp` backup, `cmp`
+  restore), all caught: no refresh at convene (3 red), none at resume (1 red), resume's refresh
+  before its checks (the refused resume, 1 red), `mirror_in_use` always true (2 red), a mirror
+  folder that can't be checked counted as absent (1 red).
+- **Not verified:** Linux; running as root (the failed-refresh tests skip there); the line in the
+  running app (the panel screen shows every progress line as it comes; no screen change).
+
 ## VO4.3: the skills screen (2026-11-01, lane: V1)
 
 - **What:** a "Your skills" card on the Save page (`screens/Skills.vue`, words in

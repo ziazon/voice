@@ -222,6 +222,12 @@ The app in `builder/` was Persona Builder; it is Voice now, everywhere (brief
   in one (even an entry discovery skips), a skill's folder, or a project listed in `private.json`.
 - **Readers trust the mirror only with Voice's stamp and a regular, valid manifest**, and refresh
   first anyway (VO4.2).
+- **A panel refreshes each seat's mirror before its first round** (VO4.2), in convene and in a
+  resume that will run a round, under the state locks the panel already holds. A seat is refreshed
+  when it has agreed to a skill, its agreements can't be read, or a mirror is there (or can't be
+  checked), so after the start every seat's mirror is fresh, absent, or marked out of date; an
+  assistant that never agreed to a skill gets no mirror. A failed refresh never stops the panel:
+  one fixed line names the assistant, never a skill, a path or the error.
 - **The mirror's path is shown starred** (`~/.claude/state/*/mirror`) whenever the slug holds a
   term, or the rules didn't load and the terms are unknown.
 
