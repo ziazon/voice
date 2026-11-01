@@ -671,6 +671,28 @@ fn punctuation_only_term_words_do_not_cause_quadratic_search() {
 }
 
 #[test]
+fn combining_mark_only_term_words_do_not_cause_quadratic_search() {
+    let r = rules(json!({"terms":["\u{0903} Rowan"]}));
+    let text = format!("x{}Rowany", "\u{0903}".repeat(20_000));
+    let start = std::time::Instant::now();
+    let result = anonymize::file(
+        Path::new("SKILL.md"),
+        text.as_bytes(),
+        &r,
+        &mut Mapping::default(),
+    );
+    let elapsed = start.elapsed();
+    eprintln!("combining-mark-only term word scan took {elapsed:?}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "took {elapsed:?}"
+    );
+    assert!(
+        matches!(result, FileResult::Refused(found) if found.iter().any(|f| f.kind == "your term"))
+    );
+}
+
+#[test]
 fn punctuation_only_term_words_are_kept_when_replacing() {
     assert_eq!(
         kept("Signed - Rowan", &rules(json!({"terms":["- Rowan"]}))),

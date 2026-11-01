@@ -1,6 +1,14 @@
 use super::{Mapping, Rules};
 use regex::{Regex, RegexBuilder};
 use std::ops::Range;
+use std::sync::LazyLock;
+
+pub(super) fn has_letter_or_digit(s: &str) -> bool {
+    static LETTER_OR_DIGIT: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"[\p{L}\p{N}]").expect("valid letter or digit regex"));
+    LETTER_OR_DIGIT.is_match(s)
+}
+
 pub(super) struct Term {
     pub text: String,
     pub kind: String,
@@ -24,7 +32,7 @@ impl Term {
         let words = |value: &str| {
             value
                 .split_whitespace()
-                .filter(|word| word.chars().any(char::is_alphanumeric))
+                .filter(|word| has_letter_or_digit(word))
                 .map(regex::escape)
                 .collect::<Vec<_>>()
         };
@@ -50,7 +58,7 @@ impl Term {
             };
             let pattern = variant
                 .split_whitespace()
-                .filter(|word| word.chars().any(char::is_alphanumeric))
+                .filter(|word| has_letter_or_digit(word))
                 .map(escape)
                 .collect::<Vec<_>>()
                 .join(r"[^\p{L}\p{N}]+");

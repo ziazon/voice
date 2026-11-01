@@ -77,6 +77,18 @@ fn punctuation_only_terms_are_refused() {
 }
 
 #[test]
+fn combining_mark_only_terms_are_refused() {
+    let result = Rules::from_value(
+        Some(&json!({"terms":["\u{05B0}\u{05B0}"]})),
+        Path::new("/fictional-home"),
+    );
+    assert_eq!(
+        result.err().expect("must refuse").to_string(),
+        "member config: private.json: anonymizer.terms[0] must hold a letter or a digit"
+    );
+}
+
+#[test]
 fn mapping_round_trip_keeps_retired_numbers() {
     let mut map = Mapping::default();
     assert_eq!(map.placeholder("company", "Pebble Freight"), "<company-1>");

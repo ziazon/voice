@@ -95,7 +95,7 @@ impl Rules {
                     if term.split_whitespace().count() > 12 {
                         return Err(bad(format!("{at} must have at most 12 words")));
                     }
-                    if !term.chars().any(char::is_alphanumeric) {
+                    if !terms::has_letter_or_digit(term) {
                         return Err(bad(format!("{at} must hold a letter or a digit")));
                     }
                     if !valid_kind(kind) {
