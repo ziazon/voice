@@ -12,7 +12,7 @@ use std::{
     process::Output,
 };
 
-const REMOVED: &str = "Voice removed your assistant's copy of your skills, so it can't be out of date. Fix this, then run voice skills refresh again.";
+const STALE: &str = "Voice marked your assistant's copy of your skills as out of date and left its files alone. Fix this, then run voice skills refresh again.";
 fn mirror(home: &Scratch) -> PathBuf {
     home.0.join(".claude/state/pebble/mirror")
 }
@@ -213,7 +213,7 @@ fn later_rule_refuses_old_copy_and_returns_failure() {
     );
 }
 #[test]
-fn failure_removes_only_voices_copy() {
+fn invalid_rules_leave_copies_and_drop_manifest() {
     let home = Scratch::new("mirror-failure");
     two(&home);
     success(refresh(&home));
@@ -223,9 +223,12 @@ fn failure_removes_only_voices_copy() {
     assert!(
         String::from_utf8_lossy(&output.stderr)
             .trim_end()
-            .ends_with(REMOVED)
+            .ends_with(STALE)
     );
-    assert!(!mirror(&home).exists());
+    assert!(mirror(&home).join("notes/SKILL.md").is_file());
+    assert!(mirror(&home).join("writing/SKILL.md").is_file());
+    assert!(mirror(&home).join(".anonymized-copy").is_file());
+    assert!(!mirror(&home).join(".manifest.json").exists());
 }
 #[test]
 fn unstamped_folder_is_left_alone() {
@@ -311,7 +314,7 @@ fn not_removed(path: &str) -> String {
     )
 }
 #[test]
-fn unreadable_stamp_reports_mirror_not_removed() {
+fn invalid_rules_with_unreadable_stamp_leave_copies() {
     unsafe extern "C" {
         fn geteuid() -> u32;
     }
@@ -327,18 +330,15 @@ fn unreadable_stamp_reports_mirror_not_removed() {
     let output = refresh(&home);
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr
-            .trim_end()
-            .ends_with(&not_removed("~/.claude/state/pebble/mirror")),
-        "{stderr}"
-    );
+    assert!(stderr.trim_end().ends_with(STALE), "{stderr}");
     assert!(!mirror(&home).join(".manifest.json").exists());
     assert!(mirror(&home).join(".anonymized-copy").exists());
+    assert!(mirror(&home).join("notes/SKILL.md").is_file());
+    assert!(mirror(&home).join("writing/SKILL.md").is_file());
 }
 
 #[test]
-fn partial_removal_drops_manifest_keeps_stamp_and_recovers() {
+fn invalid_rules_with_readonly_skill_leave_copies_and_recover() {
     unsafe extern "C" {
         fn geteuid() -> u32;
     }
@@ -358,13 +358,10 @@ fn partial_removal_drops_manifest_keeps_stamp_and_recovers() {
         "manifest survived failed removal"
     );
     assert!(mirror(&home).join(".anonymized-copy").exists());
+    assert!(mirror(&home).join("notes/SKILL.md").is_file());
+    assert!(mirror(&home).join("writing/SKILL.md").is_file());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr
-            .trim_end()
-            .ends_with(&not_removed("~/.claude/state/pebble/mirror")),
-        "{stderr}"
-    );
+    assert!(stderr.trim_end().ends_with(STALE), "{stderr}");
     drop(mode);
     rules(
         &home,
@@ -627,6 +624,36 @@ fn withdrawal_leaves_overlapping_project_and_drops_manifest() {
 }
 
 #[test]
+fn refresh_removes_copy_after_anonymizer_save_fails_and_recovers() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-anonymizer-save");
+    two(&home);
+    success(refresh(&home));
+    let mode = RestoreMode::set(home.0.join(".claude/state/pebble/anonymizer"), 0o500);
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.trim_end().ends_with("Voice removed your assistant's copy of your skills, so it can't be out of date. Fix this, then run voice skills refresh again."),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("~/.claude/state/pebble/anonymizer"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains(home.0.to_str().unwrap()), "{stderr}");
+    assert!(!mirror(&home).exists());
+    drop(mode);
+    success(refresh(&home));
+}
+
+#[test]
 fn refresh_masks_anonymizer_folder_errors_and_drops_manifest() {
     unsafe extern "C" {
         fn geteuid() -> u32;
@@ -643,10 +670,13 @@ fn refresh_masks_anonymizer_folder_errors_and_drops_manifest() {
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("~/.claude/state/*/anonymizer"), "{stderr}");
+    assert!(stderr.trim_end().ends_with(STALE), "{stderr}");
     for private in ["pebble-freight", "/private", home.0.to_str().unwrap()] {
         assert!(!stderr.contains(private), "{stderr}");
     }
     assert!(!path.join(".manifest.json").exists());
+    assert!(path.join("notes/SKILL.md").is_file());
+    assert!(path.join(".anonymized-copy").is_file());
 }
 
 #[test]
@@ -677,4 +707,87 @@ fn refresh_names_unreadable_placeholders_file() {
         !stderr.contains("couldn't change ~/.claude/state/pebble/mirror:"),
         "{stderr}"
     );
+}
+
+#[test]
+fn unchecked_placeholders_leave_overlapping_project() {
+    unchecked_failure_leaves_overlapping_project(false);
+}
+
+#[test]
+fn unchecked_rules_leave_overlapping_project() {
+    unchecked_failure_leaves_overlapping_project(true);
+}
+
+fn unchecked_failure_leaves_overlapping_project(bad_rules: bool) {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-unchecked-project");
+    let path = private_slug(&home);
+    success(refresh(&home));
+    fs::create_dir(path.join("proj")).unwrap();
+    fs::write(path.join("proj/work.txt"), "Keep this work.\n").unwrap();
+    let mut value = json!({"terms":["Pebble Freight"], "projects":["~/.claude/state/pebble-freight/mirror/proj"]});
+    let _mode = if bad_rules {
+        value["unknown"] = json!(true);
+        None
+    } else {
+        Some(RestoreMode::set(
+            path.parent().unwrap().join("anonymizer/placeholders.json"),
+            0o000,
+        ))
+    };
+    rules(&home, value);
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.trim_end().ends_with(STALE), "{stderr}");
+    assert!(!stderr.contains("pebble-freight"), "{stderr}");
+    assert!(!stderr.contains(home.0.to_str().unwrap()), "{stderr}");
+    if !bad_rules {
+        assert!(
+            stderr.contains("~/.claude/state/*/anonymizer/placeholders.json"),
+            "{stderr}"
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(path.join("proj/work.txt")).unwrap(),
+        "Keep this work.\n"
+    );
+    assert!(path.join("notes/SKILL.md").is_file());
+    assert!(!path.join(".manifest.json").exists());
+    assert!(path.join(".anonymized-copy").is_file());
+}
+
+#[test]
+fn invalid_rules_mask_slug_when_mirror_cannot_be_opened() {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    if unsafe { geteuid() } == 0 {
+        return;
+    }
+    let home = Scratch::new("mirror-unchecked-shown");
+    let path = private_slug(&home);
+    success(refresh(&home));
+    rules(&home, json!({"unknown":true}));
+    let _mode = RestoreMode::set(path.clone(), 0o755);
+    let output = refresh(&home);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("voice: ~/.claude/state/*/mirror can be opened by others"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("pebble-freight"), "{stderr}");
+    assert!(!stderr.contains(home.0.to_str().unwrap()), "{stderr}");
+    assert!(path.join("notes/SKILL.md").is_file());
+    assert!(!path.join(".manifest.json").exists());
+    assert!(path.join(".anonymized-copy").is_file());
 }

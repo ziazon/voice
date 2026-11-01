@@ -8,7 +8,7 @@ use voice_core::{
 mod copy;
 mod mirror;
 pub use copy::{Copied, copy_agreed, load_copy};
-pub use mirror::{MIRROR_REMOVED, Manifest, Refreshed, drop_manifest, refresh};
+pub use mirror::{MIRROR_REMOVED, MIRROR_STALE, Manifest, Refreshed, drop_manifest, refresh};
 mod output;
 mod read;
 pub use output::{

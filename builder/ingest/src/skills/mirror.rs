@@ -87,6 +87,7 @@ pub struct Refreshed {
     pub unchanged: usize,
     pub removed: usize,
 }
+pub const MIRROR_STALE: &str = "Voice marked your assistant's copy of your skills as out of date and left its files alone. Fix this, then run voice skills refresh again.";
 pub const MIRROR_REMOVED: &str = "Voice removed your assistant's copy of your skills, so it can't be out of date. Fix this, then run voice skills refresh again.";
 
 pub fn mirror_not_removed(path: &str) -> String {
@@ -99,6 +100,7 @@ pub fn mirror_not_removed(path: &str) -> String {
 enum Failure {
     Foreign,
     Overlap,
+    Unchecked(Error),
     Other(Error),
 }
 impl From<Error> for Failure {
@@ -178,15 +180,16 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
     let path = PathBuf::from(display_path(&mirror, home));
     let shown = match &rules {
         Ok(rules) => anonymize::report_path(&path, rules).display().to_string(),
-        Err(_) => path.display().to_string(),
+        Err(_) => "~/.claude/state/*/mirror".to_owned(),
     };
     let mirror = private::private_folder(home, &member.slug, "mirror").map_err(|error| {
         drop_manifest(&mirror);
         masked(error, &mirror, &shown, home)
     })?;
     let result = (|| {
-        let rules = rules?;
-        let (found, agreements, mut mapping) = load_agreed(home, member, &rules)?;
+        let rules = rules.map_err(Failure::Unchecked)?;
+        let (found, agreements, mut mapping) =
+            load_agreed(home, member, &rules).map_err(Failure::Unchecked)?;
         let old = Manifest::read(&mirror.join(".manifest.json"));
         let out = check_output(&mirror, home, &found.skills, rules.projects())
             .map_err(|_| Failure::Overlap)?;
@@ -227,7 +230,7 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
         })
     })();
     result.map_err(|failure| {
-        let error = match failure {
+        let (error, outcome) = match failure {
             Failure::Foreign => {
                 return Error::Invalid(format!(
                     "{shown} holds files Voice didn't put there. Move them away, then run voice skills refresh again."
@@ -239,15 +242,22 @@ pub fn refresh(home: &Path, member: &Member, date: &str) -> Result<Refreshed> {
                     "{shown} overlaps one of your skill or project folders, so Voice left it as it is. Move that folder out of it, then run voice skills refresh again."
                 ));
             }
-            Failure::Other(error) => masked(error, &mirror, &shown, home),
-        };
-        let removed = matches!(remove_copy(&mirror), Ok(true))
-            || matches!(std::fs::symlink_metadata(&mirror), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
-        drop_manifest(&mirror);
-        let outcome = if removed {
-            MIRROR_REMOVED.to_owned()
-        } else {
-            mirror_not_removed(&shown)
+            Failure::Unchecked(error) => {
+                drop_manifest(&mirror);
+                (masked(error, &mirror, &shown, home), MIRROR_STALE.to_owned())
+            }
+            Failure::Other(error) => {
+                let error = masked(error, &mirror, &shown, home);
+                let removed = matches!(remove_copy(&mirror), Ok(true))
+                    || matches!(std::fs::symlink_metadata(&mirror), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+                drop_manifest(&mirror);
+                let outcome = if removed {
+                    MIRROR_REMOVED.to_owned()
+                } else {
+                    mirror_not_removed(&shown)
+                };
+                (error, outcome)
+            }
         };
         let message = match error {
             Error::Invalid(message) => message.strip_suffix('.').unwrap_or(&message).to_owned(),
