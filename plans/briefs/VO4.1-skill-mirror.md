@@ -474,6 +474,19 @@ is deleted. When the rules didn't load, the projects aren't even known.
   `agreements.save`, and `voice skills list` showing a skill linked into the state folder by its
   real path.
 
+**8.8.1 Keep the removed sentence tested (V1's review of 8.8).** After 8.8, no test ends with
+`MIRROR_REMOVED`: § 7's "a failed refresh removes the mirror" was its only one, and it now fails
+before the check. Add one that fails after the check and removes the copy, in
+`builder/cli/tests/skills_refresh.rs` (skip when `geteuid() == 0`, modes restored in a guard): slug
+`pebble`, `two(&home)`, a refresh, then `anonymizer/` at 0500, so `copy_agreed` can't save
+`placeholders.json`. The refresh exits 1, stderr ends with `MIRROR_REMOVED`, names
+`~/.claude/state/pebble/anonymizer` and not the scratch home, and the mirror is gone. After the mode
+is restored, a refresh succeeds again. If 0500 fails before the check instead (stderr ends with
+`MIRROR_STALE`), stop and report that rather than choosing another trigger. Also, in
+`refresh_masks_anonymizer_folder_errors_and_drops_manifest` (`anonymizer/` at 0755, before the
+check), assert that stderr ends with `MIRROR_STALE`, `notes/SKILL.md` is still there and
+`.anonymized-copy` stays. Test-only: no change to `mirror.rs`.
+
 ### 8.4 Verify and report
 
 Run `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
