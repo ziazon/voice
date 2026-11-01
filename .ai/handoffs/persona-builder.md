@@ -18,7 +18,17 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Commits:** `558d770`, `cd5891e` brief; `b5438ac` code rename (Codex, 282 files); `b7d6ed1`
   docs (Codex, 64 files; three record-path lines restored by hand); `8974b92` the shared root and
   consent version (Codex, test first); `4e8401f` brief § 5 and DECISIONS; `5c4467b` the security
-  review's fixes (Codex, test first).
+  review's fixes (Codex, test first); `ef0e0a1` brief § 6 and `b022cfe` the Verifier's fixes (Codex, test
+  first: the record's refusals ignore letter case, as a Mac's disk does; a leftover
+  `voice/assistants` must be private too).
+- **Verifier:** first pass (Fable) PASS, high, at `2d75914`, after reproducing every claim live; her
+  should-fixes became `b022cfe`. Repeat pass (Opus) PASS, high, at `b022cfe`: every recased,
+  dotted, doubled-slash and Unicode spelling of a record entry refused, live. **Open should-fixes,
+  messages only:** the new `assistants` check runs before the record is read, so a `~/.claude/voice`
+  that is a file now reads `…/voice/assistants: Not a directory` instead of `…/voice is not a
+  folder`, and a symlinked root with a public `assistants` gets the chmod hint before the symlink
+  refusal (both still refuse and write nothing; fix: read the record first). The privacy checks
+  here and in Panels look at mode bits, not macOS ACLs.
 - **Review of the mechanical part:** every removed line was put through the name map and
   compared, token for token, with the added lines of its file. The only differences were Cargo
   dependency names (`voice-core`), rustfmt moving imports, the consent digest, and the two moved
@@ -33,7 +43,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   existing `Voice/` folder 0700). Left on testers' Macs: see below.
 - **Verified:** red first on every new test (eight in `8974b92`, six in `5c4467b`); a mutation that
   records the shared root as the install's failed five tests and was restored (`cmp`);
-  `bash scripts/ci-local.sh` all passed at `8974b92` and `5c4467b`. Live, with the built `voice` in a throwaway
+  `bash scripts/ci-local.sh` all passed at `8974b92`, `5c4467b` and `b022cfe`. Live, with the built `voice` in a throwaway
   home: `new`, `consent agree`, `on` wrote `voice/assistants/wren/RULES.md` and
   `voice/installed.json` with the root at 0700 and the CLAUDE.md line
   `@~/.claude/voice/assistants/wren/RULES.md`; with a panel folder added, `off` removed both and
