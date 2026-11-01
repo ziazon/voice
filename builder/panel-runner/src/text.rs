@@ -10,9 +10,17 @@ pub const BUSY: &str = "This panel is still running.";
 /// A paused panel needs a time limit answer.
 pub const ANSWER_FIRST: &str = "Answer how long they may take first.";
 
+/// A skill copy could not be refreshed; the panel can still continue.
+pub fn skills_not_refreshed(seat: &str) -> String {
+    format!(
+        "Voice couldn't bring {seat}'s copy of your skills up to date, so the panel goes on without it. To see why, run voice skills refresh in a terminal."
+    )
+}
+
 /// A plain sentence for a round's progress.
 pub fn progress(progress: &crate::Progress) -> String {
     match progress {
+        crate::Progress::SkillsNotRefreshed { seat, .. } => skills_not_refreshed(seat),
         crate::Progress::RoundStarted { round } => format!("Round {round} is starting."),
         crate::Progress::RoundDone {
             round,
@@ -181,6 +189,17 @@ fn brief_draft_ids(state: &voice_panels::DeliberationState) -> String {
 mod tests {
     use super::brief_system;
     use voice_panels::{DeliberationState, Kind};
+
+    #[test]
+    fn skill_refresh_failure_progress_is_the_exact_sentence() {
+        assert_eq!(
+            super::progress(&crate::Progress::SkillsNotRefreshed {
+                round: 3,
+                seat: "Pebble".into()
+            }),
+            "Voice couldn't bring Pebble's copy of your skills up to date, so the panel goes on without it. To see why, run voice skills refresh in a terminal."
+        );
+    }
 
     #[test]
     fn system_keeps_only_complete_generated_draft_ids_within_its_limit()

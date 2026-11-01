@@ -138,3 +138,155 @@ fn panel_requests_reject_unknown_fields_and_accept_camel_case() {
     value["extra"] = serde_json::json!(true);
     assert!(serde_json::from_value::<ConvenePanelRequest>(value).is_err());
 }
+
+fn convene_with_progress(h: &Home) -> (PanelRan, Vec<PanelProgress>) {
+    let mut progress = Vec::new();
+    let ran = convene_panel_in(
+        &Panels::new(),
+        &h.path,
+        Some(h.bin.as_os_str()),
+        &[],
+        h.request(),
+        &mut |p| progress.push(p),
+    )
+    .unwrap();
+    assert_eq!(ran.status, "closed");
+    (ran, progress)
+}
+fn manifest(h: &Home) -> std::path::PathBuf {
+    h.path.join(".claude/state/pebble/mirror/.manifest.json")
+}
+fn notes_hash(h: &Home) -> serde_json::Value {
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(manifest(h)).unwrap()).unwrap();
+    value["skills"]["notes"]["SKILL.md"].clone()
+}
+fn refresh_notes(h: &Home) {
+    refresh_skills_in(
+        &h.path,
+        SlugRequest {
+            slug: "pebble".into(),
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn convene_refreshes_agreed_skills_and_leaves_unused_mirror_absent() {
+    let h = Home::new(true);
+    h.agree_notes();
+    assert!(!manifest(&h).parent().unwrap().exists());
+    let (_, progress) = convene_with_progress(&h);
+    assert!(
+        manifest(&h).is_file(),
+        "agreed skill needs a fresh manifest"
+    );
+    assert!(notes_hash(&h).as_str().is_some_and(|hash| hash.len() == 64));
+    assert_eq!(
+        fs::read_to_string(manifest(&h).parent().unwrap().join("notes/SKILL.md")).unwrap(),
+        "Write short notes.\n"
+    );
+    assert!(!h.path.join(".claude/state/quill/mirror").exists());
+    assert!(
+        progress
+            .iter()
+            .all(|p| !p.line.starts_with("Voice couldn't bring"))
+    );
+}
+
+#[test]
+fn convene_updates_stale_skill_copy_and_hash() {
+    let h = Home::new(true);
+    let source = h.agree_notes();
+    refresh_notes(&h);
+    let before = notes_hash(&h);
+    fs::write(source, "Write clear notes.\n").unwrap();
+    convene_with_progress(&h);
+    assert_ne!(notes_hash(&h), before);
+    assert_eq!(
+        fs::read_to_string(manifest(&h).parent().unwrap().join("notes/SKILL.md")).unwrap(),
+        "Write clear notes.\n"
+    );
+}
+
+#[test]
+fn failed_skill_refresh_is_private_progress_before_first_round_and_panel_closes() {
+    if panel_support::running_as_root() {
+        return;
+    }
+    let h = Home::new(true);
+    h.agree_notes();
+    let _mode = panel_support::UnreadablePlaceholders::new(&h);
+    let (_, progress) = convene_with_progress(&h);
+    let failures: Vec<_> = progress
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.line == panel_support::SKILLS_NOT_REFRESHED)
+        .collect();
+    assert_eq!(failures.len(), 1);
+    assert_eq!(failures[0].1.round, 1);
+    assert!(
+        failures[0].0
+            < progress
+                .iter()
+                .position(|p| p.line == "Round 1 is starting.")
+                .unwrap()
+    );
+    for p in progress {
+        for private in ["notes", "placeholders", "~/"] {
+            assert!(!p.line.contains(private), "{}", p.line);
+        }
+    }
+    assert!(!manifest(&h).exists());
+}
+
+#[test]
+fn resume_refreshes_stale_skill_copy() {
+    let h = Home::new(true);
+    let source = h.agree_notes();
+    refresh_notes(&h);
+    let (ran, _) = convene_with_progress(&h);
+    let before = notes_hash(&h);
+    fs::write(source, "Write clear notes.\n").unwrap();
+    let resumed = resume_panel_in(
+        &Panels::new(),
+        &h.path,
+        Some(h.bin.as_os_str()),
+        &[],
+        ResumePanelRequest {
+            id: ran.id,
+            steer: Some("Try a smaller trial.".into()),
+            time_box: None,
+        },
+        &mut |_| {},
+    )
+    .unwrap();
+    assert_eq!(resumed.status, "closed");
+    assert_ne!(notes_hash(&h), before);
+}
+
+#[test]
+fn refused_resume_leaves_skill_manifest_unchanged() {
+    let h = Home::new(true);
+    let source = h.agree_notes();
+    refresh_notes(&h);
+    let (ran, _) = convene_with_progress(&h);
+    let before = fs::read(manifest(&h)).unwrap();
+    fs::write(source, "Write clear notes.\n").unwrap();
+    let result = resume_panel_in(
+        &Panels::new(),
+        &h.path,
+        Some(h.bin.as_os_str()),
+        &[],
+        ResumePanelRequest {
+            id: ran.id,
+            steer: None,
+            time_box: None,
+        },
+        &mut |_| {},
+    );
+    assert_eq!(
+        result.unwrap_err().message,
+        voice_panel_runner::text::NEED_STEER
+    );
+    assert_eq!(fs::read(manifest(&h)).unwrap(), before);
+}

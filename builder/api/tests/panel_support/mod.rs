@@ -72,6 +72,20 @@ impl Home {
         fs::set_permissions(stub, fs::Permissions::from_mode(0o755)).unwrap();
         Self { path, bin }
     }
+    pub fn agree_notes(&self) -> PathBuf {
+        let source = self.path.join(".claude/skills/notes/SKILL.md");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "Write short notes.\n").unwrap();
+        voice_api::agree_skills_in(
+            &self.path,
+            SkillsRequest {
+                slug: "pebble".into(),
+                ids: vec!["claude:notes".into()],
+            },
+        )
+        .unwrap();
+        source
+    }
     pub fn request(&self) -> ConvenePanelRequest {
         ConvenePanelRequest {
             question: "Which trial should we try?".into(),
@@ -85,5 +99,38 @@ impl Home {
 impl Drop for Home {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+pub const SKILLS_NOT_REFRESHED: &str = "Voice couldn't bring Pebble's copy of your skills up to date, so the panel goes on without it. To see why, run voice skills refresh in a terminal.";
+
+pub fn running_as_root() -> bool {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid reads the effective user id and has no preconditions.
+    unsafe { geteuid() == 0 }
+}
+
+pub struct UnreadablePlaceholders(PathBuf);
+impl UnreadablePlaceholders {
+    pub fn new(h: &Home) -> Self {
+        voice_api::refresh_skills_in(
+            &h.path,
+            SlugRequest {
+                slug: "pebble".into(),
+            },
+        )
+        .unwrap();
+        let path = h
+            .path
+            .join(".claude/state/pebble/anonymizer/placeholders.json");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        Self(path)
+    }
+}
+impl Drop for UnreadablePlaceholders {
+    fn drop(&mut self) {
+        fs::set_permissions(&self.0, fs::Permissions::from_mode(0o600)).unwrap();
     }
 }

@@ -41,9 +41,13 @@ pub struct Convened {
     pub box_offset_s: f64,
 }
 
-/// Progress after starting or finishing a round.
+/// Progress before a run or after starting or finishing a round.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Progress {
+    SkillsNotRefreshed {
+        round: u32,
+        seat: String,
+    },
     RoundStarted {
         round: u32,
     },
@@ -268,6 +272,8 @@ pub fn convene_named(
     room.write("rounds.jsonl", b"")?;
     room.write("transcript.jsonl", b"")?;
     save_status(&room, &state, "running", None, clock)?;
+    // ClaudeTurns' sessions or Seat::_session already hold every seat's state lock.
+    refresh_mirrors(home, &seats, state.round_no.saturating_add(1), progress);
     run(
         &room, &mut state, &metadata, &seats, turns, clock, stop, progress,
     )
@@ -420,9 +426,25 @@ pub fn resume(
         room.write_lines("transcript.jsonl", &entries)?;
     }
     save_status(&room, &state, "running", None, clock)?;
+    // ClaudeTurns' sessions or Seat::_session already hold every seat's state lock.
+    refresh_mirrors(home, &seats, state.round_no.saturating_add(1), progress);
     run(
         &room, &mut state, &metadata, &seats, turns, clock, stop, progress,
     )
+}
+
+fn refresh_mirrors(home: &Path, seats: &[Seat], round: u32, progress: &mut dyn FnMut(Progress)) {
+    let date = voice_agent::ledger::local_day(std::time::SystemTime::now());
+    for seat in seats {
+        if voice_ingest::skills::mirror_in_use(home, &seat.member.slug)
+            && voice_ingest::skills::refresh(home, &seat.member, &date).is_err()
+        {
+            progress(Progress::SkillsNotRefreshed {
+                round,
+                seat: seat.member.name.clone(),
+            });
+        }
+    }
 }
 
 fn read_snapshot(room: &Room) -> Result<(Convened, DeliberationState, Status), String> {

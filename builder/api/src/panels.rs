@@ -92,9 +92,9 @@ fn turns(
 }
 fn send(id: &str, progress: runner::Progress, callback: &mut dyn FnMut(PanelProgress)) {
     let round = match &progress {
-        runner::Progress::RoundStarted { round } | runner::Progress::RoundDone { round, .. } => {
-            *round
-        }
+        runner::Progress::SkillsNotRefreshed { round, .. }
+        | runner::Progress::RoundStarted { round }
+        | runner::Progress::RoundDone { round, .. } => *round,
     };
     callback(PanelProgress {
         id: id.into(),

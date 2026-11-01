@@ -9,8 +9,8 @@ mod copy;
 mod mirror;
 pub use copy::{Copied, copy_agreed, load_copy};
 pub use mirror::{
-    MIRROR_REMOVED, MIRROR_STALE, Manifest, Refreshed, Removal, drop_manifest, refresh,
-    remove_after_withdraw,
+    MIRROR_REMOVED, MIRROR_STALE, Manifest, Refreshed, Removal, drop_manifest, mirror_in_use,
+    refresh, remove_after_withdraw,
 };
 mod output;
 mod read;
@@ -342,6 +342,10 @@ pub struct Agreements {
     records: BTreeMap<String, (String, String)>,
 }
 impl Agreements {
+    /// Whether no skills have been agreed to.
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
     pub fn load(home: &Path, slug: &str) -> Result<Self> {
         let Some(bytes) = private::read_private_optional_at_max(
             home,

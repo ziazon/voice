@@ -201,3 +201,53 @@ fn panel_parsing_requires_inputs_and_rejects_bad_time_boxes() {
         assert_eq!(out.status.code(), Some(2), "{args:?}: {}", stderr(&out));
     }
 }
+
+#[test]
+fn panel_convene_continues_after_failed_skill_refresh() {
+    if panel_support::running_as_root() {
+        return;
+    }
+    let h = Home::new(true);
+    h.agree_notes();
+    let _mode = panel_support::UnreadablePlaceholders::new(&h);
+    let question = h.path.join("question.md");
+    fs::write(&question, "Which trial should we try?").unwrap();
+    let out = run(
+        &h,
+        &[
+            "panel",
+            "convene",
+            "--question-file",
+            question.to_str().unwrap(),
+            "--kind",
+            "list:1",
+            "--seat",
+            "pebble",
+            "--seat",
+            "quill",
+            "--time-box",
+            "15m",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    let lines: Vec<_> = text.lines().collect();
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| **line == panel_support::SKILLS_NOT_REFRESHED)
+            .count(),
+        1
+    );
+    assert!(
+        lines
+            .iter()
+            .position(|line| *line == panel_support::SKILLS_NOT_REFRESHED)
+            .unwrap()
+            < lines
+                .iter()
+                .position(|line| *line == "Round 1 is starting.")
+                .unwrap()
+    );
+    assert!(text.contains("closed: agreed"), "{text}");
+}

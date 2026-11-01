@@ -20,6 +20,17 @@ use voice_core::{
     member::Member,
 };
 
+/// Agreements or an existing mirror need a refresh; an unreadable agreement or
+/// an unsafe mirror check also counts, so a possibly stale copy is not skipped.
+/// Only no agreements and a confirmed absent mirror count as unused.
+pub fn mirror_in_use(home: &Path, slug: &str) -> bool {
+    super::Agreements::load(home, slug).map_or(true, |agreements| !agreements.is_empty())
+        || !matches!(
+            private::private_folder_exists(home, slug, "mirror"),
+            Ok(false)
+        )
+}
+
 #[derive(Debug, Default)]
 pub struct Manifest {
     pub skills: BTreeMap<String, BTreeMap<String, String>>,
@@ -341,6 +352,93 @@ mod tests {
     use crate::skills::remove_copy;
     use serde_json::json;
     use std::{fs, os::unix::fs::symlink};
+
+    fn agreements(home: &std::path::Path, skills: serde_json::Value) {
+        crate::private::write_private_at(
+            home,
+            "pebble",
+            Some("anonymizer"),
+            "skills.json",
+            &serde_json::to_vec(&json!({"version":1,"skills":skills})).unwrap(),
+        )
+        .unwrap();
+    }
+    fn one_agreement(home: &std::path::Path) {
+        agreements(
+            home,
+            json!({"claude:notes":{"agreed_on":"2026-11-01","folder":"~/.claude/skills/notes"}}),
+        );
+    }
+
+    #[test]
+    fn mirror_in_use_is_false_without_agreements_or_mirror() {
+        let h = Scratch::new("unused-mirror");
+        assert!(!super::mirror_in_use(&h.0, "pebble"));
+        assert!(!h.0.join(".claude").exists());
+        agreements(&h.0, json!({}));
+        assert!(!super::mirror_in_use(&h.0, "pebble"));
+    }
+    #[test]
+    fn mirror_in_use_with_an_agreement() {
+        let h = Scratch::new("agreed-mirror");
+        one_agreement(&h.0);
+        assert!(super::mirror_in_use(&h.0, "pebble"));
+    }
+    #[test]
+    fn mirror_in_use_with_malformed_agreements() {
+        let h = Scratch::new("bad-mirror-agreements");
+        crate::private::write_private_at(
+            &h.0,
+            "pebble",
+            Some("anonymizer"),
+            "skills.json",
+            b"not json",
+        )
+        .unwrap();
+        assert!(super::mirror_in_use(&h.0, "pebble"));
+    }
+    #[test]
+    fn mirror_in_use_with_unreadable_agreements() {
+        use std::os::unix::fs::PermissionsExt;
+        // SAFETY: geteuid reads the effective user id and has no preconditions.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let h = Scratch::new("unreadable-mirror-agreements");
+        one_agreement(&h.0);
+        let path = h.0.join(".claude/state/pebble/anonymizer/skills.json");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let in_use = super::mirror_in_use(&h.0, "pebble");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(in_use);
+    }
+    #[test]
+    fn mirror_in_use_with_a_folder_and_no_agreements() {
+        let h = Scratch::new("existing-mirror");
+        crate::private::private_folder(&h.0, "pebble", "mirror").unwrap();
+        assert!(super::mirror_in_use(&h.0, "pebble"));
+    }
+    #[test]
+    fn mirror_in_use_when_folder_check_fails() {
+        let h = Scratch::new("unsafe-mirror");
+        agreements(&h.0, json!({}));
+        fs::write(h.0.join(".claude/state/pebble/mirror"), "not a folder").unwrap();
+        assert!(super::mirror_in_use(&h.0, "pebble"));
+    }
+    #[test]
+    fn agreements_is_empty_tracks_records() {
+        let h = Scratch::new("empty-agreements");
+        assert!(
+            crate::skills::Agreements::load(&h.0, "pebble")
+                .unwrap()
+                .is_empty()
+        );
+        one_agreement(&h.0);
+        let mut saved = crate::skills::Agreements::load(&h.0, "pebble").unwrap();
+        assert!(!saved.is_empty());
+        assert!(saved.withdraw("claude:notes"));
+        assert!(saved.is_empty());
+    }
 
     #[test]
     fn drop_manifest_reports_absence_without_following_links() {
