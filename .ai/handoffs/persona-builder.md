@@ -2,6 +2,68 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.2c: the app reads history and the claude.ai export through the reader (2026-11-02, lane: V1)
+
+- **What:** on macOS the app's `claude_code_folders`, `read_claude_code`,
+  `claudeai_export_status`, `list_claudeai_chats`, `read_claudeai` and the status inside
+  `choose_claudeai_export` start the shipped `voice` as `voice reader <step>` under the VO11.2a
+  profile, with only that step's source (`~/.claude/projects`, or the chosen download), after
+  checking the assistant and permission in the app. `voice_api::reader_client` judges the
+  reader's output as untrusted: lines capped at `MAX_LINE` + 64 bytes and the total at
+  `MAX_LINE` + 1 MiB, one key per line, progress only on the two reads (relayed as it arrives),
+  a last `result` with exit 0 or `error` with exit 1; anything else is the fixed `STOPPED`
+  sentence, after a kill and a wait. An `error` line is shown only when it is one of Voice's own
+  fixed sentences, else the step's own sentence. A helper thread reads the output; the app waits
+  at most 10 minutes between lines, and 5 seconds after the final line and for the exit. A
+  download in a password or key folder is refused when chosen, with its own sentence, and nothing
+  is saved. The request goes on
+  stdin, which is then closed; stderr is `/dev/null`. Run folders are in `reader-runs` beside the
+  Claude Code profile. The export choice stores whether it is a folder or a file (VO11.2b note
+  a): a wrong kind is refused when chosen, and the reader refuses a changed kind on the opened
+  handle (`claudeai::read_export_as`); a choice saved before has no kind and is asked for again.
+  A missing `~/.claude/projects` gets its empty answers in the app (one shared zero
+  `ReadCounts`, after the lock for the read) without the reader. Other platforms read in the app
+  as before. Notes c (pipes, closed stdin, judged by the last line) and the canonical home are
+  applied; note b (open by the folder's descriptor) is carded as **VO11.2c.1** (`UbpJwLJl`,
+  Backlog), and starting the reader with only fds 0 to 2 (Rust's spawn on macOS sets
+  close-on-exec on a new pipe in a second step) as **VO11.2c.2** (`ZNBr0ZhN`, Backlog), both
+  documented as known limits. Brief: `plans/briefs/VO11.2c-app-reads-through-the-reader.md`
+  (§§ 8 and 9 are the review fixes).
+- **Who built it:** Codex, three dispatches (the build, § 8, § 9); her sandbox can't run
+  `sandbox-exec`, so V1 ran the sandbox tests and the bypass mutations. V1 moved the DECISIONS
+  entry above the file's closing `## Recordings`.
+- **Tests:** judge, deadline and exit-wait unit tests in `reader_client.rs`; 8 sandbox tests in
+  `builder/cli/tests/reader_app.rs` through the API with the built `voice` (answers equal the
+  in-process ones, a hard-linked canary in no answer or state file, progress relayed, no run
+  folder left, permission checked before anything starts, changed and old-shape export choices
+  refused, a download under `.ssh` refused unsaved, each of the six steps `STOPPED` when the
+  program exits 0 with no answer); a kind test in `claudeai_rules.rs` and an in-process
+  stored-kind test in `history.rs`.
+- **Mutations (all killed, `cp` backup and `cmp` restore):** progress allowed on any step; a
+  result accepted with any exit status; `read_export_as` without the kind check; after § 9, the
+  Verifier's bypass (`read_claude_code` calling `read_claude_code_in` instead of the reader) and
+  the export status bypassed the same way, each failing the six-step test.
+- **Verification:** `VOICE_REQUIRE_SANDBOX=1 cargo test -p voice-api -p voice-cli -p voice-ingest
+  -p voice-app` all passed on `afe0247`, and `-p voice-api -p voice-cli -p voice-ingest` on
+  `da6cd7c` (the 8 `reader_app` tests ran, none skipped); `VOICE_REQUIRE_SANDBOX=1
+  ci-local.sh` all passed on `afe0247` and on `da6cd7c`.
+- **Security review (Opus, on `afe0247`): two MEDIUM, one LOW.** No deadline (fixed, § 8);
+  inherited descriptors through Rust's non-atomic close-on-exec (carded VO11.2c.2, documented);
+  the reader's error text shown unfiltered (fixed, § 8). Sound: the bounds, protocol, reaping,
+  run folder, home, kind checks, error mapping, public-repo rules.
+- **Verifier (Fable, first pass on `afe0247`): FAIL**, one must-fix: the tests didn't prove each
+  step starts the reader (her bypass mutation passed all 7). Should-fixes: the deny sentence lost
+  for a chosen download, the shortcut calling the in-process readers, no timeout, a double read;
+  all fixed in § 9 (`da6cd7c`).
+- **Repeat Verifier (Opus, on `da6cd7c`): PASS**, no must-fix; her own bypass (the chat list
+  read in the app) killed by the six-step test. Should-fixes: the DECISIONS line on the
+  missing-projects shortcut was stale (fixed in this record commit); carried to VO11.2c.2's
+  card: the docs leave out the reverse inherited-pipe case (another child holding the reader's
+  stdout turns a right answer into `STOPPED` after 5 s); no test pins `run`'s kill closure and
+  bounded wait (a `|| {}` or a plain `wait()` would pass); a panic in the progress callback skips
+  the kill and wait; a deny-list change after choosing shows `EXPORT_BAD` until chosen again.
+- **Walk owed:** read Claude Code history and a claude.ai export through the app.
+
 ## VO11.2b.1: the repeat Verifier's two should-fixes (2026-11-02, lane: V1)
 
 - **What:** the two should-fixes VO11.2b's repeat Verifier left. (1)
