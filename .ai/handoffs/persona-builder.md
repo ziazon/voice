@@ -2,6 +2,38 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.1d: the egress proxy's should-fixes (2026-11-02, lane: V1)
+
+- **What:** the four should-fixes VO11.1a's repeat Verifier left, in `builder/agent/src/egress.rs`
+  and `tests/egress_descriptors.rs`. (1) The listener is non-blocking and the accept loop polls
+  the stopped flag every 10 ms, so `stop()` makes no wake connection and returns even when the
+  process is out of descriptors with nothing of the proxy's to free; each accepted socket is set
+  back to blocking (macOS's `accept(2)` gives it the listener's properties; Linux's does not).
+  (2) A Drop guard gives a resolver's slot back when it returns, panics or never starts.
+  (3) A no-connection case: `stop()` with no client and the descriptor table full; the file's two
+  tests take one `Mutex`, since the limit is process-wide. (4) `one_way_traffic` runs at
+  `idle` 1.2 s for 4 s. Brief: `plans/briefs/VO11.1d-egress-should-fixes.md`.
+- **Who built it:** Codex, one dispatch; her sandbox refuses loopback binds, so V1 ran every
+  socket test outside it. V1 reflowed one doc comment.
+- **Red:** on `origin/main`'s `egress.rs`, the new descriptor test fails, *stop hung with no
+  connections or descriptors*, at 3 s (V1, and the Verifier 1 of 1, the security review 3 of 3).
+  The guard's test failed on the count (1, not 0) before the guard (Codex, in her sandbox).
+- **Mutations (`mutate-check.sh`, all killed):** the listener left blocking (both descriptor
+  tests); an accepted socket left non-blocking (`header_deadline_is_absolute`,
+  `connection_slots_are_released`); the guard without its decrement
+  (`panicking_resolver_gives_back_its_slot`); one idle clock per direction (`one_way_traffic`).
+  No test for a failed thread spawn (it can't be made on demand).
+- **Verification:** `cargo test -p voice-agent --lib egress` 19 passed, 1 ignored;
+  `egress_descriptors` 2 passed; clippy and fmt clean; `VOICE_REQUIRE_SANDBOX=1 ci-local.sh` all
+  passed on `695c763`.
+- **Security review (Opus, on `695c763`): PASS**, no HIGH or MEDIUM. Measured: an accepted
+  socket inherits `O_NONBLOCK` on this Mac, and would fail closed in `header()` if one ever
+  stayed so; 10 idle proxies used about 0.1% of a core each; 10 proxies stopped in 67 ms.
+- **Verifier (Fable, first pass on `695c763`): PASS**, no must-fix. 32 runs of the egress tests
+  at 4 and 16 threads and 13 of the descriptor tests at load 13 to 14, all green; the four
+  mutations re-run and killed. Both left one nit, not taken: a socket whose
+  `set_nonblocking(false)` fails is dropped without a stopped check (the next poll sees the flag).
+
 ## VO11.1a: the egress proxy (2026-11-02, lane: V1)
 
 - **What:** `builder/agent/src/egress.rs`, an HTTP `CONNECT` proxy in `voice-agent`, one per
