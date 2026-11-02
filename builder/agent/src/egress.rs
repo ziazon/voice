@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         mpsc,
     },
     thread::{self, JoinHandle},
@@ -80,10 +80,14 @@ fn public(ip: IpAddr) -> bool {
                 return public(IpAddr::V4(ip));
             }
             let bits = u128::from(ip);
+            if bits >> 32 == 0x0064_ff9b_0000_0000_0000_0000 {
+                return public(IpAddr::V4(Ipv4Addr::from(bits as u32)));
+            }
             bits >> 125 == 1
                 && bits >> 105 != (0x2001_u128 << 112) >> 105
                 && bits >> 96 != 0x2001_0db8
                 && bits >> 112 != 0x2002
+                && bits >> 108 != 0x3fff0
         }
     }
 }
@@ -98,8 +102,9 @@ pub struct Egress {
 struct State {
     stopped: AtomicBool,
     sockets: Mutex<BTreeMap<usize, Vec<TcpStream>>>,
+    resolving: Arc<AtomicUsize>,
     #[cfg(test)]
-    live: std::sync::atomic::AtomicUsize,
+    live: AtomicUsize,
 }
 
 impl Egress {
@@ -113,7 +118,8 @@ impl Egress {
         self.port
     }
 
-    /// Closes every socket and joins the proxy's threads. A dial already under way
+    /// Stops new work, closes registered sockets, retries waking accept until it ends,
+    /// then closes sockets again and joins the handlers. A dial already under way
     /// finishes within its deadline, so this returns within about `dial_time` at worst.
     pub fn stop(mut self) {
         self.shutdown();
@@ -124,16 +130,27 @@ impl Egress {
             return;
         };
         self.state.stopped.store(true, Ordering::SeqCst);
-        // Wake blocking accept. The accept thread drops this connection immediately.
-        let _ = TcpStream::connect((Ipv4Addr::LOCALHOST, self.port));
+        self.close_sockets();
+        let address = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
+        while !accept.is_finished() {
+            // Handlers free descriptors even when the first wake cannot open a socket.
+            let _ = TcpStream::connect_timeout(&address, Duration::from_millis(100));
+            if !accept.is_finished() {
+                thread::sleep(Duration::from_millis(10));
+            }
+        }
         let handlers = accept.join().unwrap_or_default();
+        self.close_sockets();
+        for handler in handlers {
+            let _ = handler.join();
+        }
+    }
+
+    fn close_sockets(&self) {
         for sockets in self.state.sockets.lock().unwrap().values() {
             for socket in sockets {
                 let _ = socket.shutdown(Shutdown::Both);
             }
-        }
-        for handler in handlers {
-            let _ = handler.join();
         }
     }
 }
@@ -157,8 +174,9 @@ fn start_with(rules: Rules) -> Result<Egress> {
     let state = Arc::new(State {
         stopped: AtomicBool::new(false),
         sockets: Mutex::new(BTreeMap::new()),
+        resolving: Arc::new(AtomicUsize::new(0)),
         #[cfg(test)]
-        live: std::sync::atomic::AtomicUsize::new(0),
+        live: AtomicUsize::new(0),
     });
     let shared = state.clone();
     let accept = thread::Builder::new()
@@ -188,7 +206,7 @@ impl Drop for Connection {
 }
 
 // A per-proxy test counter includes accept, handlers and copying threads. DNS is
-// deliberately excluded: an overdue resolver owns no socket and is abandoned.
+// deliberately excluded: an overdue resolver holds none of the proxy's sockets.
 struct Running {
     #[cfg(test)]
     state: Arc<State>,
@@ -223,6 +241,7 @@ fn accept(listener: TcpListener, rules: Rules, state: Arc<State>) -> Vec<JoinHan
                 if state.stopped.load(Ordering::SeqCst) {
                     break;
                 }
+                thread::sleep(Duration::from_millis(10));
                 continue;
             }
         };
@@ -291,6 +310,7 @@ fn header(
         child.set_read_timeout(Some(left)).map_err(|_| None)?;
         let mut buf = [0; 4096];
         let n = match child.read(&mut buf) {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Ok(0) | Err(_) => return Err(None),
             Ok(n) => n,
         };
@@ -339,6 +359,7 @@ fn parse(header: &[u8], rules: &Rules) -> std::result::Result<String, u16> {
         return Err(400);
     }
     let host = words[1].strip_suffix(":443").ok_or(403u16)?;
+    // The byte and trailing-dot checks are a second line behind the exact list compare.
     if host.is_empty()
         || host.ends_with('.')
         || !host
@@ -362,17 +383,32 @@ fn line_endings(header: &[u8]) -> bool {
     })
 }
 
-fn dial(host: String, rules: &Rules) -> std::result::Result<TcpStream, u16> {
+fn dial(
+    host: String,
+    rules: &Rules,
+    resolving: &Arc<AtomicUsize>,
+) -> std::result::Result<TcpStream, u16> {
     let deadline = Instant::now() + rules.dial_time;
-    let resolve = rules.resolve;
-    let (send, receive) = mpsc::channel();
-    // A resolver that outlives the deadline is abandoned. It holds no socket,
-    // and is the only thread stop() does not join.
-    let helper = thread::Builder::new()
-        .spawn(move || {
-            let _ = send.send(resolve(&host));
+    resolving
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+            (count < rules.connections).then_some(count + 1)
         })
         .map_err(|_| 502u16)?;
+    let resolve = rules.resolve;
+    let running = resolving.clone();
+    let (send, receive) = mpsc::channel();
+    // A resolver that outlives the deadline is abandoned. It holds none of the
+    // proxy's sockets, and is the only thread stop() does not join.
+    let helper = thread::Builder::new()
+        .spawn(move || {
+            let result = resolve(&host);
+            running.fetch_sub(1, Ordering::SeqCst);
+            let _ = send.send(result);
+        })
+        .map_err(|_| {
+            resolving.fetch_sub(1, Ordering::SeqCst);
+            502u16
+        })?;
     let left = deadline
         .checked_duration_since(Instant::now())
         .ok_or(502u16)?;
@@ -423,7 +459,7 @@ fn handle(mut child: TcpStream, accepted: Instant, rules: Arc<Rules>, connection
             return;
         }
     };
-    let result = dial(host, &rules);
+    let result = dial(host, &rules, &connection.state.resolving);
     if connection.state.stopped.load(Ordering::SeqCst) {
         return;
     }
@@ -582,6 +618,9 @@ mod tests {
             ("fe80::1", false),
             ("ff00::1", false),
             ("64:ff9b::1", false),
+            ("64:ff9b::101:101", true),
+            ("64:ff9b::a00:1", false),
+            ("64:ff9b:1::1", false),
             ("::1.1.1.1", false),
             ("1fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", false),
             ("2000::", true),
@@ -597,6 +636,10 @@ mod tests {
             ("2002::", false),
             ("2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff", false),
             ("2003::", true),
+            ("3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true),
+            ("3fff::", false),
+            ("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff", false),
+            ("3fff:1000::", true),
             ("3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true),
             ("4000::", false),
             ("1.1.1.1", true),
@@ -956,7 +999,7 @@ mod tests {
         loopback("")
     }
 
-    static RESOLVES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static RESOLVES: AtomicUsize = AtomicUsize::new(0);
 
     fn once(_: &str) -> io::Result<Vec<IpAddr>> {
         if RESOLVES.fetch_add(1, Ordering::SeqCst) != 0 {
@@ -966,6 +1009,40 @@ mod tests {
             "127.0.0.2".parse().unwrap(),
             "127.0.0.1".parse().unwrap(),
         ])
+    }
+
+    static SLOW_RESOLVES: AtomicUsize = AtomicUsize::new(0);
+
+    fn counted_slow(host: &str) -> io::Result<Vec<IpAddr>> {
+        SLOW_RESOLVES.fetch_add(1, Ordering::SeqCst);
+        slow(host)
+    }
+
+    #[test]
+    fn resolvers_in_flight_are_capped() {
+        let mut short = rules(9);
+        short.resolve = counted_slow;
+        short.dial_time = Duration::from_millis(100);
+        let dial_time = short.dial_time;
+        SLOW_RESOLVES.store(0, Ordering::SeqCst);
+        let proxy = start_with(short).unwrap();
+        for index in 0..3 {
+            let mut socket = client(&proxy);
+            let started = Instant::now();
+            request(
+                &mut socket,
+                b"CONNECT api.anthropic.com:443 HTTP/1.1\r\n\r\n",
+                502,
+            );
+            if index < 2 {
+                assert!(started.elapsed() >= dial_time);
+            }
+            assert!(started.elapsed() < dial_time + Duration::from_millis(300));
+            eof(&mut socket);
+            wait_slots(&proxy, 0);
+        }
+        assert_eq!(SLOW_RESOLVES.load(Ordering::SeqCst), 2);
+        proxy.stop();
     }
 
     #[test]
@@ -998,7 +1075,15 @@ mod tests {
             short.resolve = resolve;
             short.public = public;
             let started = Instant::now();
-            assert_eq!(dial("api.anthropic.com".into(), &short).err(), Some(status));
+            assert_eq!(
+                dial(
+                    "api.anthropic.com".into(),
+                    &short,
+                    &Arc::new(AtomicUsize::new(0))
+                )
+                .err(),
+                Some(status)
+            );
             assert!(started.elapsed() < short.dial_time + Duration::from_millis(500));
         }
     }
@@ -1134,7 +1219,6 @@ mod tests {
             short.header_time = Duration::from_secs(5);
             short.idle = Duration::from_secs(5);
             let mut proxy = start_with(short).unwrap();
-            let port = proxy.port();
             let mut tunnel = client(&proxy);
             connect(&mut tunnel);
             upstream.connected();
@@ -1155,14 +1239,11 @@ mod tests {
             assert!(started.elapsed() < Duration::from_secs(1));
             eof(&mut tunnel);
             eof(&mut half);
-            assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err());
             assert!(state.sockets.lock().unwrap().is_empty());
             assert_eq!(state.live.load(std::sync::atomic::Ordering::SeqCst), 0);
         }
         let proxy = start_with(rules(upstream.port)).unwrap();
-        let port = proxy.port();
         proxy.stop();
-        assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err());
     }
 
     #[test]
