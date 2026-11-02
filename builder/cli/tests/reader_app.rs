@@ -389,17 +389,69 @@ fn a_successful_exit_without_a_protocol_answer_is_not_trusted() {
     h.code_history();
     let program = h.outside.join("reader");
     fs::copy("/usr/bin/true", &program).unwrap();
+    let place = Place {
+        program: &program,
+        runs: &h.runs,
+    };
     assert_eq!(
-        reader_client::claude_code_folders(
-            &h.path,
-            &Place {
-                program: &program,
-                runs: &h.runs,
-            },
-            slug(),
-        )
-        .unwrap_err()
-        .message,
+        reader_client::claude_code_folders(&h.path, &place, slug())
+            .unwrap_err()
+            .message,
         voice_api::reader::STOPPED
     );
+    assert_eq!(
+        reader_client::read_claude_code(&h.path, &place, read(true), &mut |_| {})
+            .unwrap_err()
+            .message,
+        voice_api::reader::STOPPED
+    );
+    let export = h.export();
+    choose_claudeai_export_in(&h.path, "pebble", &export, true).unwrap();
+    assert_eq!(
+        reader_client::claudeai_export_status(&h.path, &place, slug())
+            .unwrap_err()
+            .message,
+        voice_api::reader::STOPPED
+    );
+    assert_eq!(
+        reader_client::list_claudeai_chats(&h.path, &place, slug())
+            .unwrap_err()
+            .message,
+        voice_api::reader::STOPPED
+    );
+    assert_eq!(
+        reader_client::read_claudeai(&h.path, &place, slug(), &mut |_| {})
+            .unwrap_err()
+            .message,
+        voice_api::reader::STOPPED
+    );
+    assert_eq!(
+        reader_client::use_claudeai_export(&h.path, &place, "pebble", &export, true)
+            .unwrap_err()
+            .message,
+        voice_api::reader::STOPPED
+    );
+}
+
+#[test]
+fn a_download_under_ssh_is_refused_without_saving_a_choice() {
+    if !available() {
+        return;
+    }
+    let h = Home::new(true);
+    let folder = h.path.join(".ssh");
+    fs::create_dir(&folder).unwrap();
+    let path = folder.join("export.zip");
+    fs::write(&path, "canary").unwrap();
+    assert_eq!(
+        reader_client::use_claudeai_export(&h.path, &h.place(), "pebble", &path, false)
+            .unwrap_err()
+            .message,
+        "~/.ssh/export.zip is a kind of file that holds passwords or keys, so Voice never opens it. Choose another file."
+    );
+    assert_eq!(
+        reader_client::claudeai_export_status(&h.path, &h.place(), slug()).unwrap(),
+        None
+    );
+    assert!(!h.state().join("claudeai-export.json").exists());
 }

@@ -119,6 +119,17 @@ pub fn claude_code_folders_in(home: &Path, request: SlugRequest) -> Result<Claud
         folders,
     })
 }
+pub(crate) fn empty_read_counts() -> ReadCounts {
+    ReadCounts {
+        questions: 0,
+        held_out: 0,
+        messages: 0,
+        private_left_out: 0,
+        unreadable: 0,
+        first: None,
+        last: None,
+    }
+}
 pub fn read_claude_code_in(
     home: &Path,
     request: ReadRequest,
@@ -127,15 +138,7 @@ pub fn read_claude_code_in(
     let (member, _lock) = locked(home, &request.slug)?;
     let projects = home.join(".claude/projects");
     if !projects.try_exists().map_err(|_| failure(READ))? {
-        return Ok(ReadCounts {
-            questions: 0,
-            held_out: 0,
-            messages: 0,
-            private_left_out: 0,
-            unreadable: 0,
-            first: None,
-            last: None,
-        });
+        return Ok(empty_read_counts());
     }
     let filters = Filters::compile(&member.filters).map_err(|_| failure(READ))?;
     let mined = mine::mine_with_progress(
@@ -282,7 +285,13 @@ fn chat_list(rows: Vec<claudeai::ReviewRow>) -> ChatList {
     list
 }
 pub fn choose_claudeai_export_in(home: &Path, slug: &str, path: &Path, folder: bool) -> Result<()> {
-    let (_member, _lock) = locked(home, slug)?;
+    let (member, _lock) = locked(home, slug)?;
+    let deny = DenyList::for_member(&member, home).map_err(|e| failure(&e.to_string()))?;
+    deny.check(path).map_err(|e| failure(&e.to_string()))?;
+    if folder {
+        deny.check(&path.join("conversations.json"))
+            .map_err(|e| failure(&e.to_string()))?;
+    }
     let metadata = fs::metadata(path).map_err(|e| {
         failure(if e.kind() == std::io::ErrorKind::NotFound {
             EXPORT_GONE
