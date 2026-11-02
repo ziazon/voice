@@ -326,6 +326,11 @@ fn hard_links_are_pinned() {
     // control. If this fails, macOS checks the file now; update the spike and SECURITY.md.
     readable(&cat, &link);
     let ln = folders.reader("/bin/ln", &[Source::Folder(&source.0)]);
+    let a = canary(&folders.state.0, "a");
+    let b = folders.state.0.join("b");
+    let output = run(&ln, &[a.to_str().unwrap(), b.to_str().unwrap()]);
+    assert!(output.status.success(), "{output:?}");
+    assert!(b.exists());
     let made = folders.state.0.join("made");
     refused(run(&ln, &[file.to_str().unwrap(), made.to_str().unwrap()]));
     assert!(!made.exists());
