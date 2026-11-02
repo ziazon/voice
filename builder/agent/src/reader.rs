@@ -10,7 +10,10 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use voice_core::error::{Error, Result};
+use voice_core::{
+    deny::DenyList,
+    error::{Error, Result},
+};
 
 const PROFILE: &str = include_str!("../sandbox/reader.sb");
 pub const MAX_SOURCES: usize = 64;
@@ -40,6 +43,7 @@ impl Reader {
         _state: &Path,
         _runs: &Path,
         _sources: &[Source<'_>],
+        _deny: &DenyList,
     ) -> Result<Reader> {
         Err(Error::Invalid(text::MAC_ONLY.into()))
     }
@@ -52,6 +56,7 @@ impl Reader {
         state: &Path,
         runs: &Path,
         sources: &[Source<'_>],
+        deny: &DenyList,
     ) -> Result<Reader> {
         let program = sandbox::resolve_program(program)?;
         let folder_error = || Error::Invalid(text::READER_FOLDER.into());
@@ -62,11 +67,30 @@ impl Reader {
         sandbox::private_folder(state).map_err(|_| folder_error())?;
         let state = fs::canonicalize(state).map_err(|_| folder_error())?;
         sandbox::private_folder(&state).map_err(|_| folder_error())?;
+        let canonical_home = fs::canonicalize(home).map_err(|_| folder_error())?;
+        let canonical_runs = match fs::canonicalize(runs) {
+            Ok(path) => path,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let parent = runs.parent().ok_or_else(folder_error)?;
+                let name = runs.file_name().ok_or_else(folder_error)?;
+                fs::canonicalize(parent)
+                    .map_err(|_| folder_error())?
+                    .join(name)
+            }
+            Err(_) => return Err(folder_error()),
+        };
+        let overlaps = |a: &Path, b: &Path| a.starts_with(b) || b.starts_with(a);
+        if overlaps(&member, &state)
+            || overlaps(&member, &canonical_runs)
+            || overlaps(&state, &canonical_runs)
+        {
+            return Err(folder_error());
+        }
         let source_error = || Error::Invalid(text::READER_SOURCE.into());
         if sources.len() > MAX_SOURCES {
             return Err(source_error());
         }
-        let deny = voice_core::deny::DenyList::builtin();
+        let builtin = DenyList::builtin();
         let mut kept = Vec::new();
         for source in sources {
             let (folder, path) = match source {
@@ -82,7 +106,16 @@ impl Reader {
                 !metadata.is_dir()
             } else {
                 !metadata.is_file()
-            }) || deny.denied(path)
+            }) || canonical == Path::new("/")
+                || canonical == canonical_home
+                || [&canonical_home, &member, &state, &canonical_runs]
+                    .iter()
+                    .any(|allowed| *allowed != &canonical && allowed.starts_with(&canonical))
+                || canonical.starts_with(&state)
+                || canonical.starts_with(&canonical_runs)
+                || builtin.denied(path)
+                || builtin.denied(&canonical)
+                || deny.denied(path)
                 || deny.denied(&canonical)
             {
                 return Err(source_error());
@@ -100,6 +133,10 @@ impl Reader {
             .chain(kept.iter().map(|(_, path)| path))
         {
             ancestors.extend(path.ancestors().skip(1).map(Path::to_owned));
+        }
+        if ancestors.is_empty() {
+            let _ = fs::remove_dir_all(&run);
+            return Err(Error::Invalid(text::RUN_FOLDER_FAILED.into()));
         }
         Ok(Reader {
             program,
@@ -126,11 +163,13 @@ impl Reader {
             }
             rules.push_str(")\n");
         }
-        rules.push_str("; The folders above each allowed path, metadata only, so the reader can resolve paths.\n(allow file-read-metadata");
-        for index in 0..self.ancestors.len() {
-            rules.push_str(&format!("\n    (literal (param \"ANCESTOR_{index}\"))"));
+        if !self.ancestors.is_empty() {
+            rules.push_str("; The folders above each allowed path, metadata only, so the reader can resolve paths.\n(allow file-read-metadata");
+            for index in 0..self.ancestors.len() {
+                rules.push_str(&format!("\n    (literal (param \"ANCESTOR_{index}\"))"));
+            }
+            rules.push(')');
         }
-        rules.push(')');
         PROFILE.replacen(";; sources", &rules, 1)
     }
 

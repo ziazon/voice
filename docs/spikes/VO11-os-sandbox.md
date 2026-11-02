@@ -183,6 +183,10 @@ the attended walk, through the app or with the probe above.
 each path passed as a `-D` parameter. It allows no network, other program, Keychain or certificate
 service, and keeps the same secrets denies, with no login exception. Metadata-only reads on every
 folder above each allowed path let the reader resolve paths, including through `/tmp`, without
-listing those folders or reading their other files (measured on 2026-11-02, macOS 27.0.1).
+listing those folders (other than `/`, which the system profile already lists) or reading their
+other files (measured on 2026-11-02, macOS 27.0.1).
+The caller gives the reader only stdin, stdout and stderr, as pipes or `/dev/null`, since `/dev/fd`
+is readable inside the sandbox and a file it can't open by path can't be written through a
+redirected stdout either.
 A hard link inside a source still reaches its file; the reader refuses those itself from VO11.2b.
 This library is not yet wired in: VO11.2b adds the reader command and VO11.2c connects the app.

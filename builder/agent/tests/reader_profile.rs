@@ -20,7 +20,7 @@ use voice_agent::{
     reader::{MAX_SOURCES, Reader, Source},
     text,
 };
-use voice_core::error::Error;
+use voice_core::{deny::DenyList, error::Error};
 
 const SKIP: &str =
     "sandbox_profile: skipped, already inside a sandbox (macOS refuses a sandbox inside one)";
@@ -88,6 +88,7 @@ impl Folders {
             &self.state.0,
             &self.runs.0,
             sources,
+            &DenyList::builtin(),
         )
         .unwrap()
     }
@@ -266,6 +267,50 @@ fn no_other_program() {
 }
 
 #[test]
+fn trustd_is_refused() {
+    if !available() {
+        return;
+    }
+    match Command::new("cc").arg("--version").output() {
+        Ok(output) if output.status.success() => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("sandbox_profile: skipped, cc is not installed");
+            return;
+        }
+        other => panic!("cc availability check failed: {other:?}"),
+    }
+    let folders = Folders::new();
+    let compiled = Scratch::new("reader-program");
+    let source = compiled.0.join("trustd.c");
+    let program = compiled.0.join("trustd");
+    fs::write(
+        &source,
+        r#"#include <mach/mach.h>
+#include <servers/bootstrap.h>
+int main(void) {
+    mach_port_t port;
+    kern_return_t agent = bootstrap_look_up(bootstrap_port, "com.apple.trustd.agent", &port);
+    kern_return_t system = bootstrap_look_up(bootstrap_port, "com.apple.trustd", &port);
+    return agent == KERN_SUCCESS || system == KERN_SUCCESS ? 0 : 1;
+}
+"#,
+    )
+    .unwrap();
+    let output = Command::new("cc")
+        .arg(&source)
+        .arg("-o")
+        .arg(&program)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let output = Command::new(&program).output().unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let reader = folders.reader(program.to_str().unwrap(), &[]);
+    let output = run(&reader, &[]);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+}
+
+#[test]
 fn hard_links_are_pinned() {
     if !available() {
         return;
@@ -284,6 +329,14 @@ fn hard_links_are_pinned() {
     let made = folders.state.0.join("made");
     refused(run(&ln, &[file.to_str().unwrap(), made.to_str().unwrap()]));
     assert!(!made.exists());
+    for (file, name) in [
+        (canary(&source.0, "inside"), "made-source"),
+        (canary(&folders.member.0, "inside"), "made-member"),
+    ] {
+        let made = folders.state.0.join(name);
+        refused(run(&ln, &[file.to_str().unwrap(), made.to_str().unwrap()]));
+        assert!(!made.exists());
+    }
 }
 
 #[test]
@@ -413,6 +466,7 @@ fn refuses_invalid_sources_folders_and_programs() {
             &folders.state.0,
             &folders.runs.0,
             sources,
+            &DenyList::builtin(),
         )
     };
     for bad in [
@@ -427,6 +481,69 @@ fn refuses_invalid_sources_folders_and_programs() {
         invalid(
             new(Path::new("/bin/cat"), &folders.member.0, &[bad]),
             text::READER_SOURCE,
+        );
+    }
+    let diary = source.0.join("diary");
+    fs::create_dir(&diary).unwrap();
+    let personal_deny = DenyList::new(&folders.home.0, &["diary".into()]).unwrap();
+    invalid(
+        Reader::new(
+            Path::new("/bin/cat"),
+            &folders.home.0,
+            &folders.member.0,
+            &folders.state.0,
+            &folders.runs.0,
+            &[Source::Folder(&diary)],
+            &personal_deny,
+        ),
+        text::READER_SOURCE,
+    );
+    let _reader = new(
+        Path::new("/bin/cat"),
+        &folders.member.0,
+        &[Source::Folder(&diary)],
+    )
+    .unwrap();
+    let in_runs = folders.runs.0.join("source");
+    fs::create_dir(&in_runs).unwrap();
+    for path in [
+        Path::new("/"),
+        &folders.home.0,
+        folders.state.0.parent().unwrap(),
+        &folders.state.0,
+        &in_runs,
+    ] {
+        invalid(
+            new(
+                Path::new("/bin/cat"),
+                &folders.member.0,
+                &[Source::Folder(path)],
+            ),
+            text::READER_SOURCE,
+        );
+    }
+    let member_in_state = folders.state.0.join("member");
+    let state_in_member = folders.member.0.join("state");
+    let runs_in_state = folders.state.0.join("runs");
+    fs::create_dir(&member_in_state).unwrap();
+    fs::create_dir(&state_in_member).unwrap();
+    fs::set_permissions(&state_in_member, fs::Permissions::from_mode(0o700)).unwrap();
+    for (member, state, runs) in [
+        (&member_in_state, &folders.state.0, &folders.runs.0),
+        (&folders.member.0, &state_in_member, &folders.runs.0),
+        (&folders.member.0, &folders.state.0, &runs_in_state),
+    ] {
+        invalid(
+            Reader::new(
+                Path::new("/bin/cat"),
+                &folders.home.0,
+                member,
+                state,
+                runs,
+                &[],
+                &DenyList::builtin(),
+            ),
+            text::READER_FOLDER,
         );
     }
     let too_many = (0..=MAX_SOURCES)
