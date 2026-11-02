@@ -2,6 +2,57 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.2c.2: the reader starts with only stdin, stdout and stderr (2026-11-02, lane: V1)
+
+- **What:** `voice_agent::spawn` starts a child with `posix_spawn` and
+  `POSIX_SPAWN_CLOEXEC_DEFAULT`: its pipes on 0 and 1, `/dev/null` on 2, the folder by
+  `addchdir_np`, an empty signal mask and `SIGPIPE` reset (as std does); the parent's ends are
+  close-on-exec. `Spawned` waits without a reaper race (EINTR retried, `ECHILD` marks it reaped)
+  and its `Drop` kills and reaps a child not yet waited for, so a panic while reading (in the
+  progress callback) no longer leaves the reader running. `Reader::spawn` and `Reader::command`
+  share one `launch` (argv, environment, folder); `reader_client::run` uses `spawn` and the new
+  `supervise` (the old post-spawn steps, deadlines passed in). A password or key rule added after
+  a download was chosen now shows the password-or-key sentence on the three export steps, before
+  any reader starts (`history::export_allowed`, shared with the choice). Docs: the spike, the
+  SECURITY row and a DECISIONS entry; the remaining window (the reader's pipes marked
+  close-on-exec a step after `pipe()`, and the app's other children start through std, which
+  never closes by default) is a retry bounded by the deadlines. Brief:
+  `plans/briefs/VO11.2c.2-reader-only-std-fds.md` (§§ 7 to 9 are the measurement and review
+  fixes).
+- **Measured (V1):** Rust 1.98's std makes a macOS pipe with `pipe()` then sets close-on-exec in
+  a second call, and its `posix_spawn` path never sets `CLOEXEC_DEFAULT` (toolchain source). Under
+  the reader profile a program also holds a Unix socket it opens itself at start, the system log
+  socket `system.sb` allows (present with `Command` too and with the environment emptied, while
+  the app held only fds 0 to 2; `/bin/ls` opens two more of its own), so the test compares
+  descriptors by device and inode, both sides through `/dev/fd/<n>` (for a pipe `fstat` and
+  `stat` of `/dev/fd/<n>` give different identities on macOS).
+- **Who built it:** Codex, four dispatches (the build, §§ 7, 8, 9); V1 ran the sandbox tests
+  and wrote the doc sentences on the reverse case.
+- **Tests:** `builder/agent/tests/reader_spawn.rs` (sandbox): the reader's descriptors share no
+  identity with the app's pipes and sockets and fd 2 is `/dev/null`, with a `Command` control
+  that must see an inherited fd 200; spawn and command run the same zsh and print the same folder,
+  args and environment; the parent's ends are close-on-exec. `reader_client.rs`: the quiet
+  deadline kills, a closed output with no exit is bounded, a panic in progress kills and reaps.
+  `reader_app.rs`: a deny rule added after choosing.
+- **Mutations (all killed, `cp` backup and `cmp` restore):** no `CLOEXEC_DEFAULT`; an extra
+  inherited fd through a file action (Verifier); the kill closure `|| {}`; `wait_for_exit` as a
+  plain `wait()`; `Drop` without the kill; the parent ends left without close-on-exec; `/dev/null`
+  opened on fd 9 instead of 2; `spawn` started in the home folder.
+- **Verification:** `VOICE_REQUIRE_SANDBOX=1 ci-local.sh` all passed on `7160e46` and on
+  `4cd7776` (see the land); `VOICE_REQUIRE_SANDBOX=1 cargo test -p voice-agent -p voice-api -p
+  voice-cli` green.
+- **Security review (Opus, on `7160e46`): no HIGH or MEDIUM.** LOW: the docs said only the app's
+  end could leak (fixed); the drift test compared `command` with what `command` is built from
+  (replaced by running both). INFO: the cleared signal mask (stricter than std, kept), a child
+  reaped elsewhere (hardened), the non-empty check that leaned on the log socket (replaced).
+- **Verifier (Fable, on `7160e46`): PASS**, no must-fix. Should-fixes, all done within the
+  60-line allowance in files she read: the parent ends' close-on-exec, stderr on `/dev/null` and
+  the spawn's folder untested (each now killed by a test); the docs' cause (the window is the
+  reader's own pipe step). Not verified by her: the Linux `Unsupported` stub's build, the 1.5 s
+  bounds under heavy load (they passed at 2x load).
+- **Not verified:** the app built from `main` on a Mac (walk owed by VO11.2c already covers the
+  reads); Linux compile of the stub.
+
 ## VO11.2c: the app reads history and the claude.ai export through the reader (2026-11-02, lane: V1)
 
 - **What:** on macOS the app's `claude_code_folders`, `read_claude_code`,
