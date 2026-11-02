@@ -38,8 +38,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   `cargo test -p voice-ingest` (244), `voice-cli` `mine`, `claudeai`, `reader_app`,
   `reader_sandbox`, clippy and fmt green on `0560495`.
 - **Security review (Opus, on `1ddc0b2`): no HIGH or MEDIUM.** LOW, all fixed in `0560495`: a
-  projects entry gone between the listing and its `fstatat` stopped mining (now skipped, as the
-  listing's own type did); the deny check resolves links by path while the read goes through the
+  projects entry gone between the listing and its `fstatat` stopped mining (now skipped, since
+  nothing is read; on `main` only a vanished non-folder was ignored, a vanished folder or link
+  stopped mining); the deny check resolves links by path while the read goes through the
   folder already opened, so with `~/.claude/projects` a link repointed mid-read a rule written
   only in its resolved form can miss (recorded as a known limit); "renamed" said "after it was
   opened".
@@ -48,6 +49,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   `Folder::open(path, false)` on a link gives `ENOTDIR` (only tests use it); the ENOTDIR to link
   mapping can show the other sentence under a second swap (a refusal either way); Linux
   untested.
+- **Repeat Verifier (Opus, on `ca802dc`): PASS.** Should-fix done in `57e5abb` and here: the
+  skip's comment and this record said "as before", true only for a vanished non-folder. No test
+  covers the skip.
 - **Not verified:** Linux; a live walk is not owed (no screen changes).
 - **Skills Review:** ✅ tdd-skill (red on the by-path versions, 12 mutations killed) ·
   ✅ security-and-hardening (review, Verifier, every finding fixed) · ✅ source-driven-development
