@@ -179,6 +179,24 @@ fn step_failure(step: Step) -> &'static str {
     }
 }
 
+fn wait_for_exit(
+    child: &mut std::process::Child,
+    limit: Duration,
+) -> Result<std::process::ExitStatus> {
+    let started = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if started.elapsed() < limit => thread::sleep(Duration::from_millis(10)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(failure(reader::STOPPED));
+            }
+        }
+    }
+}
+
 fn run<T: DeserializeOwned>(
     home: &Path,
     place: &Place<'_>,
@@ -231,7 +249,7 @@ fn run<T: DeserializeOwned>(
             Err(failure(reader::STOPPED))
         }
     };
-    let status = child.wait().map_err(|_| failure(reader::STOPPED))?;
+    let status = wait_for_exit(&mut child, AFTER)?;
     judged?.finish(status.code())
 }
 
@@ -244,7 +262,10 @@ pub fn claude_code_folders(
     let projects = home.join(".claude/projects");
     match fs::symlink_metadata(&projects) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return history::claude_code_folders_in(home, request);
+            return Ok(ClaudeCodeFolders {
+                found: false,
+                folders: vec![],
+            });
         }
         Err(_) => return Err(failure(history::FOLDERS)),
         Ok(_) => (),
@@ -269,7 +290,8 @@ pub fn read_claude_code(
     let projects = home.join(".claude/projects");
     match fs::symlink_metadata(&projects) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return history::read_claude_code_in(home, request, progress);
+            let (_member, _lock) = history::locked(home, &request.slug)?;
+            return Ok(history::empty_read_counts());
         }
         Err(_) => return Err(failure(history::READ)),
         Ok(_) => (),
@@ -290,13 +312,13 @@ fn export_step<T: DeserializeOwned>(
     request: SlugRequest,
     step: Step,
     progress: &mut dyn FnMut(ReadProgress),
+    path: &Path,
+    folder: bool,
 ) -> Result<T> {
-    let (path, folder) = history::chosen_export(home, &request.slug)?
-        .ok_or_else(|| failure(history::EXPORT_GONE))?;
     let source = if folder {
-        Source::Folder(&path)
+        Source::Folder(path)
     } else {
-        Source::File(&path)
+        Source::File(path)
     };
     run(
         home,
@@ -314,15 +336,17 @@ pub fn claudeai_export_status(
     request: SlugRequest,
 ) -> Result<Option<ExportStatus>> {
     history::readable(home, &request.slug)?;
-    if history::chosen_export(home, &request.slug)?.is_none() {
+    let Some((path, folder)) = history::chosen_export(home, &request.slug)? else {
         return Ok(None);
-    }
+    };
     export_step(
         home,
         place,
         request,
         Step::ClaudeaiExportStatus,
         &mut |_| {},
+        &path,
+        folder,
     )
 }
 pub fn list_claudeai_chats(
@@ -331,7 +355,17 @@ pub fn list_claudeai_chats(
     request: SlugRequest,
 ) -> Result<ChatList> {
     history::readable(home, &request.slug)?;
-    export_step(home, place, request, Step::ListClaudeaiChats, &mut |_| {})
+    let (path, folder) = history::chosen_export(home, &request.slug)?
+        .ok_or_else(|| failure(history::EXPORT_GONE))?;
+    export_step(
+        home,
+        place,
+        request,
+        Step::ListClaudeaiChats,
+        &mut |_| {},
+        &path,
+        folder,
+    )
 }
 pub fn read_claudeai(
     home: &Path,
@@ -340,7 +374,17 @@ pub fn read_claudeai(
     progress: &mut dyn FnMut(ReadProgress),
 ) -> Result<ClaudeaiCounts> {
     history::readable(home, &request.slug)?;
-    export_step(home, place, request, Step::ReadClaudeai, progress)
+    let (path, folder) = history::chosen_export(home, &request.slug)?
+        .ok_or_else(|| failure(history::EXPORT_GONE))?;
+    export_step(
+        home,
+        place,
+        request,
+        Step::ReadClaudeai,
+        progress,
+        &path,
+        folder,
+    )
 }
 pub fn use_claudeai_export(
     home: &Path,
@@ -360,6 +404,29 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::io::Cursor;
+
+    #[test]
+    fn a_reader_that_does_not_exit_is_killed() {
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("5")
+            .spawn()
+            .unwrap();
+        let started = std::time::Instant::now();
+        let result = wait_for_exit(&mut child, Duration::from_millis(100));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(result.unwrap_err().message, reader::STOPPED);
+        assert!(!child.try_wait().unwrap().unwrap().success());
+    }
+
+    #[test]
+    fn a_reader_that_exits_returns_its_status() {
+        let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+        assert!(
+            wait_for_exit(&mut child, Duration::from_secs(5))
+                .unwrap()
+                .success()
+        );
+    }
 
     fn judge<T: DeserializeOwned>(
         input: impl Read + Send + 'static,
