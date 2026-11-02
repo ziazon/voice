@@ -755,6 +755,44 @@ fn usable_keeps_only_accepted_sources_in_order() {
 }
 
 #[test]
+fn usable_refuses_linked_crew_folders_and_their_contents() {
+    for linked_root in [false, true] {
+        let folders = Folders::new();
+        let private_copy = Scratch::new("reader-private-copy");
+        let target = private_copy.0.join("assistant");
+        let inside = target.join("source");
+        fs::create_dir_all(&inside).unwrap();
+        let file = canary(&inside, "file");
+        let neighbour = private_copy.0.join("neighbour");
+        fs::create_dir(&neighbour).unwrap();
+        fs::create_dir_all(folders.home.0.join(".claude")).unwrap();
+        let crew = folders.home.0.join(".claude/crew");
+        if linked_root {
+            symlink(&target, &crew).unwrap();
+        } else {
+            fs::create_dir(&crew).unwrap();
+            symlink(&target, crew.join("other")).unwrap();
+        }
+        let sources = [
+            Source::Folder(&target),
+            Source::Folder(&inside),
+            Source::File(&file),
+            Source::Folder(&neighbour),
+        ];
+        let kept = usable(
+            &folders.home.0,
+            &folders.member.0,
+            &folders.state.0,
+            &folders.runs.0,
+            &sources,
+            &DenyList::builtin(),
+        );
+        assert_eq!(kept.len(), 1);
+        assert!(matches!(kept[0], Source::Folder(path) if path == neighbour));
+    }
+}
+
+#[test]
 fn usable_limits_sources_to_256() {
     let folders = Folders::new();
     let source = Scratch::new("reader-source");

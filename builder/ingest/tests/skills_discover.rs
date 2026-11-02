@@ -895,4 +895,17 @@ fn linked_synced_root_requires_a_skill_inside_an_account() {
             assert!(found.skills.is_empty());
         }
     }
+
+    let scratch = Scratch::new("skills-linked-synced-root");
+    let home = scratch.0.canonicalize().unwrap();
+    fs::create_dir_all(home.join(".claude/skills")).unwrap();
+    skill(&home, ".codex/skills/outline");
+    symlink(home.join(".codex"), home.join(".claude/skills/synced")).unwrap();
+    assert_eq!(
+        skills::sources(&home, &Rules::builtin()),
+        vec![
+            (home.join(".claude/skills"), true),
+            (home.join(".codex/skills"), true),
+        ]
+    );
 }
