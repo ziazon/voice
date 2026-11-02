@@ -11,6 +11,7 @@ pub const MAX_REQUEST: u64 = 64 * 1024;
 pub const MAX_LINE: usize = 16 << 20;
 pub const REQUEST: &str =
     "Voice's reader couldn't understand what it was asked to do. Close Voice and open it again.";
+pub const STOPPED: &str = "Voice's reader stopped unexpectedly. Close Voice and open it again.";
 pub const TOO_MUCH: &str = "Voice found more here than it can show at once.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,7 +104,9 @@ impl Lines<'_> {
         self.alive
     }
     fn error(&mut self, message: String) -> bool {
-        self.write(Line::<()>::Error(message));
+        if !self.write(Line::<()>::Error(message)) && self.alive {
+            self.write(Line::<()>::Error(TOO_MUCH.into()));
+        }
         false
     }
     fn result<T: Serialize>(&mut self, result: std::result::Result<T, Failure>) -> bool {
@@ -136,6 +139,14 @@ fn serve_with_limit(
         max_line,
         alive: true,
     };
+    guard(&mut lines, |lines| serve_step(home, step, input, lines))
+}
+fn serve_step(
+    home: Option<&Path>,
+    step: Step,
+    input: &mut dyn Read,
+    lines: &mut Lines<'_>,
+) -> bool {
     let Some(home) = home else {
         return lines.error(history::FIND.into());
     };
@@ -191,6 +202,13 @@ fn serve_with_limit(
                 SkillsAction::Refresh => lines.result(skills::refresh_skills_in(home, slug)),
             }
         }
+    }
+}
+
+fn guard(lines: &mut Lines<'_>, work: impl FnOnce(&mut Lines<'_>) -> bool) -> bool {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(lines))) {
+        Ok(result) => result,
+        Err(_) => lines.error(STOPPED.into()),
     }
 }
 
@@ -257,6 +275,37 @@ mod tests {
         let mut output = vec![];
         assert!(!serve(home, step, input, &mut output));
         assert_eq!(lines(&output), vec![json!({"error": expected})]);
+    }
+    #[test]
+    fn panic_becomes_one_stopped_error() {
+        let mut output = vec![];
+        let mut writer = Lines {
+            output: &mut output,
+            max_line: MAX_LINE,
+            alive: true,
+        };
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            guard(&mut writer, |_| panic!("private panic canary"))
+        }));
+        std::panic::set_hook(hook);
+        assert!(outcome.is_ok(), "reader panic escaped its guard");
+        assert!(!outcome.unwrap());
+        assert_eq!(lines(&output), vec![json!({"error": STOPPED})]);
+    }
+    #[test]
+    fn oversized_error_becomes_one_bounded_error() {
+        let mut output = vec![];
+        let limit = 100;
+        let mut writer = Lines {
+            output: &mut output,
+            max_line: limit,
+            alive: true,
+        };
+        assert!(!writer.error("private error canary".repeat(100)));
+        assert_eq!(lines(&output), vec![json!({"error": TOO_MUCH})]);
+        assert!(output.len() <= limit + 1);
     }
     #[test]
     fn progress_then_one_result_matches_the_api() {

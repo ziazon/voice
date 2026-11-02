@@ -24,7 +24,7 @@ use std::{
     collections::BTreeMap,
     fs::{self, OpenOptions},
     io::Read,
-    os::unix::fs::OpenOptionsExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 
@@ -199,7 +199,7 @@ fn plugin_roots(home: &Path) -> Result<Vec<(String, PathBuf)>> {
     };
     if !file
         .metadata()
-        .is_ok_and(|m| m.is_file() && m.len() <= 4 << 20)
+        .is_ok_and(|m| m.is_file() && m.len() <= 4 << 20 && m.nlink() <= 1)
     {
         return Err(invalid(PLUGIN_NOTE));
     }

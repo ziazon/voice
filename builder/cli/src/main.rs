@@ -2267,6 +2267,7 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
 fn run(cli: Cli) -> Result<std::process::ExitCode> {
     let result = match cli.command {
         Some(Command::Reader { step }) => {
+            std::panic::set_hook(Box::new(|_| {}));
             let home = std::env::var_os("HOME")
                 .filter(|home| !home.is_empty())
                 .map(PathBuf::from);

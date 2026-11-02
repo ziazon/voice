@@ -95,6 +95,11 @@ pub fn list(home: &Path) -> Result<Vec<Listed>> {
 /// the crew folder (Voice's reader may not).
 pub fn find(home: &Path, slug: &str) -> Result<Option<Listed>> {
     let dir = assistant_dir(home, slug)?;
+    if fs::symlink_metadata(&dir).is_ok_and(|metadata| !metadata.file_type().is_symlink())
+        && !fs::canonicalize(&dir).is_ok_and(|path| path.file_name() == Some(slug.as_ref()))
+    {
+        return Ok(None);
+    }
     match read_member(&dir.join("member.json")) {
         Ok(member) if member.slug == slug => Ok(Some(Listed { dir, member })),
         _ => Ok(None),
@@ -142,6 +147,13 @@ mod tests {
             );
         }
         assert!(find(home.path(), "../x").is_err());
+        fs::rename(&made.dir, crew.join("Ari")).unwrap();
+        if crew.join("ari").exists() {
+            assert!(list(home.path()).unwrap().is_empty());
+            assert!(find(home.path(), "ari").unwrap().is_none());
+        } else {
+            eprintln!("case-sensitive disk: skipping the case-only folder check");
+        }
     }
     #[test]
     fn assistant_dir_refuses_noncanonical_slugs() {

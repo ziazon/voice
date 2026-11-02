@@ -627,3 +627,49 @@ fn hard_linked_skill_files_are_left_out_of_read_and_copy() {
             .contains("canary-outside")
     );
 }
+
+#[test]
+fn hard_linked_plugin_list_is_not_read() {
+    let home = Scratch::new("plugin-list-home");
+    let outside = Scratch::new("plugin-list-outside");
+    skill(&home.0, ".claude/plugins/cache/tool/skills/notes");
+    let target = outside.0.join("installed_plugins.json");
+    fs::write(&target, serde_json::json!({"plugins":{"tool@market":[{"installPath":home.0.join(".claude/plugins/cache/tool")}]}}).to_string()).unwrap();
+    fs::hard_link(
+        target,
+        home.0.join(".claude/plugins/installed_plugins.json"),
+    )
+    .unwrap();
+    let found = skills::discover(&home.0, &Rules::builtin()).unwrap();
+    assert!(!found.skills.iter().any(|s| s.id.starts_with("plugin:")));
+    assert_eq!(
+        found.notes,
+        vec!["Couldn't read Claude Code's list of plugins, so their skills aren't listed."]
+    );
+}
+
+#[test]
+fn unreadable_hard_link_is_refused_before_opening() {
+    // SAFETY: geteuid only reads the effective user id.
+    if unsafe { libc::geteuid() } == 0 {
+        eprintln!("root can open mode 000 files: skipping the pre-open refusal check");
+        return;
+    }
+    let home = Scratch::new("skill-unreadable-link");
+    let outside = Scratch::new("skill-unreadable-outside");
+    skill(&home.0, ".claude/skills/notes");
+    let target = outside.0.join("notes.md");
+    fs::write(&target, "canary-outside").unwrap();
+    let linked = home.0.join(".claude/skills/notes/notes.md");
+    fs::hard_link(&target, &linked).unwrap();
+    let found = skills::discover(&home.0, &Rules::builtin()).unwrap();
+    let _restore = RestoreModes::deny(&[target]);
+    let files = skills::read(&found.skills[0]).unwrap();
+    assert!(
+        files
+            .iter()
+            .any(|(path, source)| path == Path::new("notes.md")
+                && matches!(source, Source::HardLink)),
+        "{files:?}"
+    );
+}
