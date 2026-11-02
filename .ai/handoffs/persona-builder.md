@@ -2,6 +2,59 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.1b: the sandboxed launch, as a library (2026-11-01, lane: V1)
+
+- **What:** VO11.1 split in three (V1, run `190933-r1`): VO11.1a the egress proxy, VO11.1b this,
+  VO11.1c the wiring. `builder/agent/src/sandbox.rs` builds one `/usr/bin/sandbox-exec` launch of
+  the person's own Claude Code: the profile compiled in and passed with `-p`; the program with
+  links resolved and refused unless Mach-O (`text::NOT_NATIVE`; an older npm script install's
+  `node` is outside the sandbox; current npm installs are the native binary, per
+  `https://code.claude.com/docs/en/setup`); a fresh 0700 run folder under `<app folder>/runs`, or
+  the caller's work folder; an environment built from nothing (`HOME`, `USER`, `LOGNAME`, a fixed
+  `PATH`, a checked `LANG`, the profile and run folders, the proxy, telemetry and the updater off,
+  `BROWSER` only while signing in); `--setting-sources project,local` before any subcommand; off a
+  Mac, `text::MAC_ONLY`. The sign-in link: Claude Code runs `$BROWSER <link>` with the
+  localhost-callback link, so `BROWSER` is a fixed `#!/bin/bash` helper in the run folder writing
+  it to `sign-in-link`, which the library reads once and checks. Not wired in yet (VO11.1c).
+  Brief: `plans/briefs/VO11.1b-sandboxed-launch.md` (§ 8 and § 9: the fixes after review).
+- **The profile:** `process-exec` narrowed to the program (`PROGRAM`), plus the helper and
+  `/bin/bash` while `SIGN_IN=yes`; reads of the program file, not its folder; `trustd` denied.
+- **Measured by V1 on Mimi** (macOS 27.0.1, Claude Code 2.1.292, signed out, throwaway folders):
+  `--setting-sources` after `auth status` is refused (`unknown option`), before it works; with the
+  narrowed profile `--version`, `auth status`, a signed-out `-p` and an `auth status` reading an
+  invented `.credentials.json` (`loggedIn: true`, so no `/usr/bin/security` needed) all work; a
+  `-p` with an invented token reached `api.anthropic.com` through the probe's proxy and got
+  `401 Invalid bearer token` with `trustd` denied, while `nscurl` fails certificate checks under
+  the same deny; the link Claude Code prints is the paste-a-code one, the one it hands `$BROWSER`
+  is the localhost-callback one; `/bin/sh` is a shim needing `/private/var/select/sh`, hence
+  `#!/bin/bash`; the client id in that link is a constant in the binary. Token and roles hosts from
+  the binary: `platform.claude.com/v1/oauth/token`, `api.anthropic.com/api/oauth/claude_cli/roles`.
+- **Who built it:** Codex, in three dispatches (the brief; § 8; § 9). Her sandbox refuses a nested
+  one, so the profile and live launch tests skipped for her and V1 ran them
+  (`VOICE_REQUIRE_SANDBOX=1`).
+- **Security review (Opus sub-agent, on `9f25552`):** one HIGH, fixed in `b41663d`: a child could
+  rename its profile (or run) folder away and leave a symlink to another 0700 folder, which the
+  next launch accepted (now the profile denies moving the two folders and `Launch::new` refuses a
+  link given in their place). MEDIUMs fixed: a FIFO at `sign-in-link` blocked the reader
+  (`O_NONBLOCK`); the link now must carry Claude Code's own client id, `response_type=code` and a
+  `http://localhost:<port>/callback` redirect. LOW fixed: the child can't overwrite the helper.
+  Recorded for VO11.1c: descriptors the app holds without close-on-exec pass to the child.
+- **Verifier (Fable, first pass on `9f25552`):** FAIL on the FIFO and the folder swap (both fixed
+  in `b41663d`), nothing else at must-fix. She ran 11 mutations (10 red on their assertions; the
+  `trustd` deny's removal survived), a live signed-out launch (link `Ready` in 386 ms, not opened)
+  and paths with spaces and quotes. Should-fixes in brief § 10, not yet built: the helper left in
+  a `Given` folder, the child's `chmod` of its folders, a `trustd` test, the probe's `LANG`, a
+  flaky 500 ms wait in `only_sign_in_can_listen` (failed once under load at 241%, passes alone).
+- **Fix-ups by V1:** the § 9 dispatch was stopped mid-mutation at the run's end, with
+  `decode_query_value` in a mutated state; V1 restored the two lines to the § 9.3 rule (`?` on the
+  byte and the digit) and the link tests passed (17).
+- **Verification:** `VOICE_REQUIRE_SANDBOX=1 cargo test -p voice-agent` all green on `9f25552`;
+  on `b41663d` `launch` 17 and `sandbox_profile` 14 of 15 (the flaky one above); probe tests 37
+  then the § 9 set OK; `cargo fmt --check` clean; clippy green in Codex's run (18 min, workspace).
+  **Not yet:** § 10, `ci-local.sh`, the repeat Verifier (Opus) on the final head, the land.
+- **Status:** built through § 9, branch `lane-v1/VO11.1b` at the head after this record, pushed to
+  `origin`; card In Review. Next: dispatch § 10, run `ci-local.sh`, repeat Verifier on Opus, land.
+
 ## VO1: prove the read-wide fence, the probe (2026-11-01, lane: V1)
 
 - **What:** `scripts/read_fence_probe.py`, the instrument that proves a read-wide `claude -p`
