@@ -52,8 +52,24 @@ One record per slice, newest first. Paraphrase only; no real person.
   on `b41663d` `launch` 17 and `sandbox_profile` 14 of 15 (the flaky one above); probe tests 37
   then the § 9 set OK; `cargo fmt --check` clean; clippy green in Codex's run (18 min, workspace).
   **Not yet:** § 10, `ci-local.sh`, the repeat Verifier (Opus) on the final head, the land.
-- **Status:** built through § 9, branch `lane-v1/VO11.1b` at the head after this record, pushed to
-  `origin`; card In Review. Next: dispatch § 10, run `ci-local.sh`, repeat Verifier on Opus, land.
+- **§ 10 and § 11 (V1, run `233604-r1`, code `752a97f`, brief `fd61093`):** Codex built § 10; her
+  run died on a dropped connection mid-mutation and left Drop's `sign-in-link` removal deleted.
+  V1 found it by comparing the tree with her last printed diff and restored it. V1's mutations
+  outside the sandbox (cp, cmp): the folder-mode deny, the whole `trustd` deny and each of its two
+  names, Drop's helper and link removals, and cleaning before the helper is made were all killed
+  by their tests; one survived: a plain launch also cleaned a `Given` folder, so it could delete a
+  sign-in's helper running beside it. § 11 (Codex) fixed that, red first, and both its mutants
+  were then killed. `VOICE_REQUIRE_SANDBOX=1 cargo test -p voice-agent` passed all 17 binaries.
+- **Repeat Verifier (Opus, on `752a97f`): FAIL**, two blockers, both measured: a child can add an
+  access list to its folders (`chmod +a`), opening them to other users while the mode reads 0700
+  (the security review on the same delta found it too, plus `chflags uchg`); and the link check
+  compares query keys raw, so `client%5Fid` sits beside the pinned `client_id`. Should-fixes: a
+  folder that already carries an access list is accepted; an old `sign-in-link` in a `Given`
+  folder is handed out; two exit codes asserted loosely. All six are brief § 12, not yet built.
+- **Status:** built through § 11; § 12 written, not dispatched (the resource gate held:
+  `swap-thrash`). `ci-local.sh` was not completed on this head. Branch `lane-v1/VO11.1b` at the
+  head after this record, pushed to `origin`; card In Review. Next: dispatch § 12, mutations,
+  `VOICE_REQUIRE_SANDBOX=1` tests, `ci-local.sh`, repeat Verifier on Opus, land.
 
 ## VO1: prove the read-wide fence, the probe (2026-11-01, lane: V1)
 
