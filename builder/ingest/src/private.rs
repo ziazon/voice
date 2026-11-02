@@ -25,6 +25,13 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 const DIRECTORY_FLAGS: libc::c_int =
     libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
 
+/// Folders above the state folder are only passed through: Voice's reader may search them but
+/// not list them.
+#[cfg(target_os = "macos")]
+const SEARCH_FLAGS: libc::c_int = libc::O_SEARCH | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+#[cfg(not(target_os = "macos"))]
+const SEARCH_FLAGS: libc::c_int = DIRECTORY_FLAGS;
+
 fn io(path: &Path, source: std::io::Error) -> Error {
     Error::Io {
         path: path.to_owned(),
@@ -43,9 +50,15 @@ fn directory_error(path: &Path, source: std::io::Error) -> Error {
     }
 }
 
-fn open_directory(parent: &OwnedFd, part: &CStr, path: &Path, create: bool) -> Result<OwnedFd> {
+fn open_directory(
+    parent: &OwnedFd,
+    part: &CStr,
+    path: &Path,
+    create: bool,
+    flags: libc::c_int,
+) -> Result<OwnedFd> {
     // SAFETY: parent is live and part is a terminated C string; no ownership is transferred.
-    let mut fd = unsafe { libc::openat(parent.as_raw_fd(), part.as_ptr(), DIRECTORY_FLAGS) };
+    let mut fd = unsafe { libc::openat(parent.as_raw_fd(), part.as_ptr(), flags) };
     if fd < 0 {
         let source = std::io::Error::last_os_error();
         if !create || source.kind() != std::io::ErrorKind::NotFound {
@@ -59,7 +72,7 @@ fn open_directory(parent: &OwnedFd, part: &CStr, path: &Path, create: bool) -> R
             }
         }
         // SAFETY: parent and part remain live; flags refuse links even after mkdir races.
-        fd = unsafe { libc::openat(parent.as_raw_fd(), part.as_ptr(), DIRECTORY_FLAGS) };
+        fd = unsafe { libc::openat(parent.as_raw_fd(), part.as_ptr(), flags) };
         if fd < 0 {
             return Err(directory_error(path, std::io::Error::last_os_error()));
         }
@@ -178,7 +191,7 @@ fn state_directory(home: &Path, slug: &str, create: bool) -> Result<(OwnedFd, Pa
     let root = Path::new("/");
     let mut directory: OwnedFd = OpenOptions::new()
         .read(true)
-        .custom_flags(DIRECTORY_FLAGS)
+        .custom_flags(SEARCH_FLAGS)
         .open(root)
         .map_err(|e| io(root, e))?
         .into();
@@ -188,13 +201,17 @@ fn state_directory(home: &Path, slug: &str, create: bool) -> Result<(OwnedFd, Pa
             path.push(part);
             let part = CString::new(part.as_bytes())
                 .map_err(|_| Error::Invalid("invalid home folder".into()))?;
-            directory = open_directory(&directory, &part, &path, false)?;
+            directory = open_directory(&directory, &part, &path, false, SEARCH_FLAGS)?;
         }
     }
-    for part in [".claude", "state", slug] {
+    for (part, flags) in [
+        (".claude", SEARCH_FLAGS),
+        ("state", SEARCH_FLAGS),
+        (slug, DIRECTORY_FLAGS),
+    ] {
         path.push(part);
         let part = CString::new(part).expect("validated folder name");
-        directory = open_directory(&directory, &part, &path, create)?;
+        directory = open_directory(&directory, &part, &path, create, flags)?;
     }
     Ok((directory, path))
 }
@@ -218,7 +235,13 @@ fn place_directory(
     validate_folder_name(folder)?;
     let path = state.join(folder);
     let part = CString::new(folder).expect("validated folder name");
-    let inner = File::from(open_directory(&directory, &part, &path, create)?);
+    let inner = File::from(open_directory(
+        &directory,
+        &part,
+        &path,
+        create,
+        DIRECTORY_FLAGS,
+    )?);
     only_mine(&inner, &path, 0o077, "opened")?;
     Ok((OwnedFd::from(inner), path))
 }
@@ -746,6 +769,29 @@ mod tests {
         fn drop(&mut self) {
             fs::remove_dir_all(&self.0).unwrap();
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn search_descriptor_can_open_a_listable_state_folder() {
+        let home = Home::new();
+        let parent = OpenOptions::new()
+            .read(true)
+            .custom_flags(SEARCH_FLAGS)
+            .open(home.0.join(".claude/state"))
+            .unwrap();
+        // SAFETY: parent owns a live descriptor; F_GETFL only reads its flags.
+        let flags = unsafe { libc::fcntl(parent.as_raw_fd(), libc::F_GETFL) };
+        assert!(flags >= 0);
+        assert_eq!(flags & libc::O_EXEC, libc::O_EXEC);
+        let part = CString::new("wren").unwrap();
+        let directory =
+            open_directory(&parent.into(), &part, &home.state(), false, DIRECTORY_FLAGS).unwrap();
+        let file = File::from(directory);
+        assert!(file.metadata().unwrap().is_dir());
+        // SAFETY: file owns a live descriptor; F_GETFL only reads its flags.
+        let flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFL) };
+        assert_eq!(flags & libc::O_EXEC, 0);
     }
 
     #[test]

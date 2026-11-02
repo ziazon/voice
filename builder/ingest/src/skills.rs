@@ -54,6 +54,7 @@ pub struct Found {
 pub enum Source {
     Bytes(Vec<u8>),
     Link,
+    HardLink,
     TooLarge,
     Unreadable,
 }

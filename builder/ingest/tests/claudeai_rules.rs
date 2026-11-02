@@ -871,3 +871,29 @@ fn the_zip_itself_is_capped() {
         "the export zip holds more than 100,000 files, so Voice won't open it"
     );
 }
+
+#[test]
+fn hard_linked_folder_export_is_refused_but_direct_file_is_read() {
+    let source = Scratch::new("export-source");
+    let outside = Scratch::new("export-outside");
+    let canary = outside.0.join("canary.json");
+    let conversations = json!([conversation(
+        json!("c-1"),
+        json!("Kit plan"),
+        json!("2026-03-01T09:00:00Z"),
+        json!([human("2026-03-01T09:00:00Z", "canary-outside")]),
+    )]);
+    fs::write(&canary, conversations.to_string()).unwrap();
+    let inner = source.0.join("conversations.json");
+    fs::hard_link(canary, &inner).unwrap();
+    assert_eq!(
+        error(claudeai::read_export(&source.0, &DenyList::builtin())),
+        format!(
+            "Voice won't read {}: the same file has another name somewhere else on this computer (a hard link). Make a copy of the export folder and choose the copy",
+            inner.display()
+        ),
+    );
+    let direct = claudeai::read_export(&inner, &DenyList::builtin()).unwrap();
+    assert_eq!(direct.files, 1);
+    assert_eq!(direct.conversations, conversations);
+}

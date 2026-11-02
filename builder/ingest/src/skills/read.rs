@@ -7,7 +7,10 @@ use std::{
     io::Read,
     os::{
         fd::{AsRawFd, FromRawFd, IntoRawFd},
-        unix::{ffi::OsStringExt, fs::OpenOptionsExt},
+        unix::{
+            ffi::OsStringExt,
+            fs::{MetadataExt, OpenOptionsExt},
+        },
     },
     path::{Path, PathBuf},
 };
@@ -131,6 +134,8 @@ fn walk(
             }
             let source = if mode == libc::S_IFLNK {
                 Source::Link
+            } else if metadata.st_nlink > 1 {
+                Source::HardLink
             } else {
                 let size = u64::try_from(metadata.st_size).map_err(|_| invalid(SKILL_TOO_LARGE))?;
                 if anonymize::exclusion(&relative, 0, rules).is_some() {
@@ -156,6 +161,10 @@ fn walk(
                         return Err(invalid(
                             "A skill file changed while it was being read. Run anonymize again.",
                         ));
+                    }
+                    if metadata.nlink() > 1 {
+                        files.push((relative, Source::HardLink));
+                        continue;
                     }
                     let mut bytes = Vec::new();
                     if file.take((1 << 20) + 1).read_to_end(&mut bytes).is_err() {
