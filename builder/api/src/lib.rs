@@ -3,6 +3,7 @@ pub use assistants::*;
 pub mod dto;
 pub mod json_object;
 pub mod parity;
+pub mod reader;
 
 pub fn app_info() -> dto::AppInfo {
     dto::AppInfo {
