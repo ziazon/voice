@@ -42,7 +42,7 @@ pub(crate) fn readable(home: &Path, slug: &str) -> Result<Member> {
 type Result<T> = std::result::Result<T, Failure>;
 pub(crate) const BUSY: &str =
     "Voice is already working on this assistant. Wait for it to finish, then try again.";
-const SAVE: &str =
+pub(crate) const SAVE: &str =
     "Voice couldn't save what it read. Check there's space on this computer, then try again.";
 pub(crate) const FOLDERS: &str =
     "Voice couldn't look through your Claude Code history. Close it and open it again.";
@@ -182,7 +182,7 @@ pub fn read_claude_code_in(
 pub(crate) const EXPORT_GONE: &str =
     "Voice can't find your claude.ai download any more. Choose it again.";
 pub(crate) const EXPORT_BAD: &str = "Voice couldn't read this download. Check it's the file claude.ai sent you, then choose it again.";
-const NO_CHATS: &str = "Choose at least one chat first.";
+pub(crate) const NO_CHATS: &str = "Choose at least one chat first.";
 const NOTHING: &str = "There's nothing to put together yet. Read your Claude Code history or your claude.ai chats first.";
 const MERGE: &str = "Voice couldn't put your history together. Close it and open it again.";
 const EXPORT: &str = "claudeai-export.json";
