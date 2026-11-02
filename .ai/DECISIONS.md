@@ -284,7 +284,7 @@ launch as a library (VO11.1b) and the wiring (VO11.1c).
 - **Reader deadlines bound silence.** A reader silent for 10 minutes, or keeping output open 5 seconds after its answer, is stopped.
 - **Only Voice's fixed sentences reach the screen.** Any other reader refusal becomes the step's own sentence.
 - **The export kind is stored and enforced on the opened handle.** A choice without its kind must be made again.
-- **Missing projects need no reader.** With no `~/.claude/projects`, the in-process functions return their empty answers.
+- **Missing projects need no reader.** With no `~/.claude/projects`, the app returns the empty answers itself (after the lock for the read) and reads nothing.
 - **macOS only.** Other platforms keep reading in-process; skills wait for VO11.2d.
 
 ## Recordings
