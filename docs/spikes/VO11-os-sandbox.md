@@ -240,7 +240,8 @@ Its sources are the skill folders that exist: `~/.claude/skills`, the plugins li
 each listed project's `.claude/skills`, and `~/.codex/skills`.
 They also include the real folder of each skill or synced account that is a link to somewhere else,
 and nothing else. A linked skill folder is a source only when its `SKILL.md` is a regular file,
-not a link. A linked synced folder or account must have a child with a regular `SKILL.md`.
+not a link. A linked account must have a child with a regular `SKILL.md`; a linked `synced`
+folder must hold an account that has one. A link to a folder holding a skill root is not a source.
 Each linked folder is a source on its own, so its unlinked neighbours stay closed.
 A plugin skill linked inside its install is read; one linked outside it is not.
 The app still reads Claude Code's plugin list itself to name the plugin folders. That file is

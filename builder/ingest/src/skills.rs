@@ -293,11 +293,12 @@ pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
         let Ok(target) = path.canonicalize() else {
             return;
         };
-        let has_skill = holds_skill(&target, skill_depth);
         if install.is_some_and(|install| !target.starts_with(install))
-            || !has_skill
             || deny.denied(&target)
-            || canonical.iter().any(|kept| target.starts_with(kept))
+            || canonical
+                .iter()
+                .any(|kept| target.starts_with(kept) || kept.starts_with(&target))
+            || !holds_skill(&target, skill_depth)
         {
             return;
         }

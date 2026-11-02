@@ -30,6 +30,7 @@ struct Bounds {
     member: PathBuf,
     state: PathBuf,
     runs: PathBuf,
+    crew: Vec<PathBuf>,
 }
 
 #[cfg(target_os = "macos")]
@@ -61,11 +62,24 @@ fn bounds(home: &Path, member: &Path, state: &Path, runs: &Path) -> Result<Bound
     {
         return Err(folder_error());
     }
+    let crew_root = canonical_home.join(".claude/crew");
+    let mut crew = Vec::new();
+    if let Ok(canonical) = crew_root.canonicalize() {
+        crew.push(canonical);
+    }
+    if let Ok(entries) = fs::read_dir(&crew_root) {
+        for entry in entries.flatten() {
+            if let Ok(canonical) = entry.path().canonicalize() {
+                crew.push(canonical);
+            }
+        }
+    }
     Ok(Bounds {
         home: canonical_home,
         member,
         state,
         runs: canonical_runs,
+        crew,
     })
 }
 
@@ -88,6 +102,7 @@ fn accepted(folder: bool, path: &Path, bounds: &Bounds, deny: &DenyList) -> Opti
             .any(|allowed| *allowed != &canonical && allowed.starts_with(&canonical))
         || canonical.starts_with(bounds.home.join(".claude/state"))
         || canonical.starts_with(bounds.home.join(".claude/crew"))
+        || bounds.crew.iter().any(|crew| canonical.starts_with(crew))
         || canonical.starts_with(&bounds.state)
         || canonical.starts_with(&bounds.runs)
         || builtin.denied(path)
