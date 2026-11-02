@@ -11,6 +11,9 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     path::Path,
     process::Stdio,
+    sync::mpsc,
+    thread,
+    time::Duration,
 };
 use voice_agent::reader::{Reader, Source};
 use voice_core::{assistants, deny::DenyList, member};
@@ -36,50 +39,144 @@ impl<T> Final<T> {
         }
     }
 }
-fn judge<T: DeserializeOwned>(
-    mut input: impl BufRead,
+const QUIET: Duration = Duration::from_secs(10 * 60);
+const AFTER: Duration = Duration::from_secs(5);
+
+struct Judge<'a, T> {
     step: Step,
-    progress: &mut dyn FnMut(ReadProgress),
-) -> Result<Final<T>> {
-    let stopped = || failure(reader::STOPPED);
-    let mut final_line = None;
+    progress: &'a mut dyn FnMut(ReadProgress),
+    final_line: Option<Final<T>>,
+}
+impl<T: DeserializeOwned> Judge<'_, T> {
+    fn line(&mut self, bytes: &[u8]) -> Result<()> {
+        let stopped = || failure(reader::STOPPED);
+        if bytes.last() != Some(&b'\n') || self.final_line.is_some() {
+            return Err(stopped());
+        }
+        let line: reader::Line<T> = serde_json::from_slice(bytes).map_err(|_| stopped())?;
+        match line {
+            reader::Line::Progress(value) => {
+                if !matches!(self.step, Step::ReadClaudeCode | Step::ReadClaudeai) {
+                    return Err(stopped());
+                }
+                (self.progress)(value);
+            }
+            reader::Line::Result(value) => self.final_line = Some(Final::Result(value)),
+            reader::Line::Error(message) => {
+                let message = if [
+                    history::FIND,
+                    history::ELSEWHERE,
+                    history::PERMISSION,
+                    history::BUSY,
+                    history::SAVE,
+                    history::FOLDERS,
+                    history::READ,
+                    history::EXPORT_GONE,
+                    history::EXPORT_BAD,
+                    history::NO_CHATS,
+                    reader::REQUEST,
+                    reader::TOO_MUCH,
+                    reader::STOPPED,
+                ]
+                .contains(&message.as_str())
+                {
+                    message
+                } else {
+                    step_failure(self.step).into()
+                };
+                self.final_line = Some(Final::Error(Failure { message }));
+            }
+        }
+        Ok(())
+    }
+    fn end(self) -> Result<Final<T>> {
+        self.final_line.ok_or_else(|| failure(reader::STOPPED))
+    }
+}
+
+enum Output {
+    Line(Vec<u8>),
+    End,
+    Failed,
+}
+fn read_output(input: impl Read, lines: mpsc::Sender<Output>) {
+    let mut input = BufReader::new(input);
     let mut total = 0;
     loop {
         let mut bytes = Vec::new();
         // Read at most one byte past the largest permitted line including its newline.
         let size = (&mut input)
             .take((reader::MAX_LINE + 66) as u64)
-            .read_until(b'\n', &mut bytes)
-            .map_err(|_| stopped())?;
-        if size == 0 {
-            break;
-        }
-        total += size;
-        if total > reader::MAX_LINE + (1 << 20)
-            || bytes.last() != Some(&b'\n')
-            || size - 1 > reader::MAX_LINE + 64
-            || final_line.is_some()
-        {
-            return Err(stopped());
-        }
-        let line: reader::Line<T> = serde_json::from_slice(&bytes).map_err(|_| stopped())?;
-        match line {
-            reader::Line::Progress(value) => {
-                if !matches!(step, Step::ReadClaudeCode | Step::ReadClaudeai) {
-                    return Err(stopped());
+            .read_until(b'\n', &mut bytes);
+        let message = match size {
+            Ok(0) => Output::End,
+            Ok(size) => {
+                total += size;
+                if total > reader::MAX_LINE + (1 << 20) || size - 1 > reader::MAX_LINE + 64 {
+                    Output::Failed
+                } else {
+                    Output::Line(bytes)
                 }
-                progress(value);
             }
-            reader::Line::Result(value) => final_line = Some(Final::Result(value)),
-            reader::Line::Error(message) => {
-                if message.len() > 4096 || message.chars().any(char::is_control) {
-                    return Err(stopped());
+            Err(_) => Output::Failed,
+        };
+        let finished = !matches!(message, Output::Line(_));
+        if lines.send(message).is_err() || finished {
+            return;
+        }
+    }
+}
+fn judge_with_deadlines<T: DeserializeOwned>(
+    input: impl Read + Send + 'static,
+    step: Step,
+    progress: &mut dyn FnMut(ReadProgress),
+    quiet: Duration,
+    after: Duration,
+    mut kill: impl FnMut(),
+) -> Result<Final<T>> {
+    let (send, receive) = mpsc::channel();
+    let reading = thread::spawn(move || read_output(input, send));
+    let mut judge = Judge {
+        step,
+        progress,
+        final_line: None,
+    };
+    loop {
+        let deadline = if judge.final_line.is_some() {
+            after
+        } else {
+            quiet
+        };
+        match receive.recv_timeout(deadline) {
+            Ok(Output::Line(bytes)) if judge.line(&bytes).is_ok() => (),
+            Ok(Output::End) => {
+                if reading.join().is_ok() {
+                    match judge.end() {
+                        Ok(answer) => return Ok(answer),
+                        Err(error) => {
+                            kill();
+                            return Err(error);
+                        }
+                    }
                 }
-                final_line = Some(Final::Error(Failure { message }));
+                kill();
+                return Err(failure(reader::STOPPED));
+            }
+            _ => {
+                // Another process may still hold the pipe: never join after a kill.
+                kill();
+                return Err(failure(reader::STOPPED));
             }
         }
     }
-    final_line.ok_or_else(stopped)
+}
+
+fn step_failure(step: Step) -> &'static str {
+    match step {
+        Step::ClaudeCodeFolders => history::FOLDERS,
+        Step::ReadClaudeCode => history::READ,
+        _ => history::EXPORT_BAD,
+    }
 }
 
 fn run<T: DeserializeOwned>(
@@ -91,11 +188,7 @@ fn run<T: DeserializeOwned>(
     sources: &[Source<'_>],
     progress: &mut dyn FnMut(ReadProgress),
 ) -> Result<T> {
-    let source_error = match step {
-        Step::ClaudeCodeFolders => history::FOLDERS,
-        Step::ReadClaudeCode => history::READ,
-        _ => history::EXPORT_BAD,
-    };
+    let source_error = step_failure(step);
     let member = assistants::find(home, slug)
         .map_err(|_| failure(history::FIND))?
         .ok_or_else(|| failure(history::FIND))?;
@@ -130,12 +223,14 @@ fn run<T: DeserializeOwned>(
         let _ = stdin.write_all(&bytes);
     }
     let judged = match child.stdout.take() {
-        Some(stdout) => judge(BufReader::new(stdout), step, progress),
-        None => Err(failure(reader::STOPPED)),
+        Some(stdout) => judge_with_deadlines(stdout, step, progress, QUIET, AFTER, || {
+            let _ = child.kill();
+        }),
+        None => {
+            let _ = child.kill();
+            Err(failure(reader::STOPPED))
+        }
     };
-    if judged.is_err() {
-        let _ = child.kill();
-    }
     let status = child.wait().map_err(|_| failure(reader::STOPPED))?;
     judged?.finish(status.code())
 }
@@ -266,8 +361,16 @@ mod tests {
     use serde_json::json;
     use std::io::Cursor;
 
+    fn judge<T: DeserializeOwned>(
+        input: impl Read + Send + 'static,
+        step: Step,
+        progress: &mut dyn FnMut(ReadProgress),
+    ) -> Result<Final<T>> {
+        judge_with_deadlines(input, step, progress, QUIET, AFTER, || {})
+    }
+
     fn stopped(bytes: &[u8], step: Step, code: i32) {
-        let result = judge::<Option<ExportStatus>>(Cursor::new(bytes), step, &mut |_| {})
+        let result = judge::<Option<ExportStatus>>(Cursor::new(bytes.to_vec()), step, &mut |_| {})
             .and_then(|line| line.finish(Some(code)));
         assert_eq!(result.unwrap_err().message, reader::STOPPED);
     }
@@ -292,7 +395,7 @@ mod tests {
         bytes.push(b'\n');
         assert_eq!(
             judge::<Option<ExportStatus>>(
-                Cursor::new(&bytes),
+                Cursor::new(bytes.clone()),
                 Step::ClaudeaiExportStatus,
                 &mut |_| {}
             )
@@ -342,23 +445,42 @@ mod tests {
     violation!(no_final_line_is_stopped, b"");
     violation!(no_newline_is_stopped, b"{\"result\":null}");
     violation!(a_wrong_result_dto_is_stopped, b"{\"result\":123}\n");
+    fn refusal(message: &str, expected: &str, step: Step) {
+        let bytes = format!("{}\n", json!({"error": message})).into_bytes();
+        let result = judge::<Option<ExportStatus>>(Cursor::new(bytes.to_vec()), step, &mut |_| {})
+            .unwrap()
+            .finish(Some(1));
+        assert_eq!(result.unwrap_err().message, expected);
+    }
     #[test]
-    fn an_error_with_control_characters_is_stopped() {
+    fn an_error_with_control_characters_uses_the_step_sentence() {
         for control in ['\n', '\r', '\0', '\u{85}'] {
-            stopped(
-                format!("{}\n", json!({"error":format!("canary{control}")})).as_bytes(),
+            refusal(
+                &format!("canary{control}"),
+                history::EXPORT_BAD,
                 Step::ClaudeaiExportStatus,
-                1,
             );
         }
     }
     #[test]
-    fn an_error_over_4096_bytes_is_stopped() {
-        stopped(
-            format!("{}\n", json!({"error":"é".repeat(2049)})).as_bytes(),
+    fn an_error_over_4096_bytes_uses_the_step_sentence() {
+        refusal(
+            &"é".repeat(2049),
+            history::EXPORT_BAD,
             Step::ClaudeaiExportStatus,
-            1,
         );
+    }
+    #[test]
+    fn unlisted_errors_use_each_steps_sentence() {
+        for (step, expected) in [
+            (Step::ClaudeCodeFolders, history::FOLDERS),
+            (Step::ReadClaudeCode, history::READ),
+            (Step::ClaudeaiExportStatus, history::EXPORT_BAD),
+            (Step::ListClaudeaiChats, history::EXPORT_BAD),
+            (Step::ReadClaudeai, history::EXPORT_BAD),
+        ] {
+            refusal("private canary path", expected, step);
+        }
     }
     #[test]
     fn a_result_with_exit_one_is_stopped() {
@@ -367,20 +489,136 @@ mod tests {
     #[test]
     fn an_error_with_exit_zero_is_stopped() {
         stopped(
-            b"{\"error\":\"choose again\"}\n",
+            format!("{}\n", json!({"error": history::FIND})).as_bytes(),
             Step::ClaudeaiExportStatus,
             0,
         );
     }
     #[test]
-    fn an_error_with_exit_one_keeps_its_message() {
-        let result = judge::<Option<ExportStatus>>(
-            Cursor::new(b"{\"error\":\"choose again\"}\n"),
+    fn listed_errors_with_exit_one_keep_their_message() {
+        for message in [
+            history::FIND,
+            history::ELSEWHERE,
+            history::PERMISSION,
+            history::BUSY,
+            history::SAVE,
+            history::FOLDERS,
+            history::READ,
+            history::EXPORT_GONE,
+            history::EXPORT_BAD,
+            history::NO_CHATS,
+            reader::REQUEST,
+            reader::TOO_MUCH,
+            reader::STOPPED,
+        ] {
+            refusal(message, message, Step::ClaudeaiExportStatus);
+        }
+    }
+    #[test]
+    fn a_silent_reader_is_killed_after_the_quiet_deadline() {
+        let (input, output) = std::io::pipe().unwrap();
+        // A fallback closes the pipe even on the old, blocking implementation.
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            drop(output);
+        });
+        let mut kills = 0;
+        let started = std::time::Instant::now();
+        let result = judge_with_deadlines::<Option<ExportStatus>>(
+            input,
             Step::ClaudeaiExportStatus,
             &mut |_| {},
+            std::time::Duration::from_millis(50),
+            std::time::Duration::from_millis(50),
+            || kills += 1,
+        );
+        assert!(started.elapsed() < std::time::Duration::from_millis(400));
+        writer.join().unwrap();
+        assert_eq!(result.err().unwrap().message, reader::STOPPED);
+        assert_eq!(kills, 1);
+    }
+
+    #[test]
+    fn an_open_pipe_after_the_result_is_killed_after_the_after_deadline() {
+        let (input, mut output) = std::io::pipe().unwrap();
+        output.write_all(b"{\"result\":null}\n").unwrap();
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            drop(output);
+        });
+        let mut kills = 0;
+        let started = std::time::Instant::now();
+        let result = judge_with_deadlines::<Option<ExportStatus>>(
+            input,
+            Step::ClaudeaiExportStatus,
+            &mut |_| {},
+            std::time::Duration::from_secs(2),
+            std::time::Duration::from_millis(50),
+            || kills += 1,
+        );
+        assert!(started.elapsed() < std::time::Duration::from_millis(400));
+        writer.join().unwrap();
+        assert_eq!(result.err().unwrap().message, reader::STOPPED);
+        assert_eq!(kills, 1);
+    }
+
+    #[test]
+    fn a_result_then_closed_output_does_not_kill() {
+        let (input, mut output) = std::io::pipe().unwrap();
+        output.write_all(b"{\"result\":null}\n").unwrap();
+        drop(output);
+        let mut kills = 0;
+        let result = judge_with_deadlines::<Option<ExportStatus>>(
+            input,
+            Step::ClaudeaiExportStatus,
+            &mut |_| {},
+            std::time::Duration::from_millis(100),
+            std::time::Duration::from_millis(100),
+            || kills += 1,
         )
         .unwrap()
-        .finish(Some(1));
-        assert_eq!(result.unwrap_err().message, "choose again");
+        .finish(Some(0))
+        .unwrap();
+        assert_eq!(result, None);
+        assert_eq!(kills, 0);
+    }
+
+    #[test]
+    fn progress_resets_the_quiet_deadline() {
+        let (input, mut output) = std::io::pipe().unwrap();
+        let writer = std::thread::spawn(move || {
+            for done in 1..=8 {
+                writeln!(
+                    output,
+                    "{}",
+                    json!({"progress": {"done": done, "total": 8}})
+                )
+                .unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            output.write_all(b"{\"result\":null}\n").unwrap();
+        });
+        let mut kills = 0;
+        let mut progress = vec![];
+        let result = judge_with_deadlines::<Option<ExportStatus>>(
+            input,
+            Step::ReadClaudeai,
+            &mut |p| progress.push(p),
+            std::time::Duration::from_millis(200),
+            std::time::Duration::from_millis(100),
+            || kills += 1,
+        )
+        .unwrap()
+        .finish(Some(0))
+        .unwrap();
+        writer.join().unwrap();
+        assert_eq!(result, None);
+        assert_eq!(kills, 0);
+        assert_eq!(
+            progress,
+            (1..=8)
+                .map(|done| ReadProgress { done, total: 8 })
+                .collect::<Vec<_>>()
+        );
     }
 }
