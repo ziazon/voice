@@ -224,7 +224,7 @@ mod mac {
         collections::BTreeMap,
         ffi::OsString,
         io::Write,
-        os::unix::fs::{PermissionsExt, symlink},
+        os::unix::fs::{MetadataExt, PermissionsExt, symlink},
         path::Path,
         process::Command,
     };
@@ -249,6 +249,76 @@ mod mac {
 
     fn mode(path: &Path) -> u32 {
         fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn refuses_a_folder_another_account_owns() {
+        let folder = Path::new("/private/var/audit");
+        let metadata = fs::metadata(folder).unwrap();
+        if metadata.uid() != 0
+            || metadata.permissions().mode() & 0o777 != 0o700
+            || sandbox::has_acl(folder).unwrap()
+        {
+            eprintln!("launch: skipped, /private/var/audit is not a root-owned private folder");
+            return;
+        }
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Given(folder),
+                4321,
+                false,
+            ),
+            text::RUN_FOLDER_FAILED,
+        );
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                folder,
+                &scratch.0,
+                RunFolder::Fresh,
+                4321,
+                false,
+            ),
+            text::PROFILE_FAILED,
+        );
+    }
+
+    #[test]
+    fn refuses_a_fresh_run_parent_with_a_non_inheritable_acl() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let runs = sandbox::runs_folder(&profile);
+        private(&runs);
+        let output = Command::new("/bin/chmod")
+            .args(["+a", "everyone allow list"])
+            .arg(&runs)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Fresh,
+                4321,
+                false,
+            ),
+            text::RUN_FOLDER_FAILED,
+        );
+        assert_eq!(fs::read_dir(&runs).unwrap().count(), 0);
+        let output = Command::new("/bin/chmod")
+            .arg("-N")
+            .arg(&runs)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        drop(launch(&profile, &scratch.0, RunFolder::Fresh, false));
     }
 
     #[test]

@@ -469,6 +469,7 @@ fn fresh_folder(profile: &Path) -> std::io::Result<PathBuf> {
         }
         Err(error) => return Err(error),
     }
+    private_folder(&parent)?;
     loop {
         let number = NEXT.fetch_add(1, Ordering::Relaxed);
         let nanos = SystemTime::now()
