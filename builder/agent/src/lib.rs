@@ -5,6 +5,7 @@
 pub mod agents;
 mod child;
 pub mod claude;
+pub mod egress;
 pub mod guard;
 pub mod ledger;
 pub mod provider;
