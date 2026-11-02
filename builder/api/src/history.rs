@@ -18,7 +18,7 @@ use voice_ingest::{
     private,
 };
 pub(crate) const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
-const ELSEWHERE: &str =
+pub(crate) const ELSEWHERE: &str =
     "This assistant keeps its history outside your Claude folder. Use the voice command for it.";
 pub(crate) const PERMISSION: &str =
     "Voice needs your permission before it reads anything. Give it in the first step.";
@@ -44,9 +44,10 @@ pub(crate) const BUSY: &str =
     "Voice is already working on this assistant. Wait for it to finish, then try again.";
 const SAVE: &str =
     "Voice couldn't save what it read. Check there's space on this computer, then try again.";
-const FOLDERS: &str =
+pub(crate) const FOLDERS: &str =
     "Voice couldn't look through your Claude Code history. Close it and open it again.";
-const READ: &str = "Voice couldn't read your Claude Code history. Close it and open it again.";
+pub(crate) const READ: &str =
+    "Voice couldn't read your Claude Code history. Close it and open it again.";
 pub(crate) fn locked(home: &Path, slug: &str) -> Result<(Member, private::StateLock)> {
     locked_after(home, slug, &mut || {})
 }
@@ -178,8 +179,9 @@ pub fn read_claude_code_in(
         last: mined.records.last().map(date),
     })
 }
-const EXPORT_GONE: &str = "Voice can't find your claude.ai download any more. Choose it again.";
-const EXPORT_BAD: &str = "Voice couldn't read this download. Check it's the file claude.ai sent you, then choose it again.";
+pub(crate) const EXPORT_GONE: &str =
+    "Voice can't find your claude.ai download any more. Choose it again.";
+pub(crate) const EXPORT_BAD: &str = "Voice couldn't read this download. Check it's the file claude.ai sent you, then choose it again.";
 const NO_CHATS: &str = "Choose at least one chat first.";
 const NOTHING: &str = "There's nothing to put together yet. Read your Claude Code history or your claude.ai chats first.";
 const MERGE: &str = "Voice couldn't put your history together. Close it and open it again.";
@@ -190,8 +192,9 @@ const REVIEW: &str = "claudeai-review.tsv";
 #[serde(deny_unknown_fields)]
 struct ExportChoice {
     path: String,
+    folder: bool,
 }
-fn chosen_export(home: &Path, slug: &str) -> Result<Option<PathBuf>> {
+pub(crate) fn chosen_export(home: &Path, slug: &str) -> Result<Option<(PathBuf, bool)>> {
     private::read_private_optional(home, slug, EXPORT)
         .map_err(|_| failure(EXPORT_BAD))?
         .map(|bytes| {
@@ -202,14 +205,14 @@ fn chosen_export(home: &Path, slug: &str) -> Result<Option<PathBuf>> {
                 return Err(failure(EXPORT_BAD));
             }
             match fs::symlink_metadata(&path) {
-                Ok(_) => Ok(path),
+                Ok(_) => Ok((path, choice.folder)),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(failure(EXPORT_GONE)),
                 Err(_) => Err(failure(EXPORT_BAD)),
             }
         })
         .transpose()
 }
-fn read_export(home: &Path, slug: &str, path: &Path) -> Result<claudeai::Export> {
+fn read_export(home: &Path, slug: &str, path: &Path, folder: bool) -> Result<claudeai::Export> {
     let member = readable(home, slug)?;
     let deny = DenyList::for_member(&member, home).map_err(|e| failure(&e.to_string()))?;
     deny.check(path).map_err(|e| failure(&e.to_string()))?;
@@ -217,13 +220,13 @@ fn read_export(home: &Path, slug: &str, path: &Path) -> Result<claudeai::Export>
         deny.check(&path.join("conversations.json"))
             .map_err(|e| failure(&e.to_string()))?;
     }
-    claudeai::read_export(path, &deny).map_err(|_| failure(EXPORT_BAD))
+    claudeai::read_export_as(path, &deny, folder).map_err(|_| failure(EXPORT_BAD))
 }
 fn export_status(home: &Path, slug: &str) -> Result<Option<ExportStatus>> {
-    let Some(path) = chosen_export(home, slug)? else {
+    let Some((path, folder)) = chosen_export(home, slug)? else {
         return Ok(None);
     };
-    let export = read_export(home, slug, &path)?;
+    let export = read_export(home, slug, &path, folder)?;
     let inspection = claudeai::inspect(&export).map_err(|_| failure(EXPORT_BAD))?;
     let chats = claudeai::conversations(&export).map_err(|_| failure(EXPORT_BAD))?;
     Ok(Some(ExportStatus {
@@ -237,8 +240,8 @@ fn export_status(home: &Path, slug: &str) -> Result<Option<ExportStatus>> {
     }))
 }
 fn export(home: &Path, slug: &str) -> Result<claudeai::Export> {
-    let path = chosen_export(home, slug)?.ok_or_else(|| failure(EXPORT_GONE))?;
-    read_export(home, slug, &path)
+    let (path, folder) = chosen_export(home, slug)?.ok_or_else(|| failure(EXPORT_GONE))?;
+    read_export(home, slug, &path, folder)
 }
 fn review(home: &Path, slug: &str, missing: &str, error: &str) -> Result<Vec<claudeai::ReviewRow>> {
     let bytes = private::read_private_optional(home, slug, REVIEW)
@@ -278,15 +281,41 @@ fn chat_list(rows: Vec<claudeai::ReviewRow>) -> ChatList {
     }
     list
 }
-pub fn use_claudeai_export_in(home: &Path, slug: &str, path: &Path) -> Result<ExportStatus> {
+pub fn choose_claudeai_export_in(home: &Path, slug: &str, path: &Path, folder: bool) -> Result<()> {
     let (_member, _lock) = locked(home, slug)?;
+    let metadata = fs::metadata(path).map_err(|e| {
+        failure(if e.kind() == std::io::ErrorKind::NotFound {
+            EXPORT_GONE
+        } else {
+            EXPORT_BAD
+        })
+    })?;
+    if if folder {
+        !metadata.is_dir()
+    } else {
+        !metadata.is_file()
+    } {
+        return Err(failure(EXPORT_BAD));
+    }
     let path = path
         .to_str()
         .filter(|_| path.is_absolute())
         .ok_or_else(|| failure(EXPORT_BAD))?;
-    let bytes =
-        serde_json::to_vec(&ExportChoice { path: path.into() }).map_err(|_| failure(SAVE))?;
+    let bytes = serde_json::to_vec(&ExportChoice {
+        path: path.into(),
+        folder,
+    })
+    .map_err(|_| failure(SAVE))?;
     private::write_private(home, slug, EXPORT, &bytes).map_err(|_| failure(SAVE))?;
+    Ok(())
+}
+pub fn use_claudeai_export_in(
+    home: &Path,
+    slug: &str,
+    path: &Path,
+    folder: bool,
+) -> Result<ExportStatus> {
+    choose_claudeai_export_in(home, slug, path, folder)?;
     export_status(home, slug)?.ok_or_else(|| failure(EXPORT_GONE))
 }
 pub fn claudeai_export_status_in(
@@ -420,23 +449,88 @@ fn home() -> Result<PathBuf> {
 pub fn can_read(request: SlugRequest) -> Result<()> {
     can_read_in(&home()?, request)
 }
+#[cfg(target_os = "macos")]
+fn with_reader<T>(
+    work: impl FnOnce(&Path, &crate::reader_client::Place<'_>) -> Result<T>,
+) -> Result<T> {
+    use std::os::unix::fs::DirBuilderExt;
+    let home = fs::canonicalize(home()?).map_err(|_| failure(FIND))?;
+    let shipped =
+        voice_core::cli_command::shipped_cli().map_err(|_| failure(crate::reader::STOPPED))?;
+    let profile = voice_agent::claude::profile_folder(&home);
+    let parent = profile.parent().unwrap();
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(parent)
+        .map_err(|_| failure(crate::reader::STOPPED))?;
+    let runs = parent.join("reader-runs");
+    work(
+        &home,
+        &crate::reader_client::Place {
+            program: &shipped,
+            runs: &runs,
+        },
+    )
+}
 pub fn claude_code_folders(request: SlugRequest) -> Result<ClaudeCodeFolders> {
-    claude_code_folders_in(&home()?, request)
+    #[cfg(target_os = "macos")]
+    {
+        with_reader(|home, place| crate::reader_client::claude_code_folders(home, place, request))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        claude_code_folders_in(&home()?, request)
+    }
 }
 pub fn read_claude_code(
     request: ReadRequest,
     progress: &mut dyn FnMut(ReadProgress),
 ) -> Result<ReadCounts> {
-    read_claude_code_in(&home()?, request, progress)
+    #[cfg(target_os = "macos")]
+    {
+        with_reader(|home, place| {
+            crate::reader_client::read_claude_code(home, place, request, progress)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        read_claude_code_in(&home()?, request, progress)
+    }
 }
-pub fn use_claudeai_export(slug: &str, path: &Path) -> Result<ExportStatus> {
-    use_claudeai_export_in(&home()?, slug, path)
+pub fn use_claudeai_export(slug: &str, path: &Path, folder: bool) -> Result<ExportStatus> {
+    #[cfg(target_os = "macos")]
+    {
+        with_reader(|home, place| {
+            crate::reader_client::use_claudeai_export(home, place, slug, path, folder)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        use_claudeai_export_in(&home()?, slug, path, folder)
+    }
 }
 pub fn claudeai_export_status(request: SlugRequest) -> Result<Option<ExportStatus>> {
-    claudeai_export_status_in(&home()?, request)
+    #[cfg(target_os = "macos")]
+    {
+        with_reader(|home, place| {
+            crate::reader_client::claudeai_export_status(home, place, request)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        claudeai_export_status_in(&home()?, request)
+    }
 }
 pub fn list_claudeai_chats(request: SlugRequest) -> Result<ChatList> {
-    list_claudeai_chats_in(&home()?, request)
+    #[cfg(target_os = "macos")]
+    {
+        with_reader(|home, place| crate::reader_client::list_claudeai_chats(home, place, request))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        list_claudeai_chats_in(&home()?, request)
+    }
 }
 pub fn mark_claudeai_chats(request: MarkChatsRequest) -> Result<ChatList> {
     mark_claudeai_chats_in(&home()?, request)
@@ -445,7 +539,16 @@ pub fn read_claudeai(
     request: SlugRequest,
     progress: &mut dyn FnMut(ReadProgress),
 ) -> Result<ClaudeaiCounts> {
-    read_claudeai_in(&home()?, request, progress)
+    #[cfg(target_os = "macos")]
+    {
+        with_reader(|home, place| {
+            crate::reader_client::read_claudeai(home, place, request, progress)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        read_claudeai_in(&home()?, request, progress)
+    }
 }
 pub fn merge_histories(request: SlugRequest) -> Result<MergeCounts> {
     merge_histories_in(&home()?, request)
@@ -500,6 +603,23 @@ mod tests {
         fn drop(&mut self) {
             fs::remove_dir_all(&self.0).unwrap();
         }
+    }
+
+    #[test]
+    fn a_stored_folder_replaced_by_a_file_is_refused_in_process() {
+        let h = Home::new();
+        let path = h.0.join("download");
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("conversations.json"), "[]").unwrap();
+        use_claudeai_export_in(&h.0, "ari", &path, true).unwrap();
+        fs::remove_dir_all(&path).unwrap();
+        fs::write(&path, "[]").unwrap();
+        assert_eq!(
+            claudeai_export_status_in(&h.0, SlugRequest { slug: "ari".into() })
+                .unwrap_err()
+                .message,
+            EXPORT_BAD
+        );
     }
 
     #[test]

@@ -310,7 +310,7 @@ fn export_status_list_and_read_match_the_api() {
     }
     let h = Home::new(true);
     let export = h.export(false);
-    use_claudeai_export_in(&h.path, "pebble", &export).unwrap();
+    use_claudeai_export_in(&h.path, "pebble", &export, true).unwrap();
     let sources = [Source::Folder(&export)];
     let expected = claudeai_export_status_in(&h.path, slug()).unwrap();
     assert_eq!(
@@ -347,7 +347,7 @@ fn folder_exports_refuse_hard_links_but_a_chosen_file_is_allowed() {
     }
     let h = Home::new(true);
     let export = h.export(false);
-    use_claudeai_export_in(&h.path, "pebble", &export).unwrap();
+    use_claudeai_export_in(&h.path, "pebble", &export, true).unwrap();
     fs::remove_file(export.join("conversations.json")).unwrap();
     fs::remove_dir(&export).unwrap();
     let export = h.export(true);
@@ -360,7 +360,7 @@ fn folder_exports_refuse_hard_links_but_a_chosen_file_is_allowed() {
         EXPORT_BAD,
     );
     let file = export.join("conversations.json");
-    use_claudeai_export_in(&h.path, "pebble", &file).unwrap();
+    use_claudeai_export_in(&h.path, "pebble", &file, false).unwrap();
     assert_eq!(
         result(h.run("claudeai-export-status", request(), &[Source::File(&file)]))["ready"],
         true

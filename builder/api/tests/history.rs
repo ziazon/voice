@@ -117,7 +117,7 @@ fn every_command(h: &Home, s: &str, expected: &str) {
     }
     safe(
         h,
-        use_claudeai_export_in(h.path(), s, &h.path().join("absent")),
+        use_claudeai_export_in(h.path(), s, &h.path().join("absent"), false),
         expected,
     );
     safe(h, claudeai_export_status_in(h.path(), slug(s)), expected);
@@ -344,7 +344,7 @@ fn export_status_and_safe_failures_never_contain_home_path() {
         None
     );
     let p = export(&h);
-    let status = use_claudeai_export_in(h.path(), "ari", &p).unwrap();
+    let status = use_claudeai_export_in(h.path(), "ari", &p, true).unwrap();
     assert_eq!(
         status,
         ExportStatus {
@@ -362,7 +362,7 @@ fn export_status_and_safe_failures_never_contain_home_path() {
             &read_private(h.path(), "ari", "claudeai-export.json").unwrap()
         )
         .unwrap(),
-        json!({"path":p})
+        json!({"path":p,"folder":true})
     );
     fs::rename(&p, h.path().join("moved")).unwrap();
     safe(
@@ -374,7 +374,7 @@ fn export_status_and_safe_failures_never_contain_home_path() {
     fs::write(&bad, "not an export").unwrap();
     safe(
         &h,
-        use_claudeai_export_in(h.path(), "ari", &bad),
+        use_claudeai_export_in(h.path(), "ari", &bad, false),
         EXPORT_BAD,
     );
     // A directory with no conversations.json makes the ingest error include the full path.
@@ -384,7 +384,7 @@ fn export_status_and_safe_failures_never_contain_home_path() {
         h.path(),
         "ari",
         "claudeai-export.json",
-        serde_json::to_vec(&json!({"path":broken}))
+        serde_json::to_vec(&json!({"path":broken,"folder":true}))
             .unwrap()
             .as_slice(),
     )
@@ -410,7 +410,7 @@ fn chat_review_round_trip_marks_survive_and_mark_is_locked() {
         list_claudeai_chats_in(h.path(), slug("ari")),
         EXPORT_GONE,
     );
-    use_claudeai_export_in(h.path(), "ari", &p).unwrap();
+    use_claudeai_export_in(h.path(), "ari", &p, true).unwrap();
     let listed = list_claudeai_chats_in(h.path(), slug("ari")).unwrap();
     assert_eq!((listed.mine, listed.not_mine, listed.unmarked), (0, 0, 3));
     assert_eq!(
@@ -456,7 +456,7 @@ fn chat_review_round_trip_marks_survive_and_mark_is_locked() {
 fn writers_answer_busy_while_the_state_lock_is_held() {
     let h = Home::new(true);
     let p = export(&h);
-    use_claudeai_export_in(h.path(), "ari", &p).unwrap();
+    use_claudeai_export_in(h.path(), "ari", &p, true).unwrap();
     list_claudeai_chats_in(h.path(), slug("ari")).unwrap();
     mark_claudeai_chats_in(h.path(), marks(&["chat-1"], true, false)).unwrap();
     read_claudeai_in(h.path(), slug("ari"), &mut |_| {}).unwrap();
@@ -485,7 +485,7 @@ fn writers_answer_busy_while_the_state_lock_is_held() {
             );
         }
     };
-    safe(&h, use_claudeai_export_in(h.path(), "ari", &p), BUSY);
+    safe(&h, use_claudeai_export_in(h.path(), "ari", &p, true), BUSY);
     unchanged();
     safe(&h, list_claudeai_chats_in(h.path(), slug("ari")), BUSY);
     unchanged();
@@ -508,7 +508,7 @@ fn reads_only_chosen_chats_and_merges_with_code_byte_for_byte() {
         EXPORT_GONE,
     );
     let p = export(&h);
-    use_claudeai_export_in(h.path(), "ari", &p).unwrap();
+    use_claudeai_export_in(h.path(), "ari", &p, true).unwrap();
     safe(
         &h,
         read_claudeai_in(h.path(), slug("ari"), &mut |_| {}),
@@ -634,7 +634,7 @@ fn export_status_hides_ingest_paths() {
         h.path(),
         "ari",
         "claudeai-export.json",
-        &serde_json::to_vec(&json!({"path":broken})).unwrap(),
+        &serde_json::to_vec(&json!({"path":broken,"folder":true})).unwrap(),
     )
     .unwrap();
     let error = claudeai_export_status_in(h.path(), slug("ari")).unwrap_err();

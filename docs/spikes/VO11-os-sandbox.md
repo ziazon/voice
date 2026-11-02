@@ -189,7 +189,7 @@ The caller gives the reader only stdin, stdout and stderr, as pipes or `/dev/nul
 is readable inside the sandbox and a file it can't open by path can't be written through a
 redirected stdout either.
 A hard link inside a source still reaches its file; the reader refuses those itself from VO11.2b.
-This library is not yet wired in: VO11.2b adds the reader command and VO11.2c connects the app.
+VO11.2b adds the reader command and VO11.2c connects the app.
 
 ## The reader command (VO11.2b)
 
@@ -207,4 +207,17 @@ checking both the folder entry and the opened file. A chosen export file is stil
 The reader checks this itself because Seatbelt checks paths, and a hard link has an allowed path.
 The state walk uses `O_SEARCH` for folders above the state folder: it passes through without
 listing them, then opens the assistant's state folder for reading, writing and locking.
-The terminal's regular commands still run outside the sandbox; the app connection comes next.
+The app connection is below.
+
+## Wired in (VO11.2c)
+
+The app's history and claude.ai steps start the shipped `voice` as the reader with exactly that step's sources: `~/.claude/projects`, or the chosen download.
+The app checks the assistant and permission first, then the reader checks again.
+Run folders live in `reader-runs` beside the Claude Code profile.
+The request goes on stdin, which is then closed.
+Progress is relayed line by line.
+Anything outside the protocol (an early exit, too much output, a line that isn't one of its three kinds, or a result with a failing exit status) is one fixed error, and the reader's words are not shown.
+The download choice records whether it is a folder or a file, and the reader refuses one that has changed kind; a choice saved before this records neither, so it is asked for again.
+A missing `~/.claude/projects` is answered without starting the reader.
+Skills still read in the app until VO11.2d.
+The `voice` commands in the terminal still read outside the sandbox.

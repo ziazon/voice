@@ -32,7 +32,7 @@ fn chosen_export_under_ssh_shows_denial_instead_of_export_bad() {
     fs::create_dir(home.0.join(".ssh")).unwrap();
     let path = home.0.join(".ssh/export.zip");
     fs::write(&path, "canary").unwrap();
-    let error = use_claudeai_export_in(&home.0, "pebble", &path).unwrap_err();
+    let error = use_claudeai_export_in(&home.0, "pebble", &path, false).unwrap_err();
     assert_eq!(
         error.message,
         "~/.ssh/export.zip is a kind of file that holds passwords or keys, so Voice never opens it. Choose another file."
