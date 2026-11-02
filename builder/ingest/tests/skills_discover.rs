@@ -688,6 +688,8 @@ fn sources_cover_discovered_skills_in_order() {
         "elsewhere/codex/one",
         "elsewhere/codex/two",
         ".ssh/hidden",
+        ".claude/plugins/cache/tool/lib/linked",
+        "elsewhere/plugin-escape",
     ] {
         skill(h, path);
     }
@@ -705,6 +707,14 @@ fn sources_cover_discovered_skills_in_order() {
         ("elsewhere/codex/one", ".codex/skills/one"),
         ("elsewhere/codex/two", ".codex/skills/two"),
         (".ssh/hidden", ".claude/skills/denied"),
+        (
+            ".claude/plugins/cache/tool/lib/linked",
+            ".claude/plugins/cache/tool/skills/linked",
+        ),
+        (
+            "elsewhere/plugin-escape",
+            ".claude/plugins/cache/tool/skills/outside",
+        ),
     ] {
         symlink(h.join(target), h.join(link)).unwrap();
     }
@@ -721,6 +731,7 @@ fn sources_cover_discovered_skills_in_order() {
             (h.join(".claude/skills"), true),
             (h.join(".claude/plugins/installed_plugins.json"), false),
             (h.join(".claude/plugins/cache/tool/skills"), true),
+            (h.join(".claude/plugins/cache/tool/lib/linked"), true),
             (h.join("project/.claude/skills"), true),
             (h.join(".codex/skills"), true),
             (h.join("elsewhere/kit"), true),
@@ -736,7 +747,13 @@ fn sources_cover_discovered_skills_in_order() {
             .any(|(path, _)| path.starts_with(h.join(".ssh")))
     );
     let found = skills::discover(h, &rules).unwrap();
-    assert_eq!(found.skills.len(), 7);
+    assert_eq!(found.skills.len(), 8);
+    assert!(
+        !found
+            .skills
+            .iter()
+            .any(|skill| skill.id == "plugin:tool:outside")
+    );
     assert!(found.skills.iter().all(|skill| {
         sources
             .iter()
@@ -784,4 +801,98 @@ fn unreadable_project_root_is_noted_once_and_other_skills_remain() {
     let restored = skills::discover(h, &rules).unwrap();
     assert_eq!(restored.skills.len(), 2);
     assert!(restored.notes.is_empty());
+}
+
+#[test]
+fn linked_sources_require_regular_skill_files() {
+    for root in [".claude/skills", "project/.claude/skills", ".codex/skills"] {
+        let scratch = Scratch::new("skills-linked-source");
+        let h = &scratch.0;
+        fs::create_dir_all(h.join(root)).unwrap();
+        skill(h, "elsewhere/valid");
+        fs::create_dir_all(h.join("elsewhere/empty")).unwrap();
+        fs::create_dir_all(h.join("elsewhere/linked-file")).unwrap();
+        symlink(
+            h.join("elsewhere/valid/SKILL.md"),
+            h.join("elsewhere/linked-file/SKILL.md"),
+        )
+        .unwrap();
+        fs::create_dir_all(h.join("elsewhere/directory/SKILL.md")).unwrap();
+        for name in ["valid", "empty", "linked-file", "directory"] {
+            symlink(h.join("elsewhere").join(name), h.join(root).join(name)).unwrap();
+        }
+        let rules = Rules::from_value(
+            Some(&serde_json::json!({"projects":[h.join("project")]})),
+            h,
+        )
+        .unwrap();
+        assert_eq!(
+            skills::sources(h, &rules),
+            vec![
+                (h.join(root), true),
+                (h.join("elsewhere/valid").canonicalize().unwrap(), true),
+            ],
+            "{root}"
+        );
+    }
+}
+
+#[test]
+fn linked_synced_containers_require_a_regular_child_skill() {
+    for link in [".claude/skills/synced", ".claude/skills/synced/account"] {
+        for valid in [false, true] {
+            let scratch = Scratch::new("skills-linked-container");
+            let h = &scratch.0;
+            fs::create_dir_all(h.join(link).parent().unwrap()).unwrap();
+            let relative = if link == ".claude/skills/synced" {
+                "elsewhere/container/account/notes"
+            } else {
+                "elsewhere/container/notes"
+            };
+            skill(h, relative);
+            if !valid {
+                fs::rename(
+                    h.join(relative).join("SKILL.md"),
+                    h.join("elsewhere/original.md"),
+                )
+                .unwrap();
+                symlink(
+                    h.join("elsewhere/original.md"),
+                    h.join(relative).join("SKILL.md"),
+                )
+                .unwrap();
+            }
+            symlink(h.join("elsewhere/container"), h.join(link)).unwrap();
+            let sources = skills::sources(h, &Rules::builtin());
+            assert_eq!(sources.iter().any(|(path, _)| path == &h.join("elsewhere/container").canonicalize().unwrap()), valid, "{link}, valid={valid}");
+        }
+    }
+}
+
+#[test]
+fn linked_synced_root_requires_a_skill_inside_an_account() {
+    for populated in [false, true] {
+        let scratch = Scratch::new("skills-linked-synced-root");
+        let home = scratch.0.canonicalize().unwrap();
+        let target = home.join("elsewhere/synced-root");
+        fs::create_dir_all(home.join(".claude/skills")).unwrap();
+        fs::create_dir_all(target.join("account-a")).unwrap();
+        if populated {
+            skill(&home, "elsewhere/synced-root/account-a/outline");
+        }
+        symlink(&target, home.join(".claude/skills/synced")).unwrap();
+        let mut expected = vec![(home.join(".claude/skills"), true)];
+        if populated {
+            expected.push((target.clone(), true));
+        }
+        assert_eq!(skills::sources(&home, &Rules::builtin()), expected);
+        let found = skills::discover(&home, &Rules::builtin()).unwrap();
+        if populated {
+            assert_eq!(found.skills.len(), 1);
+            assert_eq!(found.skills[0].id, "synced:outline");
+            assert_eq!(found.skills[0].folder, target.join("account-a/outline"));
+        } else {
+            assert!(found.skills.is_empty());
+        }
+    }
 }

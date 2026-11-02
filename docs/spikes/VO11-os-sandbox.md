@@ -239,12 +239,21 @@ Its sources are the skill folders that exist: `~/.claude/skills`, the plugins li
 (`~/.claude/plugins/installed_plugins.json`) and each plugin's `skills` folder,
 each listed project's `.claude/skills`, and `~/.codex/skills`.
 They also include the real folder of each skill or synced account that is a link to somewhere else,
-and nothing else. Each linked folder is a source on its own, so its unlinked neighbours stay closed.
-A source the reader would refuse is left out: a password or key folder, one of the person's own
-deny rules, or home itself. A skill there isn't listed.
+and nothing else. A linked skill folder is a source only when its `SKILL.md` is a regular file,
+not a link. A linked synced folder or account must have a child with a regular `SKILL.md`.
+Each linked folder is a source on its own, so its unlinked neighbours stay closed.
+A plugin skill linked inside its install is read; one linked outside it is not.
+The app still reads Claude Code's plugin list itself to name the plugin folders. That file is
+at most 4 MiB.
+A source the reader would refuse is left out: `/`, home, any folder holding home or an assistant's
+folders, anything inside `~/.claude/state` or `~/.claude/crew`, a password or key folder,
+or a folder under the person's own deny rules. A skill there isn't listed.
 A root folder the reader can't read shows the “couldn't be read” note instead of stopping the list.
+A skill whose `SKILL.md` is a link outside the sources shows that note too. The terminal still
+lists it, but never copies the linked file: links inside a skill are never followed.
 There are at most 256 sources; 300 worked in the measured check.
 A panel already holds each seat's state lock, so it asks with `refresh-held`.
-The reader trusts that request because only the app and the person's own terminal can send it.
+The reader takes the lock if it is free. If it is busy, the reader trusts that the caller holds it,
+because only the app and the person's own terminal can send the request.
 
 The `voice` commands in the terminal still read outside the sandbox.

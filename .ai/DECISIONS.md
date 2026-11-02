@@ -299,6 +299,6 @@ launch as a library (VO11.1b) and the wiring (VO11.1c).
 
 ## 2026-11-02: skills through the reader (VO11.2d)
 
-- **Link targets are sources one by one.** Their parent folders would let the reader see unlinked neighbours.
-- **A refused source drops its skills.** It does not fail the skills screen.
+- **Link targets are sources one by one and must hold a skill.** Their parent folders would let the reader see unlinked neighbours.
+- **A refused source drops its skills.** It does not fail the skills screen. No source may be inside any assistant's state or crew folder.
 - **A panel asks with `refresh-held`.** It already holds each seat's state lock, so the lock does not pass across processes.

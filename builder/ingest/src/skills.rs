@@ -251,66 +251,110 @@ fn plugin_roots(home: &Path) -> Result<Vec<(String, PathBuf)>> {
 }
 /// The existing skill roots and linked folders discovery needs to read.
 pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
-    fn keep(paths: &mut Vec<(PathBuf, bool)>, path: PathBuf, folder: bool) -> bool {
+    fn keep(
+        paths: &mut Vec<(PathBuf, bool)>,
+        canonical: &mut Vec<PathBuf>,
+        path: PathBuf,
+        folder: bool,
+    ) -> bool {
         if fs::metadata(&path).is_ok_and(|m| if folder { m.is_dir() } else { m.is_file() }) {
             if !paths.iter().any(|(kept, _)| kept == &path) {
+                if let Ok(real) = path.canonicalize() {
+                    canonical.push(real);
+                }
                 paths.push((path, folder));
             }
             return true;
         }
         false
     }
-    fn linked(paths: &mut Vec<(PathBuf, bool)>, path: &Path, deny: &DenyList) {
+    fn holds_skill(path: &Path, depth: u8) -> bool {
+        if depth == 0 {
+            fs::symlink_metadata(path.join("SKILL.md")).is_ok_and(|m| m.is_file())
+        } else {
+            children(path, &mut vec![]).is_ok_and(|entries| {
+                entries
+                    .iter()
+                    .any(|(_, child)| holds_skill(child, depth - 1))
+            })
+        }
+    }
+    fn linked(
+        paths: &mut Vec<(PathBuf, bool)>,
+        canonical: &mut Vec<PathBuf>,
+        path: &Path,
+        skill_depth: u8,
+        install: Option<&Path>,
+        deny: &DenyList,
+    ) {
         if !fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
             return;
         }
         let Ok(target) = path.canonicalize() else {
             return;
         };
-        if deny.denied(&target)
-            || paths.iter().any(|(kept, _)| {
-                kept.canonicalize()
-                    .is_ok_and(|kept| target.starts_with(kept))
-            })
+        let has_skill = holds_skill(&target, skill_depth);
+        if install.is_some_and(|install| !target.starts_with(install))
+            || !has_skill
+            || deny.denied(&target)
+            || canonical.iter().any(|kept| target.starts_with(kept))
         {
             return;
         }
-        keep(paths, target, true);
+        if target.is_dir() {
+            paths.push((target.clone(), true));
+            canonical.push(target);
+        }
     }
     let deny = DenyList::builtin();
     let mut paths = vec![];
+    let mut canonical = vec![];
     let mut roots = vec![];
     let claude = home.join(".claude/skills");
-    if keep(&mut paths, claude.clone(), true) {
+    if keep(&mut paths, &mut canonical, claude.clone(), true) {
         roots.push(claude);
     }
     keep(
         &mut paths,
+        &mut canonical,
         home.join(".claude/plugins/installed_plugins.json"),
         false,
     );
     if let Ok(plugins) = plugin_roots(home) {
         for (_, install) in plugins {
-            keep(&mut paths, install.join("skills"), true);
+            let root = install.join("skills");
+            if keep(&mut paths, &mut canonical, root.clone(), true)
+                && let Ok(entries) = children(&root, &mut vec![])
+            {
+                for (_, child) in entries {
+                    linked(&mut paths, &mut canonical, &child, 0, Some(&install), &deny);
+                }
+            }
         }
     }
     for project in rules.projects() {
         if !deny.denied(project) {
             let root = project.join(".claude/skills");
-            if keep(&mut paths, root.clone(), true) {
+            if keep(&mut paths, &mut canonical, root.clone(), true) {
                 roots.push(root);
             }
         }
     }
     let codex = home.join(".codex/skills");
-    if keep(&mut paths, codex.clone(), true) {
+    if keep(&mut paths, &mut canonical, codex.clone(), true) {
         roots.push(codex);
     }
     let mut notes = vec![];
     for root in roots {
         if let Ok(entries) = children(&root, &mut notes) {
-            for (_, child) in entries {
-                linked(&mut paths, &child, &deny);
+            for (name, child) in entries {
+                // A synced root holds accounts; each account holds skills.
+                let skill_depth = if root == home.join(".claude/skills") && name == "synced" {
+                    2
+                } else {
+                    0
+                };
+                linked(&mut paths, &mut canonical, &child, skill_depth, None, &deny);
             }
         }
     }
@@ -319,10 +363,10 @@ pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
             if !account.is_dir() || deny.denied(&account) {
                 continue;
             }
-            linked(&mut paths, &account, &deny);
+            linked(&mut paths, &mut canonical, &account, 1, None, &deny);
             if let Ok(entries) = children(&account, &mut notes) {
                 for (_, child) in entries {
-                    linked(&mut paths, &child, &deny);
+                    linked(&mut paths, &mut canonical, &child, 0, None, &deny);
                 }
             }
         }

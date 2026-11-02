@@ -32,6 +32,15 @@ fn locked(home: &Path, slug: &str) -> Result<(Member, private::StateLock)> {
     })?;
     Ok((listed.member, lock))
 }
+pub(crate) fn checked(mut result: dto::Skills) -> dto::Skills {
+    result.notes.retain(|note| {
+        matches!(
+            note.as_str(),
+            skills::UNREADABLE_NOTE | skills::SYNCED_TWICE_NOTE | skills::PLUGIN_NOTE
+        )
+    });
+    result
+}
 fn list(home: &Path, member: &Member) -> Result<dto::Skills> {
     let rules = Rules::for_member(member, home).map_err(|_| failure(SKILLS_READ))?;
     let found = skills::discover(home, &rules).map_err(|_| failure(SKILLS_READ))?;
@@ -59,21 +68,12 @@ fn list(home: &Path, member: &Member) -> Result<dto::Skills> {
         })
         .collect();
     rows.sort_by_key(|row| row.state != dto::SkillState::Waiting);
-    let notes = found
-        .notes
-        .into_iter()
-        .filter(|note| {
-            matches!(
-                note.as_str(),
-                skills::UNREADABLE_NOTE | skills::SYNCED_TWICE_NOTE | skills::PLUGIN_NOTE
-            )
-        })
-        .collect();
-    Ok(dto::Skills {
+    Ok(checked(dto::Skills {
         skills: rows,
-        notes,
-    })
+        notes: found.notes,
+    }))
 }
+
 pub fn list_skills_in(home: &Path, request: dto::SlugRequest) -> Result<dto::Skills> {
     let (member, _lock) = locked(home, &request.slug)?;
     list(home, &member)
@@ -142,10 +142,15 @@ pub fn refresh_skills_in(home: &Path, request: dto::SlugRequest) -> Result<dto::
     let (member, _lock) = locked(home, &request.slug)?;
     refresh(home, &member)
 }
-/// For a caller that already holds this assistant's state lock (a running panel);
-/// anyone else uses `refresh_skills_in`.
+/// For a running panel: take the state lock if free, or trust the caller holds it
+/// when it is busy. Anyone else uses `refresh_skills_in`.
 pub fn refresh_held_in(home: &Path, request: dto::SlugRequest) -> Result<dto::SkillsRefreshed> {
     let member = listed(home, &request.slug)?.member;
+    let _lock = match private::lock_state(home, &member.slug) {
+        Ok(lock) => Some(lock),
+        Err(Error::Invalid(text)) if text == private::BUSY => None,
+        Err(_) => return Err(failure(SKILLS_READ)),
+    };
     refresh(home, &member)
 }
 fn refresh(home: &Path, member: &Member) -> Result<dto::SkillsRefreshed> {

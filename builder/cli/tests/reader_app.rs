@@ -651,3 +651,43 @@ fn skills_linked_into_a_members_denied_folder_are_not_listed() {
     assert_eq!(answer.skills.len(), 5);
     assert!(!answer.skills.iter().any(|row| row.id == "claude:linked"));
 }
+
+#[test]
+fn skills_linked_into_another_assistants_folders_are_not_listed() {
+    if !available() {
+        return;
+    }
+    let h = Home::new(false);
+    skill(&h.path.join(".claude/skills/plain"));
+    for root in ["state", "crew"] {
+        let target = h.path.join(".claude").join(root).join("other/notes");
+        skill(&target);
+        std::os::unix::fs::symlink(target, h.path.join(".claude/skills").join(root)).unwrap();
+    }
+    let answer = reader_client::list_skills(&h.path, &h.place(), slug()).unwrap();
+    assert_eq!(answer.skills.len(), 1);
+    assert_eq!(answer.skills[0].id, "claude:plain");
+}
+
+#[test]
+fn a_linked_skill_file_outside_sources_is_noted_and_never_copied() {
+    if !available() {
+        return;
+    }
+    let h = Home::new(false);
+    let folder = h.path.join(".claude/skills/notes");
+    fs::create_dir_all(&folder).unwrap();
+    let target = h.outside.join("SKILL.md");
+    fs::write(&target, CANARY).unwrap();
+    std::os::unix::fs::symlink(target, folder.join("SKILL.md")).unwrap();
+    let terminal = list_skills_in(&h.path, slug()).unwrap();
+    assert_eq!(terminal.skills.len(), 1);
+    let answer = reader_client::list_skills(&h.path, &h.place(), slug()).unwrap();
+    assert!(answer.skills.is_empty());
+    assert_eq!(answer.notes, vec![voice_ingest::skills::UNREADABLE_NOTE]);
+    agree_skills_in(&h.path, skill_request(&["claude:notes"])).unwrap();
+    refresh_skills_in(&h.path, slug()).unwrap();
+    assert!(!h.state().join("mirror/notes/SKILL.md").exists());
+    no_canary_in(&h.state());
+    h.no_runs();
+}

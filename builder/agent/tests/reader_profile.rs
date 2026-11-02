@@ -685,10 +685,17 @@ fn usable_keeps_only_accepted_sources_in_order() {
     let diary = source.0.join("diary");
     let in_state = folders.state.0.join("source");
     let in_runs = folders.runs.0.join("source");
+    let other_state = folders.home.0.join(".claude/state/other/source");
+    let other_crew = folders.home.0.join(".claude/crew/other/source");
+    for path in [&other_state, &other_crew] {
+        fs::create_dir_all(path).unwrap();
+    }
     for path in [&ssh, &diary, &in_state, &in_runs] {
         fs::create_dir(path).unwrap();
     }
     let deny = DenyList::new(&folders.home.0, &["diary".into()]).unwrap();
+    let state_root = folders.home.0.join(".claude/state");
+    let crew_root = folders.home.0.join(".claude/crew");
     let sources = [
         Source::Folder(&source.0),
         Source::File(&missing),
@@ -698,6 +705,10 @@ fn usable_keeps_only_accepted_sources_in_order() {
         Source::Folder(folders.state.0.parent().unwrap()),
         Source::Folder(&in_state),
         Source::Folder(&in_runs),
+        Source::Folder(&other_state),
+        Source::Folder(&other_crew),
+        Source::Folder(&state_root),
+        Source::Folder(&crew_root),
         Source::Folder(&ssh),
         Source::Folder(&diary),
         Source::Folder(&source.0),
