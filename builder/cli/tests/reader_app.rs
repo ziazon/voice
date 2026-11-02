@@ -455,3 +455,38 @@ fn a_download_under_ssh_is_refused_without_saving_a_choice() {
     );
     assert!(!h.state().join("claudeai-export.json").exists());
 }
+
+#[test]
+fn a_deny_rule_added_after_choosing_shows_the_deny_sentence() {
+    if !available() {
+        return;
+    }
+    let h = Home::new(true);
+    let export = h.export();
+    choose_claudeai_export_in(&h.path, "pebble", &export, true).unwrap();
+    let config = h.path.join(".claude/crew/pebble/member.json");
+    let mut member: serde_json::Value =
+        serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
+    member["filters"]["denied_paths"] = json!(["~/Downloads/export"]);
+    fs::write(config, serde_json::to_vec(&member).unwrap()).unwrap();
+    let expected = "~/Downloads/export is a kind of file that holds passwords or keys, so Voice never opens it. Choose another file.";
+    assert_eq!(
+        reader_client::claudeai_export_status(&h.path, &h.place(), slug())
+            .unwrap_err()
+            .message,
+        expected
+    );
+    assert_eq!(
+        reader_client::list_claudeai_chats(&h.path, &h.place(), slug())
+            .unwrap_err()
+            .message,
+        expected
+    );
+    assert_eq!(
+        reader_client::read_claudeai(&h.path, &h.place(), slug(), &mut |_| {})
+            .unwrap_err()
+            .message,
+        expected
+    );
+    h.no_runs();
+}

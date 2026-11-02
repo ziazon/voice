@@ -284,14 +284,24 @@ fn chat_list(rows: Vec<claudeai::ReviewRow>) -> ChatList {
     }
     list
 }
-pub fn choose_claudeai_export_in(home: &Path, slug: &str, path: &Path, folder: bool) -> Result<()> {
-    let (member, _lock) = locked(home, slug)?;
-    let deny = DenyList::for_member(&member, home).map_err(|e| failure(&e.to_string()))?;
+pub(crate) fn export_allowed(
+    member: &Member,
+    home: &Path,
+    path: &Path,
+    folder: bool,
+) -> Result<()> {
+    let deny = DenyList::for_member(member, home).map_err(|e| failure(&e.to_string()))?;
     deny.check(path).map_err(|e| failure(&e.to_string()))?;
     if folder {
         deny.check(&path.join("conversations.json"))
             .map_err(|e| failure(&e.to_string()))?;
     }
+    Ok(())
+}
+
+pub fn choose_claudeai_export_in(home: &Path, slug: &str, path: &Path, folder: bool) -> Result<()> {
+    let (member, _lock) = locked(home, slug)?;
+    export_allowed(&member, home, path, folder)?;
     let metadata = fs::metadata(path).map_err(|e| {
         failure(if e.kind() == std::io::ErrorKind::NotFound {
             EXPORT_GONE

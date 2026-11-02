@@ -1,12 +1,12 @@
 //! One sandboxed run of Voice's own reader, the shipped `voice` command; see
 //! docs/spikes/VO11-os-sandbox.md.
 
-use crate::{sandbox, text};
+use crate::{sandbox, spawn, text};
 #[cfg(target_os = "macos")]
 use std::collections::BTreeSet;
 use std::{
     ffi::OsString,
-    fs,
+    fs, io,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -173,9 +173,8 @@ impl Reader {
         PROFILE.replacen(";; sources", &rules, 1)
     }
 
-    pub fn command(&self, args: &[&str]) -> Command {
-        let mut command = Command::new(sandbox::SANDBOX_EXEC);
-        command.arg("-p").arg(self.profile());
+    fn launch(&self, args: &[&str]) -> (Vec<OsString>, Vec<(OsString, OsString)>) {
+        let mut argv = vec![OsString::from("-p"), self.profile().into()];
         for (name, path) in [
             ("PROGRAM", &self.program),
             ("MEMBER_DIR", &self.member),
@@ -184,35 +183,93 @@ impl Reader {
         ] {
             let mut parameter = OsString::from(format!("{name}="));
             parameter.push(path);
-            command.arg("-D").arg(parameter);
+            argv.extend([OsString::from("-D"), parameter]);
         }
         for (index, (_, path)) in self.sources.iter().enumerate() {
             let mut parameter = OsString::from(format!("SOURCE_{index}="));
             parameter.push(path);
-            command.arg("-D").arg(parameter);
+            argv.extend([OsString::from("-D"), parameter]);
         }
         for (index, path) in self.ancestors.iter().enumerate() {
             let mut parameter = OsString::from(format!("ANCESTOR_{index}="));
             parameter.push(path);
-            command.arg("-D").arg(parameter);
+            argv.extend([OsString::from("-D"), parameter]);
         }
-        command.arg(&self.program).args(args).current_dir(&self.run);
-        command.env_clear().env("HOME", &self.home);
+        argv.push(self.program.as_os_str().to_owned());
+        argv.extend(args.iter().map(OsString::from));
+        let mut env = vec![(OsString::from("HOME"), self.home.as_os_str().to_owned())];
         if let Some(login) = sandbox::login_name() {
-            command.env("USER", &login).env("LOGNAME", login);
+            env.extend([
+                (OsString::from("USER"), login.clone().into()),
+                (OsString::from("LOGNAME"), login.into()),
+            ]);
         }
-        command
-            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
-            .env("LANG", sandbox::language());
+        env.extend([
+            (
+                OsString::from("PATH"),
+                OsString::from("/usr/bin:/bin:/usr/sbin:/sbin"),
+            ),
+            (OsString::from("LANG"), sandbox::language().into()),
+        ]);
         let mut tmp = self.run.as_os_str().to_owned();
         tmp.push("/");
-        command.env("TMPDIR", tmp);
+        env.push((OsString::from("TMPDIR"), tmp));
+        (argv, env)
+    }
+
+    pub fn command(&self, args: &[&str]) -> Command {
+        let (argv, env) = self.launch(args);
+        let mut command = Command::new(sandbox::SANDBOX_EXEC);
         command
+            .args(argv)
+            .env_clear()
+            .envs(env)
+            .current_dir(&self.run);
+        command
+    }
+
+    pub fn spawn(&self, args: &[&str]) -> io::Result<spawn::Spawned> {
+        let (argv, env) = self.launch(args);
+        spawn::spawn(Path::new(sandbox::SANDBOX_EXEC), &argv, &env, &self.run)
     }
 }
 
 impl Drop for Reader {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.run);
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    #[test]
+    fn the_reader_spawn_matches_its_command() {
+        let reader = std::mem::ManuallyDrop::new(Reader {
+            program: "/bin/cat".into(),
+            member: "member".into(),
+            state: "state".into(),
+            run: std::env::temp_dir().join("voice-unused-reader-launch"),
+            sources: vec![(true, "source".into())],
+            ancestors: vec!["ancestor".into()],
+            home: "home".into(),
+        });
+        let (argv, env) = reader.launch(&["argument"]);
+        let command = reader.command(&["argument"]);
+        assert_eq!(argv, command.get_args().collect::<Vec<_>>());
+        let expected = env
+            .into_iter()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let actual = command
+            .get_envs()
+            .map(|(k, v)| (k.to_owned(), v.unwrap().to_owned()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(
+            expected.keys().collect::<Vec<_>>(),
+            actual.keys().collect::<Vec<_>>()
+        );
+        // Compare without printing environment values on failure.
+        assert!(expected == actual);
+        assert_eq!(command.get_current_dir(), Some(reader.run_folder()));
     }
 }

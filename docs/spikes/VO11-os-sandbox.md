@@ -220,7 +220,13 @@ Anything outside the protocol (an early exit, too much output, a line that isn't
 A reader silent for 10 minutes, or one that keeps its output open 5 seconds after its answer, is stopped.
 The 5-second limit also covers a reader that closes its output but does not exit.
 Only Voice's own fixed sentences from the reader are shown; any other refusal becomes the step's own sentence.
-Known limit: Rust's process spawn on macOS sets close-on-exec on a new pipe in a second step, so a reader started at the same moment as another child of the app can inherit that child's pipe; the deadlines bound the wait (VO11.2c.2 moves the spawn to `posix_spawn` with close-by-default).
+The reader starts through `posix_spawn` with `POSIX_SPAWN_CLOEXEC_DEFAULT`, so it gets only stdin, stdout and stderr, measured inside the reader (`builder/agent/tests/reader_spawn.rs`).
+The test compares each descriptor the reader holds with the app's own by device and inode, not by number: under the profile a program also holds a Unix socket it opens itself at start, the system log socket `system.sb` lets every sandboxed program reach (measured 2026-11-02, with the app holding only fds 0 to 2).
+The app's other children still start through Rust's spawn, which on macOS sets close-on-exec on a pipe in a second step.
+One started at the same moment as a reader can inherit the app's end of the reader's pipes.
+Holding its stdout, the app sees a right answer but stops the run as `STOPPED` 5 seconds later; holding its stdin, the reader waits for the end of its request until that child exits or the app stops it after 10 silent minutes. Either way the person tries again.
+A panic while reading kills and reaps the reader.
+A password or key rule added after a download was chosen shows the password-or-key sentence.
 A download in a password or key folder is refused when chosen, with its own sentence.
 The download choice records whether it is a folder or a file, and the reader refuses one that has changed kind; a choice saved before this records neither, so it is asked for again.
 A missing `~/.claude/projects` is answered without starting the reader.

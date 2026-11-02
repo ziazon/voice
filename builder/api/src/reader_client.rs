@@ -10,12 +10,14 @@ use std::{
     fs,
     io::{BufRead, BufReader, Read, Write},
     path::Path,
-    process::Stdio,
     sync::mpsc,
     thread,
     time::Duration,
 };
-use voice_agent::reader::{Reader, Source};
+use voice_agent::{
+    reader::{Reader, Source},
+    spawn::Spawned,
+};
 use voice_core::{assistants, deny::DenyList, member};
 
 type Result<T> = std::result::Result<T, Failure>;
@@ -179,10 +181,7 @@ fn step_failure(step: Step) -> &'static str {
     }
 }
 
-fn wait_for_exit(
-    child: &mut std::process::Child,
-    limit: Duration,
-) -> Result<std::process::ExitStatus> {
+fn wait_for_exit(child: &mut Spawned, limit: Duration) -> Result<std::process::ExitStatus> {
     let started = std::time::Instant::now();
     loop {
         match child.try_wait() {
@@ -230,18 +229,25 @@ fn run<T: DeserializeOwned>(
         })
     })?;
     let bytes = serde_json::to_vec(request).map_err(|_| failure(reader::STOPPED))?;
-    let mut child = reader
-        .command(&["reader", step.name()])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
+    let child = reader
+        .spawn(&["reader", step.name()])
         .map_err(|_| failure(reader::STOPPED))?;
+    supervise(child, &bytes, step, progress, QUIET, AFTER)
+}
+
+fn supervise<T: DeserializeOwned>(
+    mut child: Spawned,
+    request: &[u8],
+    step: Step,
+    progress: &mut dyn FnMut(ReadProgress),
+    quiet: Duration,
+    after: Duration,
+) -> Result<T> {
     if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(&bytes);
+        let _ = stdin.write_all(request);
     }
     let judged = match child.stdout.take() {
-        Some(stdout) => judge_with_deadlines(stdout, step, progress, QUIET, AFTER, || {
+        Some(stdout) => judge_with_deadlines(stdout, step, progress, quiet, after, || {
             let _ = child.kill();
         }),
         None => {
@@ -249,7 +255,7 @@ fn run<T: DeserializeOwned>(
             Err(failure(reader::STOPPED))
         }
     };
-    let status = wait_for_exit(&mut child, AFTER)?;
+    let status = wait_for_exit(&mut child, after)?;
     judged?.finish(status.code())
 }
 
@@ -335,10 +341,11 @@ pub fn claudeai_export_status(
     place: &Place<'_>,
     request: SlugRequest,
 ) -> Result<Option<ExportStatus>> {
-    history::readable(home, &request.slug)?;
+    let member = history::readable(home, &request.slug)?;
     let Some((path, folder)) = history::chosen_export(home, &request.slug)? else {
         return Ok(None);
     };
+    history::export_allowed(&member, home, &path, folder)?;
     export_step(
         home,
         place,
@@ -354,9 +361,10 @@ pub fn list_claudeai_chats(
     place: &Place<'_>,
     request: SlugRequest,
 ) -> Result<ChatList> {
-    history::readable(home, &request.slug)?;
+    let member = history::readable(home, &request.slug)?;
     let (path, folder) = history::chosen_export(home, &request.slug)?
         .ok_or_else(|| failure(history::EXPORT_GONE))?;
+    history::export_allowed(&member, home, &path, folder)?;
     export_step(
         home,
         place,
@@ -373,9 +381,10 @@ pub fn read_claudeai(
     request: SlugRequest,
     progress: &mut dyn FnMut(ReadProgress),
 ) -> Result<ClaudeaiCounts> {
-    history::readable(home, &request.slug)?;
+    let member = history::readable(home, &request.slug)?;
     let (path, folder) = history::chosen_export(home, &request.slug)?
         .ok_or_else(|| failure(history::EXPORT_GONE))?;
+    history::export_allowed(&member, home, &path, folder)?;
     export_step(
         home,
         place,
@@ -405,12 +414,21 @@ mod tests {
     use serde_json::json;
     use std::io::Cursor;
 
+    #[cfg(target_os = "macos")]
+    fn shell(script: &str) -> Spawned {
+        voice_agent::spawn::spawn(
+            Path::new("/bin/sh"),
+            &["-c".into(), script.into()],
+            &[("PATH".into(), "/usr/bin:/bin".into())],
+            &std::env::temp_dir(),
+        )
+        .unwrap()
+    }
+
+    #[cfg(target_os = "macos")]
     #[test]
     fn a_reader_that_does_not_exit_is_killed() {
-        let mut child = std::process::Command::new("/bin/sleep")
-            .arg("5")
-            .spawn()
-            .unwrap();
+        let mut child = shell("exec /bin/sleep 5");
         let started = std::time::Instant::now();
         let result = wait_for_exit(&mut child, Duration::from_millis(100));
         assert!(started.elapsed() < Duration::from_secs(2));
@@ -418,9 +436,10 @@ mod tests {
         assert!(!child.try_wait().unwrap().unwrap().success());
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn a_reader_that_exits_returns_its_status() {
-        let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+        let mut child = shell("exec /usr/bin/true");
         assert!(
             wait_for_exit(&mut child, Duration::from_secs(5))
                 .unwrap()
@@ -687,5 +706,73 @@ mod tests {
                 .map(|done| ReadProgress { done, total: 8 })
                 .collect::<Vec<_>>()
         );
+    }
+    #[cfg(target_os = "macos")]
+    fn reaped(pid: u32) {
+        // SAFETY: signal zero only checks whether this pid exists.
+        assert_eq!(unsafe { libc::kill(pid as libc::pid_t, 0) }, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_silent_reader_is_killed_at_the_quiet_deadline() {
+        let child = shell("exec /bin/sleep 30");
+        let pid = child.id();
+        let started = std::time::Instant::now();
+        let result = supervise::<Option<ExportStatus>>(
+            child,
+            b"",
+            Step::ClaudeaiExportStatus,
+            &mut |_| {},
+            Duration::from_millis(200),
+            Duration::from_secs(3),
+        );
+        assert_eq!(result.unwrap_err().message, reader::STOPPED);
+        assert!(started.elapsed() < Duration::from_millis(1500));
+        reaped(pid);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_reader_that_closes_output_but_does_not_exit_is_killed() {
+        let child = shell("printf '{\"result\":null}\n'; exec >&-; exec /bin/sleep 30");
+        let pid = child.id();
+        let started = std::time::Instant::now();
+        let result = supervise::<Option<ExportStatus>>(
+            child,
+            b"",
+            Step::ClaudeaiExportStatus,
+            &mut |_| {},
+            Duration::from_secs(3),
+            Duration::from_millis(200),
+        );
+        assert_eq!(result.unwrap_err().message, reader::STOPPED);
+        assert!(started.elapsed() < Duration::from_millis(1500));
+        reaped(pid);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_panic_in_progress_kills_and_reaps_the_reader() {
+        let child = shell("printf '{\"progress\":{\"done\":1,\"total\":2}}\n'; exec /bin/sleep 30");
+        let pid = child.id();
+        let started = std::time::Instant::now();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            supervise::<ClaudeaiCounts>(
+                child,
+                b"",
+                Step::ReadClaudeai,
+                &mut |_| panic!("progress"),
+                Duration::from_secs(3),
+                Duration::from_millis(200),
+            )
+        }));
+        assert!(result.is_err());
+        assert!(started.elapsed() < Duration::from_millis(1500));
+        reaped(pid);
     }
 }
