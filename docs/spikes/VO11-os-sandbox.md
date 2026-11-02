@@ -161,13 +161,23 @@ removed from anything Claude Code printed. `--profile` is required and must be a
 folder (or one the probe made before), never the home folder, so the person's real Voice
 profile is never touched by accident.
 
+## Wired in (VO11.1, 2026-11-02)
+
+The owner chose the login file in Voice's own profile folder (V-Q10, option 1). Since VO11.1c,
+`claude.rs` starts every `claude` (the check's two runs, each call, the sign-in) through
+`/usr/bin/sandbox-exec` with this profile (`sandbox::Launch`, VO11.1b), each with a Rust `CONNECT`
+proxy of its own (`egress::Egress`, VO11.1a), and an environment built from nothing. One change
+from the plan above, measured on Mimi with Claude Code 2.1.292: a sandboxed `claude -p` leaves a
+`claude-<uid>/` folder in `CLAUDE_CODE_TMPDIR`. The run folder is therefore a fresh folder per launch
+(`runs/` beside the profile, removed when the launch ends), not the call's work folder, which
+would refuse the next call. While signing in, Claude Code hands its link to a helper in the run
+folder; the app checks it and opens it once with `/usr/bin/open`, and never shows it.
+
+Not yet verified: a signed-in sign-in and ask inside the sandbox, on a person's own Mac. That is
+the attended walk, through the app or with the probe above.
+
 ## Next
 
-- **VO11.1, run Claude Code in the sandbox** (waits on the owner's answer about the login): `claude.rs` starts every `claude`
-  through `/usr/bin/sandbox-exec` with this profile; the run folder is the call's work folder and
-  `CLAUDE_CODE_TMPDIR`; the environment is built from nothing; the egress proxy is Rust, in the app;
-  the sign-in runs with `SIGN_IN=yes`, and since the profile can't open the browser, the app opens
-  Claude's page itself without showing the link.
 - **VO11.2, the broker's reading in a helper of its own** (after VO11.1): the reading steps run in
   the CLI under a profile made per run from the consented sources, with no network; the app starts
   it and the `claude` child side by side.

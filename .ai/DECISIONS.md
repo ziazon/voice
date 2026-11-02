@@ -248,6 +248,34 @@ The app in `builder/` was Persona Builder; it is Voice now, everywhere (brief
   every deny-list canary's read is denied by Claude Code (`permission_denials`) and no canary's
   contents appear in the turn's output. Until both Macs have passed, nothing relies on the fence.
 
+## 2026-11-02: every `claude` runs in the sandbox (VO11.1c)
+
+Supersedes the VO11 entry's *Not wired in yet*. The owner chose a login file in Voice's own
+Claude Code folder (V-Q10, option 1), so VO11.1 went ahead in three parts: the proxy (VO11.1a), the
+launch as a library (VO11.1b) and the wiring (VO11.1c).
+
+- **One launch per `claude`, each with a proxy of its own.** The check's two runs, each call and
+  the sign-in each start `sandbox::Launch` with an `egress::Egress` that lives exactly as long as
+  the child. The environment is built from nothing, so no credential, provider switch or endpoint
+  of the person's reaches Claude Code. `ANTHROPIC_API_KEY` can't either, so the note saying it might
+  bill that key is gone.
+- **Each launch gets a fresh run folder, never the session's work folder.** Measured on Mimi:
+  a sandboxed `claude -p` leaves a `claude-<uid>/` folder in `CLAUDE_CODE_TMPDIR`, so a reused work
+  folder would refuse the next call. A fresh 0700 folder in `runs/` beside the profile is just as
+  empty and Voice-owned, and is removed when the launch ends. The work folder is gone.
+- **The app opens the sign-in page itself.** Claude Code hands its link to a helper in the run
+  folder. Voice checks it (`sandbox::valid_link`), opens it once with `/usr/bin/open`, and never
+  shows, logs or returns it. A link that fails the check, or a page that won't open, stops the
+  sign-in. `voice claude sign-in` works the same way, and Ctrl-C stops the sandboxed child too.
+- **Tests run stub `claude`s directly, never production.** A `#!` script can't run in the sandbox.
+  So the `voice-agent` feature `test-stubs`, enabled only from `[dev-dependencies]`, runs a script
+  directly with the same arguments and environment. Native programs go through `sandbox-exec` in
+  every build. `scripts/ci-local.sh` checks the CLI and app builds lack the feature and builds them
+  clean without it.
+- **Still owed: the walk.** Nobody has yet signed in and asked inside the sandbox on a person's own
+  Mac (lane V's walk list). Until that passes, the result rests on the stub tests and the signed-out
+  runs measured here.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
