@@ -29,6 +29,8 @@ pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 pub const HELPER: &str = "open-sign-in";
 pub const LINK: &str = "sign-in-link";
 pub const MAX_LINK: usize = 4096;
+// Claude Code 2.1.292's compiled client id, measured in the link handed to BROWSER.
+pub const CLAUDE_CODE_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 #[cfg(target_os = "macos")]
 const HELPER_SCRIPT: &str =
     "#!/bin/bash\numask 077\nprintf '%s\\n' \"$1\" > \"${0%/*}/sign-in-link\"\n";
@@ -91,13 +93,61 @@ pub fn resolve_program(program: &Path) -> Result<PathBuf> {
 
 /// Whether `link` is a sign-in page Voice may open.
 pub fn valid_link(link: &str) -> bool {
-    !link.is_empty()
-        && link.len() <= MAX_LINK
-        && link
+    if link.is_empty()
+        || link.len() > MAX_LINK
+        || !link
             .bytes()
-            .all(|byte| (0x21..=0x7e).contains(&byte) && !b"\"<>\\^`{|}".contains(&byte))
-        && (link.starts_with("https://claude.com/cai/oauth/authorize?")
+            .all(|byte| (0x21..=0x7e).contains(&byte) && !b"\"<>\\^`{|}#".contains(&byte))
+        || !(link.starts_with("https://claude.com/cai/oauth/authorize?")
             || link.starts_with("https://claude.ai/oauth/authorize?"))
+    {
+        return false;
+    }
+    let mut query = std::collections::HashMap::new();
+    for pair in link.split_once('?').unwrap().1.split('&') {
+        let Some((key, value)) = pair.split_once('=') else {
+            return false;
+        };
+        let Some(value) = decode_query_value(value) else {
+            return false;
+        };
+        if query.insert(key, value).is_some() {
+            return false;
+        }
+    }
+    if query.get("client_id").map(Vec::as_slice) != Some(CLAUDE_CODE_CLIENT_ID.as_bytes())
+        || query.get("response_type").map(Vec::as_slice) != Some(b"code")
+    {
+        return false;
+    }
+    let Some(callback) = query.get("redirect_uri") else {
+        return false;
+    };
+    let Some(port) = callback
+        .strip_prefix(b"http://localhost:")
+        .and_then(|rest| rest.strip_suffix(b"/callback"))
+    else {
+        return false;
+    };
+    (1..=5).contains(&port.len())
+        && port[0] != b'0'
+        && port.iter().all(u8::is_ascii_digit)
+        && std::str::from_utf8(port).unwrap().parse::<u16>().is_ok()
+}
+
+fn decode_query_value(value: &str) -> Option<Vec<u8>> {
+    let mut bytes = value.bytes();
+    let mut decoded = Vec::new();
+    while let Some(byte) = bytes.next() {
+        decoded.push(if byte == b'%' {
+            let high = char::from(bytes.next()?).to_digit(16)?;
+            let low = char::from(bytes.next()?).to_digit(16)?;
+            (high * 16 + low) as u8
+        } else {
+            byte
+        });
+    }
+    Some(decoded)
 }
 
 impl Launch {
@@ -126,12 +176,14 @@ impl Launch {
             return Err(invalid("the proxy port must be set"));
         }
         let program = resolve_program(program)?;
+        private_folder(profile).map_err(|_| invalid(text::PROFILE_FAILED))?;
         let profile = fs::canonicalize(profile).map_err(|_| invalid(text::PROFILE_FAILED))?;
         private_folder(&profile).map_err(|_| invalid(text::PROFILE_FAILED))?;
         let fresh = matches!(run, RunFolder::Fresh);
         let run = match run {
             RunFolder::Fresh => fresh_folder(&profile),
-            RunFolder::Given(path) => fs::canonicalize(path).and_then(|path| {
+            RunFolder::Given(path) => private_folder(path).and_then(|()| {
+                let path = fs::canonicalize(path)?;
                 private_folder(&path)?;
                 Ok(path)
             }),
@@ -227,7 +279,7 @@ impl Launch {
         let path = self.run.join(LINK);
         let file = match OpenOptions::new()
             .read(true)
-            .custom_flags(libc::O_NOFOLLOW)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
             .open(&path)
         {
             Ok(file) => file,

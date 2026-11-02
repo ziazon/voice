@@ -6,6 +6,8 @@ use std::{
 use voice_agent::{sandbox, text};
 use voice_core::error::Error;
 
+const SIGN_IN_LINK: &str = "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y";
+
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 struct Scratch(PathBuf);
@@ -53,14 +55,15 @@ fn valid_links_have_only_the_two_sign_in_pages_and_safe_ascii() {
         "https://claude.com/cai/oauth/authorize?",
         "https://claude.ai/oauth/authorize?",
     ] {
-        assert!(sandbox::valid_link(&format!("{prefix}x=1")));
-        assert!(sandbox::valid_link(prefix));
-        let exact = format!("{prefix}{}", "a".repeat(sandbox::MAX_LINK - prefix.len()));
+        let good = SIGN_IN_LINK.replace("https://claude.com/cai/oauth/authorize?", prefix);
+        assert!(sandbox::valid_link(&good));
+        assert!(!sandbox::valid_link(prefix));
+        let exact = format!("{good}{}", "a".repeat(sandbox::MAX_LINK - good.len()));
         assert!(sandbox::valid_link(&exact));
         assert!(!sandbox::valid_link(&format!("{exact}a")));
         for byte in 0..=255_u8 {
             if !(0x21..=0x7e).contains(&byte) || b"\"<>\\^`{|}".contains(&byte) {
-                let link = format!("{prefix}{}", char::from(byte));
+                let link = format!("{good}{}", char::from(byte));
                 assert!(!sandbox::valid_link(&link), "accepted byte {byte}");
             }
         }
@@ -78,7 +81,60 @@ fn valid_links_have_only_the_two_sign_in_pages_and_safe_ascii() {
         "https://claude.ai/oauth/authorize@x?a",
         "https://claude.ai/oauth/authorizex?a",
     ] {
-        assert!(!sandbox::valid_link(link), "accepted {link:?}");
+        let link = link.replace(
+            "?a",
+            &format!("?{}", SIGN_IN_LINK.split_once('?').unwrap().1),
+        );
+        assert!(!sandbox::valid_link(&link), "accepted {link:?}");
+    }
+}
+
+#[test]
+fn sign_in_requires_the_claude_code_client_and_local_callback() {
+    for port in ["1", "65535"] {
+        assert!(sandbox::valid_link(&SIGN_IN_LINK.replace("59244", port)));
+    }
+    assert!(sandbox::valid_link(
+        &SIGN_IN_LINK.replace("code=true", "code=a+b=c")
+    ));
+    assert!(sandbox::valid_link(
+        &SIGN_IN_LINK.replace("response_type=code", "response_type=%63ode")
+    ));
+    let mut invalid = vec![
+        SIGN_IN_LINK.replace("9d1c250a-e61b-44d9-88ed-5944d1962f5e", "other"),
+        format!("{SIGN_IN_LINK}&client_id=other"),
+        format!("{SIGN_IN_LINK}&response_type=code"),
+        format!("{SIGN_IN_LINK}&redirect_uri=http%3A%2F%2Flocalhost%3A1%2Fcallback"),
+        format!("{SIGN_IN_LINK}&state=z"),
+        SIGN_IN_LINK.replace(
+            "&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback",
+            "",
+        ),
+        SIGN_IN_LINK.replace("&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e", ""),
+        SIGN_IN_LINK.replace("&response_type=code", ""),
+        SIGN_IN_LINK.replace("response_type=code", "response_type=token"),
+        format!("{SIGN_IN_LINK}&broken"),
+        format!("{SIGN_IN_LINK}#fragment"),
+    ];
+    for callback in [
+        "https://example.com/callback",
+        "http://localhost.example.com:1/callback",
+        "http://localhost:0/callback",
+        "http://localhost:65536/callback",
+        "http://localhost:1/callback/x",
+        "http://127.0.0.1:1/callback",
+        "http://localhost:01/callback",
+        "http://localhost:000001/callback",
+        "http://localhost:+1/callback",
+        "http://localhost:/callback",
+    ] {
+        invalid.push(SIGN_IN_LINK.replace("http%3A%2F%2Flocalhost%3A59244%2Fcallback", callback));
+    }
+    for escape in ["%", "%2", "%GG"] {
+        invalid.push(format!("{SIGN_IN_LINK}&extra={escape}"));
+    }
+    for link in invalid {
+        assert!(!sandbox::valid_link(&link), "accepted {link}");
     }
 }
 
@@ -236,24 +292,45 @@ mod mac {
     }
 
     #[test]
-    fn resolves_profile_and_given_run_links_before_using_their_paths() {
+    fn refuses_a_symlink_in_place_of_the_profile() {
         let scratch = Scratch::new();
         let profile = profile(&scratch);
-        let profile_link = scratch.0.join("profile-link");
-        symlink(&profile, &profile_link).unwrap();
+        let link = scratch.0.join("profile-link");
+        symlink(&profile, &link).unwrap();
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &link,
+                &scratch.0,
+                RunFolder::Fresh,
+                4321,
+                false,
+            ),
+            text::PROFILE_FAILED,
+        );
+        assert!(!sandbox::runs_folder(&profile).exists());
+    }
+
+    #[test]
+    fn refuses_a_symlink_in_place_of_a_given_run() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
         let given = scratch.0.join("given");
         private(&given);
-        let given_link = scratch.0.join("run-link");
-        symlink(&given, &given_link).unwrap();
-        let launch = launch(
-            &profile_link,
-            &scratch.0,
-            RunFolder::Given(&given_link),
-            false,
+        let link = scratch.0.join("run-link");
+        symlink(&given, &link).unwrap();
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Given(&link),
+                4321,
+                false,
+            ),
+            text::RUN_FOLDER_FAILED,
         );
-        assert_eq!(launch.run_folder(), given);
-        let args: Vec<_> = launch.command(&[]).get_args().map(OsString::from).collect();
-        assert!(args.contains(&format!("PROFILE_DIR={}", profile.display()).into()));
+        assert_eq!(fs::read_dir(given).unwrap().count(), 0);
     }
 
     #[test]
@@ -571,7 +648,7 @@ mod mac {
         let launch = launch(&profile, &scratch.0, RunFolder::Fresh, true);
         let path = launch.run_folder().join(sandbox::LINK);
         assert_eq!(launch.sign_in_link(), Link::NotYet);
-        let good = "https://claude.com/cai/oauth/authorize?x=1";
+        let good = SIGN_IN_LINK;
         fs::write(&path, format!("{good}\n")).unwrap();
         assert_eq!(launch.sign_in_link(), Link::Ready(good.into()));
         assert!(!path.exists());
@@ -605,8 +682,7 @@ mod mac {
         fs::write(&path, invalid_utf8).unwrap();
         assert_eq!(launch.sign_in_link(), Link::Refused);
         assert!(!path.exists());
-        let prefix = "https://claude.ai/oauth/authorize?";
-        let exact = format!("{prefix}{}", "x".repeat(sandbox::MAX_LINK - prefix.len()));
+        let exact = format!("{good}{}", "x".repeat(sandbox::MAX_LINK - good.len()));
         fs::write(&path, &exact).unwrap();
         assert_eq!(launch.sign_in_link(), Link::NotYet);
         assert_eq!(fs::read(&path).unwrap(), exact.as_bytes());
@@ -626,6 +702,28 @@ mod mac {
         fs::remove_file(&path).unwrap();
         fs::create_dir(&path).unwrap();
         assert_eq!(launch.sign_in_link(), Link::Refused);
+    }
+
+    #[test]
+    fn a_sign_in_fifo_is_refused_without_waiting_for_a_writer() {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt, sync::mpsc, thread, time::Duration};
+
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let launch = launch(&profile, &scratch.0, RunFolder::Fresh, true);
+        let path = launch.run_folder().join(sandbox::LINK);
+        let name = CString::new(path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: name is a live, null-terminated path and the mode is valid.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let (send, receive) = mpsc::channel();
+        let reader = thread::spawn(move || send.send(launch.sign_in_link()).unwrap());
+        assert_eq!(
+            receive
+                .recv_timeout(Duration::from_secs(2))
+                .expect("FIFO reader blocked"),
+            Link::Refused,
+        );
+        reader.join().unwrap();
     }
 
     fn available() -> bool {
@@ -678,7 +776,7 @@ int main(int argc, char **argv) {
     if (fclose(file)) return 3;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "login")) {
-            execl("/bin/bash", "bash", "-c", "\"$BROWSER\" 'https://claude.com/cai/oauth/authorize?x=1'", NULL);
+            execl("/bin/bash", "bash", "-c", "\"$BROWSER\" 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y'", NULL);
             return 4;
         }
     }
@@ -730,10 +828,7 @@ int main(int argc, char **argv) {
             if sign_in {
                 assert!(output.status.success(), "{output:?}");
                 assert_eq!(mode(&launch.run_folder().join(sandbox::LINK)), 0o600);
-                assert_eq!(
-                    launch.sign_in_link(),
-                    Link::Ready("https://claude.com/cai/oauth/authorize?x=1".into())
-                );
+                assert_eq!(launch.sign_in_link(), Link::Ready(SIGN_IN_LINK.into()));
             } else {
                 assert!(!launch.run_folder().join(sandbox::LINK).exists());
             }

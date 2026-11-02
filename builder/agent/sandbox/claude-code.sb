@@ -4,7 +4,7 @@
 ; Claude Code checks certificates itself, so close the system certificate service, which can reach the network.
 (deny mach-lookup (global-name "com.apple.trustd") (global-name "com.apple.trustd.agent"))
 
-; The child may start only Claude Code itself, and while signing in the link helper.
+; The child may start only the program, plus the link helper and /bin/bash while signing in.
 (allow process-fork)
 (allow process-exec (literal (param "PROGRAM")))
 (if (string=? (param "SIGN_IN") "yes")
@@ -39,6 +39,8 @@
     (subpath (param "PROFILE_DIR"))
     (subpath (param "RUN_DIR"))
     (literal "/dev/null"))
+; The two folders cannot be moved, removed or replaced; their contents remain writable.
+(deny file-write-unlink file-write-create (literal (param "PROFILE_DIR")) (literal (param "RUN_DIR")))
 
 ; All outgoing traffic must go through the caller's local proxy.
 (allow network-outbound
@@ -79,3 +81,6 @@
 ; this one file, while .credentials.json stays denied everywhere else.
 (allow file-read* file-write*
     (literal (string-append (param "PROFILE_DIR") "/.credentials.json")))
+
+; The child may use the sign-in helper but cannot change or replace it.
+(deny file-write* (literal (string-append (param "RUN_DIR") "/open-sign-in")))

@@ -251,6 +251,60 @@ fn writes_only_the_profile_and_run_folders() {
 }
 
 #[test]
+fn folder_roots_cannot_move_but_their_contents_stay_writable() {
+    if !available() {
+        return;
+    }
+    for profile in [true, false] {
+        let sb = Sandbox::new();
+        for root in [&sb.profile.0, &sb.run.0] {
+            sb.touch(&root.join("file"), true);
+            let folder = root.join("subfolder");
+            let output = sb.run("/bin/mkdir", &[folder.to_str().unwrap()]);
+            assert_eq!(output.status.code(), Some(0), "{output:?}");
+            assert!(folder.is_dir());
+            sb.touch(&folder.join("file"), true);
+        }
+        let (source, destination) = if profile {
+            (&sb.profile.0, sb.run.0.join("moved-profile"))
+        } else {
+            (&sb.run.0, sb.profile.0.join("moved-run"))
+        };
+        let output = sb.run(
+            "/bin/mv",
+            &[source.to_str().unwrap(), destination.to_str().unwrap()],
+        );
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(source.is_dir());
+        assert!(!destination.exists());
+    }
+}
+
+#[test]
+fn signing_in_cannot_overwrite_the_helper() {
+    if !available() {
+        return;
+    }
+    let sb = Sandbox::new();
+    let helper = sb.run.0.join("open-sign-in");
+    let contents = b"#!/bin/bash\nexit 0\n";
+    fs::write(&helper, contents).unwrap();
+    fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+    let output = sb
+        .command("/bin/bash", 1, "yes", None)
+        .args([
+            "/bin/bash",
+            "-c",
+            "printf changed > \"$0\"",
+            helper.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(fs::read(helper).unwrap(), contents);
+}
+
+#[test]
 fn denies_every_secret_in_both_letter_cases() {
     if !available() {
         return;
@@ -525,7 +579,7 @@ fn the_helper_runs_only_while_signing_in() {
             .args([
                 "/bin/bash",
                 "-c",
-                "\"$0\" https://claude.com/cai/oauth/authorize?x=1",
+                "\"$0\" 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y'",
                 helper.to_str().unwrap(),
             ])
             .output()
@@ -534,7 +588,7 @@ fn the_helper_runs_only_while_signing_in() {
             assert!(output.status.success(), "{output:?}");
             assert_eq!(
                 fs::read(&link).unwrap(),
-                b"https://claude.com/cai/oauth/authorize?x=1\n"
+                b"https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y\n"
             );
             fs::remove_file(&link).unwrap();
         } else {

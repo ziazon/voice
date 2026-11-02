@@ -34,14 +34,41 @@ ASK_FLAGS = ['-p', '--model', 'haiku', '--safe-mode', '--no-session-persistence'
 
 
 MAX_LINK = 4096
+# Claude Code 2.1.292's compiled client id, measured in the link handed to BROWSER.
+CLAUDE_CODE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
 HELPER_SCRIPT = '#!/bin/bash\numask 077\nprintf \'%s\\n\' "$1" > "${0%/*}/sign-in-link"\n'
 
 
 def valid_link(link):
-    return (1 <= len(link) <= MAX_LINK
-            and all(0x21 <= ord(char) <= 0x7e and char not in '"<>\\^`{|}' for char in link)
+    if not (1 <= len(link) <= MAX_LINK
+            and all(0x21 <= ord(char) <= 0x7e and char not in '"<>\\^`{|}#' for char in link)
             and link.startswith(('https://claude.com/cai/oauth/authorize?',
-                                 'https://claude.ai/oauth/authorize?')))
+                                 'https://claude.ai/oauth/authorize?'))):
+        return False
+    query = {}
+    for pair in link.split('?', 1)[1].split('&'):
+        key, separator, value = pair.partition('=')
+        if not separator or key in query:
+            return False
+        decoded = bytearray()
+        index = 0
+        while index < len(value):
+            if value[index] == '%':
+                digits = value[index + 1:index + 3]
+                if len(digits) != 2 or any(char not in '0123456789abcdefABCDEF' for char in digits):
+                    return False
+                decoded.append(int(digits, 16))
+                index += 3
+            else:
+                decoded.append(ord(value[index]))
+                index += 1
+        query[key] = bytes(decoded)
+    if (query.get('client_id') != CLAUDE_CODE_CLIENT_ID.encode('ascii')
+            or query.get('response_type') != b'code'):
+        return False
+    callback = query.get('redirect_uri', b'')
+    return re.fullmatch(rb'http://localhost:([1-9][0-9]{0,4})/callback', callback) is not None and int(
+        callback[len(b'http://localhost:'):-len(b'/callback')]) <= 65535
 
 
 def open_sign_in_link(run):

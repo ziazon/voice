@@ -19,6 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
 import claude_sandbox_probe as probe
 
 
+SIGN_IN_LINK = 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y'
+
+
 class ProxyTests(unittest.TestCase):
     def setUp(self):
         self.calls = []
@@ -330,17 +333,52 @@ class ProbeTests(unittest.TestCase):
         check = getattr(probe, 'valid_link', None)
         self.assertTrue(callable(check), 'the probe needs one link check')
         prefix = 'https://claude.com/cai/oauth/authorize?'
-        for link in [prefix + 'x=1', 'https://claude.ai/oauth/authorize?x=1',
-                     prefix + 'x' * (4096 - len(prefix))]:
+        for link in [SIGN_IN_LINK, SIGN_IN_LINK.replace(prefix, 'https://claude.ai/oauth/authorize?'),
+                     SIGN_IN_LINK + 'x' * (4096 - len(SIGN_IN_LINK))]:
             self.assertTrue(check(link), link)
         for link in ['', 'http://claude.com/cai/oauth/authorize?a',
                      'https://claude.com.example/cai/oauth/authorize?a',
                      'https://claude.com/cai/oauth/authorize@x?a',
                      'https://claude.com/cai/oauth/authorizex?a',
-                     prefix + 'x' * (4097 - len(prefix))]:
+                     SIGN_IN_LINK + 'x' * (4097 - len(SIGN_IN_LINK))]:
+            link = link.replace('?a', '?' + SIGN_IN_LINK.split('?', 1)[1])
             self.assertFalse(check(link), link)
         for char in ' \t\n"<>\\^`{|}é':
-            self.assertFalse(check(prefix + char), repr(char))
+            self.assertFalse(check(SIGN_IN_LINK + char), repr(char))
+
+    def test_link_requires_the_claude_code_client_and_local_callback(self):
+        for port in ['1', '65535']:
+            self.assertTrue(probe.valid_link(SIGN_IN_LINK.replace('59244', port)))
+        self.assertTrue(probe.valid_link(SIGN_IN_LINK.replace('code=true', 'code=a+b=c')))
+        self.assertTrue(probe.valid_link(SIGN_IN_LINK.replace('response_type=code', 'response_type=%63ode')))
+        invalid = [
+            SIGN_IN_LINK.replace('9d1c250a-e61b-44d9-88ed-5944d1962f5e', 'other'),
+            SIGN_IN_LINK + '&client_id=other',
+            SIGN_IN_LINK + '&response_type=code',
+            SIGN_IN_LINK + '&redirect_uri=http%3A%2F%2Flocalhost%3A1%2Fcallback',
+            SIGN_IN_LINK + '&state=z',
+            SIGN_IN_LINK.replace('&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback', ''),
+            SIGN_IN_LINK.replace('&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e', ''),
+            SIGN_IN_LINK.replace('&response_type=code', ''),
+            SIGN_IN_LINK.replace('response_type=code', 'response_type=token'),
+            SIGN_IN_LINK + '&broken',
+            SIGN_IN_LINK + '#fragment',
+        ]
+        for callback in ['https://example.com/callback', 'http://localhost.example.com:1/callback',
+                         'http://localhost:0/callback', 'http://localhost:65536/callback',
+                         'http://localhost:1/callback/x', 'http://127.0.0.1:1/callback',
+                         'http://localhost:01/callback', 'http://localhost:000001/callback',
+                         'http://localhost:+1/callback', 'http://localhost:/callback']:
+            invalid.append(SIGN_IN_LINK.replace('http%3A%2F%2Flocalhost%3A59244%2Fcallback', callback))
+        for escape in ['%', '%2', '%GG']:
+            invalid.append(SIGN_IN_LINK + '&extra=' + escape)
+        with patch.object(probe.subprocess, 'run') as opened:
+            for link in invalid:
+                with self.subTest(link=link):
+                    self.assertFalse(probe.valid_link(link))
+                    (self.run / 'sign-in-link').write_text(link + '\n')
+                    self.assertFalse(probe.open_sign_in_link(self.run))
+            opened.assert_not_called()
 
     def test_link_handoff_refuses_links_and_non_regular_files(self):
         check = getattr(probe, 'open_sign_in_link', None)
@@ -349,7 +387,7 @@ class ProbeTests(unittest.TestCase):
         with patch.object(probe.subprocess, 'run') as opened:
             self.assertIsNone(check(self.run))
             target = self.root / 'elsewhere'
-            target.write_text('https://claude.com/cai/oauth/authorize?x=1\n')
+            target.write_text(SIGN_IN_LINK + '\n')
             path.symlink_to(target)
             self.assertFalse(check(self.run))
             path.unlink()
@@ -362,7 +400,7 @@ class ProbeTests(unittest.TestCase):
 
     def test_link_handoff_waits_for_the_helper_to_finish_writing(self):
         path = self.run / 'sign-in-link'
-        link = 'https://claude.com/cai/oauth/authorize?x=1'
+        link = SIGN_IN_LINK
         with patch.object(probe.subprocess, 'run') as opened:
             for data in [b'', link.encode(), b'x' * probe.MAX_LINK]:
                 with self.subTest(size=len(data)):
@@ -394,7 +432,7 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(script.stat().st_mode), 0o700)
 
     def test_sign_in_opens_only_a_valid_helper_link(self):
-        link = 'https://claude.com/cai/oauth/authorize?x=1'
+        link = SIGN_IN_LINK
         for value, accepted in [(link + '\n', True), ('https://example.com/\n', False),
                                 ('x' * (probe.MAX_LINK + 1), False),
                                 (link + 'x' * 4096 + '\n', False),
