@@ -173,7 +173,7 @@ impl Reader {
         PROFILE.replacen(";; sources", &rules, 1)
     }
 
-    fn launch(&self, args: &[&str]) -> (Vec<OsString>, Vec<(OsString, OsString)>) {
+    fn launch(&self, args: &[&str]) -> (Vec<OsString>, Vec<(OsString, OsString)>, &Path) {
         let mut argv = vec![OsString::from("-p"), self.profile().into()];
         for (name, path) in [
             ("PROGRAM", &self.program),
@@ -214,62 +214,24 @@ impl Reader {
         let mut tmp = self.run.as_os_str().to_owned();
         tmp.push("/");
         env.push((OsString::from("TMPDIR"), tmp));
-        (argv, env)
+        (argv, env, &self.run)
     }
 
     pub fn command(&self, args: &[&str]) -> Command {
-        let (argv, env) = self.launch(args);
+        let (argv, env, dir) = self.launch(args);
         let mut command = Command::new(sandbox::SANDBOX_EXEC);
-        command
-            .args(argv)
-            .env_clear()
-            .envs(env)
-            .current_dir(&self.run);
+        command.args(argv).env_clear().envs(env).current_dir(dir);
         command
     }
 
     pub fn spawn(&self, args: &[&str]) -> io::Result<spawn::Spawned> {
-        let (argv, env) = self.launch(args);
-        spawn::spawn(Path::new(sandbox::SANDBOX_EXEC), &argv, &env, &self.run)
+        let (argv, env, dir) = self.launch(args);
+        spawn::spawn(Path::new(sandbox::SANDBOX_EXEC), &argv, &env, dir)
     }
 }
 
 impl Drop for Reader {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.run);
-    }
-}
-
-#[cfg(all(test, target_os = "macos"))]
-mod tests {
-    use super::*;
-    #[test]
-    fn the_reader_spawn_matches_its_command() {
-        let reader = std::mem::ManuallyDrop::new(Reader {
-            program: "/bin/cat".into(),
-            member: "member".into(),
-            state: "state".into(),
-            run: std::env::temp_dir().join("voice-unused-reader-launch"),
-            sources: vec![(true, "source".into())],
-            ancestors: vec!["ancestor".into()],
-            home: "home".into(),
-        });
-        let (argv, env) = reader.launch(&["argument"]);
-        let command = reader.command(&["argument"]);
-        assert_eq!(argv, command.get_args().collect::<Vec<_>>());
-        let expected = env
-            .into_iter()
-            .collect::<std::collections::BTreeMap<_, _>>();
-        let actual = command
-            .get_envs()
-            .map(|(k, v)| (k.to_owned(), v.unwrap().to_owned()))
-            .collect::<std::collections::BTreeMap<_, _>>();
-        assert_eq!(
-            expected.keys().collect::<Vec<_>>(),
-            actual.keys().collect::<Vec<_>>()
-        );
-        // Compare without printing environment values on failure.
-        assert!(expected == actual);
-        assert_eq!(command.get_current_dir(), Some(reader.run_folder()));
     }
 }

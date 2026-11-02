@@ -290,7 +290,7 @@ launch as a library (VO11.1b) and the wiring (VO11.1c).
 ## 2026-11-02: the reader starts with only stdin, stdout and stderr (VO11.2c.2)
 
 - **The reader starts through `posix_spawn` with close-by-default**, with only fds 0 to 2, instead of `Command`: Rust's macOS spawn can hand it another child's descriptors.
-- **The reverse case is a retry.** Another child started at the same moment can still inherit the app's end of the reader's stdin or stdout; the deadlines (5 seconds after an answer, 10 silent minutes) bound the wait and the person tries again.
+- **The reverse case is a retry.** Another child started while the reader's pipes are being made (marked close-on-exec a step later; macOS has no `pipe2`) can still inherit either end of its stdin or stdout; the deadlines (5 seconds after an answer, 10 silent minutes) bound the wait and the person tries again.
 
 ## Recordings
 
