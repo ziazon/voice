@@ -897,3 +897,24 @@ fn hard_linked_folder_export_is_refused_but_direct_file_is_read() {
     assert_eq!(direct.files, 1);
     assert_eq!(direct.conversations, conversations);
 }
+
+#[test]
+fn export_kind_must_match_the_opened_handle() {
+    let s = Scratch::new("export-kind");
+    let folder = s.0.join("export");
+    fs::create_dir(&folder).unwrap();
+    let file = folder.join("conversations.json");
+    fs::write(&file, "[]").unwrap();
+    let deny = DenyList::builtin();
+    assert!(claudeai::read_export_as(&folder, &deny, true).is_ok());
+    assert!(claudeai::read_export_as(&file, &deny, false).is_ok());
+    for (path, kind) in [(&folder, false), (&file, true)] {
+        assert_eq!(
+            error(claudeai::read_export_as(path, &deny, kind)),
+            format!(
+                "{} is not the kind of download Voice was given. Choose it again",
+                path.display()
+            )
+        );
+    }
+}

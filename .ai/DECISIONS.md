@@ -277,6 +277,14 @@ launch as a library (VO11.1b) and the wiring (VO11.1c).
   Mac (lane V's walk list). Until that passes, the result rests on the stub tests and the signed-out
   runs measured here.
 
+## 2026-11-02: the app reads through the reader (VO11.2c)
+
+- **The app reads history only through the sandboxed reader**, with exactly the step's source and its permission checked both before launch and inside the reader.
+- **Protocol violations are one fixed error.** Output is bounded and progress relayed line by line; a final line must agree with the exit status.
+- **The export kind is stored and enforced on the opened handle.** A choice without its kind must be made again.
+- **Missing projects need no reader.** With no `~/.claude/projects`, the in-process functions return their empty answers.
+- **macOS only.** Other platforms keep reading in-process; skills wait for VO11.2d.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.

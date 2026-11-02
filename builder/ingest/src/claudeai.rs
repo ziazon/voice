@@ -190,9 +190,16 @@ fn from_zip(file: File) -> Result<(usize, Vec<u8>)> {
     Ok((files, bytes))
 }
 
+pub fn read_export_as(path: &Path, deny: &DenyList, folder: bool) -> Result<Export> {
+    read_export_expected(path, deny, Some(folder))
+}
+
 /// The export's file count and its parsed conversations.json, from a zip, a folder or the file
 /// itself. Read in memory: nothing from the export is unpacked to disk.
 pub fn read_export(path: &Path, deny: &DenyList) -> Result<Export> {
+    read_export_expected(path, deny, None)
+}
+fn read_export_expected(path: &Path, deny: &DenyList, expected: Option<bool>) -> Result<Export> {
     deny.check(path)?;
     let io = |source| Error::Io {
         path: path.to_owned(),
@@ -200,6 +207,12 @@ pub fn read_export(path: &Path, deny: &DenyList) -> Result<Export> {
     };
     let mut file = open(path)?;
     let metadata = file.metadata().map_err(io)?;
+    if expected.is_some_and(|folder| metadata.is_dir() != folder) {
+        return Err(invalid(format!(
+            "{} is not the kind of download Voice was given. Choose it again",
+            path.display()
+        )));
+    }
     let (files, bytes) = if metadata.is_dir() {
         let inner = path.join(CONVERSATIONS);
         deny.check(&inner)?;

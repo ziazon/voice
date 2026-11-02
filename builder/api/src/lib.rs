@@ -37,3 +37,5 @@ pub use panels::*;
 
 pub mod skills;
 pub use skills::*;
+
+pub mod reader_client;

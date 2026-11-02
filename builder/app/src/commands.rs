@@ -134,7 +134,7 @@ pub fn choose_claudeai_export(
     };
     match chosen {
         None => Ok(None),
-        Some(path) => voice_api::use_claudeai_export(&slug, &path).map(Some),
+        Some(path) => voice_api::use_claudeai_export(&slug, &path, request.folder).map(Some),
     }
 }
 
