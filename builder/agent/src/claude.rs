@@ -585,13 +585,19 @@ impl Provider for Claude {
     }
 }
 
-fn open_in_browser(link: &str) -> std::io::Result<()> {
-    let status = Command::new("/usr/bin/open")
-        .arg(link)
+fn open_command(link: &str) -> Command {
+    let mut command = Command::new("/usr/bin/open");
+    command
+        .args(["-u", link])
+        .current_dir("/")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
+        .stderr(Stdio::null());
+    command
+}
+
+fn open_in_browser(link: &str) -> std::io::Result<()> {
+    let status = open_command(link).status()?;
     if status.success() {
         Ok(())
     } else {
@@ -626,6 +632,17 @@ pub fn stop_on_interrupt() -> &'static AtomicBool {
 mod tests {
     use super::*;
     use crate::sandbox;
+
+    #[test]
+    fn the_browser_opener_uses_a_url_from_the_root_folder() {
+        let command = open_command("https://claude.com/x");
+        assert_eq!(command.get_program(), "/usr/bin/open");
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            ["-u", "https://claude.com/x"]
+        );
+        assert_eq!(command.get_current_dir(), Some(Path::new("/")));
+    }
 
     #[test]
     fn every_native_launch_uses_its_own_proxy_and_sandbox() {

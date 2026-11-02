@@ -1445,16 +1445,20 @@ fn claude_check() -> Result<()> {
 }
 fn claude_sign_in() -> Result<()> {
     use voice_agent::{claude, text};
+    let stop = claude::stop_on_interrupt();
     let home = home()?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     let status = claude.status(&home)?;
+    if stop.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(Error::Invalid(text::SIGN_IN_STOPPED.into()));
+    }
     if status.signed_in {
         println!("{}", text::ready(&status.version));
         return Ok(());
     }
     println!("{}", text::SIGN_IN_WAITING);
-    let result = claude.sign_in(&home, claude::stop_on_interrupt());
+    let result = claude.sign_in(&home, stop);
     if let Err(Error::Invalid(message)) = &result
         && message == text::SIGN_IN_STOPPED
     {

@@ -260,6 +260,75 @@ esac"#,
     );
 }
 
+#[test]
+fn claude_sign_in_stops_on_ctrl_c_during_the_first_check() {
+    let f = Fixture::new();
+    f.stub(
+        r#"here="${0%/*}"
+case "$1 $2" in
+    '--version ') echo "$$" > "$here/pid"; sleep 2; echo '2.1.292 (Claude Code)';;
+    'auth status') echo '{"loggedIn":false}';;
+    'auth login') touch "$here/login"; sleep 30;;
+esac"#,
+    );
+    let mut cli = f
+        .command(&["claude", "sign-in"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let start = Instant::now();
+    loop {
+        if let Ok(text) = fs::read_to_string(f.bin.join("pid"))
+            && text.trim().parse::<u32>().is_ok()
+        {
+            break;
+        }
+        if cli.try_wait().unwrap().is_some() {
+            let out = cli.wait_with_output().unwrap();
+            panic!("first check did not start: {}", text(&out.stderr));
+        }
+        if start.elapsed() >= Duration::from_secs(5) {
+            cli.kill().unwrap();
+            let _ = cli.wait();
+            panic!("first check did not start");
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    let start = Instant::now();
+    assert!(
+        Command::new("/bin/kill")
+            .args(["-INT", &cli.id().to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    while cli.try_wait().unwrap().is_none() {
+        if start.elapsed() >= Duration::from_secs(10) {
+            cli.kill().unwrap();
+            let _ = cli.wait();
+            panic!("sign-in did not stop after Ctrl-C during the first check");
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    let out = cli.wait_with_output().unwrap();
+    assert!(!out.status.success());
+    assert!(out.status.code().is_some());
+    assert_eq!(
+        text(&out.stderr),
+        format!("voice: {}\n", voice_agent::text::SIGN_IN_STOPPED)
+    );
+    assert!(!f.bin.join("login").exists());
+    #[cfg(target_os = "macos")]
+    let profile = f.home.join("Library/Application Support/Voice/claude-code");
+    #[cfg(not(target_os = "macos"))]
+    let profile = f.home.join(".local/share/voice/claude-code");
+    match fs::read_dir(voice_agent::sandbox::runs_folder(&profile)) {
+        Ok(mut entries) => assert!(entries.next().is_none()),
+        Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::NotFound),
+    }
+}
+
 fn day_of(home: &Path) -> String {
     let _ = home;
     voice_agent::ledger::local_day(SystemTime::now())

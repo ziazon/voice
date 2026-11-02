@@ -270,8 +270,9 @@ launch as a library (VO11.1b) and the wiring (VO11.1c).
 - **Tests run stub `claude`s directly, never production.** A `#!` script can't run in the sandbox.
   So the `voice-agent` feature `test-stubs`, enabled only from `[dev-dependencies]`, runs a script
   directly with the same arguments and environment. Native programs go through `sandbox-exec` in
-  every build. `scripts/ci-local.sh` checks the CLI and app builds lack the feature and builds them
-  clean without it.
+  every build. Test builds of the CLI (`cargo test`, or any `--all-targets` build) carry the feature;
+  its shipping build and the app's don't. `scripts/ci-local.sh` checks, for every target, that the
+  CLI and app builds lack it, and builds them clean without it.
 - **Still owed: the walk.** Nobody has yet signed in and asked inside the sandbox on a person's own
   Mac (lane V's walk list). Until that passes, the result rests on the stub tests and the signed-out
   runs measured here.

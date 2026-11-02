@@ -26,15 +26,15 @@ if command -v cargo >/dev/null 2>&1; then
     echo 'VOICE_REQUIRE_PARITY=1 cargo test --locked'
     VOICE_REQUIRE_PARITY=1 cargo test --locked
   fi
-  echo 'cargo tree --locked -p voice-cli -e features,normal,build,dev -i voice-agent'
-  tree=$(cargo tree --locked -p voice-cli -e features,normal,build,dev -i voice-agent)
+  echo 'cargo tree --locked --target all -p voice-cli -e features,normal,build,dev -i voice-agent'
+  tree=$(cargo tree --locked --target all -p voice-cli -e features,normal,build,dev -i voice-agent)
   if ! grep -Fq 'voice-agent feature "test-stubs"' <<< "$tree"; then
     echo 'ci-local: voice-cli test feature check did not find test-stubs'
     exit 1
   fi
   for package in voice-cli voice-app; do
-    echo "cargo tree --locked -p $package -e features,normal,build -i voice-agent"
-    tree=$(cargo tree --locked -p "$package" -e features,normal,build -i voice-agent)
+    echo "cargo tree --locked --target all -p $package -e features,normal,build -i voice-agent"
+    tree=$(cargo tree --locked --target all -p "$package" -e features,normal,build -i voice-agent)
     if grep -Fq 'voice-agent feature "test-stubs"' <<< "$tree"; then
       echo "ci-local: $package builds voice-agent with test-stubs"
       exit 1
