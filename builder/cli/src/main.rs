@@ -437,6 +437,37 @@ enum Command {
         #[arg(long)]
         daily_cap_usd: Option<f64>,
     },
+    /// Read for the Voice app, inside its sandbox (not for use in a terminal)
+    #[command(hide = true)]
+    Reader { step: ReaderStep },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum ReaderStep {
+    #[value(name = "claude-code-folders")]
+    ClaudeCodeFolders,
+    #[value(name = "read-claude-code")]
+    ReadClaudeCode,
+    #[value(name = "claudeai-export-status")]
+    ClaudeaiExportStatus,
+    #[value(name = "list-claudeai-chats")]
+    ListClaudeaiChats,
+    #[value(name = "read-claudeai")]
+    ReadClaudeai,
+    #[value(name = "skills")]
+    Skills,
+}
+impl From<ReaderStep> for voice_api::reader::Step {
+    fn from(step: ReaderStep) -> Self {
+        match step {
+            ReaderStep::ClaudeCodeFolders => Self::ClaudeCodeFolders,
+            ReaderStep::ReadClaudeCode => Self::ReadClaudeCode,
+            ReaderStep::ClaudeaiExportStatus => Self::ClaudeaiExportStatus,
+            ReaderStep::ListClaudeaiChats => Self::ListClaudeaiChats,
+            ReaderStep::ReadClaudeai => Self::ReadClaudeai,
+            ReaderStep::Skills => Self::Skills,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -2235,6 +2266,23 @@ fn status(claude_home: Option<PathBuf>) -> Result<()> {
 
 fn run(cli: Cli) -> Result<std::process::ExitCode> {
     let result = match cli.command {
+        Some(Command::Reader { step }) => {
+            let home = std::env::var_os("HOME")
+                .filter(|home| !home.is_empty())
+                .map(PathBuf::from);
+            return Ok(
+                if voice_api::reader::serve(
+                    home.as_deref(),
+                    step.into(),
+                    &mut std::io::stdin().lock(),
+                    &mut std::io::stdout().lock(),
+                ) {
+                    std::process::ExitCode::SUCCESS
+                } else {
+                    std::process::ExitCode::FAILURE
+                },
+            );
+        }
         Some(Command::Skills { command }) => return skills::run(command),
         Some(Command::Anonymize { member_dir, out }) => return skills::anonymize(member_dir, out),
         Some(Command::Ceilings { command }) => ceilings(command),

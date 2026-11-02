@@ -190,3 +190,18 @@ is readable inside the sandbox and a file it can't open by path can't be written
 redirected stdout either.
 A hard link inside a source still reaches its file; the reader refuses those itself from VO11.2b.
 This library is not yet wired in: VO11.2b adds the reader command and VO11.2c connects the app.
+
+## The reader command (VO11.2b)
+
+The hidden `voice reader <step>` reads for the app inside its own sandbox.
+Its six steps are `claude-code-folders`, `read-claude-code`, `claudeai-export-status`,
+`list-claudeai-chats`, `read-claudeai` and `skills` (list, agree, withdraw or refresh).
+It takes one JSON request object on stdin, at most 64 KiB, and prints JSON lines:
+`progress` as it reads, then one final `result` or `error`, each at most 16 MiB.
+The API's permission, assistant slug and state lock checks run inside the reader.
+Folder walks leave out files with another name elsewhere on the computer (hard links),
+checking both the folder entry and the opened file. A chosen export file is still read.
+The reader checks this itself because Seatbelt checks paths, and a hard link has an allowed path.
+The state walk uses `O_SEARCH` for folders above the state folder: it passes through without
+listing them, then opens the assistant's state folder for reading, writing and locking.
+The terminal's regular commands still run outside the sandbox; the app connection comes next.
