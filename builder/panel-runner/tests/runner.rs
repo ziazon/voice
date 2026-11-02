@@ -90,6 +90,7 @@ impl Home {
             &self.0,
             &self.request(),
             &|_, _| true,
+            &|_| true,
             turns,
             turns.clock.as_ref(),
             stop,
@@ -106,6 +107,7 @@ impl Home {
             &self.0,
             &request,
             &|_, _| true,
+            &|_| true,
             turns,
             turns.clock.as_ref(),
             stop,
@@ -663,6 +665,7 @@ fn long_round_pauses_with_an_ask_and_requires_an_answer_before_resuming() {
         &home.0,
         &request,
         &|_, _| true,
+        &|_| true,
         &turns,
         turns.clock.as_ref(),
         &AtomicBool::new(false),
@@ -704,6 +707,7 @@ fn fifteen_minute_time_box_closes_after_nine_hundred_seconds() {
         &home.0,
         &request,
         &|_, _| true,
+        &|_| true,
         &turns,
         turns.clock.as_ref(),
         &AtomicBool::new(false),
@@ -859,6 +863,7 @@ fn bad_input(edit: impl FnOnce(&mut Convene), words: &[&str]) {
             &home.0,
             &request,
             &|_, _| true,
+            &|_| true,
             &turns,
             turns.clock.as_ref(),
             &AtomicBool::new(false),
@@ -937,6 +942,7 @@ fn assistant_without_consent_is_named_and_no_panel_is_created() {
             &home.0,
             &home.request(),
             &|_, slug| slug != "pebble",
+            &|_| true,
             &turns,
             turns.clock.as_ref(),
             &AtomicBool::new(false),
@@ -1131,6 +1137,7 @@ fn resume_seat_failure(kind: &str) {
             &home.0,
             &request_resume(ID),
             &consented,
+            &|_| true,
             &turns,
             turns.clock.as_ref(),
             &AtomicBool::new(false),
@@ -1222,4 +1229,53 @@ fn turning_on_creates_a_root_the_panel_runner_accepts() {
         err = room.err()
     );
     assert!(h.room(ID).is_dir());
+}
+
+fn injected_refresh(refreshed: bool, used: &[&str]) -> (Vec<String>, Vec<String>) {
+    let home = Home::new();
+    for slug in used {
+        fs::create_dir(home.0.join(".claude/state").join(slug).join("mirror")).unwrap();
+    }
+    let turns = Script::new(Mode::Agree);
+    let called = Mutex::new(Vec::new());
+    let mut warnings = Vec::new();
+    ok(convene(
+        &home.0,
+        &home.request(),
+        &|_, _| true,
+        &|member| {
+            called.lock().unwrap().push(member.slug.clone());
+            refreshed
+        },
+        &turns,
+        turns.clock.as_ref(),
+        &AtomicBool::new(false),
+        &mut |progress| {
+            if let Progress::SkillsNotRefreshed { seat, .. } = progress {
+                warnings.push(seat);
+            }
+        },
+    ));
+    (called.into_inner().unwrap(), warnings)
+}
+
+#[test]
+fn injected_failed_refresh_reports_each_seat_using_a_mirror() {
+    let (called, warnings) = injected_refresh(false, &["pebble", "quill"]);
+    assert_eq!(called, ["pebble", "quill"]);
+    assert_eq!(warnings, ["Pebble", "Quill"]);
+}
+
+#[test]
+fn injected_successful_refresh_does_not_report_a_failure() {
+    let (called, warnings) = injected_refresh(true, &["pebble", "quill"]);
+    assert_eq!(called, ["pebble", "quill"]);
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn injected_refresh_skips_a_seat_with_no_mirror_in_use() {
+    let (called, warnings) = injected_refresh(false, &["pebble"]);
+    assert_eq!(called, ["pebble"]);
+    assert_eq!(warnings, ["Pebble"]);
 }

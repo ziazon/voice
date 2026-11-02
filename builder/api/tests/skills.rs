@@ -384,18 +384,24 @@ fn failures_never_expose_paths_names_or_private_details() {
     fs::create_dir_all(&folder).unwrap();
     h.rules(serde_json::json!({"projects":["~/Pebble Freight"]}));
     let _mode = Mode::set(folder, 0);
-    safe(&h, list_skills_in(&h.0, slug()).unwrap_err(), READ);
-    safe(
-        &h,
-        agree_skills_in(&h.0, request(&["claude:notes"])).unwrap_err(),
-        READ,
+    assert_eq!(
+        list_skills_in(&h.0, slug()).unwrap().notes,
+        vec![skills::UNREADABLE_NOTE]
     );
-    safe(
-        &h,
-        withdraw_skills_in(&h.0, request(&["claude:notes"])).unwrap_err(),
-        READ,
+    assert_eq!(
+        agree_skills_in(&h.0, request(&["claude:notes"]))
+            .unwrap()
+            .notes,
+        vec![skills::UNREADABLE_NOTE]
     );
-    safe(&h, refresh_skills_in(&h.0, slug()).unwrap_err(), STALE);
+    assert_eq!(
+        withdraw_skills_in(&h.0, request(&["claude:notes"]))
+            .unwrap()
+            .skills
+            .notes,
+        vec![skills::UNREADABLE_NOTE]
+    );
+    assert!(refresh_skills_in(&h.0, slug()).is_ok());
 }
 #[test]
 fn refresh_removed_outcome_is_fixed_and_dto_contract_is_strict() {

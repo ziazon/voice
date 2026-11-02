@@ -6,6 +6,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path, sync::atomic::AtomicBool};
+use voice_core::member::Member;
 use voice_panels::{DeliberationState, RoundReport};
 
 /// The question and the assistants invited to discuss it.
@@ -223,6 +224,7 @@ pub fn convene(
     home: &Path,
     request: &Convene,
     consented: &dyn Fn(&Path, &str) -> bool,
+    refresh_mirror: &dyn Fn(&Member) -> bool,
     turns: &dyn Turns,
     clock: &dyn Clock,
     stop: &AtomicBool,
@@ -233,6 +235,7 @@ pub fn convene(
         &crate::room::new_id()?,
         request,
         consented,
+        refresh_mirror,
         turns,
         clock,
         stop,
@@ -247,6 +250,7 @@ pub fn convene_named(
     id: &str,
     request: &Convene,
     consented: &dyn Fn(&Path, &str) -> bool,
+    refresh_mirror: &dyn Fn(&Member) -> bool,
     turns: &dyn Turns,
     clock: &dyn Clock,
     stop: &AtomicBool,
@@ -273,7 +277,13 @@ pub fn convene_named(
     room.write("transcript.jsonl", b"")?;
     save_status(&room, &state, "running", None, clock)?;
     // ClaudeTurns' sessions or Seat::_session already hold every seat's state lock.
-    refresh_mirrors(home, &seats, state.round_no.saturating_add(1), progress);
+    refresh_mirrors(
+        home,
+        &seats,
+        state.round_no.saturating_add(1),
+        refresh_mirror,
+        progress,
+    );
     run(
         &room, &mut state, &metadata, &seats, turns, clock, stop, progress,
     )
@@ -332,6 +342,7 @@ pub fn resume(
     home: &Path,
     request: &Resume,
     consented: &dyn Fn(&Path, &str) -> bool,
+    refresh_mirror: &dyn Fn(&Member) -> bool,
     turns: &dyn Turns,
     clock: &dyn Clock,
     stop: &AtomicBool,
@@ -427,17 +438,28 @@ pub fn resume(
     }
     save_status(&room, &state, "running", None, clock)?;
     // ClaudeTurns' sessions or Seat::_session already hold every seat's state lock.
-    refresh_mirrors(home, &seats, state.round_no.saturating_add(1), progress);
+    refresh_mirrors(
+        home,
+        &seats,
+        state.round_no.saturating_add(1),
+        refresh_mirror,
+        progress,
+    );
     run(
         &room, &mut state, &metadata, &seats, turns, clock, stop, progress,
     )
 }
 
-fn refresh_mirrors(home: &Path, seats: &[Seat], round: u32, progress: &mut dyn FnMut(Progress)) {
-    let date = voice_agent::ledger::local_day(std::time::SystemTime::now());
+fn refresh_mirrors(
+    home: &Path,
+    seats: &[Seat],
+    round: u32,
+    refresh_mirror: &dyn Fn(&Member) -> bool,
+    progress: &mut dyn FnMut(Progress),
+) {
     for seat in seats {
         if voice_ingest::skills::mirror_in_use(home, &seat.member.slug)
-            && voice_ingest::skills::refresh(home, &seat.member, &date).is_err()
+            && !refresh_mirror(&seat.member)
         {
             progress(Progress::SkillsNotRefreshed {
                 round,

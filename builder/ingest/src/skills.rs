@@ -88,10 +88,16 @@ pub fn display_path(path: &Path, home: &Path) -> String {
         .to_string_lossy()
         .into_owned()
 }
-fn children(path: &Path) -> Result<Vec<(String, PathBuf)>> {
+fn children(path: &Path, notes: &mut Vec<String>) -> Result<Vec<(String, PathBuf)>> {
     let entries = match fs::read_dir(path) {
         Ok(e) => e,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            if !notes.iter().any(|note| note == UNREADABLE_NOTE) {
+                notes.push(UNREADABLE_NOTE.into());
+            }
+            return Ok(vec![]);
+        }
         Err(e) => return Err(io(path, e)),
     };
     let mut paths = vec![];
@@ -104,10 +110,16 @@ fn children(path: &Path) -> Result<Vec<(String, PathBuf)>> {
     paths.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(paths)
 }
-fn protect(protected: &mut Vec<PathBuf>, path: &Path) -> Result<()> {
+fn protect(protected: &mut Vec<PathBuf>, path: &Path, notes: &mut Vec<String>) -> Result<()> {
     let entries = match fs::read_dir(path) {
         Ok(e) => e,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            if !notes.iter().any(|note| note == UNREADABLE_NOTE) {
+                notes.push(UNREADABLE_NOTE.into());
+            }
+            return Ok(());
+        }
         Err(e) => return Err(io(path, e)),
     };
     for entry in entries {
@@ -161,8 +173,8 @@ fn root_skills(
     prefix: &str,
     path: &Path,
 ) -> Result<()> {
-    protect(&mut details.protected, path)?;
-    for (name, path) in children(path)? {
+    protect(&mut details.protected, path, &mut details.notes)?;
+    for (name, path) in children(path, &mut details.notes)? {
         if root == Root::Claude && name == "synced" {
             continue;
         }
@@ -237,6 +249,86 @@ fn plugin_roots(home: &Path) -> Result<Vec<(String, PathBuf)>> {
     }
     Ok(roots)
 }
+/// The existing skill roots and linked folders discovery needs to read.
+pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
+    fn keep(paths: &mut Vec<(PathBuf, bool)>, path: PathBuf, folder: bool) -> bool {
+        if fs::metadata(&path).is_ok_and(|m| if folder { m.is_dir() } else { m.is_file() }) {
+            if !paths.iter().any(|(kept, _)| kept == &path) {
+                paths.push((path, folder));
+            }
+            return true;
+        }
+        false
+    }
+    fn linked(paths: &mut Vec<(PathBuf, bool)>, path: &Path, deny: &DenyList) {
+        if !fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+            return;
+        }
+        let Ok(target) = path.canonicalize() else {
+            return;
+        };
+        if deny.denied(&target)
+            || paths.iter().any(|(kept, _)| {
+                kept.canonicalize()
+                    .is_ok_and(|kept| target.starts_with(kept))
+            })
+        {
+            return;
+        }
+        keep(paths, target, true);
+    }
+    let deny = DenyList::builtin();
+    let mut paths = vec![];
+    let mut roots = vec![];
+    let claude = home.join(".claude/skills");
+    if keep(&mut paths, claude.clone(), true) {
+        roots.push(claude);
+    }
+    keep(
+        &mut paths,
+        home.join(".claude/plugins/installed_plugins.json"),
+        false,
+    );
+    if let Ok(plugins) = plugin_roots(home) {
+        for (_, install) in plugins {
+            keep(&mut paths, install.join("skills"), true);
+        }
+    }
+    for project in rules.projects() {
+        if !deny.denied(project) {
+            let root = project.join(".claude/skills");
+            if keep(&mut paths, root.clone(), true) {
+                roots.push(root);
+            }
+        }
+    }
+    let codex = home.join(".codex/skills");
+    if keep(&mut paths, codex.clone(), true) {
+        roots.push(codex);
+    }
+    let mut notes = vec![];
+    for root in roots {
+        if let Ok(entries) = children(&root, &mut notes) {
+            for (_, child) in entries {
+                linked(&mut paths, &child, &deny);
+            }
+        }
+    }
+    if let Ok(accounts) = children(&home.join(".claude/skills/synced"), &mut notes) {
+        for (_, account) in accounts {
+            if !account.is_dir() || deny.denied(&account) {
+                continue;
+            }
+            linked(&mut paths, &account, &deny);
+            if let Ok(entries) = children(&account, &mut notes) {
+                for (_, child) in entries {
+                    linked(&mut paths, &child, &deny);
+                }
+            }
+        }
+    }
+    paths
+}
 pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
     let mut skills = BTreeMap::new();
     let mut found = Found::default();
@@ -248,13 +340,17 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
         "claude",
         &home.join(".claude/skills"),
     )?;
-    protect(&mut found.protected, &home.join(".claude/skills/synced"))?;
-    for (_, account) in children(&home.join(".claude/skills/synced"))? {
+    protect(
+        &mut found.protected,
+        &home.join(".claude/skills/synced"),
+        &mut found.notes,
+    )?;
+    for (_, account) in children(&home.join(".claude/skills/synced"), &mut found.notes)? {
         if !account.is_dir() || DenyList::builtin().denied(&account) {
             continue;
         }
-        protect(&mut found.protected, &account)?;
-        for (name, path) in children(&account)? {
+        protect(&mut found.protected, &account, &mut found.notes)?;
+        for (name, path) in children(&account, &mut found.notes)? {
             let id = format!("synced:{name}");
             let existed = skills.contains_key(&id);
             add(
@@ -290,7 +386,11 @@ pub fn discover(home: &Path, rules: &Rules) -> Result<Found> {
         Err(_) => found.notes.push(PLUGIN_NOTE.into()),
     }
     for project in rules.projects() {
-        protect(&mut found.protected, &project.join(".claude/skills"))?;
+        protect(
+            &mut found.protected,
+            &project.join(".claude/skills"),
+            &mut found.notes,
+        )?;
         let Some(name) = project.file_name().and_then(|s| s.to_str()) else {
             continue;
         };

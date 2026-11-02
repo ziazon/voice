@@ -9,6 +9,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
+use voice_core::member::Member;
 
 type Result<T> = std::result::Result<T, Failure>;
 pub use voice_panel_runner::text;
@@ -116,6 +117,7 @@ pub fn convene_panel_in(
     path: Option<&OsStr>,
     fallbacks: &[PathBuf],
     request: ConvenePanelRequest,
+    refresh_mirror: &dyn Fn(&Member) -> bool,
     progress: &mut dyn FnMut(PanelProgress),
 ) -> Result<PanelRan> {
     let id = runner::room::new_id().map_err(failure)?;
@@ -134,6 +136,7 @@ pub fn convene_panel_in(
         &id,
         &request,
         &consented,
+        refresh_mirror,
         &turns,
         &SystemClock::new(),
         &running.stop,
@@ -149,6 +152,7 @@ pub fn resume_panel_in(
     path: Option<&OsStr>,
     fallbacks: &[PathBuf],
     request: ResumePanelRequest,
+    refresh_mirror: &dyn Fn(&Member) -> bool,
     progress: &mut dyn FnMut(PanelProgress),
 ) -> Result<PanelRan> {
     let detail = runner::detail(home, &request.id).map_err(failure)?;
@@ -163,6 +167,7 @@ pub fn resume_panel_in(
         home,
         &request,
         &consented,
+        refresh_mirror,
         &turns,
         &SystemClock::new(),
         &running.stop,
@@ -298,6 +303,11 @@ pub fn panel_in(home: &Path, request: PanelIdRequest) -> Result<PanelDetail> {
             .transpose()?,
     })
 }
+/// Refresh a seat's skills copy in this process.
+pub fn refresh_mirror_here(home: &Path, member: &Member) -> bool {
+    let date = voice_agent::ledger::local_day(std::time::SystemTime::now());
+    voice_ingest::skills::refresh(home, member, &date).is_ok()
+}
 /// Start a panel using this app's home and Claude Code.
 pub fn convene_panel(
     request: ConvenePanelRequest,
@@ -310,6 +320,21 @@ pub fn convene_panel(
         std::env::var_os("PATH").as_deref(),
         &voice_agent::claude::fallbacks(&home),
         request,
+        #[cfg(target_os = "macos")]
+        &|member| {
+            crate::history::with_reader(|home, place| {
+                crate::reader_client::refresh_held(
+                    home,
+                    place,
+                    SlugRequest {
+                        slug: member.slug.clone(),
+                    },
+                )
+            })
+            .is_ok()
+        },
+        #[cfg(not(target_os = "macos"))]
+        &|member| refresh_mirror_here(&home, member),
         progress,
     )
 }
@@ -325,6 +350,21 @@ pub fn resume_panel(
         std::env::var_os("PATH").as_deref(),
         &voice_agent::claude::fallbacks(&home),
         request,
+        #[cfg(target_os = "macos")]
+        &|member| {
+            crate::history::with_reader(|home, place| {
+                crate::reader_client::refresh_held(
+                    home,
+                    place,
+                    SlugRequest {
+                        slug: member.slug.clone(),
+                    },
+                )
+            })
+            .is_ok()
+        },
+        #[cfg(not(target_os = "macos"))]
+        &|member| refresh_mirror_here(&home, member),
         progress,
     )
 }

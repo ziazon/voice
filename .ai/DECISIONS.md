@@ -296,3 +296,9 @@ launch as a library (VO11.1b) and the wiring (VO11.1c).
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
+
+## 2026-11-02: skills through the reader (VO11.2d)
+
+- **Link targets are sources one by one.** Their parent folders would let the reader see unlinked neighbours.
+- **A refused source drops its skills.** It does not fail the skills screen.
+- **A panel asks with `refresh-held`.** It already holds each seat's state lock, so the lock does not pass across processes.

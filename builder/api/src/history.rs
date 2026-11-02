@@ -469,7 +469,7 @@ pub fn can_read(request: SlugRequest) -> Result<()> {
     can_read_in(&home()?, request)
 }
 #[cfg(target_os = "macos")]
-fn with_reader<T>(
+pub(crate) fn with_reader<T>(
     work: impl FnOnce(&Path, &crate::reader_client::Place<'_>) -> Result<T>,
 ) -> Result<T> {
     use std::os::unix::fs::DirBuilderExt;

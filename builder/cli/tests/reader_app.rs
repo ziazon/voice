@@ -490,3 +490,164 @@ fn a_deny_rule_added_after_choosing_shows_the_deny_sentence() {
     );
     h.no_runs();
 }
+
+fn skill_request(ids: &[&str]) -> SkillsRequest {
+    SkillsRequest {
+        slug: "pebble".into(),
+        ids: ids.iter().map(|id| (*id).into()).collect(),
+    }
+}
+fn skill(folder: &Path) {
+    fs::create_dir_all(folder).unwrap();
+    fs::write(folder.join("SKILL.md"), "Keep the outline short.").unwrap();
+}
+fn skill_fixture(h: &Home) {
+    use std::os::unix::fs::symlink;
+    skill(&h.path.join(".claude/skills/plain"));
+    skill(&h.outside.join("elsewhere/kit"));
+    symlink(
+        h.outside.join("elsewhere/kit"),
+        h.path.join(".claude/skills/linked"),
+    )
+    .unwrap();
+    skill(&h.outside.join("elsewhere/synced-a/outline"));
+    fs::create_dir_all(h.path.join(".claude/skills/synced")).unwrap();
+    symlink(
+        h.outside.join("elsewhere/synced-a"),
+        h.path.join(".claude/skills/synced/account-a"),
+    )
+    .unwrap();
+    let project = h.path.join("project/.claude/skills");
+    fs::create_dir_all(&project).unwrap();
+    skill(&h.outside.join("elsewhere/project-skill"));
+    symlink(
+        h.outside.join("elsewhere/project-skill"),
+        project.join("review"),
+    )
+    .unwrap();
+    fs::create_dir_all(h.path.join(".codex/skills")).unwrap();
+    for name in ["first", "second"] {
+        let target = h.outside.join("elsewhere/codex").join(name);
+        skill(&target);
+        symlink(target, h.path.join(".codex/skills").join(name)).unwrap();
+    }
+    skill(&h.outside.join(".ssh/hidden"));
+    symlink(
+        h.outside.join(".ssh/hidden"),
+        h.path.join(".claude/skills/secret"),
+    )
+    .unwrap();
+    fs::write(
+        h.path.join(".claude/crew/pebble/private.json"),
+        json!({"anonymizer":{"projects":["~/project"]}}).to_string(),
+    )
+    .unwrap();
+    fs::create_dir_all(h.outside.join("elsewhere/unlinked")).unwrap();
+    fs::write(h.outside.join("elsewhere/unlinked/canary.txt"), CANARY).unwrap();
+}
+fn mirror_files(folder: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+    fn walk(root: &Path, folder: &Path, files: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>) {
+        for entry in fs::read_dir(folder).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                walk(root, &entry.path(), files);
+            } else {
+                files.insert(
+                    entry.path().strip_prefix(root).unwrap().to_owned(),
+                    fs::read(entry.path()).unwrap(),
+                );
+            }
+        }
+    }
+    let mut files = std::collections::BTreeMap::new();
+    walk(folder, folder, &mut files);
+    files
+}
+
+#[test]
+fn skills_list_agree_refresh_withdraw_and_refresh_held_match_the_api() {
+    if !available() {
+        return;
+    }
+    let h = Home::new(false);
+    skill_fixture(&h);
+    let expected = list_skills_in(&h.path, slug()).unwrap();
+    assert_eq!(expected.skills.len(), 6);
+    assert_eq!(
+        reader_client::list_skills(&h.path, &h.place(), slug()).unwrap(),
+        expected
+    );
+    let ids = [
+        "claude:plain",
+        "claude:linked",
+        "synced:outline",
+        "project:project:review",
+        "codex:first",
+        "codex:second",
+    ];
+    let expected = agree_skills_in(&h.path, skill_request(&ids)).unwrap();
+    fs::remove_file(h.state().join("anonymizer/skills.json")).unwrap();
+    assert_eq!(
+        reader_client::agree_skills(&h.path, &h.place(), skill_request(&ids)).unwrap(),
+        expected
+    );
+    let expected = refresh_skills_in(&h.path, slug()).unwrap();
+    assert_eq!(expected.copied, 6);
+    let mirror = h.state().join("mirror");
+    let expected_files = mirror_files(&mirror);
+    fs::remove_dir_all(&mirror).unwrap();
+    assert_eq!(
+        reader_client::refresh_skills(&h.path, &h.place(), slug()).unwrap(),
+        expected
+    );
+    assert_eq!(mirror_files(&mirror), expected_files);
+    let agreements = fs::read(h.state().join("anonymizer/skills.json")).unwrap();
+    let expected = withdraw_skills_in(&h.path, skill_request(&ids)).unwrap();
+    fs::write(h.state().join("anonymizer/skills.json"), &agreements).unwrap();
+    refresh_skills_in(&h.path, slug()).unwrap();
+    assert_eq!(
+        reader_client::withdraw_skills(&h.path, &h.place(), skill_request(&ids)).unwrap(),
+        expected
+    );
+    for (ids, message) in [
+        (
+            &["claude:missing"][..],
+            "That skill isn't on this computer any more. Look again.",
+        ),
+        (&[][..], "Choose a skill first."),
+    ] {
+        assert_eq!(
+            reader_client::agree_skills(&h.path, &h.place(), skill_request(ids))
+                .unwrap_err()
+                .message,
+            message
+        );
+    }
+    assert_eq!(
+        reader_client::withdraw_skills(&h.path, &h.place(), skill_request(&[]))
+            .unwrap_err()
+            .message,
+        "Choose a skill first."
+    );
+    let _lock = private::lock_state(&h.path, "pebble").unwrap();
+    assert!(reader_client::refresh_held(&h.path, &h.place(), slug()).is_ok());
+    no_canary_in(&h.state());
+    h.no_runs();
+}
+
+#[test]
+fn skills_linked_into_a_members_denied_folder_are_not_listed() {
+    if !available() {
+        return;
+    }
+    let h = Home::new(false);
+    skill_fixture(&h);
+    let config = h.path.join(".claude/crew/pebble/member.json");
+    let mut member: serde_json::Value =
+        serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
+    member["filters"]["denied_paths"] = json!([h.outside.join("elsewhere/kit")]);
+    fs::write(config, serde_json::to_vec(&member).unwrap()).unwrap();
+    let answer = reader_client::list_skills(&h.path, &h.place(), slug()).unwrap();
+    assert_eq!(answer.skills.len(), 5);
+    assert!(!answer.skills.iter().any(|row| row.id == "claude:linked"));
+}

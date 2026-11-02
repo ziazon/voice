@@ -14,6 +14,7 @@ fn convene_streams_rounds_and_closes_through_claude_code() {
         Some(h.bin.as_os_str()),
         &[],
         h.request(),
+        &|member| voice_api::panels::refresh_mirror_here(&h.path, member),
         &mut |p| progress.push(p),
     );
     assert!(result.is_ok(), "panel should close: {result:?}");
@@ -45,6 +46,7 @@ fn list_and_detail_return_the_closed_panels_dtos() {
         Some(h.bin.as_os_str()),
         &[],
         h.request(),
+        &|member| voice_api::panels::refresh_mirror_here(&h.path, member),
         &mut |_| {},
     );
     assert!(ran.is_ok(), "fixture panel should close: {ran:?}");
@@ -104,6 +106,7 @@ fn a_panel_requires_each_assistants_permission_before_writing() {
         Some(h.bin.as_os_str()),
         &[],
         h.request(),
+        &|member| voice_api::panels::refresh_mirror_here(&h.path, member),
         &mut |p| progress.push(p),
     );
     assert_eq!(
@@ -147,6 +150,7 @@ fn convene_with_progress(h: &Home) -> (PanelRan, Vec<PanelProgress>) {
         Some(h.bin.as_os_str()),
         &[],
         h.request(),
+        &|member| voice_api::panels::refresh_mirror_here(&h.path, member),
         &mut |p| progress.push(p),
     )
     .unwrap();
@@ -257,6 +261,7 @@ fn resume_refreshes_stale_skill_copy() {
             steer: Some("Try a smaller trial.".into()),
             time_box: None,
         },
+        &|member| voice_api::panels::refresh_mirror_here(&h.path, member),
         &mut |_| {},
     )
     .unwrap();
@@ -282,6 +287,7 @@ fn refused_resume_leaves_skill_manifest_unchanged() {
             steer: None,
             time_box: None,
         },
+        &|member| voice_api::panels::refresh_mirror_here(&h.path, member),
         &mut |_| {},
     );
     assert_eq!(

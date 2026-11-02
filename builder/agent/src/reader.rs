@@ -16,12 +16,131 @@ use voice_core::{
 };
 
 const PROFILE: &str = include_str!("../sandbox/reader.sb");
-pub const MAX_SOURCES: usize = 64;
+pub const MAX_SOURCES: usize = 256;
 
 /// A place the person agreed Voice may read, as the caller found it.
 pub enum Source<'a> {
     Folder(&'a Path),
     File(&'a Path),
+}
+
+#[cfg(target_os = "macos")]
+struct Bounds {
+    home: PathBuf,
+    member: PathBuf,
+    state: PathBuf,
+    runs: PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+fn bounds(home: &Path, member: &Path, state: &Path, runs: &Path) -> Result<Bounds> {
+    let folder_error = || Error::Invalid(text::READER_FOLDER.into());
+    let member = fs::canonicalize(member).map_err(|_| folder_error())?;
+    if !member.is_dir() {
+        return Err(folder_error());
+    }
+    sandbox::private_folder(state).map_err(|_| folder_error())?;
+    let state = fs::canonicalize(state).map_err(|_| folder_error())?;
+    sandbox::private_folder(&state).map_err(|_| folder_error())?;
+    let canonical_home = fs::canonicalize(home).map_err(|_| folder_error())?;
+    let canonical_runs = match fs::canonicalize(runs) {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = runs.parent().ok_or_else(folder_error)?;
+            let name = runs.file_name().ok_or_else(folder_error)?;
+            fs::canonicalize(parent)
+                .map_err(|_| folder_error())?
+                .join(name)
+        }
+        Err(_) => return Err(folder_error()),
+    };
+    let overlaps = |a: &Path, b: &Path| a.starts_with(b) || b.starts_with(a);
+    if overlaps(&member, &state)
+        || overlaps(&member, &canonical_runs)
+        || overlaps(&state, &canonical_runs)
+    {
+        return Err(folder_error());
+    }
+    Ok(Bounds {
+        home: canonical_home,
+        member,
+        state,
+        runs: canonical_runs,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn accepted(folder: bool, path: &Path, bounds: &Bounds, deny: &DenyList) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let canonical = fs::canonicalize(path).ok()?;
+    let metadata = fs::metadata(&canonical).ok()?;
+    let builtin = DenyList::builtin();
+    if (if folder {
+        !metadata.is_dir()
+    } else {
+        !metadata.is_file()
+    }) || canonical == Path::new("/")
+        || canonical == bounds.home
+        || [&bounds.home, &bounds.member, &bounds.state, &bounds.runs]
+            .iter()
+            .any(|allowed| *allowed != &canonical && allowed.starts_with(&canonical))
+        || canonical.starts_with(&bounds.state)
+        || canonical.starts_with(&bounds.runs)
+        || builtin.denied(path)
+        || builtin.denied(&canonical)
+        || deny.denied(path)
+        || deny.denied(&canonical)
+    {
+        return None;
+    }
+    Some(canonical)
+}
+
+/// The sources the reader can accept, in order, up to its source limit.
+pub fn usable<'a>(
+    home: &Path,
+    member: &Path,
+    state: &Path,
+    runs: &Path,
+    sources: &[Source<'a>],
+    deny: &DenyList,
+) -> Vec<Source<'a>> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (home, member, state, runs, sources, deny);
+        Vec::new()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let Ok(bounds) = bounds(home, member, state, runs) else {
+            return Vec::new();
+        };
+        let mut kept = Vec::new();
+        let mut seen = Vec::new();
+        for source in sources {
+            let (folder, path) = match source {
+                Source::Folder(path) => (true, *path),
+                Source::File(path) => (false, *path),
+            };
+            if let Some(canonical) = accepted(folder, path, &bounds, deny) {
+                let key = (folder, canonical);
+                if !seen.contains(&key) {
+                    seen.push(key);
+                    kept.push(if folder {
+                        Source::Folder(path)
+                    } else {
+                        Source::File(path)
+                    });
+                    if kept.len() == MAX_SOURCES {
+                        break;
+                    }
+                }
+            }
+        }
+        kept
+    }
 }
 
 pub struct Reader {
@@ -59,67 +178,18 @@ impl Reader {
         deny: &DenyList,
     ) -> Result<Reader> {
         let program = sandbox::resolve_program(program)?;
-        let folder_error = || Error::Invalid(text::READER_FOLDER.into());
-        let member = fs::canonicalize(member).map_err(|_| folder_error())?;
-        if !member.is_dir() {
-            return Err(folder_error());
-        }
-        sandbox::private_folder(state).map_err(|_| folder_error())?;
-        let state = fs::canonicalize(state).map_err(|_| folder_error())?;
-        sandbox::private_folder(&state).map_err(|_| folder_error())?;
-        let canonical_home = fs::canonicalize(home).map_err(|_| folder_error())?;
-        let canonical_runs = match fs::canonicalize(runs) {
-            Ok(path) => path,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let parent = runs.parent().ok_or_else(folder_error)?;
-                let name = runs.file_name().ok_or_else(folder_error)?;
-                fs::canonicalize(parent)
-                    .map_err(|_| folder_error())?
-                    .join(name)
-            }
-            Err(_) => return Err(folder_error()),
-        };
-        let overlaps = |a: &Path, b: &Path| a.starts_with(b) || b.starts_with(a);
-        if overlaps(&member, &state)
-            || overlaps(&member, &canonical_runs)
-            || overlaps(&state, &canonical_runs)
-        {
-            return Err(folder_error());
-        }
+        let bounds = bounds(home, member, state, runs)?;
         let source_error = || Error::Invalid(text::READER_SOURCE.into());
         if sources.len() > MAX_SOURCES {
             return Err(source_error());
         }
-        let builtin = DenyList::builtin();
         let mut kept = Vec::new();
         for source in sources {
             let (folder, path) = match source {
                 Source::Folder(path) => (true, *path),
                 Source::File(path) => (false, *path),
             };
-            if !path.is_absolute() {
-                return Err(source_error());
-            }
-            let canonical = fs::canonicalize(path).map_err(|_| source_error())?;
-            let metadata = fs::metadata(&canonical).map_err(|_| source_error())?;
-            if (if folder {
-                !metadata.is_dir()
-            } else {
-                !metadata.is_file()
-            }) || canonical == Path::new("/")
-                || canonical == canonical_home
-                || [&canonical_home, &member, &state, &canonical_runs]
-                    .iter()
-                    .any(|allowed| *allowed != &canonical && allowed.starts_with(&canonical))
-                || canonical.starts_with(&state)
-                || canonical.starts_with(&canonical_runs)
-                || builtin.denied(path)
-                || builtin.denied(&canonical)
-                || deny.denied(path)
-                || deny.denied(&canonical)
-            {
-                return Err(source_error());
-            }
+            let canonical = accepted(folder, path, &bounds, deny).ok_or_else(source_error)?;
             let source = (folder, canonical);
             if !kept.contains(&source) {
                 kept.push(source);
@@ -128,7 +198,7 @@ impl Reader {
         let run = sandbox::fresh_folder_in(runs)
             .map_err(|_| Error::Invalid(text::RUN_FOLDER_FAILED.into()))?;
         let mut ancestors = BTreeSet::new();
-        for path in [&program, &member, &state, &run]
+        for path in [&program, &bounds.member, &bounds.state, &run]
             .into_iter()
             .chain(kept.iter().map(|(_, path)| path))
         {
@@ -140,8 +210,8 @@ impl Reader {
         }
         Ok(Reader {
             program,
-            member,
-            state,
+            member: bounds.member,
+            state: bounds.state,
             run,
             sources: kept,
             ancestors: ancestors.into_iter().collect(),
