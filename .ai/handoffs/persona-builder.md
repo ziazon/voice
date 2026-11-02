@@ -42,6 +42,19 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Verifier (Fable, first pass on `f3cd706`):** started, and had not reported when the run's time
   ran out. Nothing landed.
 - **Not verified:** a signed-in sign-in and ask inside the sandbox (the walk).
+- **Run `100952-r1`, the LOWs (brief § 9, `cce7f00`):** Codex built L1–L4 (`5fdc9cd`): `open -u`
+  from `/` behind a new `open_command`; `--target all` on the three `cargo tree` checks; the
+  Ctrl-C handler first in `claude_sign_in`, with a stop check after the first status; the DECISIONS
+  wording. V1 moved one `use` line above the new `let`. Codex ran fmt, both clippy runs, the
+  `--all-targets` build and the three `cargo tree` checks (the dev one still finds `test-stubs`, the
+  two shipping ones don't). Her sandbox can't bind loopback, so the new Ctrl-C test is **not yet
+  run**, and neither is its red check against the old `main.rs`.
+- **Verifier (Fable, first pass on `cce7f00`): PASS**, no must-fix. Claims 1–5 verified by
+  mutation; L2 observed to catch a Linux-only dependency that the old check missed. One should-fix:
+  deleting `opened = true` fails no test. Briefed as § 9 item 5 (`0b2f09f`), not yet built.
+- **Held:** the resource gate held on swap-thrash (fseventsd at about 30 GB) before the tests could
+  run. Next: run the Ctrl-C and opener tests plus the old-code red check, dispatch item 5, run a
+  delta Verifier (Opus) if the fix-ups pass 60 lines, then `ci-local.sh` and land.
 
 ## VO11.1d: the egress proxy's should-fixes (2026-11-02, lane: V1)
 
