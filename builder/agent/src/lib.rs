@@ -8,5 +8,6 @@ pub mod claude;
 pub mod guard;
 pub mod ledger;
 pub mod provider;
+pub mod sandbox;
 pub mod self_hosted;
 pub mod text;

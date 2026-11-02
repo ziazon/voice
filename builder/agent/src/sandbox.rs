@@ -1,0 +1,376 @@
+//! One sandboxed launch of the person's own Claude Code. See
+//! docs/spikes/VO11-os-sandbox.md, https://code.claude.com/docs/en/setup and
+//! https://code.claude.com/docs/en/network-config.
+
+use crate::text;
+#[cfg(target_os = "macos")]
+use std::{
+    ffi::CStr,
+    io::Write,
+    os::unix::fs::DirBuilderExt,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
+};
+#[cfg(unix)]
+use std::{
+    fs::OpenOptions,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+};
+use std::{
+    fs::{self, File},
+    io::Read,
+    path::{Path, PathBuf},
+    process::Command,
+};
+use voice_core::error::{Error, Result};
+
+const PROFILE: &str = include_str!("../sandbox/claude-code.sb");
+pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
+pub const HELPER: &str = "open-sign-in";
+pub const LINK: &str = "sign-in-link";
+pub const MAX_LINK: usize = 4096;
+#[cfg(target_os = "macos")]
+const HELPER_SCRIPT: &str =
+    "#!/bin/bash\numask 077\nprintf '%s\\n' \"$1\" > \"${0%/*}/sign-in-link\"\n";
+
+/// A fresh folder owned by this launch, or the caller's work folder, left in place.
+pub enum RunFolder<'a> {
+    Fresh,
+    Given(&'a Path),
+}
+
+pub struct Launch {
+    program: PathBuf,
+    profile: PathBuf,
+    run: PathBuf,
+    port: u16,
+    sign_in: bool,
+    home: PathBuf,
+    fresh: bool,
+}
+
+/// The sign-in link, as the helper left it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Link {
+    NotYet,
+    Ready(String),
+    Refused,
+}
+
+/// The folder that holds fresh run folders: `runs` beside the profile folder.
+pub fn runs_folder(profile: &Path) -> PathBuf {
+    profile
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join("runs")
+}
+
+/// The program with links resolved, if it is something Voice can run in the sandbox.
+pub fn resolve_program(program: &Path) -> Result<PathBuf> {
+    let program = fs::canonicalize(program).map_err(|_| invalid(text::DOES_NOT_RUN))?;
+    let metadata = fs::metadata(&program).map_err(|_| invalid(text::DOES_NOT_RUN))?;
+    if !metadata.is_file() {
+        return Err(invalid(text::DOES_NOT_RUN));
+    }
+    #[cfg(unix)]
+    if metadata.permissions().mode() & 0o111 == 0 {
+        return Err(invalid(text::DOES_NOT_RUN));
+    }
+    let mut magic = [0; 4];
+    let mut file = File::open(&program).map_err(|_| invalid(text::DOES_NOT_RUN))?;
+    if file.read_exact(&mut magic).is_err()
+        || !matches!(
+            magic,
+            [0xcf, 0xfa, 0xed, 0xfe] | [0xca, 0xfe, 0xba, 0xbe] | [0xca, 0xfe, 0xba, 0xbf]
+        )
+    {
+        return Err(invalid(text::NOT_NATIVE));
+    }
+    Ok(program)
+}
+
+/// Whether `link` is a sign-in page Voice may open.
+pub fn valid_link(link: &str) -> bool {
+    !link.is_empty()
+        && link.len() <= MAX_LINK
+        && link
+            .bytes()
+            .all(|byte| (0x21..=0x7e).contains(&byte) && !b"\"<>\\^`{|}".contains(&byte))
+        && (link.starts_with("https://claude.com/cai/oauth/authorize?")
+            || link.starts_with("https://claude.ai/oauth/authorize?"))
+}
+
+impl Launch {
+    #[cfg(not(target_os = "macos"))]
+    pub fn new(
+        _program: &Path,
+        _profile: &Path,
+        _home: &Path,
+        _run: RunFolder<'_>,
+        _proxy_port: u16,
+        _sign_in: bool,
+    ) -> Result<Launch> {
+        Err(invalid(text::MAC_ONLY))
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn new(
+        program: &Path,
+        profile: &Path,
+        home: &Path,
+        run: RunFolder<'_>,
+        proxy_port: u16,
+        sign_in: bool,
+    ) -> Result<Launch> {
+        if proxy_port == 0 {
+            return Err(invalid("the proxy port must be set"));
+        }
+        let program = resolve_program(program)?;
+        let profile = fs::canonicalize(profile).map_err(|_| invalid(text::PROFILE_FAILED))?;
+        private_folder(&profile).map_err(|_| invalid(text::PROFILE_FAILED))?;
+        let fresh = matches!(run, RunFolder::Fresh);
+        let run = match run {
+            RunFolder::Fresh => fresh_folder(&profile),
+            RunFolder::Given(path) => fs::canonicalize(path).and_then(|path| {
+                private_folder(&path)?;
+                Ok(path)
+            }),
+        }
+        .map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
+        let launch = Launch {
+            program,
+            profile,
+            run,
+            port: proxy_port,
+            sign_in,
+            home: home.to_owned(),
+            fresh,
+        };
+        if sign_in {
+            let write = || -> std::io::Result<()> {
+                OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o700)
+                    .custom_flags(libc::O_NOFOLLOW)
+                    .open(launch.run.join(HELPER))?
+                    .write_all(HELPER_SCRIPT.as_bytes())
+            };
+            write().map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
+        }
+        Ok(launch)
+    }
+
+    pub fn run_folder(&self) -> &Path {
+        &self.run
+    }
+
+    /// The sandboxed command, in the run folder, with only its own environment.
+    pub fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(SANDBOX_EXEC);
+        command.args(["-p", PROFILE]);
+        for (name, value) in [
+            ("PROGRAM", &self.program),
+            ("PROFILE_DIR", &self.profile),
+            ("RUN_DIR", &self.run),
+        ] {
+            let mut parameter = std::ffi::OsString::from(format!("{name}="));
+            parameter.push(value);
+            command.arg("-D").arg(parameter);
+        }
+        command.args([
+            "-D",
+            &format!("PROXY_PORT={}", self.port),
+            "-D",
+            if self.sign_in {
+                "SIGN_IN=yes"
+            } else {
+                "SIGN_IN=no"
+            },
+        ]);
+        command
+            .arg(&self.program)
+            .args(["--setting-sources", "project,local"])
+            .args(args)
+            .current_dir(&self.run);
+        // The child gets only what it needs: no credential, provider switch or endpoint of the
+        // person's reaches it (PB-D9).
+        command.env_clear();
+        command.env("HOME", &self.home);
+        if let Some(login) = login_name() {
+            command.env("USER", &login).env("LOGNAME", login);
+        }
+        command
+            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+            .env("LANG", language());
+        command
+            .env("CLAUDE_CONFIG_DIR", &self.profile)
+            .env("CLAUDE_CODE_TMPDIR", &self.run);
+        let mut tmp = self.run.as_os_str().to_owned();
+        tmp.push("/");
+        command.env("TMPDIR", tmp);
+        let proxy = format!("http://127.0.0.1:{}", self.port);
+        command
+            .env("HTTPS_PROXY", &proxy)
+            .env("https_proxy", proxy)
+            .env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
+            .env("DISABLE_AUTOUPDATER", "1");
+        if self.sign_in {
+            command.env("BROWSER", self.run.join(HELPER));
+        }
+        command
+    }
+
+    /// Read the link once; a ready link's file is removed before handing it out.
+    #[cfg(unix)]
+    pub fn sign_in_link(&self) -> Link {
+        let path = self.run.join(LINK);
+        let file = match OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Link::NotYet,
+            Err(_) => return Link::Refused,
+        };
+        if !file.metadata().is_ok_and(|metadata| metadata.is_file()) {
+            return Link::Refused;
+        }
+        let mut bytes = Vec::new();
+        let read = file.take((MAX_LINK + 2) as u64).read_to_end(&mut bytes);
+        if read.is_ok() && !bytes.ends_with(b"\n") && bytes.len() <= MAX_LINK {
+            return Link::NotYet;
+        }
+        let _ = fs::remove_file(path);
+        if read.is_err() || bytes.pop() != Some(b'\n') {
+            return Link::Refused;
+        }
+        match String::from_utf8(bytes) {
+            Ok(link) if valid_link(&link) => Link::Ready(link),
+            _ => Link::Refused,
+        }
+    }
+
+    #[cfg(not(unix))]
+    pub fn sign_in_link(&self) -> Link {
+        Link::Refused
+    }
+}
+
+impl Drop for Launch {
+    fn drop(&mut self) {
+        if self.fresh {
+            let _ = fs::remove_dir_all(&self.run);
+        }
+    }
+}
+
+fn invalid(message: &str) -> Error {
+    Error::Invalid(message.into())
+}
+
+fn language() -> String {
+    std::env::var("LANG")
+        .ok()
+        .filter(|value| {
+            (1..=64).contains(&value.len())
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_.@-".contains(&byte))
+        })
+        .unwrap_or_else(|| "en_US.UTF-8".into())
+}
+
+#[cfg(target_os = "macos")]
+fn login_name() -> Option<String> {
+    // SAFETY: getpwuid_r receives valid pointers and the buffer's length. On success with a
+    // non-null result, entry is initialised and pw_name points into the buffer, which stays
+    // alive until the null-terminated name is copied.
+    unsafe {
+        let size = libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX);
+        let mut buffer = vec![
+            0u8;
+            if size == -1 {
+                4096
+            } else {
+                usize::try_from(size).ok()?
+            }
+        ];
+        let mut entry = std::mem::MaybeUninit::<libc::passwd>::uninit();
+        let mut result = std::ptr::null_mut();
+        if libc::getpwuid_r(
+            libc::getuid(),
+            entry.as_mut_ptr(),
+            buffer.as_mut_ptr().cast(),
+            buffer.len(),
+            &mut result,
+        ) != 0
+            || result.is_null()
+        {
+            return None;
+        }
+        let entry = entry.assume_init();
+        if entry.pw_name.is_null() {
+            return None;
+        }
+        CStr::from_ptr(entry.pw_name)
+            .to_str()
+            .ok()
+            .map(str::to_owned)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn login_name() -> Option<String> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn private_folder(path: &Path) -> std::io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir()
+        || metadata.file_type().is_symlink()
+        || metadata.permissions().mode() & 0o077 != 0
+    {
+        return Err(std::io::Error::other("not a private directory"));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn fresh_folder(profile: &Path) -> std::io::Result<PathBuf> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let parent = runs_folder(profile);
+    match fs::symlink_metadata(&parent) {
+        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+            if metadata.permissions().mode() & 0o077 != 0 {
+                fs::set_permissions(&parent, fs::Permissions::from_mode(0o700))?;
+            }
+        }
+        Ok(_) => return Err(std::io::Error::other("not a directory")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::DirBuilder::new().mode(0o700).create(&parent)?;
+        }
+        Err(error) => return Err(error),
+    }
+    loop {
+        let number = NEXT.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = parent.join(format!("{}-{number}-{nanos}", std::process::id()));
+        match fs::DirBuilder::new().mode(0o700).create(&path) {
+            Ok(()) => match fs::canonicalize(&path) {
+                Ok(path) => return Ok(path),
+                Err(error) => {
+                    let _ = fs::remove_dir_all(path);
+                    return Err(error);
+                }
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+}

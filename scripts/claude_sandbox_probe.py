@@ -28,9 +28,55 @@ HEADER_TIMEOUT = 10
 TUNNEL_IDLE_TIMEOUT = 120
 ALLOWED_HOSTS = frozenset(('api.anthropic.com', 'platform.claude.com', 'claude.ai'))
 ASK_FLAGS = ['-p', '--model', 'haiku', '--safe-mode', '--no-session-persistence',
-             '--tools', '', '--output-format', 'json', '--setting-sources', 'project,local',
+             '--tools', '', '--output-format', 'json',
              '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
              '--permission-mode', 'dontAsk', '--max-budget-usd', '0.05']
+
+
+MAX_LINK = 4096
+HELPER_SCRIPT = '#!/bin/bash\numask 077\nprintf \'%s\\n\' "$1" > "${0%/*}/sign-in-link"\n'
+
+
+def valid_link(link):
+    return (1 <= len(link) <= MAX_LINK
+            and all(0x21 <= ord(char) <= 0x7e and char not in '"<>\\^`{|}' for char in link)
+            and link.startswith(('https://claude.com/cai/oauth/authorize?',
+                                 'https://claude.ai/oauth/authorize?')))
+
+
+def open_sign_in_link(run):
+    path = run / 'sign-in-link'
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return False
+    pending = False
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
+            return False
+        with os.fdopen(descriptor, 'rb') as source:
+            data = source.read(MAX_LINK + 2)
+        pending = not data.endswith(b'\n') and len(data) <= MAX_LINK
+        if pending:
+            return None
+    finally:
+        if not pending:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+    try:
+        link = data[:-1].decode('utf-8') if data.endswith(b'\n') else ''
+    except UnicodeDecodeError:
+        return False
+    if not valid_link(link):
+        return False
+    subprocess.run(['/usr/bin/open', link], check=False)
+    print("Opened Claude's page in your browser.", flush=True)
+    return True
 
 
 def host_name(target):
@@ -256,7 +302,12 @@ def find_claude(home):
                   if Path(folder).is_absolute()]
     for path in candidates + fallbacks(home):
         if path.is_file() and os.access(path, os.X_OK):
-            return Path(os.path.realpath(path))
+            program = path.resolve()
+            with program.open('rb') as source:
+                header = source.read(4)
+            if header not in (b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xca\xfe\xba\xbf'):
+                raise ValueError("This Claude Code is an older kind that runs as a script, which Voice can't run inside its sandbox. Install the current Claude Code (https://code.claude.com/docs/en/setup), then try again.")
+            return program
     raise ValueError("Claude Code isn't installed: no claude on PATH or in the usual places.")
 
 
@@ -268,22 +319,23 @@ def child_environment(profile, run, port, sign_in):
            'LANG': os.environ.get('LANG', 'en_US.UTF-8'),
            'CLAUDE_CONFIG_DIR': str(profile), 'CLAUDE_CODE_TMPDIR': str(run),
            'TMPDIR': str(run) + '/', 'HTTPS_PROXY': proxy, 'https_proxy': proxy,
-           'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1'}
+           'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1', 'DISABLE_AUTOUPDATER': '1'}
     if sign_in:
-        env['BROWSER'] = '/usr/bin/false'
+        env['BROWSER'] = str(run / 'open-sign-in')
     return env
 
 
 def command(claude, profile, run, port, action):
+    claude = claude.resolve()
     argv = ['/usr/bin/sandbox-exec', '-f', str(PROFILE)]
-    for key, value in [('PROGRAM_DIR', claude.parent), ('PROFILE_DIR', profile),
+    for key, value in [('PROGRAM', claude), ('PROFILE_DIR', profile),
                        ('RUN_DIR', run), ('PROXY_PORT', port),
                        ('SIGN_IN', 'yes' if action == 'sign-in' else 'no')]:
         argv.extend(['-D', '%s=%s' % (key, value)])
     actions = {'version': ['--version'], 'status': ['auth', 'status', '--json'],
                'sign-in': ['auth', 'login', '--claudeai'], 'ask': ASK_FLAGS,
                'sign-out': ['auth', 'logout']}
-    return argv + [str(claude)] + actions[action]
+    return argv + [str(claude), '--setting-sources', 'project,local'] + actions[action]
 
 
 def kill_group(child):
@@ -296,6 +348,12 @@ def kill_group(child):
 
 def run_child(claude, profile, run, port, action):
     sign_in = action == 'sign-in'
+    if sign_in:
+        descriptor = os.open(run / 'open-sign-in', os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                             | os.O_NOFOLLOW, 0o700)
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as helper:
+            os.fchmod(helper.fileno(), 0o700)
+            helper.write(HELPER_SCRIPT)
     argv = command(claude, profile, run, port, action)
     timeout = 600 if sign_in else (120 if action == 'ask' else 30)
     with subprocess.Popen(argv, cwd=run, env=child_environment(profile, run, port, sign_in),
@@ -312,8 +370,20 @@ def run_child(claude, profile, run, port, action):
                         print(terminal_text(line), end='\n' if line.endswith('\n') else '', flush=True)
                 copier = threading.Thread(target=copy_lines, daemon=True)
                 copier.start()
-                child.wait(timeout=timeout)
-                return subprocess.CompletedProcess(argv, child.returncode, '', '')
+                deadline = time.monotonic() + timeout
+                while True:
+                    if open_sign_in_link(run) is False:
+                        print("Claude Code handed over a link Voice won't open.", flush=True)
+                        return subprocess.CompletedProcess(argv, 1, '', '')
+                    if child.poll() is not None:
+                        return subprocess.CompletedProcess(argv, child.returncode, '', '')
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(argv, timeout)
+                    try:
+                        child.wait(timeout=min(0.2, remaining))
+                    except subprocess.TimeoutExpired:
+                        pass
             stdout, stderr = child.communicate(
                 input='Reply with the single word: ok' if action == 'ask' else '', timeout=timeout)
             return subprocess.CompletedProcess(argv, child.returncode, stdout, stderr)
@@ -365,7 +435,7 @@ def perform(action, claude, profile, run, port):
     if action == 'status':
         return 0 if check_status() is not None else 1
     if action == 'sign-in':
-        print("Sign in on Claude's page. If no browser opens, copy the link Claude Code prints below.", flush=True)
+        print("Sign in on Claude's page, which opens in your browser.", flush=True)
         ran = call('sign-in')
         signed_in = check_status()
         kept = (profile / '.credentials.json').is_file()

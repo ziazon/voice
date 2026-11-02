@@ -1,14 +1,21 @@
 (version 1)
 (deny default)
 (import "system.sb")
+; Claude Code checks certificates itself, so close the system certificate service, which can reach the network.
+(deny mach-lookup (global-name "com.apple.trustd") (global-name "com.apple.trustd.agent"))
 
-; The child can start helpers and manage only processes in this sandbox.
-(allow process-exec process-fork)
+; The child may start only Claude Code itself, and while signing in the link helper.
+(allow process-fork)
+(allow process-exec (literal (param "PROGRAM")))
+(if (string=? (param "SIGN_IN") "yes")
+    (allow process-exec
+        (literal (string-append (param "RUN_DIR") "/open-sign-in"))
+        (literal "/bin/bash")))
 (allow signal (target same-sandbox))
 (allow process-info* (target same-sandbox))
 
-; Read only the system code and devices needed to run, plus the three folders.
-; The caller gives absolute paths with links resolved for all three folders.
+; Read only the system code and devices needed to run, the program file, and the profile and run folders.
+; The caller gives absolute paths with links resolved for the program and both folders.
 (allow file-read*
     (subpath "/usr/bin")
     (subpath "/usr/lib")
@@ -23,7 +30,7 @@
     (literal "/dev/urandom")
     (literal "/dev/dtracehelper")
     (subpath "/dev/fd")
-    (subpath (param "PROGRAM_DIR"))
+    (literal (param "PROGRAM"))
     (subpath (param "PROFILE_DIR"))
     (subpath (param "RUN_DIR")))
 

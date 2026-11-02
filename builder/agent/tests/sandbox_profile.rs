@@ -7,7 +7,7 @@ use std::{
     fs,
     io::{Read, Write},
     net::{TcpListener, UdpSocket},
-    os::unix::fs::symlink,
+    os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     thread,
@@ -71,11 +71,14 @@ impl Sandbox {
             outside: Scratch::new("outside"),
         }
     }
-    fn command(&self, port: u16, sign_in: &str, omit: Option<&str>) -> Command {
+    fn command(&self, program: &str, port: u16, sign_in: &str, omit: Option<&str>) -> Command {
         let mut cmd = Command::new("/usr/bin/sandbox-exec");
         cmd.env_clear().args(["-f", PROFILE]);
         for (name, value) in [
-            ("PROGRAM_DIR", self.program.0.display().to_string()),
+            (
+                "PROGRAM",
+                fs::canonicalize(program).unwrap().display().to_string(),
+            ),
             ("PROFILE_DIR", self.profile.0.display().to_string()),
             ("RUN_DIR", self.run.0.display().to_string()),
             ("PROXY_PORT", port.to_string()),
@@ -89,7 +92,7 @@ impl Sandbox {
         cmd
     }
     fn run(&self, program: &str, args: &[&str]) -> Output {
-        self.command(1, "no", None)
+        self.command(program, 1, "no", None)
             .arg(program)
             .args(args)
             .output()
@@ -98,8 +101,8 @@ impl Sandbox {
     fn cat(&self, path: &Path, allowed: bool) {
         let output = self.run("/bin/cat", &[path.to_str().unwrap()]);
         assert_eq!(
-            output.status.success(),
-            allowed,
+            output.status.code(),
+            Some(if allowed { 0 } else { 1 }),
             "cat {}: {output:?}",
             path.display()
         );
@@ -110,8 +113,8 @@ impl Sandbox {
     fn touch(&self, path: &Path, allowed: bool) {
         let output = self.run("/usr/bin/touch", &[path.to_str().unwrap()]);
         assert_eq!(
-            output.status.success(),
-            allowed,
+            output.status.code(),
+            Some(if allowed { 0 } else { 1 }),
             "touch {}: {output:?}",
             path.display()
         );
@@ -129,14 +132,29 @@ fn canary(root: &Path, name: &str) -> PathBuf {
 }
 
 #[test]
-fn reads_only_the_three_folders() {
+fn reads_only_the_program_and_two_folders() {
     if !available() {
         return;
     }
     let sb = Sandbox::new();
-    for root in [&sb.run.0, &sb.profile.0, &sb.program.0] {
+    for root in [&sb.run.0, &sb.profile.0] {
         sb.cat(&canary(root, "allowed"), true);
     }
+    let program = sb.program.0.join("cat");
+    fs::copy("/bin/cat", &program).unwrap();
+    let signed = Command::new("/usr/bin/codesign")
+        .args(["--force", "--sign", "-"])
+        .arg(&program)
+        .output()
+        .unwrap();
+    assert_eq!(signed.status.code(), Some(0), "{signed:?}");
+    let beside = canary(&sb.program.0, "beside");
+    let output = sb.run(program.to_str().unwrap(), &[beside.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let readable = canary(&sb.run.0, "readable");
+    let output = sb.run(program.to_str().unwrap(), &[readable.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(output.stdout, b"canary");
 }
 
 #[test]
@@ -187,7 +205,7 @@ fn refuses_the_persons_terminals_and_system_logs() {
         }
         checked += 1;
         let mut child = sb
-            .command(1, "no", None)
+            .command(if folder { "/bin/ls" } else { "/bin/cat" }, 1, "no", None)
             .arg(if folder { "/bin/ls" } else { "/bin/cat" })
             .arg(&path)
             .stdout(Stdio::null())
@@ -206,8 +224,9 @@ fn refuses_the_persons_terminals_and_system_logs() {
             }
             thread::sleep(Duration::from_millis(10));
         };
-        assert!(
-            !status.success(),
+        assert_eq!(
+            status.code(),
+            Some(1),
             "sandbox read allowed: {}",
             path.display()
         );
@@ -347,7 +366,7 @@ fn network_reaches_only_the_proxy_port() {
         }
     });
     let output = sb
-        .command(port, "no", None)
+        .command("/usr/bin/curl", port, "no", None)
         .args([
             "/usr/bin/curl",
             "-sS",
@@ -359,14 +378,17 @@ fn network_reaches_only_the_proxy_port() {
     responder.join().unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(output.stdout, b"ok");
-    sb.command(port, "no", None)
-        .args([
-            "/bin/sh",
-            "-c",
-            &format!("echo hi | /usr/bin/nc -u -w1 127.0.0.1 {port}"),
-        ])
-        .output()
+    let mut child = sb
+        .command("/usr/bin/nc", port, "no", None)
+        .args(["/usr/bin/nc", "-u", "-w1", "127.0.0.1", &port.to_string()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .unwrap();
+    // A denied connection can close stdin before the canary is written.
+    let _ = child.stdin.take().unwrap().write_all(b"hi\n");
+    child.wait().unwrap();
     let mut datagram = [0; 64];
     let error = udp.recv_from(&mut datagram).unwrap_err();
     assert!(
@@ -386,7 +408,7 @@ fn network_reaches_only_the_proxy_port() {
         let other = listener.local_addr().unwrap().port();
         listener.set_nonblocking(true).unwrap();
         let output = sb
-            .command(port, "no", None)
+            .command("/usr/bin/curl", port, "no", None)
             .args([
                 "/usr/bin/curl",
                 "-sS",
@@ -395,7 +417,10 @@ fn network_reaches_only_the_proxy_port() {
             ])
             .output()
             .unwrap();
-        assert!(!output.status.success(), "{output:?}");
+        assert!(
+            output.status.code().is_some_and(|code| code != 0),
+            "{output:?}"
+        );
         assert_eq!(
             listener.accept().unwrap_err().kind(),
             std::io::ErrorKind::WouldBlock
@@ -417,7 +442,7 @@ fn only_sign_in_can_listen() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
-        let mut command = sb.command(1, sign_in, None);
+        let mut command = sb.command("/usr/bin/nc", 1, sign_in, None);
         command.args(["/usr/bin/nc", "-l"]);
         if let Some(address) = address {
             command.arg(address);
@@ -437,7 +462,10 @@ fn only_sign_in_can_listen() {
         if sign_in == "yes" {
             assert!(status.is_none(), "{output:?}");
         } else {
-            assert!(status.is_some_and(|status| !status.success()), "{output:?}");
+            assert!(
+                status.is_some_and(|status| status.code().is_some_and(|code| code != 0)),
+                "{output:?}"
+            );
             assert!(!output.stderr.is_empty());
         }
     }
@@ -449,21 +477,72 @@ fn all_parameters_are_required_before_the_program_runs() {
         return;
     }
     let sb = Sandbox::new();
-    for name in [
-        "PROGRAM_DIR",
-        "PROFILE_DIR",
-        "RUN_DIR",
-        "PROXY_PORT",
-        "SIGN_IN",
-    ] {
+    for name in ["PROGRAM", "PROFILE_DIR", "RUN_DIR", "PROXY_PORT", "SIGN_IN"] {
         let marker = sb.run.0.join("ran");
         let output = sb
-            .command(1, "no", Some(name))
+            .command("/usr/bin/touch", 1, "no", Some(name))
             .arg("/usr/bin/touch")
             .arg(&marker)
             .output()
             .unwrap();
-        assert!(!output.status.success(), "missing {name}: {output:?}");
+        assert!(
+            output.status.code().is_some_and(|code| code != 0),
+            "missing {name}: {output:?}"
+        );
         assert!(!marker.exists(), "program ran without {name}");
+    }
+}
+
+#[test]
+fn runs_only_the_program() {
+    if !available() {
+        return;
+    }
+    let sb = Sandbox::new();
+    let output = sb.run("/bin/bash", &["-c", "/usr/bin/true"]);
+    assert_eq!(output.status.code(), Some(126), "{output:?}");
+    let output = sb.run("/bin/bash", &["-c", "exit 0"]);
+    assert!(output.status.success(), "{output:?}");
+}
+
+#[test]
+fn the_helper_runs_only_while_signing_in() {
+    if !available() {
+        return;
+    }
+    let sb = Sandbox::new();
+    let helper = sb.run.0.join("open-sign-in");
+    fs::write(
+        &helper,
+        "#!/bin/bash\numask 077\nprintf '%s\\n' \"$1\" > \"${0%/*}/sign-in-link\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+    let link = sb.run.0.join("sign-in-link");
+    for sign_in in ["yes", "no"] {
+        let output = sb
+            .command("/bin/bash", 1, sign_in, None)
+            .args([
+                "/bin/bash",
+                "-c",
+                "\"$0\" https://claude.com/cai/oauth/authorize?x=1",
+                helper.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        if sign_in == "yes" {
+            assert!(output.status.success(), "{output:?}");
+            assert_eq!(
+                fs::read(&link).unwrap(),
+                b"https://claude.com/cai/oauth/authorize?x=1\n"
+            );
+            fs::remove_file(&link).unwrap();
+        } else {
+            assert!(
+                output.status.code().is_some_and(|code| code != 0),
+                "{output:?}"
+            );
+            assert!(!link.exists());
+        }
     }
 }

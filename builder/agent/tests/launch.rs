@@ -1,0 +1,742 @@
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
+use voice_agent::{sandbox, text};
+use voice_core::error::Error;
+
+static NEXT: AtomicU64 = AtomicU64::new(0);
+
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "voice-launch-{}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&path).unwrap();
+        Self(fs::canonicalize(path).unwrap())
+    }
+
+    fn program(&self, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = self.0.join(name);
+        fs::write(&path, bytes).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn invalid<T>(result: voice_core::error::Result<T>, message: &str) {
+    assert!(matches!(result, Err(Error::Invalid(ref found)) if found == message));
+}
+
+#[test]
+fn valid_links_have_only_the_two_sign_in_pages_and_safe_ascii() {
+    for prefix in [
+        "https://claude.com/cai/oauth/authorize?",
+        "https://claude.ai/oauth/authorize?",
+    ] {
+        assert!(sandbox::valid_link(&format!("{prefix}x=1")));
+        assert!(sandbox::valid_link(prefix));
+        let exact = format!("{prefix}{}", "a".repeat(sandbox::MAX_LINK - prefix.len()));
+        assert!(sandbox::valid_link(&exact));
+        assert!(!sandbox::valid_link(&format!("{exact}a")));
+        for byte in 0..=255_u8 {
+            if !(0x21..=0x7e).contains(&byte) || b"\"<>\\^`{|}".contains(&byte) {
+                let link = format!("{prefix}{}", char::from(byte));
+                assert!(!sandbox::valid_link(&link), "accepted byte {byte}");
+            }
+        }
+    }
+    for link in [
+        "",
+        " ",
+        "\t",
+        "http://claude.com/cai/oauth/authorize?a",
+        "https://claude.com.example/cai/oauth/authorize?a",
+        "https://claude.com/cai/oauth/authorize@x?a",
+        "https://claude.com/cai/oauth/authorizex?a",
+        "https://claude.com/cai/oauth/authorize",
+        "https://claude.ai.example/oauth/authorize?a",
+        "https://claude.ai/oauth/authorize@x?a",
+        "https://claude.ai/oauth/authorizex?a",
+    ] {
+        assert!(!sandbox::valid_link(link), "accepted {link:?}");
+    }
+}
+
+#[test]
+fn resolves_only_native_regular_programs() {
+    let scratch = Scratch::new();
+    for (name, bytes) in [
+        ("script", b"#!/bin/sh\nexit 0\n".as_slice()),
+        ("short", b"xx".as_slice()),
+        ("empty", b"".as_slice()),
+        ("elf", b"\x7fELF".as_slice()),
+        ("other", b"abcd".as_slice()),
+    ] {
+        invalid(
+            sandbox::resolve_program(&scratch.program(name, bytes)),
+            text::NOT_NATIVE,
+        );
+    }
+    for (name, bytes) in [
+        ("macho", b"\xcf\xfa\xed\xfe"),
+        ("universal", b"\xca\xfe\xba\xbe"),
+        ("universal64", b"\xca\xfe\xba\xbf"),
+    ] {
+        let program = scratch.program(name, bytes);
+        assert_eq!(sandbox::resolve_program(&program).unwrap(), program);
+    }
+    invalid(
+        sandbox::resolve_program(&scratch.0.join("missing")),
+        text::DOES_NOT_RUN,
+    );
+    invalid(sandbox::resolve_program(&scratch.0), text::DOES_NOT_RUN);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let program = scratch.program("not-executable", b"\xcf\xfa\xed\xfe");
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o600)).unwrap();
+        invalid(sandbox::resolve_program(&program), text::DOES_NOT_RUN);
+    }
+}
+
+#[test]
+fn runs_live_beside_the_profile() {
+    assert_eq!(
+        sandbox::runs_folder(&PathBuf::from("app/profile")),
+        PathBuf::from("app/runs")
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn unsupported_platform_does_nothing_even_for_invalid_inputs() {
+    let scratch = Scratch::new();
+    invalid(
+        sandbox::Launch::new(
+            &scratch.0.join("missing"),
+            &scratch.0.join("profile"),
+            &scratch.0,
+            sandbox::RunFolder::Fresh,
+            0,
+            true,
+        ),
+        text::MAC_ONLY,
+    );
+    assert_eq!(fs::read_dir(&scratch.0).unwrap().count(), 0);
+}
+
+#[cfg(target_os = "macos")]
+mod mac {
+    use super::*;
+    use sandbox::{Launch, Link, RunFolder};
+    use std::{
+        collections::BTreeMap,
+        ffi::OsString,
+        io::Write,
+        os::unix::fs::{PermissionsExt, symlink},
+        path::Path,
+        process::Command,
+    };
+
+    const HELPER: &str =
+        "#!/bin/bash\numask 077\nprintf '%s\\n' \"$1\" > \"${0%/*}/sign-in-link\"\n";
+
+    fn private(path: &Path) {
+        fs::create_dir(path).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    fn profile(scratch: &Scratch) -> PathBuf {
+        let profile = scratch.0.join("profile");
+        private(&profile);
+        profile
+    }
+
+    fn launch(profile: &Path, home: &Path, run: RunFolder<'_>, sign_in: bool) -> Launch {
+        Launch::new(Path::new("/bin/ls"), profile, home, run, 4321, sign_in).unwrap()
+    }
+
+    fn mode(path: &Path) -> u32 {
+        fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn real_native_program_and_its_symlink_resolve() {
+        let scratch = Scratch::new();
+        let native = fs::canonicalize("/bin/ls").unwrap();
+        assert_eq!(
+            sandbox::resolve_program(Path::new("/bin/ls")).unwrap(),
+            native
+        );
+        let link = scratch.0.join("linked-program");
+        symlink("/bin/ls", &link).unwrap();
+        assert_eq!(sandbox::resolve_program(&link).unwrap(), native);
+    }
+
+    #[test]
+    fn fresh_runs_are_private_unique_and_removed_while_given_runs_stay() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let first = launch(&profile, &scratch.0, RunFolder::Fresh, false);
+        let run = first.run_folder().to_owned();
+        assert_eq!(run.parent().unwrap(), sandbox::runs_folder(&profile));
+        assert_eq!(mode(run.parent().unwrap()), 0o700);
+        assert_eq!(mode(&run), 0o700);
+        let second = launch(&profile, &scratch.0, RunFolder::Fresh, false);
+        assert_ne!(run, second.run_folder());
+        let parts = |path: &Path| {
+            path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .split('-')
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        let first_name = parts(&run);
+        let second_name = parts(second.run_folder());
+        assert_eq!(first_name.len(), 3);
+        assert_eq!(first_name[0], std::process::id().to_string());
+        assert_ne!(first_name[1], second_name[1]);
+        assert!(first_name[1].parse::<u64>().is_ok());
+        assert!(first_name[2].parse::<u128>().unwrap() > 0);
+        assert!(!run.join(sandbox::HELPER).exists());
+        drop(first);
+        assert!(!run.exists());
+        assert!(second.run_folder().is_dir());
+        let given = scratch.0.join("given");
+        private(&given);
+        drop(launch(
+            &profile,
+            &scratch.0,
+            RunFolder::Given(&given),
+            false,
+        ));
+        assert!(given.is_dir());
+    }
+
+    #[test]
+    fn resolves_profile_and_given_run_links_before_using_their_paths() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let profile_link = scratch.0.join("profile-link");
+        symlink(&profile, &profile_link).unwrap();
+        let given = scratch.0.join("given");
+        private(&given);
+        let given_link = scratch.0.join("run-link");
+        symlink(&given, &given_link).unwrap();
+        let launch = launch(
+            &profile_link,
+            &scratch.0,
+            RunFolder::Given(&given_link),
+            false,
+        );
+        assert_eq!(launch.run_folder(), given);
+        let args: Vec<_> = launch.command(&[]).get_args().map(OsString::from).collect();
+        assert!(args.contains(&format!("PROFILE_DIR={}", profile.display()).into()));
+    }
+
+    #[test]
+    fn refuses_bad_inputs_in_order_before_creating_a_run() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        invalid(
+            Launch::new(
+                Path::new("missing"),
+                &profile,
+                &scratch.0,
+                RunFolder::Fresh,
+                0,
+                false,
+            ),
+            "the proxy port must be set",
+        );
+        let script = scratch.program("script", b"#!/bin/sh\n");
+        invalid(
+            Launch::new(&script, &profile, &scratch.0, RunFolder::Fresh, 4321, false),
+            text::NOT_NATIVE,
+        );
+        assert!(!sandbox::runs_folder(&profile).exists());
+        fs::set_permissions(&profile, fs::Permissions::from_mode(0o755)).unwrap();
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Fresh,
+                4321,
+                false,
+            ),
+            text::PROFILE_FAILED,
+        );
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+        for path in [&scratch.0.join("missing"), &script] {
+            invalid(
+                Launch::new(
+                    Path::new("/bin/ls"),
+                    path,
+                    &scratch.0,
+                    RunFolder::Fresh,
+                    4321,
+                    false,
+                ),
+                text::PROFILE_FAILED,
+            );
+        }
+    }
+
+    #[test]
+    fn tightens_the_runs_parent_and_refuses_a_link_or_file_in_its_place() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let runs = sandbox::runs_folder(&profile);
+        fs::create_dir(&runs).unwrap();
+        fs::set_permissions(&runs, fs::Permissions::from_mode(0o755)).unwrap();
+        drop(launch(&profile, &scratch.0, RunFolder::Fresh, false));
+        assert_eq!(mode(&runs), 0o700);
+        fs::remove_dir(&runs).unwrap();
+        symlink(&scratch.0, &runs).unwrap();
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Fresh,
+                4321,
+                false,
+            ),
+            text::RUN_FOLDER_FAILED,
+        );
+        fs::remove_file(&runs).unwrap();
+        fs::write(&runs, "file").unwrap();
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Fresh,
+                4321,
+                false,
+            ),
+            text::RUN_FOLDER_FAILED,
+        );
+    }
+
+    #[test]
+    fn given_runs_must_be_private_directories_and_helpers_never_replace_files() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let given = scratch.0.join("given");
+        private(&given);
+        fs::set_permissions(&given, fs::Permissions::from_mode(0o755)).unwrap();
+        let file = scratch.program("not-a-folder", b"file");
+        for path in [&given, &scratch.0.join("missing"), &file] {
+            invalid(
+                Launch::new(
+                    Path::new("/bin/ls"),
+                    &profile,
+                    &scratch.0,
+                    RunFolder::Given(path),
+                    4321,
+                    false,
+                ),
+                text::RUN_FOLDER_FAILED,
+            );
+        }
+        fs::set_permissions(&given, fs::Permissions::from_mode(0o700)).unwrap();
+        let helper = given.join(sandbox::HELPER);
+        fs::write(&helper, "keep").unwrap();
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Given(&given),
+                4321,
+                true,
+            ),
+            text::RUN_FOLDER_FAILED,
+        );
+        assert_eq!(fs::read(&helper).unwrap(), b"keep");
+        fs::remove_file(&helper).unwrap();
+        let outside = scratch.0.join("outside");
+        fs::write(&outside, "keep").unwrap();
+        symlink(&outside, &helper).unwrap();
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Given(&given),
+                4321,
+                true,
+            ),
+            text::RUN_FOLDER_FAILED,
+        );
+        assert_eq!(fs::read(outside).unwrap(), b"keep");
+    }
+
+    fn expected_environment(
+        launch: &Launch,
+        profile: &Path,
+        home: &Path,
+        sign_in: bool,
+    ) -> BTreeMap<OsString, OsString> {
+        let run = launch.run_folder();
+        let lang = std::env::var("LANG")
+            .ok()
+            .filter(|lang| {
+                !lang.is_empty()
+                    && lang.len() <= 64
+                    && lang
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_.@-".contains(&b))
+            })
+            .unwrap_or_else(|| "en_US.UTF-8".into());
+        let mut env: BTreeMap<OsString, OsString> = [
+            ("HOME", home.as_os_str().to_owned()),
+            ("PATH", "/usr/bin:/bin:/usr/sbin:/sbin".into()),
+            ("LANG", lang.into()),
+            ("CLAUDE_CONFIG_DIR", profile.as_os_str().to_owned()),
+            ("CLAUDE_CODE_TMPDIR", run.as_os_str().to_owned()),
+            ("TMPDIR", format!("{}/", run.display()).into()),
+            ("HTTPS_PROXY", "http://127.0.0.1:4321".into()),
+            ("https_proxy", "http://127.0.0.1:4321".into()),
+            ("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1".into()),
+            ("DISABLE_AUTOUPDATER", "1".into()),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.into(), v))
+        .collect();
+        let output = Command::new("/usr/bin/id").arg("-un").output().unwrap();
+        assert!(output.status.success());
+        let login = String::from_utf8(output.stdout).unwrap();
+        let login = login.trim_end_matches('\n');
+        env.insert("USER".into(), login.into());
+        env.insert("LOGNAME".into(), login.into());
+        if sign_in {
+            env.insert("BROWSER".into(), run.join(sandbox::HELPER).into_os_string());
+        }
+        env
+    }
+
+    #[test]
+    fn command_has_exact_arguments_directory_and_environment() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let home = scratch.0.join("home as given");
+        for sign_in in [false, true] {
+            let launch = launch(&profile, &home, RunFolder::Fresh, sign_in);
+            let command = launch.command(&["auth", "status", "--json"]);
+            assert_eq!(command.get_program(), sandbox::SANDBOX_EXEC);
+            assert_eq!(command.get_current_dir(), Some(launch.run_folder()));
+            let expected: Vec<OsString> = vec![
+                "-p".into(),
+                include_str!("../sandbox/claude-code.sb").into(),
+                "-D".into(),
+                format!("PROGRAM={}", fs::canonicalize("/bin/ls").unwrap().display()).into(),
+                "-D".into(),
+                format!("PROFILE_DIR={}", profile.display()).into(),
+                "-D".into(),
+                format!("RUN_DIR={}", launch.run_folder().display()).into(),
+                "-D".into(),
+                "PROXY_PORT=4321".into(),
+                "-D".into(),
+                format!("SIGN_IN={}", if sign_in { "yes" } else { "no" }).into(),
+                fs::canonicalize("/bin/ls").unwrap().into_os_string(),
+                "--setting-sources".into(),
+                "project,local".into(),
+                "auth".into(),
+                "status".into(),
+                "--json".into(),
+            ];
+            assert_eq!(
+                command.get_args().map(OsString::from).collect::<Vec<_>>(),
+                expected
+            );
+            let env: BTreeMap<_, _> = command
+                .get_envs()
+                .map(|(k, v)| (k.to_owned(), v.expect("only explicit values").to_owned()))
+                .collect();
+            assert!(
+                env == expected_environment(&launch, &profile, &home, sign_in),
+                "child environment differs from the launch allowlist"
+            );
+            for key in [
+                "ANTHROPIC_API_KEY",
+                "CLAUDECODE",
+                "SSH_AUTH_SOCK",
+                "NODE_OPTIONS",
+            ] {
+                assert!(!env.contains_key(std::ffi::OsStr::new(key)));
+            }
+            assert_eq!(
+                env[std::ffi::OsStr::new("HTTPS_PROXY")],
+                "http://127.0.0.1:4321"
+            );
+            if let Some(parent_proxy) = std::env::var_os("HTTPS_PROXY")
+                && parent_proxy != "http://127.0.0.1:4321"
+            {
+                assert!(env.get(std::ffi::OsStr::new("HTTPS_PROXY")) != Some(&parent_proxy));
+            }
+            let helper = launch.run_folder().join(sandbox::HELPER);
+            if sign_in {
+                assert_eq!(mode(&helper), 0o700);
+                assert_eq!(fs::read(helper).unwrap(), HELPER.as_bytes());
+            } else {
+                assert!(!helper.exists());
+            }
+        }
+    }
+
+    #[test]
+    fn language_is_validated_in_a_separate_process() {
+        for (lang, expected) in [
+            (Some("fr_CA.UTF-8@latin"), "fr_CA.UTF-8@latin"),
+            (Some(""), "en_US.UTF-8"),
+            (Some("en US"), "en_US.UTF-8"),
+            (Some("en_US\n"), "en_US.UTF-8"),
+            (Some("é"), "en_US.UTF-8"),
+            (None, "en_US.UTF-8"),
+        ] {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command.args(["--exact", "mac::language_child", "--nocapture"]);
+            command.env("VOICE_TEST_EXPECT_LANG", expected);
+            if let Some(lang) = lang {
+                command.env("LANG", lang);
+            } else {
+                command.env_remove("LANG");
+            }
+            let output = command.output().unwrap();
+            assert!(output.status.success(), "{output:?}");
+        }
+        for (len, expected) in [(64, "a".repeat(64)), (65, "en_US.UTF-8".into())] {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "mac::language_child", "--nocapture"])
+                .env("LANG", "a".repeat(len))
+                .env("VOICE_TEST_EXPECT_LANG", expected)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+        }
+    }
+
+    #[test]
+    fn language_child() {
+        let Some(expected) = std::env::var_os("VOICE_TEST_EXPECT_LANG") else {
+            return;
+        };
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let launch = launch(&profile, &scratch.0, RunFolder::Fresh, false);
+        let command = launch.command(&[]);
+        let lang = command
+            .get_envs()
+            .find(|(name, _)| *name == "LANG")
+            .unwrap()
+            .1
+            .unwrap();
+        assert_eq!(lang, expected);
+        assert!(
+            !command
+                .get_envs()
+                .any(|(name, _)| name == "VOICE_TEST_EXPECT_LANG")
+        );
+    }
+
+    #[test]
+    fn hands_out_a_valid_link_once_and_refuses_unsafe_files_or_contents() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let launch = launch(&profile, &scratch.0, RunFolder::Fresh, true);
+        let path = launch.run_folder().join(sandbox::LINK);
+        assert_eq!(launch.sign_in_link(), Link::NotYet);
+        let good = "https://claude.com/cai/oauth/authorize?x=1";
+        fs::write(&path, format!("{good}\n")).unwrap();
+        assert_eq!(launch.sign_in_link(), Link::Ready(good.into()));
+        assert!(!path.exists());
+        assert_eq!(launch.sign_in_link(), Link::NotYet);
+        for bytes in [b"".as_slice(), good.as_bytes()] {
+            fs::write(&path, bytes).unwrap();
+            assert_eq!(launch.sign_in_link(), Link::NotYet);
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+            let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+            if bytes.is_empty() {
+                file.write_all(good.as_bytes()).unwrap();
+            }
+            file.write_all(b"\n").unwrap();
+            assert_eq!(launch.sign_in_link(), Link::Ready(good.into()));
+            assert!(!path.exists());
+        }
+        for bytes in [
+            b"https://example.invalid/\n".to_vec(),
+            vec![b'a'; sandbox::MAX_LINK + 1],
+            vec![b'a'; sandbox::MAX_LINK + 10],
+            vec![0xff, b'\n'],
+            format!("{good}\n\n").into_bytes(),
+            vec![b'\n'],
+        ] {
+            fs::write(&path, bytes).unwrap();
+            assert_eq!(launch.sign_in_link(), Link::Refused);
+            assert!(!path.exists());
+        }
+        let mut invalid_utf8 = good.as_bytes().to_vec();
+        invalid_utf8.extend_from_slice(&[0xff, b'\n']);
+        fs::write(&path, invalid_utf8).unwrap();
+        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert!(!path.exists());
+        let prefix = "https://claude.ai/oauth/authorize?";
+        let exact = format!("{prefix}{}", "x".repeat(sandbox::MAX_LINK - prefix.len()));
+        fs::write(&path, &exact).unwrap();
+        assert_eq!(launch.sign_in_link(), Link::NotYet);
+        assert_eq!(fs::read(&path).unwrap(), exact.as_bytes());
+        fs::write(&path, format!("{exact}\n")).unwrap();
+        assert_eq!(launch.sign_in_link(), Link::Ready(exact.clone()));
+        fs::write(&path, format!("{exact}\nx")).unwrap();
+        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert!(!path.exists());
+        fs::write(&path, format!("{exact}x\n")).unwrap();
+        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert!(!path.exists());
+        let outside = scratch.0.join("outside");
+        fs::write(&outside, format!("{good}\n")).unwrap();
+        symlink(&outside, &path).unwrap();
+        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert_eq!(fs::read_to_string(&outside).unwrap(), format!("{good}\n"));
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        assert_eq!(launch.sign_in_link(), Link::Refused);
+    }
+
+    fn available() -> bool {
+        let output = Command::new(sandbox::SANDBOX_EXEC)
+            .args(["-p", "(version 1)(allow default)", "/usr/bin/true"])
+            .output()
+            .expect("run sandbox-exec availability check");
+        if output.status.success() {
+            return true;
+        }
+        let skip = "launch: skipped, already inside a sandbox (macOS refuses a sandbox inside one)";
+        assert!(
+            std::env::var("VOICE_REQUIRE_SANDBOX").as_deref() != Ok("1"),
+            "{skip}"
+        );
+        eprintln!("{skip}");
+        false
+    }
+
+    #[test]
+    fn real_sandbox_keeps_the_environment_and_hands_over_only_the_sign_in_link() {
+        if !available() {
+            return;
+        }
+        match Command::new("cc").arg("--version").output() {
+            Ok(output) if output.status.success() => (),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("launch: skipped, cc is not installed");
+                return;
+            }
+            other => panic!("cc availability check failed: {other:?}"),
+        }
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let source = scratch.0.join("child.c");
+        let program = scratch.0.join("child");
+        fs::write(&source, r#"#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+extern char **environ;
+int main(int argc, char **argv) {
+    char path[8192];
+    snprintf(path, sizeof(path), "%s/seen", getenv("CLAUDE_CODE_TMPDIR"));
+    FILE *file = fopen(path, "w");
+    if (!file) return 2;
+    for (int i = 0; i < argc; i++) fprintf(file, "%s\n", argv[i]);
+    fputs("--environment--\n", file);
+    for (char **entry = environ; *entry; entry++) fprintf(file, "%s\n", *entry);
+    if (fclose(file)) return 3;
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "login")) {
+            execl("/bin/bash", "bash", "-c", "\"$BROWSER\" 'https://claude.com/cai/oauth/authorize?x=1'", NULL);
+            return 4;
+        }
+    }
+    return 0;
+}
+"#).unwrap();
+        let output = Command::new("cc")
+            .arg(&source)
+            .arg("-o")
+            .arg(&program)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        for sign_in in [true, false] {
+            let launch = Launch::new(
+                &program,
+                &profile,
+                &scratch.0,
+                RunFolder::Fresh,
+                4321,
+                sign_in,
+            )
+            .unwrap();
+            let output = launch.command(&["auth", "login"]).output().unwrap();
+            let seen = fs::read_to_string(launch.run_folder().join("seen")).unwrap();
+            let (args, environment) = seen.split_once("--environment--\n").unwrap();
+            assert_eq!(
+                args.lines().collect::<Vec<_>>(),
+                [
+                    program.to_str().unwrap(),
+                    "--setting-sources",
+                    "project,local",
+                    "auth",
+                    "login"
+                ]
+            );
+            let env: BTreeMap<OsString, OsString> = environment
+                .lines()
+                .map(|line| {
+                    let (k, v) = line.split_once('=').unwrap();
+                    (k.into(), v.into())
+                })
+                .collect();
+            assert_eq!(environment.lines().count(), env.len());
+            assert!(
+                env == expected_environment(&launch, &profile, &scratch.0, sign_in),
+                "child environment differs from the launch allowlist"
+            );
+            if sign_in {
+                assert!(output.status.success(), "{output:?}");
+                assert_eq!(mode(&launch.run_folder().join(sandbox::LINK)), 0o600);
+                assert_eq!(
+                    launch.sign_in_link(),
+                    Link::Ready("https://claude.com/cai/oauth/authorize?x=1".into())
+                );
+            } else {
+                assert!(!launch.run_folder().join(sandbox::LINK).exists());
+            }
+        }
+    }
+}

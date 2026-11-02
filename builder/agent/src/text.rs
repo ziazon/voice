@@ -175,3 +175,8 @@ pub fn server(server: &crate::self_hosted::Server) -> String {
         )
     }
 }
+
+pub const MAC_ONLY: &str =
+    "Voice runs Claude Code inside the Mac's own sandbox, so for now it works on a Mac only.";
+pub const NOT_NATIVE: &str = "This Claude Code is an older kind that runs as a script, which Voice can't run inside its sandbox. Install the current Claude Code (https://code.claude.com/docs/en/setup), then try again.";
+pub const RUN_FOLDER_FAILED: &str = "Voice couldn't set up a folder for Claude Code to work in. Check there's space on this computer, then try again.";

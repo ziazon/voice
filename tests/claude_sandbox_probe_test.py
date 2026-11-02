@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import socket
 import stat
 import subprocess
@@ -263,7 +264,8 @@ class ProbeTests(unittest.TestCase):
             env = probe.child_environment(self.profile, self.run, 1234, False)
             self.assertEqual(set(env), {'HOME', 'USER', 'LOGNAME', 'PATH', 'LANG',
                              'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_TMPDIR', 'TMPDIR', 'HTTPS_PROXY',
-                             'https_proxy', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'})
+                             'https_proxy', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+                             'DISABLE_AUTOUPDATER'})
             self.assertFalse(set(poison.values()) & set(env.values()))
             self.assertEqual(env['PATH'], '/usr/bin:/bin:/usr/sbin:/sbin')
             self.assertEqual(env['TMPDIR'], str(self.run) + '/')
@@ -271,33 +273,33 @@ class ProbeTests(unittest.TestCase):
             self.assertEqual(env['HTTPS_PROXY'], 'http://127.0.0.1:1234')
             self.assertEqual(env['https_proxy'], env['HTTPS_PROXY'])
             self.assertEqual(env['LANG'], 'C')
+            self.assertEqual(env['DISABLE_AUTOUPDATER'], '1')
             signed = probe.child_environment(self.profile, self.run, 1234, True)
-            self.assertEqual(signed, dict(env, BROWSER='/usr/bin/false'))
+            self.assertEqual(signed, dict(env, BROWSER=str(self.run / 'open-sign-in')))
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(probe.child_environment(self.profile, self.run, 1, False)['LANG'], 'en_US.UTF-8')
 
     def test_exact_commands(self):
         claude = self.root / 'program' / 'claude'
         prefix = ['/usr/bin/sandbox-exec', '-f', str(probe.PROFILE),
-                  '-D', 'PROGRAM_DIR=' + str(claude.parent),
+                  '-D', 'PROGRAM=' + str(claude.resolve()),
                   '-D', 'PROFILE_DIR=' + str(self.profile), '-D', 'RUN_DIR=' + str(self.run),
                   '-D', 'PROXY_PORT=4321', '-D']
         suffixes = {'version': ['--version'], 'status': ['auth', 'status', '--json'],
                     'sign-in': ['auth', 'login', '--claudeai'], 'sign-out': ['auth', 'logout'],
                     'ask': ['-p', '--model', 'haiku', '--safe-mode', '--no-session-persistence',
-                            '--tools', '', '--output-format', 'json', '--setting-sources',
-                            'project,local', '--strict-mcp-config', '--mcp-config',
+                            '--tools', '', '--output-format', 'json', '--strict-mcp-config', '--mcp-config',
                             '{"mcpServers":{}}', '--permission-mode', 'dontAsk',
                             '--max-budget-usd', '0.05']}
         for action, suffix in suffixes.items():
             self.assertEqual(probe.command(claude, self.profile, self.run, 4321, action),
                              prefix + ['SIGN_IN=' + ('yes' if action == 'sign-in' else 'no'),
-                                       str(claude)] + suffix)
+                                       str(claude.resolve()), '--setting-sources', 'project,local'] + suffix)
 
     def fake(self, folder):
         folder.mkdir(parents=True, exist_ok=True)
         program = folder / 'claude'
-        program.write_text('#!/bin/sh\nexit 0\n')
+        program.write_bytes(b'\xcf\xfa\xed\xfe')
         program.chmod(0o700)
         return program
 
@@ -323,6 +325,121 @@ class ProbeTests(unittest.TestCase):
         with patch.dict(os.environ, {'PATH': 'relative'}), patch.object(probe, 'fallbacks', return_value=[]):
             with self.assertRaisesRegex(ValueError, "Claude Code isn't installed"):
                 probe.find_claude(self.root)
+
+    def test_valid_link_matches_the_launch_rules(self):
+        check = getattr(probe, 'valid_link', None)
+        self.assertTrue(callable(check), 'the probe needs one link check')
+        prefix = 'https://claude.com/cai/oauth/authorize?'
+        for link in [prefix + 'x=1', 'https://claude.ai/oauth/authorize?x=1',
+                     prefix + 'x' * (4096 - len(prefix))]:
+            self.assertTrue(check(link), link)
+        for link in ['', 'http://claude.com/cai/oauth/authorize?a',
+                     'https://claude.com.example/cai/oauth/authorize?a',
+                     'https://claude.com/cai/oauth/authorize@x?a',
+                     'https://claude.com/cai/oauth/authorizex?a',
+                     prefix + 'x' * (4097 - len(prefix))]:
+            self.assertFalse(check(link), link)
+        for char in ' \t\n"<>\\^`{|}é':
+            self.assertFalse(check(prefix + char), repr(char))
+
+    def test_link_handoff_refuses_links_and_non_regular_files(self):
+        check = getattr(probe, 'open_sign_in_link', None)
+        self.assertTrue(callable(check))
+        path = self.run / 'sign-in-link'
+        with patch.object(probe.subprocess, 'run') as opened:
+            self.assertIsNone(check(self.run))
+            target = self.root / 'elsewhere'
+            target.write_text('https://claude.com/cai/oauth/authorize?x=1\n')
+            path.symlink_to(target)
+            self.assertFalse(check(self.run))
+            path.unlink()
+            path.mkdir()
+            self.assertFalse(check(self.run))
+            path.rmdir()
+            os.mkfifo(path)
+            self.assertFalse(check(self.run))
+            opened.assert_not_called()
+
+    def test_link_handoff_waits_for_the_helper_to_finish_writing(self):
+        path = self.run / 'sign-in-link'
+        link = 'https://claude.com/cai/oauth/authorize?x=1'
+        with patch.object(probe.subprocess, 'run') as opened:
+            for data in [b'', link.encode(), b'x' * probe.MAX_LINK]:
+                with self.subTest(size=len(data)):
+                    path.write_bytes(data)
+                    self.assertIsNone(probe.open_sign_in_link(self.run))
+                    self.assertEqual(path.read_bytes(), data)
+                    opened.assert_not_called()
+            path.write_bytes(link.encode())
+            self.assertIsNone(probe.open_sign_in_link(self.run))
+            with path.open('ab') as helper:
+                helper.write(b'\n')
+            self.assertTrue(probe.open_sign_in_link(self.run))
+            opened.assert_called_once_with(['/usr/bin/open', link], check=False)
+            self.assertFalse(path.exists())
+
+    def test_helper_matches_rust_and_is_private(self):
+        helper = getattr(probe, 'HELPER_SCRIPT', None)
+        self.assertIsInstance(helper, str)
+        rust = (probe.PROFILE.parent.parent / 'src/sandbox.rs').read_text()
+        constant = re.search(r'(?:pub )?const HELPER_SCRIPT: &str =\s*("(?:\\.|[^"\\])*");', rust)
+        self.assertIsNotNone(constant)
+        self.assertEqual(helper, json.loads(constant.group(1)))
+        fake = self.fake(self.root / 'helper')
+        fake.write_text('#!/bin/sh\nexit 0\n')
+        with patch.object(probe, 'command', return_value=[str(fake)]):
+            probe.run_child(fake, self.profile, self.run, 1, 'sign-in')
+        script = self.run / 'open-sign-in'
+        self.assertEqual(script.read_text(), helper)
+        self.assertEqual(stat.S_IMODE(script.stat().st_mode), 0o700)
+
+    def test_sign_in_opens_only_a_valid_helper_link(self):
+        link = 'https://claude.com/cai/oauth/authorize?x=1'
+        for value, accepted in [(link + '\n', True), ('https://example.com/\n', False),
+                                ('x' * (probe.MAX_LINK + 1), False),
+                                (link + 'x' * 4096 + '\n', False),
+                                (b'\xff\n', False), (link + '\n\n', False)]:
+            with self.subTest(value=repr(value)[:60]):
+                (self.run / 'open-sign-in').unlink(missing_ok=True)
+                child = MagicMock(pid=123456, returncode=0, stdout=io.StringIO('Claude output\n'))
+                child.poll.side_effect = [None, 0]
+                data = value.encode() if isinstance(value, str) else value
+                def deliver_link(timeout=None):
+                    if timeout is not None:
+                        (self.run / 'sign-in-link').write_bytes(data)
+                child.wait.side_effect = deliver_link
+                popen = MagicMock()
+                popen.__enter__.return_value = child
+                output = io.StringIO()
+                with patch.object(probe.subprocess, 'Popen', return_value=popen), \
+                        patch.object(probe.os, 'killpg') as kill, \
+                        patch.object(probe.subprocess, 'run') as opened, contextlib.redirect_stdout(output):
+                    ran = probe.run_child(Path('/program/claude'), self.profile, self.run, 1, 'sign-in')
+                kill.assert_called_once_with(child.pid, probe.signal.SIGKILL)
+                self.assertEqual(child.wait.call_args_list[0].kwargs, {'timeout': 0.2})
+                if accepted:
+                    opened.assert_called_once_with(['/usr/bin/open', link], check=False)
+                    self.assertEqual(ran.returncode, 0)
+                    self.assertIn("Opened Claude's page in your browser.", output.getvalue())
+                else:
+                    opened.assert_not_called()
+                    self.assertNotEqual(ran.returncode, 0)
+                    self.assertIn("Claude Code handed over a link Voice won't open.", output.getvalue())
+                self.assertFalse((self.run / 'sign-in-link').exists())
+                self.assertIn('Claude output', output.getvalue())
+
+    def test_finding_claude_refuses_non_native_programs(self):
+        program = self.fake(self.root / 'native')
+        for header in [b'#!/bin/sh\n', b'xx', b'\x7fELF', b'\xfe\xed\xfa\xcf']:
+            with self.subTest(header=header), patch.dict(os.environ, {'PATH': str(program.parent)}):
+                program.write_bytes(header)
+                with self.assertRaisesRegex(ValueError, "This Claude Code is an older kind") as error:
+                    probe.find_claude(self.root)
+                self.assertEqual(str(error.exception), "This Claude Code is an older kind that runs as a script, which Voice can't run inside its sandbox. Install the current Claude Code (https://code.claude.com/docs/en/setup), then try again.")
+        for header in [b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xca\xfe\xba\xbf']:
+            with self.subTest(header=header), patch.dict(os.environ, {'PATH': str(program.parent)}):
+                program.write_bytes(header)
+                self.assertEqual(probe.find_claude(self.root), program.resolve())
 
     def test_profile_folder(self):
         self.assertEqual(probe.prepare_profile(str(self.profile)), self.profile)
@@ -437,7 +554,7 @@ class ProbeTests(unittest.TestCase):
                    self.reply({'loggedIn': True, 'email': 'sam@example.com'})]
         result, output = self.capture('sign-in', replies)
         self.assertEqual(result, 0)
-        self.assertIn("copy the link Claude Code prints below.", output)
+        self.assertTrue(output.startswith("Sign in on Claude's page, which opens in your browser.\n"))
         self.assertIn("The login is kept in the profile folder's own file.", output)
         self.assertNotIn('canary', output)
         self.assertNotIn('sam@example.com', output)
@@ -478,7 +595,7 @@ class ProbeTests(unittest.TestCase):
             ran = probe.run_child(fake, self.profile, self.run, 1, 'sign-in')
         self.assertEqual(ran.returncode, 0)
         self.assertIsNone(launch.call_args.kwargs['stdin'])
-        self.assertEqual(launch.call_args.kwargs['env']['BROWSER'], '/usr/bin/false')
+        self.assertEqual(launch.call_args.kwargs['env']['BROWSER'], str(self.run / 'open-sign-in'))
         self.assertEqual(output.getvalue(), 'Sign in at https://example.com/login\n')
 
     def test_counts_are_sorted_and_contain_only_hosts(self):
@@ -492,6 +609,7 @@ class ProbeTests(unittest.TestCase):
 
     def test_run_child_uses_private_cwd_environment_and_prompt(self):
         fake = self.fake(self.root / 'fake')
+        fake.write_text('#!/bin/sh\nexit 0\n')
         with patch.object(probe, 'command', return_value=[str(fake)]) as command:
             ran = probe.run_child(fake, self.profile, self.run, 1234, 'ask')
         self.assertEqual(ran.returncode, 0)

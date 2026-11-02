@@ -110,36 +110,45 @@ children; that is for the release plan, not this spike.
   misbehaved could send what it can read to `api.anthropic.com` under someone else's account. The
   child has no tools, so a prompt can't make it do this; the risk is a broken or tampered program,
   and it is accepted.
-- **The system's certificate service.** `system.sb` lets the child ask `trustd`, which can fetch a
-  certificate's revocation and issuer addresses from outside the sandbox: in theory a narrow way
-  out. Not tested; VO11.1 checks whether Claude Code still works without it.
+- **The system's certificate service is closed.** The profile denies both `com.apple.trustd` and
+  `com.apple.trustd.agent`, which could otherwise fetch certificates from outside the sandbox.
+  On 2026-11-01, Claude Code 2.1.292 still reached `api.anthropic.com` through the proxy and
+  returned `401 Invalid bearer token` for an invented token: its own certificate checks worked.
+  `nscurl` failed its certificate checks under the same deny, so the deny took effect.
 - **Signing in opens a listener to the network.** While `SIGN_IN=yes` (at most 10 minutes, started
   by the person), the child can listen on every address, not only this computer. Recorded with the
   owner's question about the login.
-- **Programs the child may start.** `process-exec` is not narrowed, so the child can run any
-  program it can read, setuid ones included; they run inside the same sandbox. VO11.1 decides
-  whether to narrow it.
+- **Programs the child may start.** Only the program itself may run, plus the link helper and
+  `/bin/bash` while signing in. On 2026-11-01, Claude Code 2.1.292 ran `--version`, `auth status`,
+  a signed-out `-p`, and `auth status` reading an invented `.credentials.json` with this limit;
+  it needed no Keychain helper. Reading only the program file, rather than its folder, was enough.
+- **A child can outlive its process group.** A process started with `setsid` can survive the
+  group's kill. This is accepted because each launch has its own proxy, which stops with it
+  (VO11.1c), leaving that process no way out.
 - **The profile folder lasts.** The child may write it, and later runs read it: a `settings.json`
   planted there would be read by a later `claude`. VO11.1 passes `--setting-sources` to every
   call, as `claude.rs` does for `-p` today.
 
 ## What the profile allows
 
-`builder/agent/sandbox/claude-code.sb`, with five parameters: `PROGRAM_DIR` (the folder of the real
-`claude` binary), `PROFILE_DIR` (its `CLAUDE_CONFIG_DIR`), `RUN_DIR` (this call's working and
-temporary folder), `PROXY_PORT`, and `SIGN_IN` (`yes` only while signing in).
+`builder/agent/sandbox/claude-code.sb`, with five parameters: `PROGRAM` (the real `claude` binary's
+absolute path with links resolved), `PROFILE_DIR` (its `CLAUDE_CONFIG_DIR`), `RUN_DIR` (this call's
+working and temporary folder), `PROXY_PORT`, and `SIGN_IN` (`yes` only while signing in).
 
 - **Reads:** the system's own code and settings (`/usr/bin`, `/usr/lib`, `/usr/libexec`,
   `/usr/sbin`, `/usr/share`, `/System`, `/private/etc`), the device files `/dev/null`, `zero`,
-  `random`, `urandom`, `dtracehelper` and `/dev/fd`, and the three folders. Not the rest of the
-  home folder, `/Library`, `/usr/local`, the system logs, or the person's terminals.
+  `random`, `urandom`, `dtracehelper` and `/dev/fd`, the program file, and the profile and run
+  folders. Not the program's folder, the rest of the home folder, `/Library`, `/usr/local`, the
+  system logs, or the person's terminals.
 - **Writes:** the profile and run folders, and `/dev/null`.
 - **Network:** out over TCP to the proxy's port on this computer only; listening only while signing in
   (on every address, see above).
 - **Never, whatever the folders:** the secrets deny list of `builder/core/src/deny.rs`, in either
   letter case, with one exception: Claude Code's own `.credentials.json` directly in its profile
   folder.
-- **No Keychain:** the profile allows no Keychain service.
+- **Programs:** only the program itself, plus the link helper and `/bin/bash` while signing in.
+- **No Keychain or system certificate service:** the profile allows no Keychain service and
+  denies `com.apple.trustd` and `com.apple.trustd.agent`; Claude Code checks certificates itself.
 
 ## The probe, for the attended walk
 
