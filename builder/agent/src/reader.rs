@@ -86,6 +86,8 @@ fn accepted(folder: bool, path: &Path, bounds: &Bounds, deny: &DenyList) -> Opti
         || [&bounds.home, &bounds.member, &bounds.state, &bounds.runs]
             .iter()
             .any(|allowed| *allowed != &canonical && allowed.starts_with(&canonical))
+        || canonical.starts_with(bounds.home.join(".claude/state"))
+        || canonical.starts_with(bounds.home.join(".claude/crew"))
         || canonical.starts_with(&bounds.state)
         || canonical.starts_with(&bounds.runs)
         || builtin.denied(path)

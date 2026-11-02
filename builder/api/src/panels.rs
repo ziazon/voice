@@ -308,6 +308,19 @@ pub fn refresh_mirror_here(home: &Path, member: &Member) -> bool {
     let date = voice_agent::ledger::local_day(std::time::SystemTime::now());
     voice_ingest::skills::refresh(home, member, &date).is_ok()
 }
+#[cfg(target_os = "macos")]
+fn refresh_through_reader(member: &Member) -> bool {
+    crate::history::with_reader(|home, place| {
+        crate::reader_client::refresh_held(
+            home,
+            place,
+            SlugRequest {
+                slug: member.slug.clone(),
+            },
+        )
+    })
+    .is_ok()
+}
 /// Start a panel using this app's home and Claude Code.
 pub fn convene_panel(
     request: ConvenePanelRequest,
@@ -321,18 +334,7 @@ pub fn convene_panel(
         &voice_agent::claude::fallbacks(&home),
         request,
         #[cfg(target_os = "macos")]
-        &|member| {
-            crate::history::with_reader(|home, place| {
-                crate::reader_client::refresh_held(
-                    home,
-                    place,
-                    SlugRequest {
-                        slug: member.slug.clone(),
-                    },
-                )
-            })
-            .is_ok()
-        },
+        &refresh_through_reader,
         #[cfg(not(target_os = "macos"))]
         &|member| refresh_mirror_here(&home, member),
         progress,
@@ -351,18 +353,7 @@ pub fn resume_panel(
         &voice_agent::claude::fallbacks(&home),
         request,
         #[cfg(target_os = "macos")]
-        &|member| {
-            crate::history::with_reader(|home, place| {
-                crate::reader_client::refresh_held(
-                    home,
-                    place,
-                    SlugRequest {
-                        slug: member.slug.clone(),
-                    },
-                )
-            })
-            .is_ok()
-        },
+        &refresh_through_reader,
         #[cfg(not(target_os = "macos"))]
         &|member| refresh_mirror_here(&home, member),
         progress,

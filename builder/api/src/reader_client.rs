@@ -219,7 +219,8 @@ fn run<T: DeserializeOwned>(
         .ok_or_else(|| failure(history::FIND))?;
     let state = member::private_state_dir(&member.member, home)
         .ok_or_else(|| failure(history::ELSEWHERE))?;
-    let deny = DenyList::for_member(&member.member, home).map_err(|e| failure(&e.to_string()))?;
+    let deny =
+        DenyList::for_member(&member.member, home).map_err(|_| failure(step_failure(step)))?;
     let reader = Reader::new(
         place.program,
         home,
@@ -463,6 +464,7 @@ pub fn list_skills(home: &Path, place: &Place<'_>, request: SlugRequest) -> Resu
             ids: vec![],
         },
     )
+    .map(crate::skills::checked)
 }
 pub fn agree_skills(home: &Path, place: &Place<'_>, request: SkillsRequest) -> Result<Skills> {
     skills_run(
@@ -474,13 +476,14 @@ pub fn agree_skills(home: &Path, place: &Place<'_>, request: SkillsRequest) -> R
             ids: request.ids,
         },
     )
+    .map(crate::skills::checked)
 }
 pub fn withdraw_skills(
     home: &Path,
     place: &Place<'_>,
     request: SkillsRequest,
 ) -> Result<SkillsWithdrawn> {
-    skills_run(
+    skills_run::<SkillsWithdrawn>(
         home,
         place,
         reader::SkillsStep {
@@ -489,6 +492,10 @@ pub fn withdraw_skills(
             ids: request.ids,
         },
     )
+    .map(|mut result| {
+        result.skills = crate::skills::checked(result.skills);
+        result
+    })
 }
 pub fn refresh_skills(
     home: &Path,
@@ -572,6 +579,58 @@ mod tests {
         let result = judge::<Option<ExportStatus>>(Cursor::new(bytes.to_vec()), step, &mut |_| {})
             .and_then(|line| line.finish(Some(code)));
         assert_eq!(result.unwrap_err().message, reader::STOPPED);
+    }
+    #[test]
+    fn skills_notes_from_a_reader_keep_only_the_known_sentences() {
+        use voice_ingest::skills::{PLUGIN_NOTE, SYNCED_TWICE_NOTE, UNREADABLE_NOTE};
+        let bytes = format!(
+            "{}\n",
+            json!({"result": {"skills": [], "notes": [UNREADABLE_NOTE, "An invented private sentence.", SYNCED_TWICE_NOTE, PLUGIN_NOTE]}})
+        );
+        let answer = judge::<Skills>(Cursor::new(bytes.into_bytes()), Step::Skills, &mut |_| {})
+            .unwrap()
+            .finish(Some(0))
+            .map(crate::skills::checked)
+            .unwrap();
+        assert_eq!(
+            answer.notes,
+            vec![UNREADABLE_NOTE, SYNCED_TWICE_NOTE, PLUGIN_NOTE]
+        );
+    }
+    #[test]
+    fn a_bad_deny_entry_uses_the_steps_fixed_sentence() {
+        let home = std::env::temp_dir().join(format!("voice-reader-deny-{}", std::process::id()));
+        fs::create_dir(&home).unwrap();
+        crate::new_assistant_in(
+            &home,
+            NewAssistantRequest {
+                name: "Ari".into(),
+                pronouns: "they/them".into(),
+                principal: "Robin".into(),
+                principal_pronouns: "they/them".into(),
+            },
+        )
+        .unwrap();
+        let config = home.join(".claude/crew/ari/member.json");
+        let mut member: serde_json::Value =
+            serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
+        member["filters"]["denied_paths"] = json!(["invented/private/entry"]);
+        fs::write(config, serde_json::to_vec(&member).unwrap()).unwrap();
+        let place = Place {
+            program: Path::new("/usr/bin/true"),
+            runs: &home.join("runs"),
+        };
+        let result = run::<Skills>(
+            &home,
+            &place,
+            "ari",
+            Step::Skills,
+            &SlugRequest { slug: "ari".into() },
+            &[],
+            &mut |_| {},
+        );
+        fs::remove_dir_all(home).unwrap();
+        assert_eq!(result.unwrap_err().message, crate::skills::SKILLS_READ);
     }
     #[test]
     fn progress_is_relayed_before_the_result() {

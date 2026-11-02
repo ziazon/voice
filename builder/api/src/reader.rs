@@ -356,6 +356,33 @@ mod tests {
         assert!(lines(&output)[0].get("result").is_some());
     }
     #[test]
+    fn refresh_held_takes_a_free_lock_and_releases_it() {
+        let home = Home::new(false);
+        let mut output = vec![];
+        assert!(serve(
+            Some(&home.0),
+            Step::Skills,
+            &mut br#"{"slug":"ari","action":"refresh-held"}"#.as_slice(),
+            &mut output,
+        ));
+        assert!(lines(&output)[0].get("result").is_some());
+        drop(voice_ingest::private::lock_state(&home.0, "ari").unwrap());
+    }
+    #[test]
+    fn refresh_held_refuses_a_lock_error_with_the_skills_sentence() {
+        let home = Home::new(false);
+        drop(voice_ingest::private::lock_state(&home.0, "ari").unwrap());
+        let state = home.0.join(".claude/state/ari");
+        fs::rename(&state, home.0.join("saved-state")).unwrap();
+        std::os::unix::fs::symlink(home.0.join("saved-state"), state).unwrap();
+        error(
+            Some(&home.0),
+            Step::Skills,
+            &mut br#"{"slug":"ari","action":"refresh-held"}"#.as_slice(),
+            skills::SKILLS_READ,
+        );
+    }
+    #[test]
     fn refresh_held_refuses_ids() {
         let home = Home::new(false);
         error(
