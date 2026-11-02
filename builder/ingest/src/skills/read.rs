@@ -1,12 +1,15 @@
 //! Descriptor-anchored walks: a renamed folder cannot redirect a skill's reads.
 use super::{SKILL_TOO_LARGE, SKILL_UNREADABLE, Skill, Source, invalid};
-use crate::anonymize::{self, Rules};
+use crate::{
+    anonymize::{self, Rules},
+    folder::{DirectoryStream, errno, open_at},
+};
 use std::{
     ffi::{CStr, OsString},
     fs::{File, OpenOptions},
     io::Read,
     os::{
-        fd::{AsRawFd, FromRawFd, IntoRawFd},
+        fd::{AsRawFd, IntoRawFd},
         unix::{
             ffi::OsStringExt,
             fs::{MetadataExt, OpenOptionsExt},
@@ -30,38 +33,6 @@ pub fn read_with_rules(skill: &Skill, rules: &Rules) -> Result<Vec<(PathBuf, Sou
     walk(root, Path::new(""), 0, &mut files, &mut 0, rules)?;
     files.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(files)
-}
-struct DirectoryStream(*mut libc::DIR);
-impl Drop for DirectoryStream {
-    fn drop(&mut self) {
-        // SAFETY: this guard exclusively owns the stream and its directory descriptor.
-        unsafe { libc::closedir(self.0) };
-    }
-}
-#[cfg(target_os = "macos")]
-fn errno() -> *mut libc::c_int {
-    // SAFETY: __error returns this thread's live errno pointer.
-    unsafe { libc::__error() }
-}
-#[cfg(not(target_os = "macos"))]
-fn errno() -> *mut libc::c_int {
-    // SAFETY: __errno_location returns this thread's live errno pointer.
-    unsafe { libc::__errno_location() }
-}
-fn open_at(fd: libc::c_int, name: &CStr, flags: libc::c_int) -> std::io::Result<File> {
-    // SAFETY: fd is retained by the caller; name is terminated and one directory entry.
-    let child = unsafe {
-        libc::openat(
-            fd,
-            name.as_ptr(),
-            flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-        )
-    };
-    if child < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    // SAFETY: successful openat returns a new owned descriptor.
-    Ok(unsafe { File::from_raw_fd(child) })
 }
 fn walk(
     directory: File,
