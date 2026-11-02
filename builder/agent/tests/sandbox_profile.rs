@@ -339,6 +339,72 @@ fn folders_stay_private_but_file_modes_can_change() {
 }
 
 #[test]
+fn setattrlist_cannot_open_the_folders() {
+    if !available() {
+        return;
+    }
+    match Command::new("cc").arg("--version").output() {
+        Ok(output) if output.status.success() => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("sandbox_profile: skipped, cc is not installed");
+            return;
+        }
+        other => panic!("cc availability check failed: {other:?}"),
+    }
+    let sb = Sandbox::new();
+    let source = sb.program.0.join("setattrlist.c");
+    let program = sb.program.0.join("setattrlist");
+    fs::write(
+        &source,
+        r#"#include <sys/attr.h>
+#include <unistd.h>
+int main(int argc, char **argv) {
+    if (argc != 2) return 4;
+    struct attrlist attrs = {0};
+    attrs.bitmapcount = ATTR_BIT_MAP_COUNT;
+    attrs.commonattr = ATTR_CMN_ACCESSMASK;
+    u_int32_t mode = 0777;
+    int mode_result = setattrlist(argv[1], &attrs, &mode, sizeof(mode), 0);
+    attrs.commonattr = ATTR_CMN_GRPID;
+    gid_t group = 12;
+    int group_result = setattrlist(argv[1], &attrs, &group, sizeof(group), 0);
+    return (mode_result == 0 ? 1 : 0) | (group_result == 0 ? 2 : 0);
+}
+"#,
+    )
+    .unwrap();
+    let output = Command::new("cc")
+        .arg(&source)
+        .arg("-o")
+        .arg(&program)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let control = Scratch::new("setattrlist-control");
+    fs::set_permissions(&control.0, fs::Permissions::from_mode(0o700)).unwrap();
+    let output = Command::new("/usr/bin/sandbox-exec")
+        .args(["-p", "(version 1)(allow default)"])
+        .arg(&program)
+        .arg(&control.0)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(3), "{output:?}");
+    let metadata = fs::metadata(&control.0).unwrap();
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o777);
+    assert_eq!(metadata.gid(), 12);
+    for folder in [&sb.profile.0, &sb.run.0] {
+        fs::set_permissions(folder, fs::Permissions::from_mode(0o700)).unwrap();
+        let gid = fs::metadata(folder).unwrap().gid();
+        let output = sb.run(program.to_str().unwrap(), &[folder.to_str().unwrap()]);
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        let metadata = fs::metadata(folder).unwrap();
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+        assert_eq!(metadata.gid(), gid);
+        assert!(!voice_agent::sandbox::has_acl(folder).unwrap());
+    }
+}
+
+#[test]
 fn trustd_services_are_refused_only_under_the_profile() {
     if !available() {
         return;

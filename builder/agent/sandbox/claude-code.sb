@@ -39,10 +39,8 @@
     (subpath (param "PROFILE_DIR"))
     (subpath (param "RUN_DIR"))
     (literal "/dev/null"))
-; The two folders cannot be moved, removed or replaced; their contents remain writable.
-(deny file-write-unlink file-write-create (literal (param "PROFILE_DIR")) (literal (param "RUN_DIR")))
-; The two folders stay private: no mode, access list, flag or owner change; their contents' may still change.
-(deny file-write-mode file-write-acl file-write-flags file-write-owner (literal (param "PROFILE_DIR")) (literal (param "RUN_DIR")))
+; The two folders themselves can't be moved, removed, replaced or changed in any way (mode, access list, flags, owner, by any call); their contents remain writable.
+(deny file-write* (literal (param "PROFILE_DIR")) (literal (param "RUN_DIR")))
 
 ; All outgoing traffic must go through the caller's local proxy.
 (allow network-outbound

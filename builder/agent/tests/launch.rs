@@ -252,6 +252,42 @@ mod mac {
     }
 
     #[test]
+    fn refuses_a_fresh_run_that_inherits_an_acl() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let runs = sandbox::runs_folder(&profile);
+        private(&runs);
+        let output = Command::new("/bin/chmod")
+            .args([
+                "+a",
+                "everyone allow list,search,add_file,file_inherit,directory_inherit",
+            ])
+            .arg(&runs)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Fresh,
+                4321,
+                false,
+            ),
+            text::RUN_FOLDER_FAILED,
+        );
+        assert_eq!(fs::read_dir(&runs).unwrap().count(), 0);
+        let output = Command::new("/bin/chmod")
+            .arg("-N")
+            .arg(&runs)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        drop(launch(&profile, &scratch.0, RunFolder::Fresh, false));
+    }
+
+    #[test]
     fn refuses_a_profile_with_an_acl_until_it_is_removed() {
         refuses_a_folder_with_an_acl(true);
     }

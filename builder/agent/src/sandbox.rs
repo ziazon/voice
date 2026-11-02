@@ -9,7 +9,10 @@ use libc::{c_char, c_int, c_void};
 use std::{
     ffi::{CStr, CString},
     io::Write,
-    os::unix::{ffi::OsStrExt, fs::DirBuilderExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{DirBuilderExt, MetadataExt},
+    },
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -40,6 +43,7 @@ const HELPER_SCRIPT: &str =
 /// A fresh folder owned by this launch, or the caller's work folder, left in place.
 /// Sign-in should use Fresh: a plain child sharing Given can write sign-in-link; valid_link limits it.
 /// A helper left by a crashed sign-in makes later sign-ins in Given fail; helpers are never replaced.
+/// Any ACL, even a deny-only one as on ~/Documents, is refused; VO11.1c must not offer it as Given.
 pub enum RunFolder<'a> {
     Fresh,
     Given(&'a Path),
@@ -434,9 +438,12 @@ pub fn has_acl(path: &Path) -> std::io::Result<bool> {
 #[cfg(target_os = "macos")]
 fn private_folder(path: &Path) -> std::io::Result<()> {
     let metadata = fs::symlink_metadata(path)?;
+    // SAFETY: geteuid takes no arguments and cannot fail.
+    let owner = unsafe { libc::geteuid() };
     if !metadata.is_dir()
         || metadata.file_type().is_symlink()
         || metadata.permissions().mode() & 0o077 != 0
+        || metadata.uid() != owner
     {
         return Err(std::io::Error::other("not a private directory"));
     }
@@ -471,7 +478,13 @@ fn fresh_folder(profile: &Path) -> std::io::Result<PathBuf> {
         let path = parent.join(format!("{}-{number}-{nanos}", std::process::id()));
         match fs::DirBuilder::new().mode(0o700).create(&path) {
             Ok(()) => match fs::canonicalize(&path) {
-                Ok(path) => return Ok(path),
+                Ok(path) => {
+                    if let Err(error) = private_folder(&path) {
+                        let _ = fs::remove_dir(&path);
+                        return Err(error);
+                    }
+                    return Ok(path);
+                }
                 Err(error) => {
                     let _ = fs::remove_dir_all(path);
                     return Err(error);
