@@ -40,10 +40,8 @@ pub(crate) fn home(message: &str) -> Result<PathBuf> {
 
 pub(crate) fn listed(home: &Path, slug: &str) -> Result<assistants::Listed> {
     assistants::assistant_dir(home, slug).map_err(|_| failure(FIND))?;
-    let listed = assistants::list(home)
+    let listed = assistants::find(home, slug)
         .map_err(|_| failure(FIND))?
-        .into_iter()
-        .find(|listed| listed.member.slug == slug)
         .ok_or_else(|| failure(FIND))?;
     crew::check_name("name", &listed.member.name).map_err(|_| failure(FIND))?;
     Ok(listed)

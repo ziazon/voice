@@ -13,7 +13,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom},
-    os::unix::fs::OpenOptionsExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::Path,
 };
 use voice_core::{
@@ -218,6 +218,12 @@ pub fn read_export(path: &Path, deny: &DenyList) -> Result<Export> {
         let metadata = file.metadata().map_err(io)?;
         if !metadata.is_file() {
             return Err(invalid(format!("{} is not a file", inner.display())));
+        }
+        if metadata.nlink() > 1 {
+            return Err(invalid(format!(
+                "Voice won't read {}: the same file has another name somewhere else on this computer (a hard link). Make a copy of the export folder and choose the copy",
+                inner.display()
+            )));
         }
         (files, read_capped(&inner, file, metadata.len())?)
     } else if metadata.is_file() {

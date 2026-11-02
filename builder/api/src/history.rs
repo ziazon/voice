@@ -29,10 +29,8 @@ pub(crate) fn failure(message: &str) -> Failure {
 }
 pub(crate) fn readable(home: &Path, slug: &str) -> Result<Member> {
     assistants::assistant_dir(home, slug).map_err(|_| failure(FIND))?;
-    let member = assistants::list(home)
+    let member = assistants::find(home, slug)
         .map_err(|_| failure(FIND))?
-        .into_iter()
-        .find(|a| a.member.slug == slug)
         .ok_or_else(|| failure(FIND))?
         .member;
     member::private_state_dir(&member, home).ok_or_else(|| failure(ELSEWHERE))?;

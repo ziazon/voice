@@ -576,3 +576,54 @@ fn unreadable_skill_folders_are_noted_once_without_names() {
     assert_eq!(found.skills.len(), 1);
     assert_eq!(found.skills[0].name, "fine");
 }
+
+#[test]
+fn hard_linked_skill_files_are_left_out_of_read_and_copy() {
+    let source = Scratch::new("skill-source");
+    let outside = Scratch::new("skill-outside");
+    skill(&source.0, ".claude/skills/notes");
+    let canary = outside.0.join("canary.md");
+    fs::write(&canary, "canary-outside").unwrap();
+    fs::hard_link(canary, source.0.join(".claude/skills/notes/notes.md")).unwrap();
+    let rules = Rules::builtin();
+    let found = skills::discover(&source.0, &rules).unwrap();
+    assert_eq!(found.skills.len(), 1);
+    let files = skills::read(&found.skills[0]).unwrap();
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].0, Path::new("SKILL.md"));
+    assert!(matches!(&files[0].1, Source::Bytes(bytes) if bytes == b"A useful skill.\n"));
+    assert_eq!(files[1].0, Path::new("notes.md"));
+    assert!(matches!(files[1].1, Source::HardLink));
+    let result = voice_ingest::anonymize::skill(&files, &rules, &mut Default::default());
+    assert!(result.refused.is_empty());
+    assert_eq!(result.left_out.len(), 1);
+    assert_eq!(result.left_out[0].0, Path::new("notes.md"));
+    assert_eq!(
+        voice_ingest::anonymize::left_out_reason(&result.left_out[0].1),
+        "a hard link"
+    );
+    assert!(
+        voice_ingest::anonymize::report("notes", &result)
+            .contains("notes/notes.md (left out: a hard link)")
+    );
+    assert_eq!(result.kept.len(), 1);
+    assert!(
+        result
+            .kept
+            .iter()
+            .all(|(_, text)| !text.contains("canary-outside"))
+    );
+    let copied = Scratch::new("skill-copy");
+    skills::write_skill(&copied.0, "notes", &result.kept).unwrap();
+    assert!(!copied.0.join("notes/notes.md").exists());
+    let files = fs::read_dir(copied.0.join("notes"))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(files.len(), 1);
+    assert!(
+        !fs::read_to_string(files[0].path())
+            .unwrap()
+            .contains("canary-outside")
+    );
+}

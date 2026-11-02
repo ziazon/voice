@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 use std::{
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader},
-    os::unix::fs::OpenOptionsExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -116,12 +116,16 @@ fn session_files(folder: &Path, deny: &DenyList) -> Result<(Vec<PathBuf>, usize)
         if !kind.is_file() {
             return Err(Error::Invalid(format!("{} is not a file", p.display())));
         }
+        if io(&p, entry.metadata())?.nlink() > 1 {
+            denied += 1;
+            continue;
+        }
         files.push(p)
     }
     files.sort_by_key(|p| p.file_name().map(|name| name.to_owned()));
     Ok((files, denied))
 }
-fn open_session(path: &Path) -> Result<File> {
+fn open_session(path: &Path) -> Result<Option<File>> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
@@ -136,10 +140,14 @@ fn open_session(path: &Path) -> Result<File> {
                 }
             }
         })?;
-    if !io(path, file.metadata())?.is_file() {
+    let metadata = io(path, file.metadata())?;
+    if !metadata.is_file() {
         return Err(Error::Invalid(format!("{} is not a file", path.display())));
     }
-    Ok(file)
+    if metadata.nlink() > 1 {
+        return Ok(None);
+    }
+    Ok(Some(file))
 }
 pub fn project_name(folder: &str, home: &Path) -> String {
     static WORKTREE: LazyLock<Regex> =
@@ -627,7 +635,10 @@ pub fn mine_with_progress(
                 .file_stem()
                 .and_then(|n| n.to_str())
                 .expect("validated UTF-8 name");
-            let file = open_session(&path)?;
+            let Some(file) = open_session(&path)? else {
+                mined.denied += 1;
+                continue;
+            };
             let mut reader = BufReader::new(file);
             let mut bytes = vec![];
             let mut context = String::new();
@@ -794,6 +805,20 @@ mod test_common;
 mod tests {
     use super::test_common::{self as common, repo};
     use super::*;
+
+    #[test]
+    fn open_session_leaves_out_hard_links() {
+        let source = common::Scratch::new("session-source");
+        let outside = common::Scratch::new("session-outside");
+        let canary = outside.0.join("canary");
+        fs::write(&canary, "canary-outside").unwrap();
+        let linked = source.0.join("linked.jsonl");
+        fs::hard_link(canary, &linked).unwrap();
+        assert!(open_session(&linked).unwrap().is_none());
+        let plain = source.0.join("plain.jsonl");
+        fs::write(&plain, "plain").unwrap();
+        assert!(open_session(&plain).unwrap().is_some());
+    }
 
     #[test]
     fn only_a_shape_error_counts_as_an_unreadable_record() {

@@ -349,3 +349,38 @@ fn a_skipped_record_keeps_the_reply_before_it_as_context() {
     assert_eq!(mined.records.len(), 1);
     assert_eq!(mined.records[0]["context"], "the reply");
 }
+
+#[test]
+fn hard_linked_sessions_are_left_out_and_counted() {
+    let source = Scratch::new("history-source");
+    let outside = Scratch::new("history-outside");
+    let app = source.0.join("app");
+    fs::create_dir(&app).unwrap();
+    let when = "2026-09-01T10:00:00Z";
+    fs::write(
+        app.join("plain.jsonl"),
+        typed_message("keep the patch small", when).to_string(),
+    )
+    .unwrap();
+    let canary = outside.0.join("canary");
+    fs::write(&canary, typed_message("canary-outside", when).to_string()).unwrap();
+    fs::hard_link(canary, app.join("linked.jsonl")).unwrap();
+    let m = member();
+    let f = Filters::compile(&m.filters).unwrap();
+    let mined = voice_ingest::mine::mine_with_progress(
+        &m,
+        &f,
+        &source.0,
+        &source.0,
+        &Split::Holdout(0.15),
+        &mut |_, _| {},
+    )
+    .unwrap();
+    assert_eq!(mined.denied, 1);
+    assert_eq!(mined.records.len(), 1);
+    assert_eq!(mined.records[0]["text"], "keep the patch small");
+    assert!(!voice_ingest::mine::to_jsonl(&mined.records).contains("canary-outside"));
+    let rows = folders(&f, &source.0, &source.0, &DenyList::builtin()).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].sessions, 1);
+}

@@ -107,6 +107,7 @@ pub enum LeftOut {
     Hidden,
     Denied,
     Link,
+    HardLink,
     NotText,
     TooLarge,
     OddName,
@@ -281,6 +282,7 @@ pub fn skill(
         } else {
             match source {
                 crate::skills::Source::Bytes(bytes) => file(path, bytes, rules, mapping),
+                crate::skills::Source::HardLink => FileResult::LeftOut(LeftOut::HardLink),
                 crate::skills::Source::Link => FileResult::LeftOut(LeftOut::Link),
                 crate::skills::Source::TooLarge => FileResult::LeftOut(LeftOut::TooLarge),
                 crate::skills::Source::Unreadable => FileResult::LeftOut(LeftOut::Unreadable),
@@ -327,6 +329,7 @@ pub fn left_out_reason(reason: &LeftOut) -> &'static str {
         LeftOut::Hidden => "hidden",
         LeftOut::Denied => "password or key file",
         LeftOut::Link => "a link",
+        LeftOut::HardLink => "a hard link",
         LeftOut::NotText => "not text",
         LeftOut::TooLarge => "too large",
         LeftOut::OddName => "odd name",

@@ -91,6 +91,15 @@ pub fn list(home: &Path) -> Result<Vec<Listed>> {
     });
     Ok(listed)
 }
+/// One assistant by its slug, read from its own folder: the same rule as `list`, without listing
+/// the crew folder (Voice's reader may not).
+pub fn find(home: &Path, slug: &str) -> Result<Option<Listed>> {
+    let dir = assistant_dir(home, slug)?;
+    match read_member(&dir.join("member.json")) {
+        Ok(member) if member.slug == slug => Ok(Some(Listed { dir, member })),
+        _ => Ok(None),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,6 +111,37 @@ mod tests {
             principal: "Robin",
             principal_pronouns: "they/them",
         }
+    }
+    #[cfg(unix)]
+    #[test]
+    fn find_matches_list_without_listing_crew() {
+        let home = Scratch::new();
+        let made = make(home.path(), &input("Ari"), "2026-10-25", "voice").unwrap();
+        let crew = crew_dir(home.path());
+        for slug in ["wrong", "empty", "linked"] {
+            fs::create_dir(crew.join(slug)).unwrap();
+        }
+        fs::copy(made.dir.join("member.json"), crew.join("wrong/member.json")).unwrap();
+        let outside = Scratch::new();
+        let linked = make(outside.path(), &input("Linked"), "2026-10-25", "voice").unwrap();
+        std::os::unix::fs::symlink(
+            linked.dir.join("member.json"),
+            crew.join("linked/member.json"),
+        )
+        .unwrap();
+        for slug in ["ari", "wrong", "empty", "linked", "absent"] {
+            let expected = list(home.path())
+                .unwrap()
+                .into_iter()
+                .find(|listed| listed.member.slug == slug);
+            let found = find(home.path(), slug).unwrap();
+            assert_eq!(
+                found.as_ref().map(|l| (&l.dir, &l.member)),
+                expected.as_ref().map(|l| (&l.dir, &l.member)),
+                "{slug}"
+            );
+        }
+        assert!(find(home.path(), "../x").is_err());
     }
     #[test]
     fn assistant_dir_refuses_noncanonical_slugs() {
