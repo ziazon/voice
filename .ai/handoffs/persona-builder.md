@@ -2,6 +2,47 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.1a: the egress proxy (2026-11-02, lane: V1)
+
+- **What:** `builder/agent/src/egress.rs`, an HTTP `CONNECT` proxy in `voice-agent`, one per
+  `claude` launch on `127.0.0.1:0`, std threads only, no new dependency: `CONNECT <host>:443`
+  only for `api.anthropic.com`, `platform.claude.com`, `claude.ai` (ASCII case ignored; no
+  trailing dot, IP literal, user info or other port); the request line and headers within one
+  10 s deadline and 8 KiB; 16 connections (`503` past that); the name resolved once on a helper
+  thread inside the 10 s dial deadline, refused if any address is not public (IANA special
+  ranges; IPv6 only inside `2000::/3`, minus `2001::/23`, `2001:db8::/32`, `2002::/16`,
+  `3fff::/20`; mapped and NAT64 `64:ff9b::/96` judged by their IPv4), each address a share of
+  the time left; resolvers in flight capped at 16; a tunnel closed after 5 minutes with no byte
+  either way (one clock for both directions); `stop()` and `Drop` close everything and join.
+  Not wired in yet (VO11.1c). Brief: `plans/briefs/VO11.1a-egress-proxy.md` (§ 9 and § 10: the
+  fixes after review).
+- **Who built it:** Codex, in three dispatches. Her sandbox refuses loopback binds, so every
+  socket test failed at bind for her; V1 ran them all outside it.
+- **Found by V1 on the first build:** one dead address ate the whole dial deadline (measured:
+  `127.0.0.2` hangs to its timeout on macOS); a failed `accept` ended the proxy for good; a test
+  unwrapped a shutdown on a reset socket. All fixed in § 9.
+- **Mutations by V1 (cp, cmp, fresh mtime), all killed:** the dial share, the absolute header
+  deadline, the pipelined bytes, the slot limit, the idle close, the shared idle clock, the stop
+  sweep, `Drop`, the public check, the bounded resolution, the host list, the live host list
+  (`production_network` fails without `api.anthropic.com`), stop() back to one wake, the sweep
+  before the join, the resolver cap. No test for the `EINTR` retry or the accept-error wait
+  (neither can be made on demand).
+- **Live proof:** `production_network` (ignored by default) reached `https://api.anthropic.com/`
+  through `Egress::start()` and was refused `https://example.com/`.
+- **Verifier (Fable, first pass on `99637d3`): PASS**, no escape found (17 tests green 12 times
+  at 16 and 32 threads under load; parser edges, a blocked write and a hanging dial under stop,
+  40 connections against a limit of 2). Her should-fixes are § 10.
+- **Security review (Opus, on `99637d3`): FAIL**, one MEDIUM, measured: out of descriptors,
+  stop()'s single wake connect failed and the join hung forever. § 10 sweeps the sockets before
+  and after the join and retries the wake (`tests/egress_descriptors.rs`). **Re-check on
+  `4a2cb71`: PASS** (stop() returned in 212 ms with the table still full; the resolver cap
+  measured not to leak). LOW left: a panicking resolver would not give back its cap slot (it
+  can't panic today); VO11.1c or the app should raise the soft `RLIMIT_NOFILE`.
+- **Verification:** `cargo test -p voice-agent --lib egress` 18 passed, `egress_descriptors`
+  passed, clippy and fmt clean on `4a2cb71`; `VOICE_REQUIRE_SANDBOX=1 ci-local.sh` all passed on
+  `99637d3`. **Not yet:** `ci-local.sh` and the repeat Verifier (Opus) on `4a2cb71` (both were
+  running when the run's time ran out), the land.
+
 ## VO11.1b: the sandboxed launch, as a library (2026-11-01, lane: V1)
 
 - **What:** VO11.1 split in three (V1, run `190933-r1`): VO11.1a the egress proxy, VO11.1b this,
