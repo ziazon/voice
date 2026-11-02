@@ -282,6 +282,19 @@ class ProbeTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(probe.child_environment(self.profile, self.run, 1, False)['LANG'], 'en_US.UTF-8')
 
+    def test_language_matches_the_launch_rules(self):
+        for value in ['C', 'en_US.UTF-8', 'en_US.UTF-8@variant', 'a' * 64]:
+            with self.subTest(value=value), patch.dict(os.environ, {'LANG': value}, clear=True):
+                env = probe.child_environment(self.profile, self.run, 1, False)
+                self.assertEqual(env['LANG'], value)
+        for value in ['', 'a' * 65, 'en US', 'C\n', 'é', 'C/', 'C+', 'C\t']:
+            with self.subTest(value=value), patch.dict(os.environ, {'LANG': value}, clear=True):
+                env = probe.child_environment(self.profile, self.run, 1, False)
+                self.assertEqual(env['LANG'], 'en_US.UTF-8')
+        with patch.dict(os.environ, {}, clear=True):
+            env = probe.child_environment(self.profile, self.run, 1, False)
+            self.assertEqual(env['LANG'], 'en_US.UTF-8')
+
     def test_exact_commands(self):
         claude = self.root / 'program' / 'claude'
         prefix = ['/usr/bin/sandbox-exec', '-f', str(probe.PROFILE),

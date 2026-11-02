@@ -341,9 +341,12 @@ def find_claude(home):
 def child_environment(profile, run, port, sign_in):
     user = pwd.getpwuid(os.getuid())
     proxy = 'http://127.0.0.1:%d' % port
+    language = os.environ.get('LANG', '')
+    if not re.fullmatch(r'[A-Za-z0-9_.@-]{1,64}', language):
+        language = 'en_US.UTF-8'
     env = {'HOME': user.pw_dir, 'USER': user.pw_name, 'LOGNAME': user.pw_name,
            'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
-           'LANG': os.environ.get('LANG', 'en_US.UTF-8'),
+           'LANG': language,
            'CLAUDE_CONFIG_DIR': str(profile), 'CLAUDE_CODE_TMPDIR': str(run),
            'TMPDIR': str(run) + '/', 'HTTPS_PROXY': proxy, 'https_proxy': proxy,
            'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1', 'DISABLE_AUTOUPDATER': '1'}

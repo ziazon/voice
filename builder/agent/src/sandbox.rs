@@ -49,6 +49,7 @@ pub struct Launch {
     sign_in: bool,
     home: PathBuf,
     fresh: bool,
+    clean_given: bool,
 }
 
 /// The sign-in link, as the helper left it.
@@ -189,7 +190,7 @@ impl Launch {
             }),
         }
         .map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
-        let launch = Launch {
+        let mut launch = Launch {
             program,
             profile,
             run,
@@ -197,18 +198,21 @@ impl Launch {
             sign_in,
             home: home.to_owned(),
             fresh,
+            clean_given: false,
         };
         if sign_in {
-            let write = || -> std::io::Result<()> {
-                OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(0o700)
-                    .custom_flags(libc::O_NOFOLLOW)
-                    .open(launch.run.join(HELPER))?
-                    .write_all(HELPER_SCRIPT.as_bytes())
-            };
-            write().map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
+            let mut helper = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o700)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(launch.run.join(HELPER))
+                .map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
+            // A failed create must leave the caller's pre-existing files alone.
+            launch.clean_given = true;
+            helper
+                .write_all(HELPER_SCRIPT.as_bytes())
+                .map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
         }
         Ok(launch)
     }
@@ -314,6 +318,9 @@ impl Drop for Launch {
     fn drop(&mut self) {
         if self.fresh {
             let _ = fs::remove_dir_all(&self.run);
+        } else if self.clean_given {
+            let _ = fs::remove_file(self.run.join(HELPER));
+            let _ = fs::remove_file(self.run.join(LINK));
         }
     }
 }

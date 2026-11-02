@@ -281,6 +281,77 @@ fn folder_roots_cannot_move_but_their_contents_stay_writable() {
 }
 
 #[test]
+fn folder_modes_cannot_change_but_file_modes_can() {
+    if !available() {
+        return;
+    }
+    let sb = Sandbox::new();
+    for root in [&sb.profile.0, &sb.run.0] {
+        fs::set_permissions(root, fs::Permissions::from_mode(0o700)).unwrap();
+        let output = sb.run("/bin/chmod", &["777", root.to_str().unwrap()]);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert_eq!(
+            fs::metadata(root).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let file = canary(root, "file");
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+        let output = sb.run("/bin/chmod", &["644", file.to_str().unwrap()]);
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        assert_eq!(
+            fs::metadata(file).unwrap().permissions().mode() & 0o777,
+            0o644
+        );
+    }
+}
+
+#[test]
+fn trustd_services_are_refused_only_under_the_profile() {
+    if !available() {
+        return;
+    }
+    match Command::new("cc").arg("--version").output() {
+        Ok(output) if output.status.success() => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("sandbox_profile: skipped, cc is not installed");
+            return;
+        }
+        other => panic!("cc availability check failed: {other:?}"),
+    }
+    let sb = Sandbox::new();
+    let source = sb.program.0.join("trustd.c");
+    let program = sb.program.0.join("trustd");
+    fs::write(
+        &source,
+        r#"#include <mach/mach.h>
+#include <servers/bootstrap.h>
+int main(void) {
+    mach_port_t port;
+    kern_return_t agent = bootstrap_look_up(bootstrap_port, "com.apple.trustd.agent", &port);
+    kern_return_t system = bootstrap_look_up(bootstrap_port, "com.apple.trustd", &port);
+    return agent == KERN_SUCCESS || system == KERN_SUCCESS ? 0 : 1;
+}
+"#,
+    )
+    .unwrap();
+    let output = Command::new("cc")
+        .arg(&source)
+        .arg("-o")
+        .arg(&program)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let output = Command::new("/usr/bin/sandbox-exec")
+        .args(["-p", "(version 1)(allow default)"])
+        .arg(&program)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let output = sb.run(program.to_str().unwrap(), &[]);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+}
+
+#[test]
 fn signing_in_cannot_overwrite_the_helper() {
     if !available() {
         return;
@@ -507,8 +578,19 @@ fn only_sign_in_can_listen() {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        thread::sleep(Duration::from_millis(500));
-        let status = child.try_wait().unwrap();
+        let status = if sign_in == "yes" {
+            thread::sleep(Duration::from_millis(500));
+            child.try_wait().unwrap()
+        } else {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let status = child.try_wait().unwrap();
+                if status.is_some() || Instant::now() >= deadline {
+                    break status;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+        };
         if status.is_none() {
             child.kill().unwrap();
         }

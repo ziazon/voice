@@ -292,6 +292,62 @@ mod mac {
     }
 
     #[test]
+    fn given_runs_remove_sign_in_files_and_can_sign_in_again() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let given = scratch.0.join("given");
+        private(&given);
+        let kept = given.join("kept");
+        fs::write(&kept, "canary").unwrap();
+        let target = scratch.0.join("target");
+        fs::write(&target, "canary").unwrap();
+        for linked in [false, true] {
+            let launch = launch(&profile, &scratch.0, RunFolder::Given(&given), true);
+            let helper = given.join(sandbox::HELPER);
+            let link = given.join(sandbox::LINK);
+            assert_eq!(fs::read(&helper).unwrap(), HELPER.as_bytes());
+            if linked {
+                fs::remove_file(&helper).unwrap();
+                symlink(&target, &helper).unwrap();
+                symlink(&target, &link).unwrap();
+            } else {
+                fs::write(&link, format!("{SIGN_IN_LINK}\n")).unwrap();
+            }
+            drop(launch);
+            assert!(given.is_dir());
+            assert!(fs::symlink_metadata(helper).is_err());
+            assert!(fs::symlink_metadata(link).is_err());
+            assert_eq!(fs::read(&kept).unwrap(), b"canary");
+            assert_eq!(fs::read(&target).unwrap(), b"canary");
+        }
+    }
+
+    #[test]
+    fn plain_given_runs_leave_another_launchs_sign_in_files_alone() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let given = scratch.0.join("given");
+        private(&given);
+        let sign_in = launch(&profile, &scratch.0, RunFolder::Given(&given), true);
+        let plain = launch(&profile, &scratch.0, RunFolder::Given(&given), false);
+        let helper = given.join(sandbox::HELPER);
+        let link = given.join(sandbox::LINK);
+        let link_bytes = format!("{SIGN_IN_LINK}\n");
+        fs::write(&link, &link_bytes).unwrap();
+
+        drop(plain);
+        assert!(helper.is_file());
+        assert!(link.is_file());
+        assert_eq!(fs::read(&helper).unwrap(), HELPER.as_bytes());
+        assert_eq!(fs::read(&link).unwrap(), link_bytes.as_bytes());
+
+        drop(sign_in);
+        assert!(!helper.exists());
+        assert!(!link.exists());
+        assert!(given.is_dir());
+    }
+
+    #[test]
     fn refuses_a_symlink_in_place_of_the_profile() {
         let scratch = Scratch::new();
         let profile = profile(&scratch);
@@ -517,6 +573,7 @@ mod mac {
         env
     }
 
+    // get_envs() cannot show inherited variables; the live C-program test proves env_clear().
     #[test]
     fn command_has_exact_arguments_directory_and_environment() {
         let scratch = Scratch::new();
