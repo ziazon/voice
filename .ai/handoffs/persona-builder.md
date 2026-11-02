@@ -2,6 +2,47 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.1c: every `claude` through the sandbox (2026-11-02, lane: V1) — built, not landed
+
+- **What:** the check's two runs, each call and the sign-in each start their own
+  `sandbox::Launch` with their own `egress::Egress` and an environment built from nothing.
+  Each launch gets a fresh run folder. The work folder, `provider_override`, the session markers,
+  `sign_in_command`, `api_key_set` and `API_KEY_SET` are gone. The sign-in watcher opens the
+  checked link once with `/usr/bin/open`, and a refused link or a failed opener kills the child.
+  `stop_on_interrupt` lets Ctrl-C stop `voice claude sign-in`. The `test-stubs` feature, enabled
+  only from dev-dependencies, runs `#!` stubs directly; `ci-local.sh` checks the CLI and app
+  lack it and runs clippy without it. Brief: `plans/briefs/VO11.1c-claude-through-the-sandbox.md`.
+- **Measured at pickup (Mimi, Claude Code 2.1.292):** a sandboxed signed-out `-p` leaves
+  `claude-<uid>/` in its run folder, so the run folder is fresh per launch, not the work folder
+  (DECISIONS 2026-11-02).
+- **Who built it:** Codex, two dispatches (§ 1–7, then § 8). Her sandbox can't bind loopback, so
+  V1 ran every launching test outside it. V1 removed one stray blank line.
+- **§ 8, found by V1's `ci-local.sh`:** two first launches at once raced to create `runs/` (and
+  `ensure_profile`'s folders); the loser got `RUN_FOLDER_FAILED`. `AlreadyExists` now falls through to
+  the existing private-folder checks. Red before the fix: 10/20 and 20/20 runs; green after: 20/20.
+- **Mutations (all killed, each restored and `cmp`-checked):** Fresh → Given(profile)
+  (`a_call_runs_tool_less_in_a_fresh_run_folder…`); the link opened twice (`sign_in_opens_the_valid_link_exactly_once…`);
+  no `env_clear` on the direct branch (`every_launch_gets_only_its_own_environment`); a fixed proxy
+  port (`claude::tests::every_native_launch_uses_its_own_proxy_and_sandbox`); no SIGINT handler
+  (`claude_sign_in_stops_the_child_on_ctrl_c`).
+- **Verification:** `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh` all passed on `a78b66a`'s
+  tree. Live: the production-built CLI, with a scratch home and the person's variables poisoned,
+  ran real Claude Code 2.1.292's `--version` and `auth status` through the sandbox, reported
+  "isn't signed in", and left `runs/` empty.
+- **Security review (Opus, on `f3cd706`): PASS**, no HIGH or MEDIUM, four LOWs:
+  1. L1: open the link with `/usr/bin/open -u` from `/`, so a URL that matches a planted relative
+     path can't open a file.
+  2. L2: `--target all` on the three `cargo tree` checks.
+  3. L3: test and `--all-targets` builds of the CLI carry the bypass; shipping builds don't. The
+     DECISIONS wording should say so.
+  4. L4: install the Ctrl-C handler at the top of `claude_sign_in`, so the first status check is
+     covered too.
+
+  To take: L1, L2, L4 and the L3 wording. Not taken: sweeping run folders left by a crash.
+- **Verifier (Fable, first pass on `f3cd706`):** started, and had not reported when the run's time
+  ran out. Nothing landed.
+- **Not verified:** a signed-in sign-in and ask inside the sandbox (the walk).
+
 ## VO11.1d: the egress proxy's should-fixes (2026-11-02, lane: V1)
 
 - **What:** the four should-fixes VO11.1a's repeat Verifier left, in `builder/agent/src/egress.rs`
