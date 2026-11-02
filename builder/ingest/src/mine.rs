@@ -89,7 +89,7 @@ fn project_folders(projects: &Path, root: &Folder) -> Result<Vec<Entry>> {
     for entry_name in io(projects, root.names())? {
         let path = projects.join(OsStr::from_bytes(entry_name.to_bytes()));
         let kind = match root.stat(&entry_name, false) {
-            // Gone since the listing: skip it, as reading the listing's own type did.
+            // Gone since the listing: there is nothing to read, so skip it.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             result => io(&path, result)?.st_mode & libc::S_IFMT,
         };
