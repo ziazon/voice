@@ -2,6 +2,43 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.2a: the reader's profile and launch, as a library (2026-11-02, lane: V1)
+
+- **What:** `builder/agent/sandbox/reader.sb`, a Seatbelt template for Voice's own reader (the
+  shipped `voice` command): the system reads of `claude-code.sb`, the program file, the member
+  folder read-only, the state and a fresh run folder read-write, no network, no fork, no other
+  program, `trustd` closed, the same secrets denies (no login exception). `reader::Reader` fills
+  in one read rule per consented source and a metadata-only rule for every folder above each
+  allowed path, every path a `-D` parameter, never profile text. Unwired until VO11.2c. Brief:
+  `plans/briefs/VO11.2a-reader-profile.md`.
+- **Split from VO11.2 at pickup** into VO11.2a to VO11.2d (lane V's spec): the reader is the
+  shipped `voice` in a hidden mode (VO11.2b), hard links refused by the reader when found by a
+  walk (VO11.2b), the app wired for history and the export (VO11.2c), then skills (VO11.2d).
+- **Measured at pickup (Mimi, macOS 27.0.1):** resolving a path inside an allowed folder needs
+  metadata reads on every folder above it; metadata-only `literal` rules are enough and still
+  refuse the parent's listing and a sibling's content. A descriptor walk from `/` opens those
+  folders only with `O_SEARCH` (`O_RDONLY|O_DIRECTORY` is refused), which VO11.2b must apply to
+  `ingest/src/private.rs`.
+- **Who built it:** Codex, three dispatches (§ 1–5, the § 6 review fixes, the positive control).
+  Her sandbox refuses a sandbox inside it, so V1 ran every sandbox test outside it, with
+  `VOICE_REQUIRE_SANDBOX=1`. One test bug found that way: the path-in-profile check matched
+  `/private` inside the template's `/private/etc`; it now checks the generated rules hold no `/`.
+- **Mutations (all killed, each restored and `cmp`-checked):** no ancestor rules (`paths_resolve`;
+  a first try that left an empty `(allow file-read-metadata)` passed, because a filterless rule
+  allows every path, hence § 6.3); `(allow network*)` (`no_network`); no `env_clear`
+  (`environment_is_cleared`); no `trustd` deny (`trustd_is_refused`).
+- **Security review (Opus): no HIGH.** MEDIUM: the person's own deny list wasn't applied to
+  sources (now a `deny` argument; the OS profile holds only the built-in list, since a name
+  pattern can't enter the profile without writing text into it). LOWs: very broad sources, nested
+  folders, missing trustd and hard-link tests, an empty metadata rule. All fixed in § 6.
+- **Verifier (Fable): PASS with should-fixes** (very broad sources; notes on `/dev/fd`, `/`'s
+  listing, the empty rule). **Repeat Verifier (Opus) on `33e0d21`: PASS with one should-fix**, a
+  positive control for the hard-link test, added. Her notes for VO11.2b: the caller's deny names
+  cover only a source's own path, not files inside a folder source (the reader's own walk must);
+  broad folders such as `~/Documents` are accepted, so the caller decides what to offer; give the
+  reader only pipes or `/dev/null`.
+- **Not verified:** nothing reads through this yet; the reader command and the app come next.
+
 ## VO11.1c: every `claude` through the sandbox (2026-11-02, lane: V1)
 
 - **What:** the check's two runs, each call and the sign-in each start their own
