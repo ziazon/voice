@@ -6,7 +6,7 @@ One record per slice, newest first. Paraphrase only; no real person.
 
 - **What:** `voice_agent::spawn` starts a child with `posix_spawn` and
   `POSIX_SPAWN_CLOEXEC_DEFAULT`: its pipes on 0 and 1, `/dev/null` on 2, the folder by
-  `addchdir_np`, an empty signal mask and `SIGPIPE` reset (as std does); the parent's ends are
+  `addchdir_np`, `SIGPIPE` reset as std does, and an empty signal mask (stricter than std, which inherits it); the parent's ends are
   close-on-exec. `Spawned` waits without a reaper race (EINTR retried, `ECHILD` marks it reaped)
   and its `Drop` kills and reaps a child not yet waited for, so a panic while reading (in the
   progress callback) no longer leaves the reader running. `Reader::spawn` and `Reader::command`
@@ -50,6 +50,10 @@ One record per slice, newest first. Paraphrase only; no real person.
   the spawn's folder untested (each now killed by a test); the docs' cause (the window is the
   reader's own pipe step). Not verified by her: the Linux `Unsupported` stub's build, the 1.5 s
   bounds under heavy load (they passed at 2x load).
+- **Repeat Verifier (Opus, on `5ad095f`, the delta from `7160e46`): PASS**, no must-fix; her five
+  mutations (the spawn's folder, a dropped environment entry, the parent ends' flag, fd 2 on
+  `/dev/null`) all killed. Two wording should-fixes, applied: the cleared signal mask is stricter
+  than std, and the app's own children are not known (not proven) to write to an inherited pipe.
 - **Not verified:** the app built from `main` on a Mac (walk owed by VO11.2c already covers the
   reads); Linux compile of the stub.
 
