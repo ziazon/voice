@@ -270,6 +270,20 @@ exit 1"#
     ))
 }
 
+fn two_link_sign_in(first: &str, second: &str) -> Stub {
+    Stub::new(&format!(
+        r#""$BROWSER" '{first}'
+for n in $(seq 1 100); do
+    [ -f "$here/opened" ] && break
+    sleep 0.05
+done
+[ -f "$here/opened" ] || exit 1
+"$BROWSER" '{second}'
+sleep 1
+exit 0"#
+    ))
+}
+
 fn assert_no_link_in_files(folder: &Path, link: &str) {
     for entry in fs::read_dir(folder).unwrap() {
         let path = entry.unwrap().path();
@@ -313,6 +327,25 @@ fn sign_in_opens_the_valid_link_exactly_once_and_retains_no_link() {
     assert!(opened.lock().unwrap().as_slice() == [SIGN_IN_LINK]);
     assert_no_link_in_files(&stub.folder.0, SIGN_IN_LINK);
     assert_no_link_in_files(claude.profile().parent().unwrap(), SIGN_IN_LINK);
+}
+
+#[test]
+fn sign_in_never_opens_a_second_valid_link() {
+    let home = Scratch::new("sign-in-second-link");
+    let second = SIGN_IN_LINK.replace("state=y", "state=z");
+    let stub = two_link_sign_in(SIGN_IN_LINK, &second);
+    let claude = found(&stub, &home.0);
+    let opened = Mutex::new(Vec::<String>::new());
+    claude
+        .sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            fs::write(stub.folder.0.join("opened"), "").unwrap();
+            Ok(())
+        })
+        .unwrap();
+    let opened = opened.lock().unwrap();
+    assert_eq!(opened.len(), 1);
+    assert!(opened.as_slice() == [SIGN_IN_LINK]);
 }
 
 #[test]
