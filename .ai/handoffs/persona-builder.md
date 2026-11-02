@@ -2,6 +2,46 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.2b: the reader in the CLI (2026-11-02, lane: V1)
+
+- **What:** a hidden `voice reader <step>` (not in `--help`) for the app's six reading steps
+  (`claude-code-folders`, `read-claude-code`, `claudeai-export-status`, `list-claudeai-chats`,
+  `read-claudeai`, `skills` with list, agree, withdraw or refresh). The protocol is
+  `voice_api::reader`: one strict request object on stdin (64 KiB), JSON lines out (`progress`,
+  then one `result` or `error`, each at most 16 MiB), fixed sentences for a bad request, a panic or
+  a result too big to send; the existing `voice_api` functions do the work, so their checks run
+  inside the reader. The strict one-object parser moved from the CLI's `stdin_json` into
+  `voice_api::json_object`, shared. Brief: `plans/briefs/VO11.2b-reader-in-the-cli.md`.
+- **Made to work under the VO11.2a profile:** the assistant is found by its own folder
+  (`voice_core::assistants::find`), since the reader may not list `~/.claude/crew`; the private
+  state walk passes through the folders above the state folder with `O_SEARCH` (macOS only).
+- **Hard links:** walks leave out files with a second name, checked on the entry and again on the
+  opened file: a Claude Code session counts in the never-read number, a `conversations.json` in an
+  export folder is refused, a skill file is left out as `a hard link`, and a hard-linked
+  `installed_plugins.json` hides plugin skills with the existing note. A chosen export file is read
+  whatever its link count.
+- **Who built it:** Codex, three dispatches (§ 1–4, § 5–8, the § 10 review fixes). Her sandbox
+  refuses sockets and a sandbox inside it, so V1 ran the sandboxed tests outside it, with
+  `VOICE_REQUIRE_SANDBOX=1`: all six passed first time, including the no-sources control that
+  shows the profile, not the code, refuses.
+- **Mutations (all killed, each restored and `cmp`-checked):** no `O_SEARCH`; no hard-link check
+  in the session listing, in `open_session`, in the export folder, in the skills walk before the
+  open (first survived, since the check after the open caught it; killed by a test with an
+  unopenable hard link, § 10.5); `hide = true` dropped; `readable` back on `list`; the line limit.
+- **Security review (Opus): no HIGH or MEDIUM**; six LOWs. Fixed: a panic's text on stderr, an
+  over-long error with no last line, the case-only folder name. Sent to VO11.2c's spec: store the
+  chosen export's kind, open by folder descriptor, close the reader's stdin and judge by the last
+  line; informational: state files aren't link-checked (the reader can't make a link there).
+- **Verifier (Fable): PASS** with three should-fixes (the plugin list, the docs on which steps
+  check permission, the case-only name), all fixed in § 10. **Repeat Verifier (Opus) on
+  `2d02c66`: PASS** with two should-fixes, carried to their own card VO11.2b.1 (the run's time ran
+  short): a test that a symlinked crew folder whose target has another name is still found, and the
+  spike's sentence that every history step takes the lock (only the three reading steps do).
+  `ci-local.sh` all passed on `275ca9b` and on `2d02c66`.
+- **Not verified:** nothing reads through the reader in the app yet (VO11.2c), and skill
+  discovery under the profile with every real root (VO11.2d: a root that exists but isn't a source
+  reads as *not permitted*).
+
 ## VO11.2a: the reader's profile and launch, as a library (2026-11-02, lane: V1)
 
 - **What:** `builder/agent/sandbox/reader.sb`, a Seatbelt template for Voice's own reader (the
