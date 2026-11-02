@@ -4,11 +4,14 @@ use std::{
     fs::{self, File},
     io::{self, Write},
     net::TcpStream,
-    sync::mpsc,
+    sync::{Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
 use voice_agent::egress::Egress;
+
+// The descriptor limit is process-wide, so these tests must run one at a time.
+static LIMITS: Mutex<()> = Mutex::new(());
 
 struct Limit(libc::rlimit);
 
@@ -49,6 +52,9 @@ fn descriptors() -> usize {
 
 #[test]
 fn stop_with_exhausted_descriptors() {
+    let _limits = LIMITS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let proxy = Egress::start().unwrap();
     let before = descriptors();
     let mut clients = Vec::new();
@@ -95,4 +101,41 @@ fn stop_with_exhausted_descriptors() {
             .unwrap();
         assert_eq!(client.read(&mut [0]).unwrap(), 0);
     }
+}
+
+#[test]
+fn stop_with_no_connections_and_no_descriptors() {
+    let _limits = LIMITS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let proxy = Egress::start().unwrap();
+    let limit = Limit::current();
+    Limit::set(&libc::rlimit {
+        rlim_cur: (descriptors() as libc::rlim_t + 4).min(limit.0.rlim_cur),
+        rlim_max: limit.0.rlim_max,
+    });
+    let mut fillers = Vec::new();
+    loop {
+        match File::open("/dev/null") {
+            Ok(file) => fillers.push(file),
+            Err(error) => {
+                assert_eq!(error.raw_os_error(), Some(libc::EMFILE));
+                break;
+            }
+        }
+    }
+    let (send, receive) = mpsc::channel();
+    let stop = thread::spawn(move || {
+        proxy.stop();
+        let _ = send.send(());
+    });
+    let result = receive.recv_timeout(Duration::from_secs(3));
+    drop(fillers);
+    drop(limit);
+    assert_eq!(
+        result,
+        Ok(()),
+        "stop hung with no connections or descriptors"
+    );
+    stop.join().unwrap();
 }

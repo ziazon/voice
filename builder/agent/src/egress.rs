@@ -118,9 +118,11 @@ impl Egress {
         self.port
     }
 
-    /// Stops new work, closes registered sockets, retries waking accept until it ends,
-    /// then closes sockets again and joins the handlers. A dial already under way
-    /// finishes within its deadline, so this returns within about `dial_time` at worst.
+    /// Stops new work, closes registered sockets, and waits for the accept thread,
+    /// which polls the flag every 10 ms and needs no connection to wake. Then closes
+    /// sockets again (one may have been accepted just before the flag) and joins the
+    /// handlers. A dial already under way finishes within its deadline, so this returns
+    /// within about `dial_time` at worst.
     pub fn stop(mut self) {
         self.shutdown();
     }
@@ -131,14 +133,6 @@ impl Egress {
         };
         self.state.stopped.store(true, Ordering::SeqCst);
         self.close_sockets();
-        let address = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
-        while !accept.is_finished() {
-            // Handlers free descriptors even when the first wake cannot open a socket.
-            let _ = TcpStream::connect_timeout(&address, Duration::from_millis(100));
-            if !accept.is_finished() {
-                thread::sleep(Duration::from_millis(10));
-            }
-        }
         let handlers = accept.join().unwrap_or_default();
         self.close_sockets();
         for handler in handlers {
@@ -167,6 +161,7 @@ fn start_with(rules: Rules) -> Result<Egress> {
         source,
     };
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(error)?;
+    listener.set_nonblocking(true).map_err(error)?;
     let port = listener
         .local_addr()
         .expect("bound TCP listener has an address")
@@ -236,7 +231,13 @@ fn accept(listener: TcpListener, rules: Rules, state: Arc<State>) -> Vec<JoinHan
     let mut handlers: Vec<JoinHandle<()>> = Vec::new();
     for (id, accepted) in listener.incoming().enumerate() {
         let mut child = match accepted {
-            Ok(child) => child,
+            Ok(child) => {
+                if child.set_nonblocking(false).is_err() {
+                    continue;
+                }
+                child
+            }
+            // The non-blocking listener also polls here when idle, noticing stop() within 10 ms.
             Err(_) => {
                 if state.stopped.load(Ordering::SeqCst) {
                     break;
@@ -383,6 +384,15 @@ fn line_endings(header: &[u8]) -> bool {
     })
 }
 
+// Gives the slot back when the resolver returns, panics, or never starts.
+struct Resolving(Arc<AtomicUsize>);
+
+impl Drop for Resolving {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 fn dial(
     host: String,
     rules: &Rules,
@@ -394,21 +404,18 @@ fn dial(
             (count < rules.connections).then_some(count + 1)
         })
         .map_err(|_| 502u16)?;
+    let slot = Resolving(resolving.clone());
     let resolve = rules.resolve;
-    let running = resolving.clone();
     let (send, receive) = mpsc::channel();
     // A resolver that outlives the deadline is abandoned. It holds none of the
     // proxy's sockets, and is the only thread stop() does not join.
     let helper = thread::Builder::new()
         .spawn(move || {
             let result = resolve(&host);
-            running.fetch_sub(1, Ordering::SeqCst);
+            drop(slot);
             let _ = send.send(result);
         })
-        .map_err(|_| {
-            resolving.fetch_sub(1, Ordering::SeqCst);
-            502u16
-        })?;
+        .map_err(|_| 502u16)?;
     let left = deadline
         .checked_duration_since(Instant::now())
         .ok_or(502u16)?;
@@ -1019,6 +1026,22 @@ mod tests {
     }
 
     #[test]
+    fn panicking_resolver_gives_back_its_slot() {
+        fn panics(_: &str) -> io::Result<Vec<IpAddr>> {
+            panic!("the moonberry resolver panicked");
+        }
+        // The helper's panic line on stderr is expected.
+        let mut short = rules(9);
+        short.resolve = panics;
+        let resolving = Arc::new(AtomicUsize::new(0));
+        assert_eq!(
+            dial("api.anthropic.com".into(), &short, &resolving).err(),
+            Some(502)
+        );
+        assert_eq!(resolving.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
     fn resolvers_in_flight_are_capped() {
         let mut short = rules(9);
         short.resolve = counted_slow;
@@ -1187,7 +1210,8 @@ mod tests {
         use std::io::{Read, Write};
         let upstream = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let mut short = rules(upstream.local_addr().unwrap().port());
-        short.idle = Duration::from_millis(600);
+        short.idle = Duration::from_millis(1200);
+        let short_idle = short.idle;
         let proxy = start_with(short).unwrap();
         let mut socket = client(&proxy);
         connect(&mut socket);
@@ -1198,14 +1222,14 @@ mod tests {
         let started = std::time::Instant::now();
         let ticker = std::sync::mpsc::channel::<()>();
         // Only upstream -> child moves bytes. The child's reader remains idle.
-        for _ in 0..12 {
+        for _ in 0..20 {
             let _ = ticker.1.recv_timeout(Duration::from_millis(200));
             sender.write_all(b"a").unwrap();
             let mut byte = [0];
             socket.read_exact(&mut byte).unwrap();
             assert_eq!(byte, [b'a']);
         }
-        assert!(started.elapsed() > Duration::from_millis(2100));
+        assert!(started.elapsed() > short_idle * 3);
         proxy.stop();
     }
 
