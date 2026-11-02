@@ -376,7 +376,7 @@ fn invalid(message: &str) -> Error {
     Error::Invalid(message.into())
 }
 
-fn language() -> String {
+pub(crate) fn language() -> String {
     std::env::var("LANG")
         .ok()
         .filter(|value| {
@@ -389,7 +389,7 @@ fn language() -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn login_name() -> Option<String> {
+pub(crate) fn login_name() -> Option<String> {
     // SAFETY: getpwuid_r receives valid pointers and the buffer's length. On success with a
     // non-null result, entry is initialised and pw_name points into the buffer, which stays
     // alive until the null-terminated name is copied.
@@ -428,7 +428,7 @@ fn login_name() -> Option<String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn login_name() -> Option<String> {
+pub(crate) fn login_name() -> Option<String> {
     None
 }
 
@@ -463,7 +463,7 @@ pub fn has_acl(path: &Path) -> std::io::Result<bool> {
 }
 
 #[cfg(target_os = "macos")]
-fn private_folder(path: &Path) -> std::io::Result<()> {
+pub(crate) fn private_folder(path: &Path) -> std::io::Result<()> {
     let metadata = fs::symlink_metadata(path)?;
     // SAFETY: geteuid takes no arguments and cannot fail.
     let owner = unsafe { libc::geteuid() };
@@ -482,17 +482,21 @@ fn private_folder(path: &Path) -> std::io::Result<()> {
 
 #[cfg(target_os = "macos")]
 fn fresh_folder(profile: &Path) -> std::io::Result<PathBuf> {
+    fresh_folder_in(&runs_folder(profile))
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn fresh_folder_in(parent: &Path) -> std::io::Result<PathBuf> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let parent = runs_folder(profile);
-    match fs::symlink_metadata(&parent) {
+    match fs::symlink_metadata(parent) {
         Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
             if metadata.permissions().mode() & 0o077 != 0 {
-                fs::set_permissions(&parent, fs::Permissions::from_mode(0o700))?;
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
             }
         }
         Ok(_) => return Err(std::io::Error::other("not a directory")),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            match fs::DirBuilder::new().mode(0o700).create(&parent) {
+            match fs::DirBuilder::new().mode(0o700).create(parent) {
                 Ok(()) => (),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
                 Err(error) => return Err(error),
@@ -500,7 +504,7 @@ fn fresh_folder(profile: &Path) -> std::io::Result<PathBuf> {
         }
         Err(error) => return Err(error),
     }
-    private_folder(&parent)?;
+    private_folder(parent)?;
     loop {
         let number = NEXT.fetch_add(1, Ordering::Relaxed);
         let nanos = SystemTime::now()

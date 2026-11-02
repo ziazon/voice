@@ -1,0 +1,179 @@
+//! One sandboxed run of Voice's own reader, the shipped `voice` command; see
+//! docs/spikes/VO11-os-sandbox.md.
+
+use crate::{sandbox, text};
+#[cfg(target_os = "macos")]
+use std::collections::BTreeSet;
+use std::{
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+use voice_core::error::{Error, Result};
+
+const PROFILE: &str = include_str!("../sandbox/reader.sb");
+pub const MAX_SOURCES: usize = 64;
+
+/// A place the person agreed Voice may read, as the caller found it.
+pub enum Source<'a> {
+    Folder(&'a Path),
+    File(&'a Path),
+}
+
+pub struct Reader {
+    program: PathBuf,
+    member: PathBuf,
+    state: PathBuf,
+    run: PathBuf,
+    sources: Vec<(bool, PathBuf)>,
+    ancestors: Vec<PathBuf>,
+    home: PathBuf,
+}
+
+impl Reader {
+    #[cfg(not(target_os = "macos"))]
+    pub fn new(
+        _program: &Path,
+        _home: &Path,
+        _member: &Path,
+        _state: &Path,
+        _runs: &Path,
+        _sources: &[Source<'_>],
+    ) -> Result<Reader> {
+        Err(Error::Invalid(text::MAC_ONLY.into()))
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn new(
+        program: &Path,
+        home: &Path,
+        member: &Path,
+        state: &Path,
+        runs: &Path,
+        sources: &[Source<'_>],
+    ) -> Result<Reader> {
+        let program = sandbox::resolve_program(program)?;
+        let folder_error = || Error::Invalid(text::READER_FOLDER.into());
+        let member = fs::canonicalize(member).map_err(|_| folder_error())?;
+        if !member.is_dir() {
+            return Err(folder_error());
+        }
+        sandbox::private_folder(state).map_err(|_| folder_error())?;
+        let state = fs::canonicalize(state).map_err(|_| folder_error())?;
+        sandbox::private_folder(&state).map_err(|_| folder_error())?;
+        let source_error = || Error::Invalid(text::READER_SOURCE.into());
+        if sources.len() > MAX_SOURCES {
+            return Err(source_error());
+        }
+        let deny = voice_core::deny::DenyList::builtin();
+        let mut kept = Vec::new();
+        for source in sources {
+            let (folder, path) = match source {
+                Source::Folder(path) => (true, *path),
+                Source::File(path) => (false, *path),
+            };
+            if !path.is_absolute() {
+                return Err(source_error());
+            }
+            let canonical = fs::canonicalize(path).map_err(|_| source_error())?;
+            let metadata = fs::metadata(&canonical).map_err(|_| source_error())?;
+            if (if folder {
+                !metadata.is_dir()
+            } else {
+                !metadata.is_file()
+            }) || deny.denied(path)
+                || deny.denied(&canonical)
+            {
+                return Err(source_error());
+            }
+            let source = (folder, canonical);
+            if !kept.contains(&source) {
+                kept.push(source);
+            }
+        }
+        let run = sandbox::fresh_folder_in(runs)
+            .map_err(|_| Error::Invalid(text::RUN_FOLDER_FAILED.into()))?;
+        let mut ancestors = BTreeSet::new();
+        for path in [&program, &member, &state, &run]
+            .into_iter()
+            .chain(kept.iter().map(|(_, path)| path))
+        {
+            ancestors.extend(path.ancestors().skip(1).map(Path::to_owned));
+        }
+        Ok(Reader {
+            program,
+            member,
+            state,
+            run,
+            sources: kept,
+            ancestors: ancestors.into_iter().collect(),
+            home: home.to_owned(),
+        })
+    }
+
+    pub fn run_folder(&self) -> &Path {
+        &self.run
+    }
+
+    pub fn profile(&self) -> String {
+        let mut rules = String::new();
+        if !self.sources.is_empty() {
+            rules.push_str("; Sources the person agreed to, read-only.\n(allow file-read*");
+            for (index, (folder, _)) in self.sources.iter().enumerate() {
+                let filter = if *folder { "subpath" } else { "literal" };
+                rules.push_str(&format!("\n    ({filter} (param \"SOURCE_{index}\"))"));
+            }
+            rules.push_str(")\n");
+        }
+        rules.push_str("; The folders above each allowed path, metadata only, so the reader can resolve paths.\n(allow file-read-metadata");
+        for index in 0..self.ancestors.len() {
+            rules.push_str(&format!("\n    (literal (param \"ANCESTOR_{index}\"))"));
+        }
+        rules.push(')');
+        PROFILE.replacen(";; sources", &rules, 1)
+    }
+
+    pub fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(sandbox::SANDBOX_EXEC);
+        command.arg("-p").arg(self.profile());
+        for (name, path) in [
+            ("PROGRAM", &self.program),
+            ("MEMBER_DIR", &self.member),
+            ("STATE_DIR", &self.state),
+            ("RUN_DIR", &self.run),
+        ] {
+            let mut parameter = OsString::from(format!("{name}="));
+            parameter.push(path);
+            command.arg("-D").arg(parameter);
+        }
+        for (index, (_, path)) in self.sources.iter().enumerate() {
+            let mut parameter = OsString::from(format!("SOURCE_{index}="));
+            parameter.push(path);
+            command.arg("-D").arg(parameter);
+        }
+        for (index, path) in self.ancestors.iter().enumerate() {
+            let mut parameter = OsString::from(format!("ANCESTOR_{index}="));
+            parameter.push(path);
+            command.arg("-D").arg(parameter);
+        }
+        command.arg(&self.program).args(args).current_dir(&self.run);
+        command.env_clear().env("HOME", &self.home);
+        if let Some(login) = sandbox::login_name() {
+            command.env("USER", &login).env("LOGNAME", login);
+        }
+        command
+            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+            .env("LANG", sandbox::language());
+        let mut tmp = self.run.as_os_str().to_owned();
+        tmp.push("/");
+        command.env("TMPDIR", tmp);
+        command
+    }
+}
+
+impl Drop for Reader {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.run);
+    }
+}

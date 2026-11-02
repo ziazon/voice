@@ -1,0 +1,68 @@
+(version 1)
+(deny default)
+(import "system.sb")
+; Voice's reader needs no certificate service, which can reach the network.
+(deny mach-lookup (global-name "com.apple.trustd") (global-name "com.apple.trustd.agent"))
+
+; The reader is the program itself and starts nothing else.
+(allow process-exec (literal (param "PROGRAM")))
+(allow signal (target self))
+(allow process-info* (target self))
+
+; Read only the system code and devices needed to run, the program file, the assistant's own
+; folders, this run's folder, and the sources the person agreed to (below). The caller gives
+; absolute paths with links resolved.
+(allow file-read*
+    (subpath "/usr/bin")
+    (subpath "/usr/lib")
+    (subpath "/usr/libexec")
+    (subpath "/usr/sbin")
+    (subpath "/usr/share")
+    (subpath "/System")
+    (subpath "/private/etc")
+    (literal "/dev/null")
+    (literal "/dev/zero")
+    (literal "/dev/random")
+    (literal "/dev/urandom")
+    (literal "/dev/dtracehelper")
+    (subpath "/dev/fd")
+    (literal (param "PROGRAM"))
+    (subpath (param "MEMBER_DIR"))
+    (subpath (param "STATE_DIR"))
+    (subpath (param "RUN_DIR")))
+
+; Only the assistant's private state and this run may change.
+(allow file-write*
+    (subpath (param "STATE_DIR"))
+    (subpath (param "RUN_DIR"))
+    (literal "/dev/null"))
+; The two folders themselves can't be moved, removed, replaced or changed; their contents can.
+(deny file-write* (literal (param "STATE_DIR")) (literal (param "RUN_DIR")))
+
+; No network of any kind: no rule allows it.
+
+;; sources
+
+; These rules follow the allows so password and key files stay closed even
+; inside an allowed folder. Match whole components, in either letter case.
+; macOS 27 ignores regex letter case; the letter classes keep these rules right
+; if a later macOS starts matching case.
+; Keep one rule per built-in name or sequence in core/src/deny.rs.
+(deny file-read* file-write*
+    (regex #"(^|/)\.[Ss][Ss][Hh](/|$)")
+    (regex #"(^|/)\.[Aa][Ww][Ss](/|$)")
+    (regex #"(^|/)\.[Gg][Nn][Uu][Pp][Gg](/|$)")
+    (regex #"(^|/)\.[Ee][Nn][Vv][^/]*(/|$)")
+    (regex #"(^|/)\.[Ee][Nn][Vv][Rr][Cc](/|$)")
+    (regex #"(^|/)\.[Nn][Pp][Mm][Rr][Cc](/|$)")
+    (regex #"(^|/)\.[Nn][Ee][Tt][Rr][Cc](/|$)")
+    (regex #"(^|/)\.[Pp][Gg][Pp][Aa][Ss][Ss](/|$)")
+    (regex #"(^|/)[^/]*\.[Pp][Ee][Mm](/|$)")
+    (regex #"(^|/)[^/]*\.[Kk][Ee][Yy](/|$)")
+    (regex #"(^|/)[^/]*\.[Pp]12(/|$)")
+    (regex #"(^|/)[^/]*\.[Kk][Ee][Yy][Cc][Hh][Aa][Ii][Nn](/|$)")
+    (regex #"(^|/)[^/]*\.[Kk][Ee][Yy][Cc][Hh][Aa][Ii][Nn]-[Dd][Bb](/|$)")
+    (regex #"(^|/)\.[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][Ss]\.[Jj][Ss][Oo][Nn](/|$)")
+    (regex #"(^|/)\.[Cc][Oo][Nn][Ff][Ii][Gg]/[Gg][Hh](/|$)")
+    (regex #"(^|/)\.[Dd][Oo][Cc][Kk][Ee][Rr]/[Cc][Oo][Nn][Ff][Ii][Gg]\.[Jj][Ss][Oo][Nn](/|$)")
+    (regex #"(^|/)[Ll][Ii][Bb][Rr][Aa][Rr][Yy]/[Kk][Ee][Yy][Cc][Hh][Aa][Ii][Nn][Ss](/|$)"))

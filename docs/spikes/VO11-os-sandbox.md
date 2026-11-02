@@ -178,6 +178,11 @@ the attended walk, through the app or with the probe above.
 
 ## Next
 
-- **VO11.2, the broker's reading in a helper of its own** (after VO11.1): the reading steps run in
-  the CLI under a profile made per run from the consented sources, with no network; the app starts
-  it and the `claude` child side by side.
+**The reader's profile (VO11.2a).** The reader is the shipped `voice` command. Its profile,
+`builder/agent/sandbox/reader.sb`, is a template plus one rule per source the person agreed to,
+each path passed as a `-D` parameter. It allows no network, other program, Keychain or certificate
+service, and keeps the same secrets denies, with no login exception. Metadata-only reads on every
+folder above each allowed path let the reader resolve paths, including through `/tmp`, without
+listing those folders or reading their other files (measured on 2026-11-02, macOS 27.0.1).
+A hard link inside a source still reaches its file; the reader refuses those itself from VO11.2b.
+This library is not yet wired in: VO11.2b adds the reader command and VO11.2c connects the app.

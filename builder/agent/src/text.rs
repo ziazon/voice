@@ -173,3 +173,7 @@ pub const MAC_ONLY: &str =
 pub const NOT_NATIVE: &str = "This Claude Code is an older kind that runs as a script, which Voice can't run inside its sandbox. Install the current Claude Code (https://code.claude.com/docs/en/setup), then try again.";
 pub const RUN_FOLDER_FAILED: &str = "Voice couldn't set up a folder for Claude Code to work in. Check there's space on this computer, then try again.";
 pub const PROXY_FAILED: &str = "Voice couldn't open the private connection Claude Code uses to reach Claude. Try again; if it keeps happening, restart this computer.";
+
+pub const READER_SOURCE: &str = "Voice can't read one of the places you chose. Check it's still there and isn't a password or key file, then try again.";
+pub const READER_FOLDER: &str =
+    "Voice couldn't open this assistant's own folders. Close Voice and open it again.";

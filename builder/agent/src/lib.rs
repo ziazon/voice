@@ -9,6 +9,7 @@ pub mod egress;
 pub mod guard;
 pub mod ledger;
 pub mod provider;
+pub mod reader;
 pub mod sandbox;
 pub mod self_hosted;
 pub mod text;
