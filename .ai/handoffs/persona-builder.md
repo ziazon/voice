@@ -2,6 +2,33 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.2b.1: the repeat Verifier's two should-fixes (2026-11-02, lane: V1)
+
+- **What:** the two should-fixes VO11.2b's repeat Verifier left. (1)
+  `find_matches_list_without_listing_crew` gains `aliased`, a crew folder that is a link to a
+  folder named `elsewhere`, so `find` is checked against `list` for a linked folder whose target
+  has another name, and then checked to find it at the link's own path. The case-only check at
+  its end now asserts `list` holds no `ari` (it asserted an empty list, which `aliased` broke).
+  No production line changed. (2) The VO11 spike's reader section said every history step takes
+  the state lock; only `read-claude-code`, `list-claudeai-chats` and `read-claudeai` do (they call
+  `locked`; `claude-code-folders` and `claudeai-export-status` call `readable`: slug and
+  permission only). Brief: `plans/briefs/VO11.2b.1-repeat-verifier-should-fixes.md`.
+- **Who built it:** Codex, two dispatches: the brief missed that the case-only check asserted an
+  empty list, so § 4 was added after her first run failed it (which also shows the case-only
+  branch runs on this Mac's disk).
+- **Mutation (killed):** `find`'s condition without `!is_symlink()`, applying the canonical-name
+  check to links too, fails the test at the loop's `aliased` comparison (Codex, and V1 by `cp`
+  backup and `cmp` restore).
+- **Verification:** `cargo test -p voice-core assistants` 10 passed; clippy and fmt clean (Codex);
+  `bash scripts/ci-local.sh` all passed on `5563261` (UI 464 tests, build green).
+- **Security review (Opus, on `5563261`): PASS**, no findings. Production code unchanged; the
+  doc sentence checked against `history.rs` and `reader.rs` (narrower than before, not broader);
+  the case-only check still catches a wrongly listed `Ari`. As context, not a finding: `find`
+  following a linked crew folder gives nothing extra to whoever can make the link (outside the
+  sandbox, as the user, who could edit `member.json` directly), and the linked `member.json`
+  still may not be a link, must carry the link's slug, and has its state folder and consent checked.
+- **Verifier:** not required (the spec: a test and a doc line).
+
 ## VO11.2b: the reader in the CLI (2026-11-02, lane: V1)
 
 - **What:** a hidden `voice reader <step>` (not in `--help`) for the app's six reading steps
