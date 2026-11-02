@@ -1,6 +1,10 @@
 //! The person's own Claude Code (PB-D9): finding it, checking it is signed in, and one tool-less
 //! call. Voice starts Claude Code's login but never reads, sets or passes a token.
 //!
+//! Every `claude` runs inside the sandbox (`sandbox::Launch`) with a proxy of its own
+//! (`egress::Egress`) and an environment built from nothing, so no credential, provider switch
+//! or endpoint of the person's reaches it; see `docs/spikes/VO11-os-sandbox.md`.
+//!
 //! Sources, read 2026-10-24: `https://code.claude.com/docs/en/headless` (the JSON reply, its
 //! `structured_output`, the 10 MB stdin cap, and that without `--bare` a `-p` run loads the working
 //! folder's `.claude/settings.json` and `.mcp.json`; `--bare` is not used because it never reads the
@@ -10,9 +14,11 @@
 //! and `https://code.claude.com/docs/en/headless` (stream-json).
 use crate::{
     child::{self, Ran},
+    egress::Egress,
     guard::Sealed,
     ledger::{Line, Session},
     provider::{Provider, Reach, Reply, Usage, check_brief},
+    sandbox::{Launch, Link, RunFolder},
     text,
 };
 use serde_json::Value;
@@ -21,11 +27,12 @@ use std::{
     fs,
     os::unix::fs::{DirBuilderExt, PermissionsExt},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     sync::{
-        Arc,
+        Arc, Once,
         atomic::{AtomicBool, Ordering},
     },
+    thread,
     time::{Duration, Instant},
 };
 use voice_core::error::{Error, Result};
@@ -40,20 +47,15 @@ pub use crate::provider::{MAX_PROMPT, MAX_SYSTEM};
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const CHECK_CAP: u64 = 64 * 1024;
 const STDOUT_CAP: u64 = 16 * 1024 * 1024;
-/// Set by Claude Code in the sessions it runs; Voice's calls run as a fresh, top-level CLI.
-const SESSION_MARKERS: [&str; 2] = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"];
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ready {
     pub version: String,
-    /// `ANTHROPIC_API_KEY` is set (its value is never shown or kept): Claude Code may bill that key.
-    pub api_key_set: bool,
 }
 
 #[derive(Debug)]
 pub struct Claude {
     program: PathBuf,
-    profile: Option<PathBuf>,
+    profile: PathBuf,
     timeout: Duration,
     stop: Option<Arc<AtomicBool>>,
 }
@@ -86,10 +88,7 @@ pub fn find_in(home: &Path, path: Option<&OsStr>, fallbacks: &[PathBuf]) -> Resu
         .find(|candidate| runnable(candidate))
         .ok_or_else(|| Error::Invalid(text::NOT_INSTALLED.into()))?;
     let profile = ensure_profile(home)?;
-    Ok(Claude {
-        profile: Some(profile),
-        ..Claude::at(program)
-    })
+    Ok(Claude::at(program, profile))
 }
 
 /// A regular file with an execute bit, links followed (the installers' launchers are links).
@@ -294,17 +293,23 @@ fn ensure_profile(home: &Path) -> Result<PathBuf> {
     let prepare = || -> std::io::Result<()> {
         fs::create_dir_all(app.parent().expect("app has a parent"))?;
         for path in [app, folder.as_path()] {
-            match fs::symlink_metadata(path) {
-                Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
-                    if metadata.permissions().mode() & 0o077 != 0 {
-                        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-                    }
-                }
-                Ok(_) => return Err(std::io::Error::other("not a directory")),
+            let metadata = match fs::symlink_metadata(path) {
+                Ok(metadata) => metadata,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    fs::DirBuilder::new().mode(0o700).create(path)?;
+                    match fs::DirBuilder::new().mode(0o700).create(path) {
+                        Ok(()) => (),
+                        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
+                        Err(error) => return Err(error),
+                    }
+                    fs::symlink_metadata(path)?
                 }
                 Err(error) => return Err(error),
+            };
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                return Err(std::io::Error::other("not a directory"));
+            }
+            if metadata.permissions().mode() & 0o077 != 0 {
+                fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
             }
         }
         Ok(())
@@ -317,45 +322,101 @@ fn ensure_profile(home: &Path) -> Result<PathBuf> {
 pub struct Status {
     pub version: String,
     pub signed_in: bool,
-    /// `ANTHROPIC_API_KEY` is set (its value is never shown or kept).
-    pub api_key_set: bool,
 }
 
 /// How long Voice waits for the person to finish signing in.
 pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 impl Claude {
-    pub fn profile(&self) -> Option<&Path> {
-        self.profile.as_deref()
+    pub fn profile(&self) -> &Path {
+        &self.profile
     }
-    /// `claude auth login --claudeai`, with the profile and no session markers, in `cwd`.
-    pub fn sign_in_command(&self, cwd: &Path) -> Command {
-        let mut command = self.command(cwd);
-        command.args(["auth", "login", "--claudeai"]);
-        command
+
+    fn launch(&self, home: &Path, sign_in: bool) -> Result<(Egress, Launch)> {
+        let egress = Egress::start().map_err(|_| invalid(text::PROXY_FAILED))?;
+        let launch = Launch::new(
+            &self.program,
+            &self.profile,
+            home,
+            RunFolder::Fresh,
+            egress.port(),
+            sign_in,
+        )?;
+        Ok((egress, launch))
     }
-    /// Wait for Claude Code's login with empty stdin and bounded, discarded output.
+
+    /// Wait for Claude Code's login inside the sandbox; the sign-in page opens in the browser.
     pub fn sign_in(&self, home: &Path, stop: &AtomicBool) -> Result<()> {
-        let mut command = self.sign_in_command(home);
-        match child::run(
-            &mut command,
-            None,
-            SIGN_IN_TIMEOUT.min(self.timeout),
-            CHECK_CAP,
-            Some(stop),
-        ) {
+        self.sign_in_with(home, stop, &open_in_browser)
+    }
+
+    /// `sign_in`, with the opener given (tests).
+    pub fn sign_in_with(
+        &self,
+        home: &Path,
+        stop: &AtomicBool,
+        open: &(dyn Fn(&str) -> std::io::Result<()> + Sync),
+    ) -> Result<()> {
+        let (egress, launch) = self.launch(home, true)?;
+        let mut command = launch.command(&["auth", "login", "--claudeai"]);
+        let abort = AtomicBool::new(false);
+        let done = AtomicBool::new(false);
+        let refused = AtomicBool::new(false);
+        let ran = thread::scope(|scope| {
+            scope.spawn(|| {
+                let mut opened = false;
+                while !done.load(Ordering::SeqCst) {
+                    if stop.load(Ordering::SeqCst) {
+                        abort.store(true, Ordering::SeqCst);
+                        break;
+                    }
+                    if !opened {
+                        match launch.sign_in_link() {
+                            Link::NotYet => (),
+                            Link::Ready(link) => {
+                                opened = true;
+                                if open(&link).is_err() {
+                                    refused.store(true, Ordering::SeqCst);
+                                    abort.store(true, Ordering::SeqCst);
+                                    break;
+                                }
+                            }
+                            Link::Refused => {
+                                refused.store(true, Ordering::SeqCst);
+                                abort.store(true, Ordering::SeqCst);
+                                break;
+                            }
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(50));
+                }
+            });
+            let ran = child::run(
+                &mut command,
+                None,
+                SIGN_IN_TIMEOUT.min(self.timeout),
+                CHECK_CAP,
+                Some(&abort),
+            );
+            done.store(true, Ordering::SeqCst);
+            ran
+        });
+        drop(launch);
+        egress.stop();
+        match ran {
             Ran::Finished { status, .. } if status.success() => Ok(()),
             Ran::Finished { .. } => Err(invalid(text::SIGN_IN_FAILED)),
             Ran::CutOff => Err(invalid(text::SIGN_IN_TIMED_OUT)),
+            Ran::Stopped if refused.load(Ordering::SeqCst) => Err(invalid(text::SIGN_IN_FAILED)),
             Ran::Stopped => Err(invalid(text::SIGN_IN_STOPPED)),
             Ran::NotStarted => Err(invalid(text::DOES_NOT_RUN)),
         }
     }
 
-    pub fn at(program: PathBuf) -> Claude {
+    pub fn at(program: PathBuf, profile: PathBuf) -> Claude {
         Claude {
             program,
-            profile: None,
+            profile,
             timeout: DEFAULT_TIMEOUT,
             stop: None,
         }
@@ -373,44 +434,28 @@ impl Claude {
         &self.program
     }
 
-    /// `claude` in `cwd`, with this profile and the session markers removed.
-    fn command(&self, cwd: &Path) -> Command {
-        let mut command = Command::new(&self.program);
-        command.current_dir(cwd);
-        if let Some(profile) = &self.profile {
-            command.env("CLAUDE_CONFIG_DIR", profile);
-        }
-        for marker in SESSION_MARKERS {
-            command.env_remove(marker);
-        }
-        for (name, _) in std::env::vars_os() {
-            if name.to_str().is_some_and(provider_override) {
-                command.env_remove(name);
-            }
-        }
-        command
-    }
-
-    fn ask(&self, home: &Path, args: &[&str]) -> Option<Vec<u8>> {
-        let mut command = self.command(home);
-        command.args(args);
-        match child::run(
-            &mut command,
+    fn ask(&self, home: &Path, args: &[&str]) -> Result<Option<Vec<u8>>> {
+        let (egress, launch) = self.launch(home, false)?;
+        let ran = child::run(
+            &mut launch.command(args),
             None,
             CHECK_TIMEOUT.min(self.timeout),
             CHECK_CAP,
             None,
-        ) {
+        );
+        drop(launch);
+        egress.stop();
+        Ok(match ran {
             Ran::Finished { status, stdout } if status.success() => Some(stdout),
             _ => None,
-        }
+        })
     }
 
     /// Check the version and sign-in. Only `loggedIn` is read from the status: the object can
     /// carry an email address, which is never kept or shown.
     pub fn status(&self, home: &Path) -> Result<Status> {
         let stdout = self
-            .ask(home, &["--version"])
+            .ask(home, &["--version"])?
             .ok_or_else(|| invalid(text::DOES_NOT_RUN))?;
         let version = String::from_utf8_lossy(&stdout)
             .split_whitespace()
@@ -419,13 +464,12 @@ impl Claude {
             .map(str::to_owned)
             .ok_or_else(|| invalid(text::DOES_NOT_RUN))?;
         let logged_in = self
-            .ask(home, &["auth", "status", "--json"])
+            .ask(home, &["auth", "status", "--json"])?
             .and_then(|stdout| serde_json::from_slice::<Value>(&stdout).ok())
             .and_then(|status| status.get("loggedIn").and_then(Value::as_bool));
         Ok(Status {
             version,
             signed_in: logged_in == Some(true),
-            api_key_set: std::env::var_os("ANTHROPIC_API_KEY").is_some_and(|key| !key.is_empty()),
         })
     }
 
@@ -437,7 +481,6 @@ impl Claude {
         }
         Ok(Ready {
             version: status.version,
-            api_key_set: status.api_key_set,
         })
     }
 }
@@ -474,12 +517,11 @@ impl Provider for Claude {
         {
             return Err(invalid(text::STOPPED));
         }
-        let folder = session.work_folder()?;
+        let (egress, launch) = self.launch(session.home(), false)?;
         let started = session.start(AGENT_ID, call.step, call.model)?;
         let schema = call.schema.to_string();
         let budget = started.budget();
-        let mut command = self.command(&folder);
-        command.args([
+        let mut command = launch.command(&[
             "-p",
             "--system-prompt",
             call.system,
@@ -494,8 +536,6 @@ impl Provider for Claude {
             "--verbose",
             "--json-schema",
             &schema,
-            "--setting-sources",
-            "project,local",
             "--strict-mcp-config",
             "--mcp-config",
             r#"{"mcpServers":{}}"#,
@@ -513,6 +553,8 @@ impl Provider for Claude {
             STDOUT_CAP,
             self.stop.as_deref(),
         );
+        drop(launch);
+        egress.stop();
         let seconds = begun.elapsed().as_secs_f64();
         let Some(judged) = judge(ran, self.timeout) else {
             // A child that never started spent nothing.
@@ -543,11 +585,91 @@ impl Provider for Claude {
     }
 }
 
-/// Provider switches and endpoint overrides: https://code.claude.com/docs/en/env-vars
-/// Remove these from every child so Claude Code's declared Anthropic reach holds.
-fn provider_override(name: &str) -> bool {
-    name.starts_with("CLAUDE_CODE_USE_")
-        || name == "ANTHROPIC_BASE_URL"
-        || (name.starts_with("ANTHROPIC_") && name.ends_with("_BASE_URL"))
-        || name == "ANTHROPIC_FOUNDRY_RESOURCE"
+fn open_in_browser(link: &str) -> std::io::Result<()> {
+    let status = Command::new("/usr/bin/open")
+        .arg(link)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other("open failed"))
+    }
+}
+
+static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn interrupted(_: libc::c_int) {
+    INTERRUPTED.store(true, Ordering::SeqCst);
+}
+
+/// The stop flag set by Ctrl-C in the terminal.
+pub fn stop_on_interrupt() -> &'static AtomicBool {
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        // SAFETY: sigaction and its empty mask receive valid pointers; the handler only stores
+        // into a static atomic and remains valid for the lifetime of the process.
+        unsafe {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            action.sa_sigaction = interrupted as *const () as usize;
+            libc::sigemptyset(&mut action.sa_mask);
+            action.sa_flags = 0;
+            libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut());
+        }
+    });
+    &INTERRUPTED
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use crate::sandbox;
+
+    #[test]
+    fn every_native_launch_uses_its_own_proxy_and_sandbox() {
+        let root = std::env::temp_dir().join(format!(
+            "voice-wiring-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        struct Scratch(PathBuf);
+        impl Drop for Scratch {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let scratch = Scratch(root);
+        let profile = scratch.0.join("profile");
+        fs::DirBuilder::new().mode(0o700).create(&profile).unwrap();
+        let claude = Claude::at("/bin/ls".into(), profile.clone());
+        for sign_in in [false, true] {
+            let (egress, launch) = claude.launch(&scratch.0, sign_in).unwrap();
+            let command = launch.command(&[]);
+            assert_eq!(command.get_program(), sandbox::SANDBOX_EXEC);
+            assert_ne!(egress.port(), 0);
+            let args: Vec<_> = command.get_args().collect();
+            let port = format!("PROXY_PORT={}", egress.port());
+            assert!(args.windows(2).any(|pair| pair == ["-D", port.as_str()]));
+            let mode = if sign_in { "SIGN_IN=yes" } else { "SIGN_IN=no" };
+            assert!(args.windows(2).any(|pair| pair == ["-D", mode]));
+            assert_eq!(
+                command.get_current_dir().unwrap().parent().unwrap(),
+                sandbox::runs_folder(&profile.canonicalize().unwrap())
+            );
+            assert_eq!(
+                command
+                    .get_envs()
+                    .any(|(name, value)| name == "BROWSER" && value.is_some()),
+                sign_in
+            );
+            drop(launch);
+            egress.stop();
+        }
+    }
 }

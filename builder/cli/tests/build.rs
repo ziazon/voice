@@ -201,7 +201,7 @@ fn build_writes_how_they_decide_and_the_tests_result() {
 fn build_spends_nothing_and_writes_nothing_when_claude_code_is_signed_out() {
     let fixture = Fixture::new();
     fixture.write_stub(
-        "#!/bin/sh\nhere=\"$(cd \"$(dirname \"$0\")\" && pwd -P)\"\ncase \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":false}';; *) echo x > \"$here/stdin0\";; esac",
+        "#!/bin/sh\nshift 2\nhere=\"$(cd \"$(dirname \"$0\")\" && pwd -P)\"\ncase \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":false}';; *) echo x > \"$here/stdin0\";; esac",
     );
     fixture.write_state("decisions.jsonl", &corpus(32));
     let before = fs::read_to_string(fixture.member.join("decisions.md")).unwrap();
@@ -364,7 +364,10 @@ fn shared_build_path_writes_exactly_the_cli_outputs() {
     shared.write_state("decisions.jsonl", &corpus(32));
     let member = voice_core::member::read_member(&shared.member.join("member.json")).unwrap();
     let prepared = run::prepare(&member, &shared.member, &shared.home, "decisions.jsonl").unwrap();
-    let claude = Claude::at(shared.bin.join("claude"));
+    let profile = shared.home.join("profile");
+    fs::create_dir(&profile).unwrap();
+    fs::set_permissions(&profile, fs::Permissions::from_mode(0o700)).unwrap();
+    let claude = Claude::at(shared.bin.join("claude"), profile);
     let session = Session::open(&shared.home, &member.slug, Cap::default()).unwrap();
     let mut progress = Vec::new();
     let built = build::build(

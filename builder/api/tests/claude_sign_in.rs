@@ -27,6 +27,7 @@ impl Stub {
     fn program(&self, login: &str) {
         let program = self.0.join("claude");
         fs::write(&program, format!(r#"#!/bin/sh
+shift 2
 here="$(cd "$(dirname "$0")" && pwd -P)"
 printf '%s\n' "$*" >> "$here/runs"
 case "$1 $2" in
@@ -138,6 +139,7 @@ fn cancel_during_status_never_starts_login() {
     fs::write(
         stub.0.join("claude"),
         r#"#!/bin/sh
+shift 2
 here="$(cd "$(dirname "$0")" && pwd -P)"
 case "$1 $2" in
 '--version ') echo '2.1.292 (Claude Code)';;
@@ -185,7 +187,11 @@ fn unavailable_or_broken_program_does_not_offer_or_run_login() {
     let missing = claude_sign_in_in(&stub.0, None, &[], &state).unwrap();
     assert!(!missing.can_sign_in);
     assert_eq!(missing.message, text::NOT_INSTALLED);
-    fs::write(stub.0.join("claude"), "#!/bin/sh\necho private-detail\n").unwrap();
+    fs::write(
+        stub.0.join("claude"),
+        "#!/bin/sh\nshift 2\necho private-detail\n",
+    )
+    .unwrap();
     let broken = stub.sign_in(&state);
     assert!(!broken.can_sign_in);
     assert_eq!(broken.message, text::DOES_NOT_RUN);

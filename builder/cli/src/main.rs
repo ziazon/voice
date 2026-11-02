@@ -1441,9 +1441,6 @@ fn claude_check() -> Result<()> {
         )));
     }
     println!("{}", text::ready(&ready.version));
-    if ready.api_key_set {
-        println!("{}", text::API_KEY_SET);
-    }
     Ok(())
 }
 fn claude_sign_in() -> Result<()> {
@@ -1451,22 +1448,27 @@ fn claude_sign_in() -> Result<()> {
     let home = home()?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
-    let mut status = claude.status(&home)?;
-    if !status.signed_in {
-        println!("{}", text::SIGN_IN_WAITING);
-        let _ = claude.sign_in_command(&home).status();
-        status = claude
-            .status(&home)
-            .map_err(|_| Error::Invalid(text::SIGN_IN_FAILED.into()))?;
-        if !status.signed_in {
-            return Err(Error::Invalid(text::SIGN_IN_FAILED.into()));
-        }
+    let status = claude.status(&home)?;
+    if status.signed_in {
+        println!("{}", text::ready(&status.version));
+        return Ok(());
     }
-    println!("{}", text::ready(&status.version));
-    if status.api_key_set {
-        println!("{}", text::API_KEY_SET);
+    println!("{}", text::SIGN_IN_WAITING);
+    let result = claude.sign_in(&home, claude::stop_on_interrupt());
+    if let Err(Error::Invalid(message)) = &result
+        && message == text::SIGN_IN_STOPPED
+    {
+        return result;
     }
-    Ok(())
+    if let Ok(status) = claude.status(&home)
+        && status.signed_in
+    {
+        println!("{}", text::ready(&status.version));
+        return Ok(());
+    }
+    Err(result
+        .err()
+        .unwrap_or_else(|| Error::Invalid(text::SIGN_IN_FAILED.into())))
 }
 fn cap_for(
     home: &std::path::Path,

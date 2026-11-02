@@ -4525,6 +4525,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+ "voice-agent",
  "voice-core",
  "voice-ingest",
 ]

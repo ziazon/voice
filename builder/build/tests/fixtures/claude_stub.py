@@ -10,7 +10,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-ARGS = sys.argv[1:]
+ARGS = sys.argv[3:]
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
     with open(os.path.join(HERE, "stdin%d" % n), "w") as f:
         f.write(prompt)
     with open(os.path.join(HERE, "argv%d" % n), "w") as f:
-        json.dump(ARGS, f)
+        json.dump(sys.argv[1:], f)
     plan_file = os.path.join(HERE, "plan.json")
     plan = json.load(open(plan_file)) if os.path.exists(plan_file) else {}
     how = plan.get(str(n), "good")

@@ -140,6 +140,8 @@ struct Stub {
 impl Stub {
     fn new(python: &Path) -> Self {
         let folder = Scratch::new();
+        fs::create_dir(folder.0.join("profile")).unwrap();
+        fs::set_permissions(folder.0.join("profile"), fs::Permissions::from_mode(0o700)).unwrap();
         let script = include_str!("fixtures/claude_stub.py");
         let program = folder.0.join("claude");
         fs::write(&program, format!("#!{} -I\n{script}", python.display())).unwrap();
@@ -150,7 +152,7 @@ impl Stub {
         fs::write(self.folder.0.join("plan.json"), plan.to_string()).unwrap();
     }
     fn claude(&self) -> Claude {
-        Claude::at(self.folder.0.join("claude"))
+        Claude::at(self.folder.0.join("claude"), self.folder.0.join("profile"))
     }
     fn calls(&self) -> usize {
         (0..)

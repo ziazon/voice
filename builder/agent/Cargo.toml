@@ -12,3 +12,11 @@ voice-ingest = { path = "../ingest" }
 serde_json = { version = "1", features = ["preserve_order"] }
 libc = "=0.2.191"
 ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
+
+# test builds only: a `#!` script runs directly instead of inside the sandbox;
+# `scripts/ci-local.sh` checks the app and CLI builds lack it.
+[features]
+test-stubs = []
+
+[dev-dependencies]
+voice-agent = { path = ".", features = ["test-stubs"] }

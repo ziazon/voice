@@ -14,7 +14,7 @@ use voice_core::ceilings::Ceilings;
 #[test]
 fn claude_reports_its_identity_and_reach_through_the_trait() {
     let home = Scratch::new("provider-identity");
-    let claude = Claude::at(home.0.join("claude"));
+    let claude = Claude::at(home.0.join("claude"), private_profile(&home.0));
     let provider: &dyn Provider = &claude;
     assert_eq!(provider.id(), "claude-code");
     assert_eq!(provider.name(), "Claude, through your own Claude Code");
@@ -24,7 +24,7 @@ fn claude_reports_its_identity_and_reach_through_the_trait() {
 #[test]
 fn the_registry_matches_the_provider_and_has_distinct_ids() {
     let home = Scratch::new("provider-registry");
-    let claude = Claude::at(home.0.join("claude"));
+    let claude = Claude::at(home.0.join("claude"), private_profile(&home.0));
     let provider: &dyn Provider = &claude;
     let agent = agents::agent("claude-code").unwrap();
     assert_eq!(agent.id, provider.id());
@@ -75,7 +75,7 @@ fn a_trait_call_uses_claude_and_leaves_one_ledger_line() {
 #[test]
 fn shared_checks_run_before_claude_model_checks() {
     let home = Scratch::new("shared-checks");
-    let claude = Claude::at(home.0.join("does-not-run"));
+    let claude = Claude::at(home.0.join("does-not-run"), private_profile(&home.0));
     let session = session(&home.0);
     let schema = schema();
     let brief = Brief {

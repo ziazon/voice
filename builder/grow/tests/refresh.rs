@@ -47,6 +47,8 @@ impl Setup {
         fs::write(dir.join("decisions.md"), BASE).unwrap();
         let stub = f.home.join("stub");
         fs::create_dir(&stub).unwrap();
+        fs::create_dir(stub.join("profile")).unwrap();
+        fs::set_permissions(stub.join("profile"), fs::Permissions::from_mode(0o700)).unwrap();
         let python = Command::new("python3")
             .args(["-c", "import sys; print(sys.executable)"])
             .output()
@@ -105,7 +107,10 @@ impl Setup {
         let session = Session::open(&self.f.home, &self.f.member.slug, Cap::default()).unwrap();
         refresh::propose(
             &Guard::new(
-                vec![&Claude::at(self.stub.join("claude"))],
+                vec![&Claude::at(
+                    self.stub.join("claude"),
+                    self.stub.join("profile"),
+                )],
                 Ceilings::defaults(),
             ),
             &session,
@@ -815,7 +820,7 @@ fn refresh_briefs_name_the_build_sources() {
     use voice_agent::guard::Guard;
     use voice_core::ceilings::{Ceilings, Source};
     let s = Setup::new(1);
-    let claude = Claude::at(s.stub.join("claude"));
+    let claude = Claude::at(s.stub.join("claude"), s.stub.join("profile"));
     let provider = RecordingProvider::new(&claude);
     let guard = Guard::new(vec![&provider], Ceilings::for_member(&s.f.member).unwrap());
     let session = Session::open(&s.f.home, &s.f.member.slug, Cap::default()).unwrap();

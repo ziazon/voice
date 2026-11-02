@@ -244,6 +244,7 @@ impl Fixture {
             &program,
             format!(
                 r#"#!/bin/sh
+shift 2
 here="$(cd "$(dirname "$0")" && pwd -P)"
 case "$1" in
     --version) echo '2.1.292 (Claude Code)';;

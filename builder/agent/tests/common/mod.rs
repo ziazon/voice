@@ -47,6 +47,7 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 n=$(ls "$here" | grep -c '^argv')
 for a in "$@"; do printf '%s\n' "$a"; done > "$here/argv$n"
 pwd -P > "$here/cwd"
+env > "$here/env$n"
 printf '%s %s %s\n' "$1" "${CLAUDE_CONFIG_DIR:-}" "${CLAUDECODE+set}" | sed 's/ $/ unset/' >> "$here/profiles"
 cat > "$here/stdin"
 if [ -n "${CLAUDECODE+x}" ]; then echo set; else echo unset; fi > "$here/claudecode"
@@ -78,7 +79,10 @@ impl Stub {
         self.folder.0.join("claude")
     }
     pub fn claude(&self) -> Claude {
-        Claude::at(self.program())
+        Claude::at(self.program(), self.profile())
+    }
+    pub fn profile(&self) -> PathBuf {
+        private_profile(&self.folder.0)
     }
     /// The argv of the stub's `n`th run, or `None` when it never ran that often.
     pub fn argv(&self, n: usize) -> Option<Vec<String>> {
@@ -175,4 +179,46 @@ pub fn seed_ledger(home: &Path, lines: &[String]) {
 /// A plan status event, with invented session identifiers.
 pub fn rate_limit_line(status: &str) -> String {
     json!({"type":"rate_limit_event","rate_limit_info":{"status":status,"resetsAt":1793003600,"rateLimitType":"five_hour","utilization":0.91},"uuid":"event-1","session_id":"s-1"}).to_string()
+}
+
+pub fn private_profile(folder: &Path) -> PathBuf {
+    let profile = folder.join("profile");
+    fs::create_dir_all(&profile).unwrap();
+    fs::set_permissions(&profile, fs::Permissions::from_mode(0o700)).unwrap();
+    profile
+}
+
+pub fn assert_launch_env(stub: &Stub, n: usize, profile: &Path) {
+    let text = stub.file(&format!("env{n}"));
+    let env: std::collections::HashMap<_, _> = text
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .collect();
+    for name in [
+        "ANTHROPIC_API_KEY",
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_USE_BEDROCK",
+        "PB_AGENT_TEST_KEEP",
+    ] {
+        assert!(
+            !env.contains_key(name),
+            "parent variable reached child: {name}"
+        );
+    }
+    assert!(
+        env.get("CLAUDE_CONFIG_DIR")
+            .is_some_and(|value| Path::new(value) == profile.canonicalize().unwrap())
+    );
+    assert!(env.get("HTTPS_PROXY").is_some_and(|value| {
+        value
+            .strip_prefix("http://127.0.0.1:")
+            .and_then(|port| port.parse::<u16>().ok())
+            .is_some_and(|port| port != 0)
+    }));
+    assert!(
+        env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+            .is_some_and(|value| *value == "1")
+    );
 }

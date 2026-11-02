@@ -26,6 +26,22 @@ if command -v cargo >/dev/null 2>&1; then
     echo 'VOICE_REQUIRE_PARITY=1 cargo test --locked'
     VOICE_REQUIRE_PARITY=1 cargo test --locked
   fi
+  echo 'cargo tree --locked -p voice-cli -e features,normal,build,dev -i voice-agent'
+  tree=$(cargo tree --locked -p voice-cli -e features,normal,build,dev -i voice-agent)
+  if ! grep -Fq 'voice-agent feature "test-stubs"' <<< "$tree"; then
+    echo 'ci-local: voice-cli test feature check did not find test-stubs'
+    exit 1
+  fi
+  for package in voice-cli voice-app; do
+    echo "cargo tree --locked -p $package -e features,normal,build -i voice-agent"
+    tree=$(cargo tree --locked -p "$package" -e features,normal,build -i voice-agent)
+    if grep -Fq 'voice-agent feature "test-stubs"' <<< "$tree"; then
+      echo "ci-local: $package builds voice-agent with test-stubs"
+      exit 1
+    fi
+  done
+  echo 'cargo clippy --locked -p voice-cli -p voice-app -- -D warnings'
+  cargo clippy --locked -p voice-cli -p voice-app -- -D warnings
   echo 'git diff --exit-code -- builder/ui/src/types/generated'
   git diff --exit-code -- builder/ui/src/types/generated
   if [ -n "$(git status --porcelain -- builder/ui/src/types/generated)" ]; then

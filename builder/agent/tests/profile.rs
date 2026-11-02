@@ -4,7 +4,10 @@ use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
     path::Path,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -38,7 +41,39 @@ fn find_creates_private_app_and_profile_folders() {
     let stub = Stub::new("exit 0");
     let claude = found(&stub, &home.0);
     let folder = claude::profile_folder(&home.0);
-    assert_eq!(claude.profile(), Some(folder.as_path()));
+    assert_eq!(claude.profile(), folder.as_path());
+    for path in [folder.as_path(), folder.parent().unwrap()] {
+        assert_eq!(
+            fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+}
+
+#[test]
+fn concurrent_finds_create_private_app_and_profile_folders() {
+    let home = Scratch::new("profile-concurrent");
+    let stub = Stub::new("exit 0");
+    let barrier = std::sync::Barrier::new(16);
+    let found = thread::scope(|scope| {
+        let threads: Vec<_> = (0..16)
+            .map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    claude::find_in(&home.0, None, &[stub.program()])
+                })
+            })
+            .collect();
+        threads
+            .into_iter()
+            .map(|thread| thread.join().unwrap().unwrap())
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(found.len(), 16);
+    let folder = claude::profile_folder(&home.0);
+    for claude in found {
+        assert_eq!(claude.profile(), folder.as_path());
+    }
     for path in [folder.as_path(), folder.parent().unwrap()] {
         assert_eq!(
             fs::metadata(path).unwrap().permissions().mode() & 0o777,
@@ -109,7 +144,7 @@ fn status_keeps_the_version_when_signed_out() {
         "exit 1",
     ] {
         let stub = Stub::new(&format!(
-            "case \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) {status};; esac"
+            "case \"$3\" in --version) echo '2.1.292 (Claude Code)';; auth) {status};; esac"
         ));
         let claude = found(&stub, &home.0);
         let status = claude.status(&home.0).unwrap();
@@ -128,12 +163,26 @@ fn sign_in_has_exact_argv_empty_stdin_and_maps_exit_status() {
     for (body, expected) in [("exit 0", None), ("exit 1", Some(text::SIGN_IN_FAILED))] {
         let stub = Stub::new(body);
         let claude = found(&stub, &home.0);
-        let result = claude.sign_in(&home.0, &AtomicBool::new(false));
+        let opened = Mutex::new(Vec::<String>::new());
+        let result = claude.sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            Ok(())
+        });
+        assert!(opened.lock().unwrap().is_empty());
         assert_eq!(
             result.err().map(|error| error.to_string()),
             expected.map(str::to_owned)
         );
-        assert_eq!(stub.argv(0).unwrap(), ["auth", "login", "--claudeai"]);
+        assert_eq!(
+            stub.argv(0).unwrap(),
+            [
+                "--setting-sources",
+                "project,local",
+                "auth",
+                "login",
+                "--claudeai"
+            ]
+        );
         assert_eq!(stub.file("stdin"), "");
     }
 }
@@ -145,14 +194,18 @@ fn sign_in_timeout_and_failed_spawn_are_fixed_messages() {
     assert_eq!(
         found(&stub, &home.0)
             .with_timeout(Duration::from_secs(1))
-            .sign_in(&home.0, &AtomicBool::new(false))
+            .sign_in_with(&home.0, &AtomicBool::new(false), &|_| panic!(
+                "no browser requested"
+            ))
             .unwrap_err()
             .to_string(),
         text::SIGN_IN_TIMED_OUT
     );
     assert_eq!(
-        Claude::at(home.0.join("missing"))
-            .sign_in(&home.0, &AtomicBool::new(false))
+        Claude::at(home.0.join("missing"), private_profile(&home.0))
+            .sign_in_with(&home.0, &AtomicBool::new(false), &|_| panic!(
+                "no browser requested"
+            ))
             .unwrap_err()
             .to_string(),
         text::DOES_NOT_RUN
@@ -171,7 +224,9 @@ fn stopped_sign_in_kills_the_process_group_within_a_second() {
             thread::sleep(Duration::from_millis(200));
             stop.store(true, Ordering::SeqCst);
         });
-        claude.sign_in(&home.0, &stop).unwrap_err()
+        claude
+            .sign_in_with(&home.0, &stop, &|_| panic!("no browser requested"))
+            .unwrap_err()
     });
     assert_eq!(error.to_string(), text::SIGN_IN_STOPPED);
     assert!(begun.elapsed() < Duration::from_secs(1));
@@ -200,4 +255,118 @@ fn displayed_paths_hide_the_home_and_signed_out_text_is_exact() {
         text::signed_out_at("2.1.292", "~/.local/bin/claude"),
         "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account."
     );
+}
+
+const SIGN_IN_LINK: &str = "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y";
+
+fn waiting_sign_in(link: &str) -> Stub {
+    Stub::new(&format!(
+        r#""$BROWSER" '{link}'
+for n in $(seq 1 200); do
+    [ -f "$here/go" ] && exit 0
+    sleep 0.05
+done
+exit 1"#
+    ))
+}
+
+fn assert_no_link_in_files(folder: &Path, link: &str) {
+    for entry in fs::read_dir(folder).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            assert_no_link_in_files(&path, link);
+        } else if path.file_name().unwrap() != "claude" {
+            assert!(
+                !fs::read(&path)
+                    .unwrap()
+                    .windows(link.len())
+                    .any(|bytes| bytes == link.as_bytes()),
+                "sign-in link retained"
+            );
+        }
+    }
+}
+
+#[test]
+fn sign_in_opens_the_valid_link_exactly_once_and_retains_no_link() {
+    let home = Scratch::new("sign-in-link");
+    let stub = waiting_sign_in(SIGN_IN_LINK);
+    let claude = found(&stub, &home.0);
+    let opened = Mutex::new(Vec::<String>::new());
+    thread::scope(|scope| {
+        scope.spawn(|| {
+            let started = Instant::now();
+            while opened.lock().unwrap().is_empty() && started.elapsed() < Duration::from_secs(5) {
+                thread::sleep(Duration::from_millis(10));
+            }
+            // Leave several watcher turns before allowing the child to finish.
+            thread::sleep(Duration::from_millis(250));
+            fs::write(stub.folder.0.join("go"), "").unwrap();
+        });
+        claude
+            .sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
+                opened.lock().unwrap().push(link.to_owned());
+                Ok(())
+            })
+            .unwrap();
+    });
+    assert!(opened.lock().unwrap().as_slice() == [SIGN_IN_LINK]);
+    assert_no_link_in_files(&stub.folder.0, SIGN_IN_LINK);
+    assert_no_link_in_files(claude.profile().parent().unwrap(), SIGN_IN_LINK);
+}
+
+#[test]
+fn sign_in_refuses_an_invalid_link_without_opening_it_and_kills_the_child() {
+    let home = Scratch::new("sign-in-invalid-link");
+    let stub = waiting_sign_in("https://example.com/x");
+    let opened = Mutex::new(Vec::<String>::new());
+    let started = Instant::now();
+    let error = found(&stub, &home.0)
+        .sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            Ok(())
+        })
+        .unwrap_err();
+    assert_eq!(error.to_string(), text::SIGN_IN_FAILED);
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(opened.lock().unwrap().is_empty());
+    assert_no_link_in_files(&stub.folder.0, "https://example.com/x");
+}
+
+#[test]
+fn sign_in_opener_failure_kills_the_child() {
+    let home = Scratch::new("sign-in-opener-failed");
+    let stub = waiting_sign_in(SIGN_IN_LINK);
+    let opened = Mutex::new(Vec::<String>::new());
+    let started = Instant::now();
+    let error = found(&stub, &home.0)
+        .sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            Err(std::io::Error::other("invented opener failure"))
+        })
+        .unwrap_err();
+    assert_eq!(error.to_string(), text::SIGN_IN_FAILED);
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(opened.lock().unwrap().as_slice() == [SIGN_IN_LINK]);
+    assert_no_link_in_files(&stub.folder.0, SIGN_IN_LINK);
+}
+
+#[test]
+fn sign_in_stops_while_waiting_after_the_browser_opens() {
+    let home = Scratch::new("sign-in-wait-stop");
+    let stub = waiting_sign_in(SIGN_IN_LINK);
+    let stop = AtomicBool::new(false);
+    let opened = Mutex::new(Vec::<String>::new());
+    let started = Instant::now();
+    let error = found(&stub, &home.0)
+        .sign_in_with(&home.0, &stop, &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            stop.store(true, Ordering::SeqCst);
+            Ok(())
+        })
+        .unwrap_err();
+    assert_eq!(error.to_string(), text::SIGN_IN_STOPPED);
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(opened.lock().unwrap().as_slice() == [SIGN_IN_LINK]);
+    assert_no_link_in_files(&stub.folder.0, SIGN_IN_LINK);
 }

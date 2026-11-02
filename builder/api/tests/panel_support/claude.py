@@ -3,7 +3,7 @@ import json
 import re
 import sys
 
-args = sys.argv[1:]
+args = sys.argv[3:]
 if args[:1] == ["--version"]:
     print("2.1.292 (Claude Code)")
 elif args[:1] == ["auth"]:

@@ -66,6 +66,7 @@ impl Fixture {
         }
         let program = bin.join("claude");
         fs::write(&program, r#"#!/bin/sh
+shift 2
 here=${0%/*}
 if [ "$1" = '--version' ]; then printf '2.1.292\n'; exit 0; fi
 if [ "$1" = 'auth' ]; then printf '{"loggedIn":true}\n'; exit 0; fi

@@ -117,7 +117,7 @@ fn the_usual_places_are_the_installers() {
     );
 }
 
-const READY_BODY: &str = r#"case "$1" in
+const READY_BODY: &str = r#"case "$3" in
 --version) echo "2.1.292 (Claude Code)";;
 auth) echo '{"loggedIn":true,"authMethod":"claude.ai","email":"someone@example.invalid"}';;
 esac"#;
@@ -131,12 +131,30 @@ fn check_reads_the_version_and_the_sign_in() {
         ready,
         Ready {
             version: "2.1.292".into(),
-            api_key_set: std::env::var_os("ANTHROPIC_API_KEY").is_some_and(|v| !v.is_empty()),
         }
     );
-    assert_eq!(stub.argv(0).unwrap(), ["--version"]);
-    assert_eq!(stub.argv(1).unwrap(), ["auth", "status", "--json"]);
-    assert_eq!(stub.file("cwd").trim(), home.0.to_str().unwrap());
+    assert_eq!(
+        stub.argv(0).unwrap(),
+        ["--setting-sources", "project,local", "--version"]
+    );
+    assert_eq!(
+        stub.argv(1).unwrap(),
+        [
+            "--setting-sources",
+            "project,local",
+            "auth",
+            "status",
+            "--json"
+        ]
+    );
+    let cwd = PathBuf::from(stub.file("cwd").trim());
+    assert_eq!(
+        cwd.parent().unwrap(),
+        voice_agent::sandbox::runs_folder(&stub.profile())
+            .canonicalize()
+            .unwrap()
+    );
+    assert!(!cwd.exists());
     assert!(!format!("{ready:?}").contains("example.invalid"));
 }
 
@@ -147,7 +165,7 @@ fn check_says_when_claude_does_not_run() {
         "exit 3",
         "echo 'Claude Code'",
         "echo '2.x (Claude Code)'",
-        "case \"$1\" in --version) sleep 30;; esac",
+        "case \"$3\" in --version) sleep 30;; esac",
     ] {
         let stub = Stub::new(body);
         let error = stub
@@ -170,7 +188,7 @@ fn check_says_when_claude_is_signed_out() {
         "exit 1",
     ] {
         let stub = Stub::new(&format!(
-            "case \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) {status};; esac"
+            "case \"$3\" in --version) echo '2.1.292 (Claude Code)';; auth) {status};; esac"
         ));
         let error = stub.claude().check(&home.0).unwrap_err();
         assert_eq!(error.to_string(), text::SIGNED_OUT, "{status}");

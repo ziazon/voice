@@ -2,7 +2,7 @@ mod common;
 
 use common::*;
 use serde_json::{Value, json};
-use std::{fs, os::unix::fs::symlink, time::Duration};
+use std::{fs, os::unix::fs::PermissionsExt, time::Duration};
 use voice_agent::guard::Guard;
 use voice_agent::{
     claude::MAX_PROMPT,
@@ -19,6 +19,8 @@ const MARKER: &str = "PLOVERMARK";
 
 fn expected_argv(schema: &Value) -> Vec<String> {
     [
+        "--setting-sources",
+        "project,local",
         "-p",
         "--system-prompt",
         "Label each record.",
@@ -33,8 +35,6 @@ fn expected_argv(schema: &Value) -> Vec<String> {
         "--verbose",
         "--json-schema",
         &schema.to_string(),
-        "--setting-sources",
-        "project,local",
         "--strict-mcp-config",
         "--mcp-config",
         r#"{"mcpServers":{}}"#,
@@ -48,7 +48,7 @@ fn expected_argv(schema: &Value) -> Vec<String> {
 }
 
 #[test]
-fn a_call_runs_tool_less_in_the_work_folder_with_the_prompt_on_stdin() {
+fn a_call_runs_tool_less_in_a_fresh_run_folder_with_the_prompt_on_stdin() {
     let home = Scratch::new("call-argv");
     let output = json!({"labels": [MARKER]});
     let stub = Stub::replying(&ok_reply(&output), 0);
@@ -70,10 +70,14 @@ fn a_call_runs_tool_less_in_the_work_folder_with_the_prompt_on_stdin() {
     assert_eq!(stub.argv(0).unwrap(), expected_argv(&schema));
     assert!(!stub.argv(0).unwrap().iter().any(|a| a.contains(MARKER)));
     assert_eq!(stub.file("stdin"), prompt);
+    let cwd = std::path::PathBuf::from(stub.file("cwd").trim());
     assert_eq!(
-        stub.file("cwd").trim(),
-        state(&home.0).join("agent").to_str().unwrap()
+        cwd.parent().unwrap(),
+        voice_agent::sandbox::runs_folder(&stub.profile())
+            .canonicalize()
+            .unwrap()
     );
+    assert!(!cwd.exists());
     assert_eq!(reply.output, output);
     assert_eq!(
         reply.usage,
@@ -85,11 +89,6 @@ fn a_call_runs_tool_less_in_the_work_folder_with_the_prompt_on_stdin() {
         }
     );
     assert_eq!(reply.cost_usd, 0.0123);
-    assert_eq!(
-        fs::read_dir(state(&home.0).join("agent")).unwrap().count(),
-        0
-    );
-
     let lines = ledger_lines(&home.0);
     assert_eq!(lines.len(), 1);
     let line = lines[0].as_object().unwrap();
@@ -380,49 +379,12 @@ fn a_prompt_at_the_limit_is_accepted() {
 }
 
 #[test]
-fn anything_in_the_work_folder_stops_the_call() {
-    let stub = Stub::replying(&ok_reply(&json!({})), 0);
-    let schema = schema();
-    for name in ["notes.txt", ".mcp.json", ".claude"] {
-        let home = Scratch::new("call-planted");
-        let session = common::session(&home.0);
-        let agent = state(&home.0).join("agent");
-        if name == ".claude" {
-            fs::create_dir_all(agent.join(".claude")).unwrap();
-            fs::write(agent.join(".claude/settings.json"), "{}").unwrap();
-        } else {
-            fs::write(agent.join(name), "{}").unwrap();
-        }
-        let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
-            .call(&session, &call("records", &schema))
-            .unwrap_err();
-        assert_eq!(error.to_string(), text::work_folder_not_empty(&agent));
-        assert!(!stub.ran());
-        assert!(ledger(&home.0).is_none());
-    }
-    let home = Scratch::new("call-linked");
-    let session = common::session(&home.0);
-    let agent = state(&home.0).join("agent");
-    fs::remove_dir(&agent).unwrap();
-    let elsewhere = home.0.join("elsewhere");
-    fs::create_dir(&elsewhere).unwrap();
-    symlink(&elsewhere, &agent).unwrap();
-    let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
-        .call(&session, &call("records", &schema))
-        .unwrap_err();
-    assert!(
-        error.to_string().contains("is a link or not a folder"),
-        "{error}"
-    );
-    assert!(!stub.ran());
-}
-
-#[test]
 fn a_program_that_cannot_start_spends_nothing() {
     let home = Scratch::new("call-missing");
     let session = common::session(&home.0);
     let schema = schema();
-    let claude = voice_agent::claude::Claude::at(home.0.join("no-such-claude"));
+    let claude =
+        voice_agent::claude::Claude::at(home.0.join("no-such-claude"), private_profile(&home.0));
     let error = Guard::new(vec![&claude], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap_err();
@@ -442,7 +404,8 @@ fn a_call_that_never_started_gives_its_budget_back() {
     );
     let session = common::session(&home.0);
     let schema = schema();
-    let missing = voice_agent::claude::Claude::at(home.0.join("no-such-claude"));
+    let missing =
+        voice_agent::claude::Claude::at(home.0.join("no-such-claude"), private_profile(&home.0));
     Guard::new(vec![&missing], Ceilings::defaults())
         .call(&session, &call("records", &schema))
         .unwrap_err();
@@ -582,5 +545,36 @@ fn local_history_is_refused_before_the_stub_runs_or_spends() {
         "Nothing was sent. This step uses your Claude history (your Claude Code sessions and your claude.ai export), which you keep on your own machines, and the provider for this step, Claude, through your own Claude Code, sends what it's given to Anthropic. To let it go there, run: voice ceilings set <assistant folder> claude-history anthropic To run it without the data leaving your machines, set up a model server with `voice self-hosted set`."
     );
     assert!(!stub.ran());
+    assert!(ledger_lines(&home.0).is_empty());
+}
+
+#[test]
+fn two_calls_use_fresh_folders_even_when_claude_leaves_a_file() {
+    let home = Scratch::new("call-twice");
+    let stub = Stub::new(&format!(
+        "touch leftover\ncat <<'EOF'\n{}\nEOF",
+        ok_reply(&json!({}))
+    ));
+    let session = common::session(&home.0);
+    let schema = schema();
+    let claude = stub.claude();
+    let guard = Guard::new(vec![&claude], Ceilings::defaults());
+    for _ in 0..2 {
+        guard.call(&session, &call("records", &schema)).unwrap();
+    }
+    assert_eq!(ledger_lines(&home.0).len(), 2);
+}
+
+#[test]
+fn a_non_native_program_leaves_no_ledger_line() {
+    let home = Scratch::new("call-not-native");
+    let stub = Stub::new("exit 0");
+    fs::write(stub.program(), "plain text, not a native executable").unwrap();
+    fs::set_permissions(stub.program(), fs::Permissions::from_mode(0o755)).unwrap();
+    let schema = schema();
+    let error = Guard::new(vec![&stub.claude()], Ceilings::defaults())
+        .call(&session(&home.0), &call("records", &schema))
+        .unwrap_err();
+    assert_eq!(error.to_string(), text::NOT_NATIVE);
     assert!(ledger_lines(&home.0).is_empty());
 }

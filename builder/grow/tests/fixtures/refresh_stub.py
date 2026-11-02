@@ -4,7 +4,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-ARGS = sys.argv[1:]
+ARGS = sys.argv[3:]
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
     with open(os.path.join(HERE, "stdin%d" % n), "w") as stream:
         stream.write(prompt)
     with open(os.path.join(HERE, "argv%d" % n), "w") as stream:
-        json.dump(ARGS, stream)
+        json.dump(sys.argv[1:], stream)
     plan_path = os.path.join(HERE, "plan.json")
     plan = json.load(open(plan_path)) if os.path.exists(plan_path) else {}
     mode = plan.get(str(n), "good")

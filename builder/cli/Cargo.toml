@@ -21,3 +21,6 @@ voice-build = { path = "../build" }
 voice-grow = { path = "../grow" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+voice-agent = { path = "../agent", features = ["test-stubs"] }

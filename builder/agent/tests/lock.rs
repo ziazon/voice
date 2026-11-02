@@ -49,5 +49,5 @@ fn open_existing_creates_nothing_and_shares_the_lock() {
     );
     drop(first);
     let _session = Session::open_existing(&home.0, "wren", Cap::default()).unwrap();
-    assert!(home.0.join(".claude/state/wren/agent").exists());
+    assert!(!home.0.join(".claude/state/wren/agent").exists());
 }

@@ -1,5 +1,5 @@
-//! The session a build holds: one build per assistant, the empty work folder every call runs in,
-//! the ledger of calls (`runs.jsonl`) and the daily cap.
+//! The session a build holds: one build per assistant, the ledger of calls (`runs.jsonl`)
+//! and the daily cap.
 //!
 //! Every call is on the ledger before it starts, as a `started` line at its whole budget, and that
 //! line is replaced by the call's own result when it ends. So a call in flight counts against the
@@ -17,14 +17,12 @@ use std::{
 };
 use voice_core::error::{Error, Result};
 use voice_ingest::private::{
-    StateLock, lock_existing_state, lock_state, private_folder, read_private_optional,
-    write_private,
+    StateLock, lock_existing_state, lock_state, read_private_optional, write_private,
 };
 
 pub const LIMIT: &str = "limit.json";
 
 const LEDGER: &str = "runs.jsonl";
-const WORK_FOLDER: &str = "agent";
 /// The largest typed daily or step limit, in estimated US dollars.
 const MOST_USD: f64 = 1000.0;
 /// The smallest step budget: Claude Code is given it to the cent.
@@ -209,7 +207,6 @@ impl Session {
         lock: fn(&Path, &str) -> Result<StateLock>,
     ) -> Result<Session> {
         let lock = lock(home, slug)?;
-        private_folder(home, slug, WORK_FOLDER)?;
         Ok(Session {
             home: home.to_owned(),
             slug: slug.to_owned(),
@@ -230,18 +227,8 @@ impl Session {
         self.recorded_today()
     }
 
-    /// The work folder, checked again before each call: a real 0700 folder, and empty, so no
-    /// settings, hooks, MCP servers or instructions planted there reach a call.
-    pub(crate) fn work_folder(&self) -> Result<PathBuf> {
-        let folder = private_folder(&self.home, &self.slug, WORK_FOLDER)?;
-        let mut entries = std::fs::read_dir(&folder).map_err(|source| Error::Io {
-            path: folder.clone(),
-            source,
-        })?;
-        if entries.next().is_some() {
-            return Err(Error::Invalid(text::work_folder_not_empty(&folder)));
-        }
-        Ok(folder)
+    pub(crate) fn home(&self) -> &Path {
+        &self.home
     }
 
     /// Put a call on the ledger at its whole budget, or refuse when today's spend (calls still

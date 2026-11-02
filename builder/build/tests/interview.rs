@@ -271,6 +271,8 @@ struct Stub {
 impl Stub {
     fn new(replies: &[String]) -> Self {
         let folder = Scratch::new();
+        fs::create_dir(folder.0.join("profile")).unwrap();
+        fs::set_permissions(folder.0.join("profile"), fs::Permissions::from_mode(0o700)).unwrap();
         for (n, reply) in replies.iter().enumerate() {
             fs::write(folder.0.join(format!("reply{n}")), reply).unwrap();
         }
@@ -284,7 +286,7 @@ impl Stub {
         Stub { folder }
     }
     fn claude(&self) -> Claude {
-        Claude::at(self.folder.0.join("claude"))
+        Claude::at(self.folder.0.join("claude"), self.folder.0.join("profile"))
     }
     fn calls(&self) -> usize {
         (0..)

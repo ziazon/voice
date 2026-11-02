@@ -6,7 +6,7 @@ use voice_agent::{guard::Guard, provider::Brief};
 use voice_core::ceilings::{Ceilings, Source};
 
 #[test]
-fn provider_switches_and_base_urls_are_removed_but_https_proxy_reaches_claude() {
+fn provider_switches_and_base_urls_are_removed_and_proxy_is_private() {
     const REMOVED: &[&str] = &[
         "CLAUDE_CODE_USE_BEDROCK",
         "CLAUDE_CODE_USE_VERTEX",
@@ -36,13 +36,15 @@ fn provider_switches_and_base_urls_are_removed_but_https_proxy_reaches_claude() 
         body.push_str(&format!("if [ -n \"${{{name}+x}}\" ]; then echo set; else echo unset; fi >> \"$here/routing-env\"\n"));
     }
     body.push_str("if [ -n \"${HTTPS_PROXY+x}\" ]; then echo set; else echo unset; fi >> \"$here/proxy-env\"\n");
-    body.push_str(&format!("case \"$1\" in\n--version) echo '2.1.292 (Claude Code)';;\nauth) echo '{{\"loggedIn\":true}}';;\n-p) echo '{}';;\nesac", ok_reply(&json!({}))));
+    body.push_str(&format!("case \"$3\" in\n--version) echo '2.1.292 (Claude Code)';;\nauth) echo '{{\"loggedIn\":true}}';;\n-p) echo '{}';;\nesac", ok_reply(&json!({}))));
     let stub = Stub::new(&body);
     let home = Scratch::new("routing-env");
     let claude = stub.claude();
     claude.check(&home.0).unwrap();
     claude
-        .sign_in(&home.0, &std::sync::atomic::AtomicBool::new(false))
+        .sign_in_with(&home.0, &std::sync::atomic::AtomicBool::new(false), &|_| {
+            panic!("no browser requested")
+        })
         .unwrap();
     let schema = schema();
     Guard::new(vec![&claude], Ceilings::defaults())
@@ -58,6 +60,9 @@ fn provider_switches_and_base_urls_are_removed_but_https_proxy_reaches_claude() 
         stub.file("routing-env").lines().collect::<Vec<_>>(),
         vec!["unset"; REMOVED.len() * 4]
     );
+    for n in 0..4 {
+        assert_launch_env(&stub, n, &stub.profile());
+    }
     assert_eq!(
         stub.file("proxy-env").lines().collect::<Vec<_>>(),
         vec!["set"; 4]

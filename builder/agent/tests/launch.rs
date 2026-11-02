@@ -247,6 +247,71 @@ mod mac {
         Launch::new(Path::new("/bin/ls"), profile, home, run, 4321, sign_in).unwrap()
     }
 
+    #[test]
+    fn concurrent_launches_create_distinct_fresh_run_folders() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        assert!(!sandbox::runs_folder(&profile).exists());
+        let barrier = std::sync::Barrier::new(16);
+        let launches = std::thread::scope(|scope| {
+            let threads: Vec<_> = (0..16)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        Launch::new(
+                            Path::new("/bin/ls"),
+                            &profile,
+                            &scratch.0,
+                            RunFolder::Fresh,
+                            4321,
+                            false,
+                        )
+                    })
+                })
+                .collect();
+            threads
+                .into_iter()
+                .map(|thread| thread.join().unwrap().unwrap())
+                .collect::<Vec<_>>()
+        });
+        let folders: std::collections::BTreeSet<_> =
+            launches.iter().map(|launch| launch.run_folder()).collect();
+        assert_eq!(folders.len(), 16);
+    }
+
+    #[cfg(feature = "test-stubs")]
+    #[test]
+    fn scripts_run_directly_with_the_native_launch_environment() {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let script = scratch.program("script", b"#!/bin/sh\nexit 0\n");
+        let direct =
+            Launch::new(&script, &profile, &scratch.0, RunFolder::Fresh, 4322, false).unwrap();
+        let native = launch(&profile, &scratch.0, RunFolder::Fresh, false);
+        let command = direct.command(&["x"]);
+        assert_eq!(command.get_program(), script.as_os_str());
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            ["--setting-sources", "project,local", "x"]
+        );
+        assert_eq!(command.get_current_dir(), Some(direct.run_folder()));
+        let native_command = native.command(&["x"]);
+        assert_eq!(native_command.get_program(), sandbox::SANDBOX_EXEC);
+        let environment = |command: &Command| {
+            command
+                .get_envs()
+                .filter(|(name, _)| {
+                    !["CLAUDE_CODE_TMPDIR", "TMPDIR", "HTTPS_PROXY", "https_proxy"]
+                        .iter()
+                        .any(|skip| name == skip)
+                })
+                .map(|(name, value)| (name.to_owned(), value.map(ToOwned::to_owned)))
+                .collect::<Vec<_>>()
+        };
+        assert!(environment(&command) == environment(&native_command));
+        invalid(sandbox::resolve_program(&script), text::NOT_NATIVE);
+    }
+
     fn mode(path: &Path) -> u32 {
         fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
@@ -607,7 +672,7 @@ mod mac {
             ),
             "the proxy port must be set",
         );
-        let script = scratch.program("script", b"#!/bin/sh\n");
+        let script = scratch.program("not-native", b"plain text\n");
         invalid(
             Launch::new(&script, &profile, &scratch.0, RunFolder::Fresh, 4321, false),
             text::NOT_NATIVE,

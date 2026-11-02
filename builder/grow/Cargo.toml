@@ -15,3 +15,6 @@ regex = "=1.13.1"
 voice-agent = { path = "../agent" }
 voice-build = { path = "../build" }
 sha1_smol = "=1.0.1"
+
+[dev-dependencies]
+voice-agent = { path = "../agent", features = ["test-stubs"] }

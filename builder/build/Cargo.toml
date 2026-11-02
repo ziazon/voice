@@ -14,3 +14,6 @@ serde_json = { version = "1", features = ["preserve_order"] }
 libc = "=0.2.191"
 sha1_smol = "=1.0.1"
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+voice-agent = { path = "../agent", features = ["test-stubs"] }

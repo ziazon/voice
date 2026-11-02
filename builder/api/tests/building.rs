@@ -198,7 +198,7 @@ fn revoke_consent_stub(h: &Home) {
     let source = fs::read_to_string(h.bin.join("claude")).unwrap();
     h.program(&source.replace(
         "if ARGS[:1] == [\"--version\"]:",
-        "if ARGS[:1] == [\"--version\"]:\n        os.remove(os.path.join(os.getcwd(), '.claude/state/wren/consent.json'))",
+        "if ARGS[:1] == [\"--version\"]:\n        os.remove(os.path.join(os.environ['HOME'], '.claude/state/wren/consent.json'))",
     ));
 }
 fn forget_stub(h: &Home) {
@@ -206,7 +206,7 @@ fn forget_stub(h: &Home) {
     let source = fs::read_to_string(h.bin.join("claude")).unwrap();
     h.program(&source.replace(
         "if ARGS[:1] == [\"--version\"]:",
-        "if ARGS[:1] == [\"--version\"]:\n        import shutil; shutil.rmtree(os.path.join(os.getcwd(), '.claude/state/wren'))",
+        "if ARGS[:1] == [\"--version\"]:\n        import shutil; shutil.rmtree(os.path.join(os.environ['HOME'], '.claude/state/wren'))",
     ));
 }
 fn wait_for(path: &Path) {

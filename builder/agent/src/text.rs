@@ -7,16 +7,8 @@ pub const SIGNED_OUT: &str = "Claude Code isn't signed in for Voice. Sign in on 
 pub const PLAN_STOPPED: &str = "Your Claude plan is nearly used up, so Voice has stopped for today and left the rest for you. Run the build again tomorrow to carry on.";
 pub const FAILED: &str = "Claude Code couldn't finish this step. Open Claude Code and check it answers you, then try again.";
 
-pub const API_KEY_SET: &str = "ANTHROPIC_API_KEY is set on this computer, so Claude Code may use that API key, billed separately, instead of your Claude plan.";
-
 pub fn ready(version: &str) -> String {
     format!("Claude Code {version} is installed and signed in.")
-}
-pub fn work_folder_not_empty(path: &Path) -> String {
-    format!(
-        "Voice's working folder for this assistant ({}) has files in it that it didn't put there, so it stopped. Empty that folder, then try again.",
-        path.display()
-    )
 }
 pub fn ledger_damaged(path: &Path) -> String {
     format!(
@@ -180,3 +172,4 @@ pub const MAC_ONLY: &str =
     "Voice runs Claude Code inside the Mac's own sandbox, so for now it works on a Mac only.";
 pub const NOT_NATIVE: &str = "This Claude Code is an older kind that runs as a script, which Voice can't run inside its sandbox. Install the current Claude Code (https://code.claude.com/docs/en/setup), then try again.";
 pub const RUN_FOLDER_FAILED: &str = "Voice couldn't set up a folder for Claude Code to work in. Check there's space on this computer, then try again.";
+pub const PROXY_FAILED: &str = "Voice couldn't open the private connection Claude Code uses to reach Claude. Try again; if it keeps happening, restart this computer.";

@@ -25,7 +25,7 @@ fn every_app_command_has_working_cli_equivalents() {
 }
 
 #[test]
-fn claude_sign_in_commands_share_the_terminal_sign_in_command() {
+fn claude_sign_in_actions_share_the_terminal_login() {
     for command in ["claude_sign_in", "claude_sign_in_cancel"] {
         let row = PARITY.iter().find(|row| row.app == command).unwrap();
         assert_eq!(row.cli, &[&["claude", "sign-in"][..]]);

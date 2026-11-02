@@ -54,7 +54,7 @@ impl Fixture {
     }
     fn stub(&self, body: &str) {
         let program = self.bin.join("claude");
-        fs::write(&program, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::write(&program, format!("#!/bin/sh\nshift 2\n{body}\n")).unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
     }
     fn calls(&self) -> usize {

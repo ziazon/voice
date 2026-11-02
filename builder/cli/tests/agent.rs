@@ -4,7 +4,8 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Output},
     sync::atomic::{AtomicUsize, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use voice_agent::ledger::{Cap, Session};
 use voice_core::crew::{NewMember, new_member};
@@ -47,7 +48,7 @@ impl Fixture {
     }
     fn stub(&self, body: &str) {
         let program = self.bin.join("claude");
-        fs::write(&program, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::write(&program, format!("#!/bin/sh\nshift 2\nprintf '%s\\n' \"${{ANTHROPIC_API_KEY+set}}\" >> \"${{0%/*}}/api-key\"\n{body}\n")).unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
     }
     fn command(&self, args: &[&str]) -> Command {
@@ -106,12 +107,15 @@ fn claude_check_says_ready_or_what_to_do() {
         .env("ANTHROPIC_API_KEY", "not-a-real-key")
         .output()
         .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
     assert_eq!(
         text(&out.stdout),
-        format!(
-            "Claude Code 2.1.292 is installed and signed in.\n{}\n",
-            voice_agent::text::API_KEY_SET
-        )
+        "Claude Code 2.1.292 is installed and signed in.\n"
+    );
+    assert!(!text(&out.stdout).contains("billed separately"));
+    assert_eq!(
+        fs::read_to_string(f.bin.join("api-key")).unwrap(),
+        "\n\n\n\n"
     );
     assert!(!text(&out.stdout).contains("not-a-real-key"));
 
@@ -185,6 +189,74 @@ fn claude_sign_in_fails_when_login_does_not_sign_in() {
     assert_eq!(
         text(&out.stderr),
         "voice: Claude Code didn't finish signing in. Try again. If no Claude page opened in your browser, check that this computer has a default browser.\n"
+    );
+}
+
+#[test]
+fn claude_sign_in_stops_the_child_on_ctrl_c() {
+    let f = Fixture::new();
+    f.stub(
+        r#"here="${0%/*}"
+case "$1 $2" in
+    '--version ') echo '2.1.292 (Claude Code)';;
+    'auth status') echo '{"loggedIn":false}';;
+    'auth login') echo "$$" > "$here/pid"; sleep 30;;
+esac"#,
+    );
+    let mut cli = f
+        .command(&["claude", "sign-in"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let start = Instant::now();
+    let pid = loop {
+        if let Ok(text) = fs::read_to_string(f.bin.join("pid"))
+            && let Ok(pid) = text.trim().parse::<u32>()
+        {
+            break pid;
+        }
+        if cli.try_wait().unwrap().is_some() {
+            let out = cli.wait_with_output().unwrap();
+            panic!("sign-in did not start: {}", text(&out.stderr));
+        }
+        if start.elapsed() >= Duration::from_secs(5) {
+            cli.kill().unwrap();
+            let _ = cli.wait();
+            panic!("sign-in did not start");
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let start = Instant::now();
+    assert!(
+        Command::new("/bin/kill")
+            .args(["-INT", &cli.id().to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    while cli.try_wait().unwrap().is_none() {
+        if start.elapsed() >= Duration::from_secs(5) {
+            cli.kill().unwrap();
+            let _ = cli.wait();
+            panic!("sign-in did not stop after Ctrl-C");
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    let out = cli.wait_with_output().unwrap();
+    assert!(!out.status.success());
+    assert_eq!(
+        text(&out.stderr),
+        format!("voice: {}\n", voice_agent::text::SIGN_IN_STOPPED)
+    );
+    assert!(
+        !Command::new("/bin/kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
     );
 }
 

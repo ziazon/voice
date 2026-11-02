@@ -51,6 +51,7 @@ pub enum RunFolder<'a> {
 
 pub struct Launch {
     program: PathBuf,
+    direct: bool,
     profile: PathBuf,
     run: PathBuf,
     port: u16,
@@ -191,7 +192,23 @@ impl Launch {
         if proxy_port == 0 {
             return Err(invalid("the proxy port must be set"));
         }
-        let program = resolve_program(program)?;
+        #[cfg(feature = "test-stubs")]
+        let (program, direct) = {
+            let canonical = fs::canonicalize(program).map_err(|_| invalid(text::DOES_NOT_RUN))?;
+            let metadata = fs::metadata(&canonical).map_err(|_| invalid(text::DOES_NOT_RUN))?;
+            if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+                return Err(invalid(text::DOES_NOT_RUN));
+            }
+            let mut magic = [0; 2];
+            let mut file = File::open(&canonical).map_err(|_| invalid(text::DOES_NOT_RUN))?;
+            if file.read_exact(&mut magic).is_ok() && magic == *b"#!" {
+                (canonical, true)
+            } else {
+                (resolve_program(program)?, false)
+            }
+        };
+        #[cfg(not(feature = "test-stubs"))]
+        let (program, direct) = (resolve_program(program)?, false);
         private_folder(profile).map_err(|_| invalid(text::PROFILE_FAILED))?;
         let profile = fs::canonicalize(profile).map_err(|_| invalid(text::PROFILE_FAILED))?;
         private_folder(&profile).map_err(|_| invalid(text::PROFILE_FAILED))?;
@@ -207,6 +224,7 @@ impl Launch {
         .map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
         let mut launch = Launch {
             program,
+            direct,
             profile,
             run,
             port: proxy_port,
@@ -243,32 +261,42 @@ impl Launch {
 
     /// The sandboxed command, in the run folder, with only its own environment.
     pub fn command(&self, args: &[&str]) -> Command {
-        let mut command = Command::new(SANDBOX_EXEC);
-        command.args(["-p", PROFILE]);
-        for (name, value) in [
-            ("PROGRAM", &self.program),
-            ("PROFILE_DIR", &self.profile),
-            ("RUN_DIR", &self.run),
-        ] {
-            let mut parameter = std::ffi::OsString::from(format!("{name}="));
-            parameter.push(value);
-            command.arg("-D").arg(parameter);
-        }
-        command.args([
-            "-D",
-            &format!("PROXY_PORT={}", self.port),
-            "-D",
-            if self.sign_in {
-                "SIGN_IN=yes"
-            } else {
-                "SIGN_IN=no"
-            },
-        ]);
+        let mut command = if self.direct {
+            Command::new(&self.program)
+        } else {
+            let mut command = Command::new(SANDBOX_EXEC);
+            command.args(["-p", PROFILE]);
+            for (name, value) in [
+                ("PROGRAM", &self.program),
+                ("PROFILE_DIR", &self.profile),
+                ("RUN_DIR", &self.run),
+            ] {
+                let mut parameter = std::ffi::OsString::from(format!("{name}="));
+                parameter.push(value);
+                command.arg("-D").arg(parameter);
+            }
+            command.args([
+                "-D",
+                &format!("PROXY_PORT={}", self.port),
+                "-D",
+                if self.sign_in {
+                    "SIGN_IN=yes"
+                } else {
+                    "SIGN_IN=no"
+                },
+            ]);
+            command.arg(&self.program);
+            command
+        };
         command
-            .arg(&self.program)
             .args(["--setting-sources", "project,local"])
             .args(args)
             .current_dir(&self.run);
+        self.environment(&mut command);
+        command
+    }
+
+    fn environment(&self, command: &mut Command) {
         // The child gets only what it needs: no credential, provider switch or endpoint of the
         // person's reaches it (PB-D9).
         command.env_clear();
@@ -294,7 +322,6 @@ impl Launch {
         if self.sign_in {
             command.env("BROWSER", self.run.join(HELPER));
         }
-        command
     }
 
     /// Read the link once; a ready link's file is removed before handing it out.
@@ -465,7 +492,11 @@ fn fresh_folder(profile: &Path) -> std::io::Result<PathBuf> {
         }
         Ok(_) => return Err(std::io::Error::other("not a directory")),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::DirBuilder::new().mode(0o700).create(&parent)?;
+            match fs::DirBuilder::new().mode(0o700).create(&parent) {
+                Ok(()) => (),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
+                Err(error) => return Err(error),
+            }
         }
         Err(error) => return Err(error),
     }

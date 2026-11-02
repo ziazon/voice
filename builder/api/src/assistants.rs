@@ -204,7 +204,7 @@ fn ready_status(status: claude::Status) -> dto::ClaudeStatus {
     dto::ClaudeStatus {
         ready: true,
         message: text::ready(&status.version),
-        note: status.api_key_set.then(|| text::API_KEY_SET.into()),
+        note: None,
         can_sign_in: false,
     }
 }
@@ -277,6 +277,10 @@ pub(crate) fn claude_message(error: Error) -> String {
                 text::SIGN_IN_TIMED_OUT,
                 text::SIGN_IN_STOPPED,
                 text::PROFILE_FAILED,
+                text::NOT_NATIVE,
+                text::MAC_ONLY,
+                text::RUN_FOLDER_FAILED,
+                text::PROXY_FAILED,
             ]
             .contains(&message.as_str())
                 || text::SERVER_MESSAGES.contains(&message.as_str())

@@ -215,6 +215,21 @@ fn folder_opener_gets_canonical_folder_and_safe_errors() {
 }
 #[test]
 fn claude_status_uses_only_safe_messages() {
+    const CHILD: &str = "PB_TEST_API_KEY_NOTE";
+    if std::env::var_os(CHILD).is_none() {
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "claude_status_uses_only_safe_messages"])
+            .env(CHILD, "1")
+            .env("ANTHROPIC_API_KEY", "not-a-real-key")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        return;
+    }
     let home = Home::new();
     let h = home.path();
     assert_eq!(
@@ -233,23 +248,16 @@ fn claude_status_uses_only_safe_messages() {
         ("true", text::ready("2.1.292")),
         ("false", "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account.".into()),
     ] {
-        fs::write(&program,format!("#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.292 (Claude Code)'; else echo '{{\"loggedIn\":{auth}}}'; fi\n")).unwrap();
+        fs::write(&program,format!("#!/bin/sh\nshift 2\nif [ \"$1\" = --version ]; then echo '2.1.292 (Claude Code)'; else echo '{{\"loggedIn\":{auth}}}'; fi\n")).unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
         let status = claude_check_in(h, Some(bin.as_os_str()), &[]).unwrap();
         assert_eq!(status.ready, auth == "true");
         assert_eq!(status.message, expected);
         assert_eq!(status.can_sign_in, auth == "false");
         assert!(!status.message.contains(h.to_str().unwrap()));
-        if status.ready {
-            assert_eq!(
-                status.note,
-                std::env::var_os("ANTHROPIC_API_KEY")
-                    .filter(|v| !v.is_empty())
-                    .map(|_| text::API_KEY_SET.into())
-            );
-        }
+        assert_eq!(status.note, None);
     }
-    fs::write(&program, "#!/bin/sh\necho private-detail\n").unwrap();
+    fs::write(&program, "#!/bin/sh\nshift 2\necho private-detail\n").unwrap();
     assert_eq!(
         claude_check_in(h, None, std::slice::from_ref(&program))
             .unwrap()
