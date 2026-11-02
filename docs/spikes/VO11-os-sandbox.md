@@ -198,7 +198,8 @@ Its six steps are `claude-code-folders`, `read-claude-code`, `claudeai-export-st
 `list-claudeai-chats`, `read-claudeai` and `skills` (list, agree, withdraw or refresh).
 It takes one JSON request object on stdin, at most 64 KiB, and prints JSON lines:
 `progress` as it reads, then one final `result` or `error`, each at most 16 MiB.
-The history steps run the API's permission, assistant slug and state lock checks inside the reader.
+The history steps run the API's permission and assistant slug checks inside the reader.
+`read-claude-code`, `list-claudeai-chats` and `read-claudeai` also take the state lock.
 Skills actions run its slug and lock checks; each skill has its own yes, so history permission isn't needed.
 The app must close the reader's stdin after the request and judge a run by its last line, not only its exit status.
 Folder walks leave out files with another name elsewhere on the computer (hard links),

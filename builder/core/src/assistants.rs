@@ -134,7 +134,14 @@ mod tests {
             crew.join("linked/member.json"),
         )
         .unwrap();
-        for slug in ["ari", "wrong", "empty", "linked", "absent"] {
+        let aliased = make(outside.path(), &input("Aliased"), "2026-10-25", "voice").unwrap();
+        fs::rename(&aliased.dir, crew_dir(outside.path()).join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(
+            crew_dir(outside.path()).join("elsewhere"),
+            crew.join("aliased"),
+        )
+        .unwrap();
+        for slug in ["ari", "wrong", "empty", "linked", "aliased", "absent"] {
             let expected = list(home.path())
                 .unwrap()
                 .into_iter()
@@ -146,10 +153,19 @@ mod tests {
                 "{slug}"
             );
         }
+        assert_eq!(
+            find(home.path(), "aliased").unwrap().map(|l| l.dir),
+            Some(crew.join("aliased"))
+        );
         assert!(find(home.path(), "../x").is_err());
         fs::rename(&made.dir, crew.join("Ari")).unwrap();
         if crew.join("ari").exists() {
-            assert!(list(home.path()).unwrap().is_empty());
+            assert!(
+                !list(home.path())
+                    .unwrap()
+                    .iter()
+                    .any(|listed| listed.member.slug == "ari")
+            );
             assert!(find(home.path(), "ari").unwrap().is_none());
         } else {
             eprintln!("case-sensitive disk: skipping the case-only folder check");
