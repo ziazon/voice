@@ -4,10 +4,12 @@
 
 use crate::text;
 #[cfg(target_os = "macos")]
+use libc::{c_char, c_int, c_void};
+#[cfg(target_os = "macos")]
 use std::{
-    ffi::CStr,
+    ffi::{CStr, CString},
     io::Write,
-    os::unix::fs::DirBuilderExt,
+    os::unix::{ffi::OsStrExt, fs::DirBuilderExt},
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -36,6 +38,8 @@ const HELPER_SCRIPT: &str =
     "#!/bin/bash\numask 077\nprintf '%s\\n' \"$1\" > \"${0%/*}/sign-in-link\"\n";
 
 /// A fresh folder owned by this launch, or the caller's work folder, left in place.
+/// Sign-in should use Fresh: a plain child sharing Given can write sign-in-link; valid_link limits it.
+/// A helper left by a crashed sign-in makes later sign-ins in Given fail; helpers are never replaced.
 pub enum RunFolder<'a> {
     Fresh,
     Given(&'a Path),
@@ -109,6 +113,13 @@ pub fn valid_link(link: &str) -> bool {
         let Some((key, value)) = pair.split_once('=') else {
             return false;
         };
+        if key.is_empty()
+            || !key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        {
+            return false;
+        }
         let Some(value) = decode_query_value(value) else {
             return false;
         };
@@ -210,6 +221,11 @@ impl Launch {
                 .map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
             // A failed create must leave the caller's pre-existing files alone.
             launch.clean_given = true;
+            match fs::remove_file(launch.run.join(LINK)) {
+                Ok(()) => (),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+                Err(_) => return Err(invalid(text::RUN_FOLDER_FAILED)),
+            }
             helper
                 .write_all(HELPER_SCRIPT.as_bytes())
                 .map_err(|_| invalid(text::RUN_FOLDER_FAILED))?;
@@ -386,12 +402,45 @@ fn login_name() -> Option<String> {
 }
 
 #[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn acl_get_link_np(path: *const c_char, kind: c_int) -> *mut c_void;
+    fn acl_free(object: *mut c_void) -> c_int;
+}
+
+#[cfg(target_os = "macos")]
+const ACL_TYPE_EXTENDED: c_int = 0x100;
+
+/// Whether the path has an extended access list, without following a final link.
+#[cfg(target_os = "macos")]
+pub fn has_acl(path: &Path) -> std::io::Result<bool> {
+    let path = CString::new(path.as_os_str().as_bytes())?;
+    // SAFETY: path is null-terminated and alive for the call; a returned ACL is freed once.
+    unsafe {
+        let acl = acl_get_link_np(path.as_ptr(), ACL_TYPE_EXTENDED);
+        if acl.is_null() {
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() == Some(libc::ENOENT) {
+                Ok(false)
+            } else {
+                Err(error)
+            }
+        } else {
+            acl_free(acl);
+            Ok(true)
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn private_folder(path: &Path) -> std::io::Result<()> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_dir()
         || metadata.file_type().is_symlink()
         || metadata.permissions().mode() & 0o077 != 0
     {
+        return Err(std::io::Error::other("not a private directory"));
+    }
+    if has_acl(path)? {
         return Err(std::io::Error::other("not a private directory"));
     }
     Ok(())

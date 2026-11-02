@@ -7,7 +7,8 @@ use std::{
     fs,
     io::{Read, Write},
     net::{TcpListener, UdpSocket},
-    os::unix::fs::{PermissionsExt, symlink},
+    os::macos::fs::MetadataExt as _,
+    os::unix::fs::{MetadataExt as _, PermissionsExt, symlink},
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     thread,
@@ -281,12 +282,20 @@ fn folder_roots_cannot_move_but_their_contents_stay_writable() {
 }
 
 #[test]
-fn folder_modes_cannot_change_but_file_modes_can() {
+fn folders_stay_private_but_file_modes_can_change() {
     if !available() {
         return;
     }
     let sb = Sandbox::new();
+    let group_check = Scratch::new("group-check");
+    let output = Command::new("/usr/bin/chgrp")
+        .arg("everyone")
+        .arg(&group_check.0)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
     for root in [&sb.profile.0, &sb.run.0] {
+        assert!(!voice_agent::sandbox::has_acl(root).unwrap());
         fs::set_permissions(root, fs::Permissions::from_mode(0o700)).unwrap();
         let output = sb.run("/bin/chmod", &["777", root.to_str().unwrap()]);
         assert_eq!(output.status.code(), Some(1), "{output:?}");
@@ -294,14 +303,38 @@ fn folder_modes_cannot_change_but_file_modes_can() {
             fs::metadata(root).unwrap().permissions().mode() & 0o777,
             0o700
         );
+        let output = sb.run(
+            "/bin/chmod",
+            &[
+                "+a",
+                "everyone allow list,search,read",
+                root.to_str().unwrap(),
+            ],
+        );
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(!voice_agent::sandbox::has_acl(root).unwrap());
+        let flags = fs::metadata(root).unwrap().st_flags();
+        let output = sb.run("/usr/bin/chflags", &["uchg", root.to_str().unwrap()]);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert_eq!(fs::metadata(root).unwrap().st_flags(), flags);
+        let gid = fs::metadata(root).unwrap().gid();
+        let output = sb.run("/usr/bin/chgrp", &["everyone", root.to_str().unwrap()]);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert_eq!(fs::metadata(root).unwrap().gid(), gid);
         let file = canary(root, "file");
         fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
         let output = sb.run("/bin/chmod", &["644", file.to_str().unwrap()]);
         assert_eq!(output.status.code(), Some(0), "{output:?}");
         assert_eq!(
-            fs::metadata(file).unwrap().permissions().mode() & 0o777,
+            fs::metadata(&file).unwrap().permissions().mode() & 0o777,
             0o644
         );
+        let output = sb.run(
+            "/bin/chmod",
+            &["+a", "everyone allow read", file.to_str().unwrap()],
+        );
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        assert!(voice_agent::sandbox::has_acl(&file).unwrap());
     }
 }
 
@@ -674,10 +707,7 @@ fn the_helper_runs_only_while_signing_in() {
             );
             fs::remove_file(&link).unwrap();
         } else {
-            assert!(
-                output.status.code().is_some_and(|code| code != 0),
-                "{output:?}"
-            );
+            assert_eq!(output.status.code(), Some(126), "{output:?}");
             assert!(!link.exists());
         }
     }

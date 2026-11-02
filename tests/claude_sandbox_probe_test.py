@@ -359,6 +359,14 @@ class ProbeTests(unittest.TestCase):
         for char in ' \t\n"<>\\^`{|}é':
             self.assertFalse(check(SIGN_IN_LINK + char), repr(char))
 
+    def test_link_query_keys_are_nonempty_and_plain(self):
+        self.assertTrue(probe.valid_link(SIGN_IN_LINK))
+        for extra in ['client%5Fid=other',
+                      'redirect%5Furi=https%3A%2F%2Fexample.com%2Fcallback',
+                      '=x', 'client_id+=other']:
+            with self.subTest(extra=extra):
+                self.assertFalse(probe.valid_link(SIGN_IN_LINK + '&' + extra))
+
     def test_link_requires_the_claude_code_client_and_local_callback(self):
         for port in ['1', '65535']:
             self.assertTrue(probe.valid_link(SIGN_IN_LINK.replace('59244', port)))

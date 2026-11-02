@@ -41,8 +41,8 @@
     (literal "/dev/null"))
 ; The two folders cannot be moved, removed or replaced; their contents remain writable.
 (deny file-write-unlink file-write-create (literal (param "PROFILE_DIR")) (literal (param "RUN_DIR")))
-; The two folders must stay private; modes of their contents may still change.
-(deny file-write-mode (literal (param "PROFILE_DIR")) (literal (param "RUN_DIR")))
+; The two folders stay private: no mode, access list, flag or owner change; their contents' may still change.
+(deny file-write-mode file-write-acl file-write-flags file-write-owner (literal (param "PROFILE_DIR")) (literal (param "RUN_DIR")))
 
 ; All outgoing traffic must go through the caller's local proxy.
 (allow network-outbound

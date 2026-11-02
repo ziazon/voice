@@ -90,6 +90,21 @@ fn valid_links_have_only_the_two_sign_in_pages_and_safe_ascii() {
 }
 
 #[test]
+fn sign_in_query_keys_are_plain_and_nonempty() {
+    assert!(sandbox::valid_link(SIGN_IN_LINK));
+    let accepted: Vec<_> = [
+        "&client%5Fid=other",
+        "&redirect%5Furi=https%3A%2F%2Fexample.com%2Fcallback",
+        "&=x",
+        "&client_id+=other",
+    ]
+    .into_iter()
+    .filter(|suffix| sandbox::valid_link(&format!("{SIGN_IN_LINK}{suffix}")))
+    .collect();
+    assert!(accepted.is_empty(), "accepted query keys: {accepted:?}");
+}
+
+#[test]
 fn sign_in_requires_the_claude_code_client_and_local_callback() {
     for port in ["1", "65535"] {
         assert!(sandbox::valid_link(&SIGN_IN_LINK.replace("59244", port)));
@@ -234,6 +249,88 @@ mod mac {
 
     fn mode(path: &Path) -> u32 {
         fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn refuses_a_profile_with_an_acl_until_it_is_removed() {
+        refuses_a_folder_with_an_acl(true);
+    }
+
+    #[test]
+    fn refuses_a_given_run_with_an_acl_until_it_is_removed() {
+        refuses_a_folder_with_an_acl(false);
+    }
+
+    fn refuses_a_folder_with_an_acl(on_profile: bool) {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let given = scratch.0.join("given");
+        private(&given);
+        let folder = if on_profile { &profile } else { &given };
+        let output = Command::new("/bin/chmod")
+            .args(["+a", "everyone allow list"])
+            .arg(folder)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        assert_eq!(mode(folder), 0o700);
+        invalid(
+            Launch::new(
+                Path::new("/bin/ls"),
+                &profile,
+                &scratch.0,
+                RunFolder::Given(&given),
+                4321,
+                false,
+            ),
+            if on_profile {
+                text::PROFILE_FAILED
+            } else {
+                text::RUN_FOLDER_FAILED
+            },
+        );
+        let output = Command::new("/bin/chmod")
+            .arg("-N")
+            .arg(folder)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        drop(launch(
+            &profile,
+            &scratch.0,
+            RunFolder::Given(&given),
+            false,
+        ));
+    }
+
+    #[test]
+    fn sign_in_removes_an_old_link_file() {
+        sign_in_removes_an_old_link(false);
+    }
+
+    #[test]
+    fn sign_in_removes_an_old_link_symlink_without_touching_its_target() {
+        sign_in_removes_an_old_link(true);
+    }
+
+    fn sign_in_removes_an_old_link(linked: bool) {
+        let scratch = Scratch::new();
+        let profile = profile(&scratch);
+        let given = scratch.0.join("given");
+        private(&given);
+        let target = scratch.0.join("target");
+        let bytes = format!("{SIGN_IN_LINK}\n");
+        fs::write(&target, &bytes).unwrap();
+        let link = given.join(sandbox::LINK);
+        if linked {
+            symlink(&target, &link).unwrap();
+        } else {
+            fs::write(&link, &bytes).unwrap();
+        }
+        let launch = launch(&profile, &scratch.0, RunFolder::Given(&given), true);
+        assert_eq!(launch.sign_in_link(), Link::NotYet);
+        assert!(fs::symlink_metadata(link).is_err());
+        assert_eq!(fs::read(target).unwrap(), bytes.as_bytes());
     }
 
     #[test]
@@ -887,6 +984,7 @@ int main(int argc, char **argv) {
                 assert_eq!(mode(&launch.run_folder().join(sandbox::LINK)), 0o600);
                 assert_eq!(launch.sign_in_link(), Link::Ready(SIGN_IN_LINK.into()));
             } else {
+                assert_eq!(output.status.code(), Some(4), "{output:?}");
                 assert!(!launch.run_folder().join(sandbox::LINK).exists());
             }
         }

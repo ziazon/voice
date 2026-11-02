@@ -48,7 +48,7 @@ def valid_link(link):
     query = {}
     for pair in link.split('?', 1)[1].split('&'):
         key, separator, value = pair.partition('=')
-        if not separator or key in query:
+        if not separator or re.fullmatch(r'[A-Za-z0-9_]+', key) is None or key in query:
             return False
         decoded = bytearray()
         index = 0
