@@ -51,6 +51,8 @@ pub enum SkillsAction {
     Agree,
     Withdraw,
     Refresh,
+    #[serde(rename = "refresh-held")]
+    RefreshHeld,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -183,8 +185,10 @@ fn serve_step(
         }
         Step::Skills => {
             let request = request!(SkillsStep);
-            if matches!(request.action, SkillsAction::List | SkillsAction::Refresh)
-                && !request.ids.is_empty()
+            if matches!(
+                request.action,
+                SkillsAction::List | SkillsAction::Refresh | SkillsAction::RefreshHeld
+            ) && !request.ids.is_empty()
             {
                 return lines.error(REQUEST.into());
             }
@@ -200,6 +204,7 @@ fn serve_step(
                 SkillsAction::Agree => lines.result(skills::agree_skills_in(home, chosen)),
                 SkillsAction::Withdraw => lines.result(skills::withdraw_skills_in(home, chosen)),
                 SkillsAction::Refresh => lines.result(skills::refresh_skills_in(home, slug)),
+                SkillsAction::RefreshHeld => lines.result(skills::refresh_held_in(home, slug)),
             }
         }
     }
@@ -329,6 +334,36 @@ mod tests {
         ));
         progress.push(json!({"result": expected}));
         assert_eq!(lines(&output), progress);
+    }
+    #[test]
+    fn refresh_held_uses_the_panels_existing_state_lock() {
+        let home = Home::new(false);
+        let _lock = voice_ingest::private::lock_state(&home.0, "ari").unwrap();
+        error(
+            Some(&home.0),
+            Step::Skills,
+            &mut br#"{"slug":"ari","action":"refresh"}"#.as_slice(),
+            history::BUSY,
+        );
+        let mut output = vec![];
+        assert!(serve(
+            Some(&home.0),
+            Step::Skills,
+            &mut br#"{"slug":"ari","action":"refresh-held"}"#.as_slice(),
+            &mut output,
+        ));
+        assert_eq!(lines(&output).len(), 1);
+        assert!(lines(&output)[0].get("result").is_some());
+    }
+    #[test]
+    fn refresh_held_refuses_ids() {
+        let home = Home::new(false);
+        error(
+            Some(&home.0),
+            Step::Skills,
+            &mut br#"{"slug":"ari","action":"refresh-held","ids":["claude:notes"]}"#.as_slice(),
+            REQUEST,
+        );
     }
     #[test]
     fn no_permission_and_no_home_are_safe_errors() {

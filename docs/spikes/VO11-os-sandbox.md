@@ -230,5 +230,21 @@ A password or key rule added after a download was chosen shows the password-or-k
 A download in a password or key folder is refused when chosen, with its own sentence.
 The download choice records whether it is a folder or a file, and the reader refuses one that has changed kind; a choice saved before this records neither, so it is asked for again.
 A missing `~/.claude/projects` is answered without starting the reader.
-Skills still read in the app until VO11.2d.
+
+## Skills through the reader (VO11.2d)
+
+The skills screen's list, agree, withdraw and refresh actions now run in the reader.
+A panel's refresh of each seat's skills copy runs there too.
+Its sources are the skill folders that exist: `~/.claude/skills`, the plugins list
+(`~/.claude/plugins/installed_plugins.json`) and each plugin's `skills` folder,
+each listed project's `.claude/skills`, and `~/.codex/skills`.
+They also include the real folder of each skill or synced account that is a link to somewhere else,
+and nothing else. Each linked folder is a source on its own, so its unlinked neighbours stay closed.
+A source the reader would refuse is left out: a password or key folder, one of the person's own
+deny rules, or home itself. A skill there isn't listed.
+A root folder the reader can't read shows the “couldn't be read” note instead of stopping the list.
+There are at most 256 sources; 300 worked in the measured check.
+A panel already holds each seat's state lock, so it asks with `refresh-held`.
+The reader trusts that request because only the app and the person's own terminal can send it.
+
 The `voice` commands in the terminal still read outside the sandbox.

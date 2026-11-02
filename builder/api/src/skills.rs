@@ -1,6 +1,8 @@
 //! Skills on this computer and the assistant's private copy.
+#[cfg(not(target_os = "macos"))]
+use crate::assistants::home;
 use crate::{
-    assistants::{failure, home, listed},
+    assistants::{failure, listed},
     dto,
     history::{BUSY, count},
 };
@@ -12,15 +14,15 @@ use voice_ingest::{
     skills::{self, Agreements},
 };
 type Result<T> = std::result::Result<T, dto::Failure>;
-const SKILLS_READ: &str =
+pub(crate) const SKILLS_READ: &str =
     "Voice couldn't look through the skills on this computer. Close it and open it again.";
-const SKILLS_SAVE: &str =
+pub(crate) const SKILLS_SAVE: &str =
     "Voice couldn't save your choice. Check there's space on this computer, then try again.";
-const GONE: &str = "That skill isn't on this computer any more. Look again.";
-const NONE: &str = "Choose a skill first.";
-const REFRESH: &str = "Voice couldn't bring your assistant's copy of your skills up to date, and it may be out of date. To see why, run voice skills refresh in a terminal.";
-const REFRESH_STALE: &str = "Voice couldn't bring your assistant's copy of your skills up to date, so it marked the copy as out of date and left its files alone. To see what needs fixing, run voice skills refresh in a terminal.";
-const REFRESH_REMOVED: &str = "Voice couldn't bring your assistant's copy of your skills up to date, so it removed the copy. To see what needs fixing, run voice skills refresh in a terminal.";
+pub(crate) const GONE: &str = "That skill isn't on this computer any more. Look again.";
+pub(crate) const NONE: &str = "Choose a skill first.";
+pub(crate) const REFRESH: &str = "Voice couldn't bring your assistant's copy of your skills up to date, and it may be out of date. To see why, run voice skills refresh in a terminal.";
+pub(crate) const REFRESH_STALE: &str = "Voice couldn't bring your assistant's copy of your skills up to date, so it marked the copy as out of date and left its files alone. To see what needs fixing, run voice skills refresh in a terminal.";
+pub(crate) const REFRESH_REMOVED: &str = "Voice couldn't bring your assistant's copy of your skills up to date, so it removed the copy. To see what needs fixing, run voice skills refresh in a terminal.";
 
 fn locked(home: &Path, slug: &str) -> Result<(Member, private::StateLock)> {
     let listed = listed(home, slug)?;
@@ -138,8 +140,17 @@ pub fn withdraw_skills_in(
 }
 pub fn refresh_skills_in(home: &Path, request: dto::SlugRequest) -> Result<dto::SkillsRefreshed> {
     let (member, _lock) = locked(home, &request.slug)?;
+    refresh(home, &member)
+}
+/// For a caller that already holds this assistant's state lock (a running panel);
+/// anyone else uses `refresh_skills_in`.
+pub fn refresh_held_in(home: &Path, request: dto::SlugRequest) -> Result<dto::SkillsRefreshed> {
+    let member = listed(home, &request.slug)?.member;
+    refresh(home, &member)
+}
+fn refresh(home: &Path, member: &Member) -> Result<dto::SkillsRefreshed> {
     let date = voice_agent::ledger::local_day(SystemTime::now());
-    let refreshed = skills::refresh(home, &member, &date).map_err(|error| match error {
+    let refreshed = skills::refresh(home, member, &date).map_err(|error| match error {
         Error::Invalid(text) if text.ends_with(skills::MIRROR_STALE) => failure(REFRESH_STALE),
         Error::Invalid(text) if text.ends_with(skills::MIRROR_REMOVED) => failure(REFRESH_REMOVED),
         _ => failure(REFRESH),
@@ -163,14 +174,50 @@ pub fn refresh_skills_in(home: &Path, request: dto::SlugRequest) -> Result<dto::
 }
 
 pub fn list_skills(request: dto::SlugRequest) -> Result<dto::Skills> {
-    list_skills_in(&home(SKILLS_READ)?, request)
+    #[cfg(target_os = "macos")]
+    {
+        crate::history::with_reader(|home, place| {
+            crate::reader_client::list_skills(home, place, request)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        list_skills_in(&home(SKILLS_READ)?, request)
+    }
 }
 pub fn agree_skills(request: dto::SkillsRequest) -> Result<dto::Skills> {
-    agree_skills_in(&home(SKILLS_READ)?, request)
+    #[cfg(target_os = "macos")]
+    {
+        crate::history::with_reader(|home, place| {
+            crate::reader_client::agree_skills(home, place, request)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        agree_skills_in(&home(SKILLS_READ)?, request)
+    }
 }
 pub fn withdraw_skills(request: dto::SkillsRequest) -> Result<dto::SkillsWithdrawn> {
-    withdraw_skills_in(&home(SKILLS_READ)?, request)
+    #[cfg(target_os = "macos")]
+    {
+        crate::history::with_reader(|home, place| {
+            crate::reader_client::withdraw_skills(home, place, request)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        withdraw_skills_in(&home(SKILLS_READ)?, request)
+    }
 }
 pub fn refresh_skills(request: dto::SlugRequest) -> Result<dto::SkillsRefreshed> {
-    refresh_skills_in(&home(SKILLS_READ)?, request)
+    #[cfg(target_os = "macos")]
+    {
+        crate::history::with_reader(|home, place| {
+            crate::reader_client::refresh_skills(home, place, request)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        refresh_skills_in(&home(SKILLS_READ)?, request)
+    }
 }

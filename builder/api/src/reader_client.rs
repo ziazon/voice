@@ -1,4 +1,4 @@
-//! The app reads history only through its own reader under the profile.
+//! The app reads history and skills only through its own reader under the profile.
 //! Nothing it prints is trusted beyond the protocol.
 use crate::{
     dto::*,
@@ -76,6 +76,13 @@ impl<T: DeserializeOwned> Judge<'_, T> {
                     history::EXPORT_GONE,
                     history::EXPORT_BAD,
                     history::NO_CHATS,
+                    crate::skills::SKILLS_READ,
+                    crate::skills::SKILLS_SAVE,
+                    crate::skills::GONE,
+                    crate::skills::NONE,
+                    crate::skills::REFRESH,
+                    crate::skills::REFRESH_STALE,
+                    crate::skills::REFRESH_REMOVED,
                     reader::REQUEST,
                     reader::TOO_MUCH,
                     reader::STOPPED,
@@ -177,6 +184,7 @@ fn step_failure(step: Step) -> &'static str {
     match step {
         Step::ClaudeCodeFolders => history::FOLDERS,
         Step::ReadClaudeCode => history::READ,
+        Step::Skills => crate::skills::SKILLS_READ,
         _ => history::EXPORT_BAD,
     }
 }
@@ -406,6 +414,111 @@ pub fn use_claudeai_export(
     history::choose_claudeai_export_in(home, slug, path, folder)?;
     claudeai_export_status(home, place, SlugRequest { slug: slug.into() })?
         .ok_or_else(|| failure(history::EXPORT_GONE))
+}
+
+fn skills_run<T: DeserializeOwned>(
+    home: &Path,
+    place: &Place<'_>,
+    request: reader::SkillsStep,
+) -> Result<T> {
+    let member = assistants::find(home, &request.slug)
+        .map_err(|_| failure(history::FIND))?
+        .ok_or_else(|| failure(history::FIND))?;
+    let state = member::private_state_dir(&member.member, home)
+        .ok_or_else(|| failure(history::ELSEWHERE))?;
+    let deny = DenyList::for_member(&member.member, home)
+        .map_err(|_| failure(crate::skills::SKILLS_READ))?;
+    let rules = voice_ingest::anonymize::Rules::for_member(&member.member, home)
+        .map_err(|_| failure(crate::skills::SKILLS_READ))?;
+    let paths = voice_ingest::skills::sources(home, &rules);
+    let sources = paths
+        .iter()
+        .map(|(path, folder)| {
+            if *folder {
+                Source::Folder(path)
+            } else {
+                Source::File(path)
+            }
+        })
+        .collect::<Vec<_>>();
+    let usable =
+        voice_agent::reader::usable(home, &member.dir, &state, place.runs, &sources, &deny);
+    run(
+        home,
+        place,
+        &request.slug,
+        Step::Skills,
+        &request,
+        &usable,
+        &mut |_| {},
+    )
+}
+pub fn list_skills(home: &Path, place: &Place<'_>, request: SlugRequest) -> Result<Skills> {
+    skills_run(
+        home,
+        place,
+        reader::SkillsStep {
+            slug: request.slug,
+            action: reader::SkillsAction::List,
+            ids: vec![],
+        },
+    )
+}
+pub fn agree_skills(home: &Path, place: &Place<'_>, request: SkillsRequest) -> Result<Skills> {
+    skills_run(
+        home,
+        place,
+        reader::SkillsStep {
+            slug: request.slug,
+            action: reader::SkillsAction::Agree,
+            ids: request.ids,
+        },
+    )
+}
+pub fn withdraw_skills(
+    home: &Path,
+    place: &Place<'_>,
+    request: SkillsRequest,
+) -> Result<SkillsWithdrawn> {
+    skills_run(
+        home,
+        place,
+        reader::SkillsStep {
+            slug: request.slug,
+            action: reader::SkillsAction::Withdraw,
+            ids: request.ids,
+        },
+    )
+}
+pub fn refresh_skills(
+    home: &Path,
+    place: &Place<'_>,
+    request: SlugRequest,
+) -> Result<SkillsRefreshed> {
+    skills_run(
+        home,
+        place,
+        reader::SkillsStep {
+            slug: request.slug,
+            action: reader::SkillsAction::Refresh,
+            ids: vec![],
+        },
+    )
+}
+pub fn refresh_held(
+    home: &Path,
+    place: &Place<'_>,
+    request: SlugRequest,
+) -> Result<SkillsRefreshed> {
+    skills_run(
+        home,
+        place,
+        reader::SkillsStep {
+            slug: request.slug,
+            action: reader::SkillsAction::RefreshHeld,
+            ids: vec![],
+        },
+    )
 }
 
 #[cfg(test)]

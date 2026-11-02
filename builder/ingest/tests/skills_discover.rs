@@ -673,3 +673,115 @@ fn unreadable_hard_link_is_refused_before_opening() {
         "{files:?}"
     );
 }
+
+#[test]
+fn sources_cover_discovered_skills_in_order() {
+    let scratch = Scratch::new("skills-sources");
+    let home = scratch.0.canonicalize().unwrap();
+    let h = &home;
+    for path in [
+        ".claude/skills/plain",
+        "elsewhere/kit",
+        "elsewhere/synced-a/shared",
+        ".claude/plugins/cache/tool/skills/tools",
+        "elsewhere/project-skill",
+        "elsewhere/codex/one",
+        "elsewhere/codex/two",
+        ".ssh/hidden",
+    ] {
+        skill(h, path);
+    }
+    for root in [
+        ".claude/skills/synced",
+        "project/.claude/skills",
+        ".codex/skills",
+    ] {
+        fs::create_dir_all(h.join(root)).unwrap();
+    }
+    for (target, link) in [
+        ("elsewhere/kit", ".claude/skills/linked"),
+        ("elsewhere/synced-a", ".claude/skills/synced/account"),
+        ("elsewhere/project-skill", "project/.claude/skills/linked"),
+        ("elsewhere/codex/one", ".codex/skills/one"),
+        ("elsewhere/codex/two", ".codex/skills/two"),
+        (".ssh/hidden", ".claude/skills/denied"),
+    ] {
+        symlink(h.join(target), h.join(link)).unwrap();
+    }
+    fs::write(h.join(".claude/plugins/installed_plugins.json"), serde_json::to_vec(&serde_json::json!({"plugins":{"tool@market":[{"installPath":h.join(".claude/plugins/cache/tool")}]}})).unwrap()).unwrap();
+    let rules = Rules::from_value(
+        Some(&serde_json::json!({"projects":[h.join("project")]})),
+        h,
+    )
+    .unwrap();
+    let sources = skills::sources(h, &rules);
+    assert_eq!(
+        sources,
+        vec![
+            (h.join(".claude/skills"), true),
+            (h.join(".claude/plugins/installed_plugins.json"), false),
+            (h.join(".claude/plugins/cache/tool/skills"), true),
+            (h.join("project/.claude/skills"), true),
+            (h.join(".codex/skills"), true),
+            (h.join("elsewhere/kit"), true),
+            (h.join("elsewhere/project-skill"), true),
+            (h.join("elsewhere/codex/one"), true),
+            (h.join("elsewhere/codex/two"), true),
+            (h.join("elsewhere/synced-a"), true),
+        ]
+    );
+    assert!(
+        !sources
+            .iter()
+            .any(|(path, _)| path.starts_with(h.join(".ssh")))
+    );
+    let found = skills::discover(h, &rules).unwrap();
+    assert_eq!(found.skills.len(), 7);
+    assert!(found.skills.iter().all(|skill| {
+        sources
+            .iter()
+            .any(|(path, folder)| *folder && skill.folder.starts_with(path))
+    }));
+}
+
+#[test]
+fn sources_in_an_empty_home_are_empty() {
+    let scratch = Scratch::new("skills-no-sources");
+    assert!(skills::sources(&scratch.0, &Rules::builtin()).is_empty());
+}
+
+#[test]
+fn unreadable_project_root_is_noted_once_and_other_skills_remain() {
+    // SAFETY: geteuid has no preconditions and only reads the effective user id.
+    if unsafe { libc::geteuid() } == 0 {
+        eprintln!("root can read mode 000 folders: skipping the unreadable project check");
+        return;
+    }
+    let scratch = Scratch::new("skills-unreadable-project");
+    let h = &scratch.0;
+    skill(h, ".claude/skills/plain");
+    skill(h, "project/.claude/skills/project-skill");
+    let rules = Rules::from_value(
+        Some(&serde_json::json!({"projects":[h.join("project")]})),
+        h,
+    )
+    .unwrap();
+    let root = h.join("project/.claude/skills");
+    let permissions = fs::metadata(&root).unwrap().permissions();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o000)).unwrap();
+    let found = skills::discover(h, &rules);
+    fs::set_permissions(&root, permissions).unwrap();
+    let found = found.unwrap();
+    assert_eq!(
+        found
+            .skills
+            .iter()
+            .map(|skill| skill.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["claude:plain"]
+    );
+    assert_eq!(found.notes, vec![skills::UNREADABLE_NOTE]);
+    let restored = skills::discover(h, &rules).unwrap();
+    assert_eq!(restored.skills.len(), 2);
+    assert!(restored.notes.is_empty());
+}

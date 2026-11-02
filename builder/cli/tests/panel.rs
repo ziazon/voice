@@ -30,6 +30,7 @@ fn closed(h: &Home) -> String {
         Some(h.bin.as_os_str()),
         &[],
         h.request(),
+        &|member| voice_api::panels::refresh_mirror_here(&h.path, member),
         &mut |_| {},
     );
     assert!(result.is_ok(), "fixture panel must close: {result:?}");

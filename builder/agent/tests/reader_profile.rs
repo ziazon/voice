@@ -17,7 +17,7 @@ use std::{
     time::Duration,
 };
 use voice_agent::{
-    reader::{MAX_SOURCES, Reader, Source},
+    reader::{MAX_SOURCES, Reader, Source, usable},
     text,
 };
 use voice_core::{deny::DenyList, error::Error};
@@ -673,4 +673,103 @@ fn environment_is_cleared() {
         .collect::<Vec<_>>();
     names.sort();
     assert_eq!(names, environment_names(&reader));
+}
+
+#[test]
+fn usable_keeps_only_accepted_sources_in_order() {
+    let folders = Folders::new();
+    let source = Scratch::new("reader-source");
+    let file = canary(&source.0, "file");
+    let missing = source.0.join("missing");
+    let ssh = source.0.join(".ssh");
+    let diary = source.0.join("diary");
+    let in_state = folders.state.0.join("source");
+    let in_runs = folders.runs.0.join("source");
+    for path in [&ssh, &diary, &in_state, &in_runs] {
+        fs::create_dir(path).unwrap();
+    }
+    let deny = DenyList::new(&folders.home.0, &["diary".into()]).unwrap();
+    let sources = [
+        Source::Folder(&source.0),
+        Source::File(&missing),
+        Source::File(&source.0),
+        Source::Folder(&file),
+        Source::Folder(&folders.home.0),
+        Source::Folder(folders.state.0.parent().unwrap()),
+        Source::Folder(&in_state),
+        Source::Folder(&in_runs),
+        Source::Folder(&ssh),
+        Source::Folder(&diary),
+        Source::Folder(&source.0),
+        Source::File(&file),
+        Source::File(&file),
+    ];
+    let kept = usable(
+        &folders.home.0,
+        &folders.member.0,
+        &folders.state.0,
+        &folders.runs.0,
+        &sources,
+        &deny,
+    );
+    let paths = kept
+        .iter()
+        .map(|source| match source {
+            Source::Folder(path) => (true, *path),
+            Source::File(path) => (false, *path),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths, [(true, source.0.as_path()), (false, file.as_path())]);
+    Reader::new(
+        Path::new("/bin/cat"),
+        &folders.home.0,
+        &folders.member.0,
+        &folders.state.0,
+        &folders.runs.0,
+        &kept,
+        &deny,
+    )
+    .unwrap();
+    assert!(
+        usable(
+            &missing,
+            &folders.member.0,
+            &folders.state.0,
+            &folders.runs.0,
+            &sources,
+            &deny,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn usable_limits_sources_to_256() {
+    let folders = Folders::new();
+    let source = Scratch::new("reader-source");
+    let paths = (0..257)
+        .map(|index| {
+            let path = source.0.join(index.to_string());
+            fs::create_dir(&path).unwrap();
+            path
+        })
+        .collect::<Vec<_>>();
+    let sources = paths
+        .iter()
+        .map(|path| Source::Folder(path))
+        .collect::<Vec<_>>();
+    let kept = usable(
+        &folders.home.0,
+        &folders.member.0,
+        &folders.state.0,
+        &folders.runs.0,
+        &sources,
+        &DenyList::builtin(),
+    );
+    assert_eq!(MAX_SOURCES, 256);
+    assert_eq!(kept.len(), 256);
+    for (source, expected) in kept.iter().zip(&paths[..256]) {
+        assert!(matches!(source, Source::Folder(path) if *path == expected));
+    }
+    folders.reader("/bin/cat", &kept);
 }
