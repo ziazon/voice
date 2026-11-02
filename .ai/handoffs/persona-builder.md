@@ -15,8 +15,8 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Made to work under the VO11.2a profile:** the assistant is found by its own folder
   (`voice_core::assistants::find`), since the reader may not list `~/.claude/crew`; the private
   state walk passes through the folders above the state folder with `O_SEARCH` (macOS only).
-- **Hard links:** walks leave out files with a second name, checked on the entry and again on the
-  opened file: a Claude Code session counts in the never-read number, a `conversations.json` in an
+- **Hard links:** walks leave out files with a second name (sessions and skill files checked on the
+  entry and again on the opened file; the two files opened by name, on the opened file): a Claude Code session counts in the never-read number, a `conversations.json` in an
   export folder is refused, a skill file is left out as `a hard link`, and a hard-linked
   `installed_plugins.json` hides plugin skills with the existing note. A chosen export file is read
   whatever its link count.
