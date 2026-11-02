@@ -1,14 +1,16 @@
 use crate::{
     filters::{Filters, Kind},
+    folder::Folder,
     privacy::privacy,
     python::{PythonFormatter, decode, py_space, splitlines, truthy},
 };
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::{
-    fs::{self, File, OpenOptions},
+    ffi::{CString, OsStr},
+    fs::File,
     io::{BufRead, BufReader},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -69,77 +71,99 @@ fn name(path: &Path) -> Result<String> {
         .map(str::to_owned)
         .ok_or_else(|| Error::Invalid(format!("{} is not UTF-8", path.display())))
 }
-fn project_folders(projects: &Path) -> Result<Vec<PathBuf>> {
-    let entries = match fs::read_dir(projects) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(Error::Invalid(format!(
-                "{} doesn't exist: there is no Claude Code history there",
-                projects.display()
-            )));
-        }
-        r => io(projects, r)?,
-    };
+struct Entry {
+    path: PathBuf,
+    name: CString,
+}
+fn open_projects(projects: &Path) -> Result<Folder> {
+    match Folder::open(projects, true) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(Error::Invalid(format!(
+            "{} doesn't exist: there is no Claude Code history there",
+            projects.display()
+        ))),
+        result => io(projects, result),
+    }
+}
+fn project_folders(projects: &Path, root: &Folder) -> Result<Vec<Entry>> {
     let mut folders = vec![];
-    for entry in entries {
-        let entry = io(projects, entry)?;
-        let p = entry.path();
-        let kind = io(&p, entry.file_type())?;
-        if kind.is_symlink() {
-            return Err(link(&p));
+    for entry_name in io(projects, root.names())? {
+        let path = projects.join(OsStr::from_bytes(entry_name.to_bytes()));
+        let kind = io(&path, root.stat(&entry_name, false))?.st_mode & libc::S_IFMT;
+        if kind == libc::S_IFLNK {
+            return Err(link(&path));
         }
-        if kind.is_dir() {
-            name(&p)?;
-            folders.push(p)
+        if kind == libc::S_IFDIR {
+            name(&path)?;
+            folders.push(Entry {
+                path,
+                name: entry_name,
+            });
         }
     }
-    folders.sort_by_key(|p| name(p).expect("validated folder name"));
+    folders.sort_by_key(|entry| name(&entry.path).expect("validated folder name"));
     Ok(folders)
 }
-fn session_files(folder: &Path, deny: &DenyList) -> Result<(Vec<PathBuf>, usize)> {
+fn open_project(root: &Folder, entry: &Entry) -> Result<Folder> {
+    root.folder(&entry.name).map_err(|e| {
+        if e.raw_os_error() == Some(libc::ELOOP) {
+            link(&entry.path)
+        } else {
+            Error::Io {
+                path: entry.path.clone(),
+                source: e,
+            }
+        }
+    })
+}
+fn session_files(
+    folder_path: &Path,
+    folder: &Folder,
+    deny: &DenyList,
+) -> Result<(Vec<Entry>, usize)> {
     let mut files = vec![];
     let mut denied = 0;
-    for entry in io(folder, fs::read_dir(folder))? {
-        let entry = io(folder, entry)?;
-        let p = entry.path();
-        if !entry.file_name().as_encoded_bytes().ends_with(b".jsonl") {
+    for entry_name in io(folder_path, folder.names())? {
+        let path = folder_path.join(OsStr::from_bytes(entry_name.to_bytes()));
+        if !entry_name.to_bytes().ends_with(b".jsonl") {
             continue;
         }
-        if deny.denied(&p) {
+        if deny.denied(&path) {
             denied += 1;
             continue;
         }
-        name(&p)?;
-        let kind = io(&p, entry.file_type())?;
-        if kind.is_symlink() {
-            return Err(link(&p));
+        name(&path)?;
+        let metadata = io(&path, folder.stat(&entry_name, false))?;
+        let kind = metadata.st_mode & libc::S_IFMT;
+        if kind == libc::S_IFLNK {
+            return Err(link(&path));
         }
-        if !kind.is_file() {
-            return Err(Error::Invalid(format!("{} is not a file", p.display())));
+        if kind != libc::S_IFREG {
+            return Err(Error::Invalid(format!("{} is not a file", path.display())));
         }
-        if io(&p, entry.metadata())?.nlink() > 1 {
+        if metadata.st_nlink > 1 {
             denied += 1;
             continue;
         }
-        files.push(p)
+        files.push(Entry {
+            path,
+            name: entry_name,
+        });
     }
-    files.sort_by_key(|p| p.file_name().map(|name| name.to_owned()));
+    files.sort_by_key(|entry| entry.path.file_name().map(|name| name.to_owned()));
     Ok((files, denied))
 }
-fn open_session(path: &Path) -> Result<Option<File>> {
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
-        .map_err(|e| {
-            if e.raw_os_error() == Some(libc::ELOOP) {
-                link(path)
-            } else {
-                Error::Io {
-                    path: path.to_owned(),
-                    source: e,
-                }
+fn open_session(folder: &Folder, entry: &Entry) -> Result<Option<File>> {
+    let path = &entry.path;
+    let file = folder.file(&entry.name, libc::O_NONBLOCK).map_err(|e| {
+        if e.raw_os_error() == Some(libc::ELOOP) {
+            link(path)
+        } else {
+            Error::Io {
+                path: path.to_owned(),
+                source: e,
             }
-        })?;
+        }
+    })?;
     let metadata = io(path, file.metadata())?;
     if !metadata.is_file() {
         return Err(Error::Invalid(format!("{} is not a file", path.display())));
@@ -612,30 +636,34 @@ pub fn mine_with_progress(
     let reminder = Regex::new(r"(?s)<system-reminder>.*?</system-reminder>").unwrap();
     let commas = Regex::new(r"[\s\x1c-\x1f]*,([\s\x1c-\x1f]*,)+[\s\x1c-\x1f]*").unwrap();
     let mut mined = Mined::default();
-    let folders = project_folders(projects)?;
+    let root = open_projects(projects)?;
+    let folders = project_folders(projects, &root)?;
     let total = folders.len();
     progress(0, total);
-    for (index, folder) in folders.into_iter().enumerate() {
-        if deny.denied(&folder) {
+    for (index, entry) in folders.into_iter().enumerate() {
+        let folder_path = &entry.path;
+        if deny.denied(folder_path) {
             mined.excluded += 1;
             progress(index + 1, total);
             continue;
         }
-        let folder_name = name(&folder)?;
+        let folder_name = name(folder_path)?;
         if filters.excluded(&folder_name) {
             mined.excluded += 1;
             progress(index + 1, total);
             continue;
         }
         let project = project_name(&folder_name, home);
-        let (files, denied) = session_files(&folder, &deny)?;
+        let folder = open_project(&root, &entry)?;
+        let (files, denied) = session_files(folder_path, &folder, &deny)?;
         mined.denied += denied;
-        for path in files {
+        for entry in files {
+            let path = &entry.path;
             let session = path
                 .file_stem()
                 .and_then(|n| n.to_str())
                 .expect("validated UTF-8 name");
-            let Some(file) = open_session(&path)? else {
+            let Some(file) = open_session(&folder, &entry)? else {
                 mined.denied += 1;
                 continue;
             };
@@ -648,12 +676,12 @@ pub fn mine_with_progress(
                 mark: mark.clone(),
                 reminder: reminder.clone(),
                 commas: commas.clone(),
-                path: &path,
+                path: &entry.path,
                 line: 0,
             };
             loop {
                 bytes.clear();
-                if io(&path, reader.read_until(b'\n', &mut bytes))? == 0 {
+                if io(path, reader.read_until(b'\n', &mut bytes))? == 0 {
                     break;
                 }
                 b.line += 1;
@@ -762,14 +790,17 @@ pub fn folders(
 ) -> Result<Vec<FolderRow>> {
     deny.check(projects)?;
     let mut rows = vec![];
-    for p in project_folders(projects)? {
-        if deny.denied(&p) {
+    let root = open_projects(projects)?;
+    for entry in project_folders(projects, &root)? {
+        let p = &entry.path;
+        if deny.denied(p) {
             continue;
         }
-        let folder = name(&p)?;
+        let folder = name(p)?;
+        let opened = open_project(&root, &entry)?;
         rows.push(FolderRow {
             excluded: filters.excluded(&folder),
-            sessions: session_files(&p, deny)?.0.len(),
+            sessions: session_files(p, &opened, deny)?.0.len(),
             project: project_name(&folder, home),
             folder,
         })
@@ -805,6 +836,96 @@ mod test_common;
 mod tests {
     use super::test_common::{self as common, repo};
     use super::*;
+    use std::{
+        fs::{self, OpenOptions},
+        io::Read,
+        os::unix::fs::{OpenOptionsExt, symlink},
+    };
+
+    #[test]
+    fn a_project_folder_swapped_for_a_link_after_listing_is_refused() {
+        let scratch = common::Scratch::new("project-swap");
+        let projects = scratch.0.join("projects");
+        let project = projects.join("-p-app");
+        let elsewhere = scratch.0.join("elsewhere");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir(&elsewhere).unwrap();
+        fs::write(project.join("s.jsonl"), "first").unwrap();
+        fs::write(elsewhere.join("s.jsonl"), "second").unwrap();
+        let root = open_projects(&projects).unwrap();
+        let entries = project_folders(&projects, &root).unwrap();
+        fs::rename(&project, projects.join("moved")).unwrap();
+        symlink(&elsewhere, &project).unwrap();
+        let error = open_project(&root, &entries[0])
+            .err()
+            .expect("refuse swapped folder");
+        assert_eq!(error.to_string(), link(&project).to_string());
+    }
+
+    #[test]
+    fn a_session_folder_swapped_after_listing_reads_the_listed_folder() {
+        let scratch = common::Scratch::new("session-folder-swap");
+        let projects = scratch.0.join("projects");
+        let project = projects.join("-p-app");
+        let elsewhere = scratch.0.join("elsewhere");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir(&elsewhere).unwrap();
+        fs::write(project.join("s.jsonl"), "first").unwrap();
+        fs::write(elsewhere.join("s.jsonl"), "second").unwrap();
+        let root = open_projects(&projects).unwrap();
+        let entries = project_folders(&projects, &root).unwrap();
+        let folder = open_project(&root, &entries[0]).unwrap();
+        let deny = DenyList::builtin();
+        let (files, _) = session_files(&project, &folder, &deny).unwrap();
+        fs::rename(&project, projects.join("moved")).unwrap();
+        symlink(&elsewhere, &project).unwrap();
+        let mut text = String::new();
+        open_session(&folder, &files[0])
+            .unwrap()
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        assert_eq!(text, "first");
+    }
+
+    #[test]
+    fn a_session_file_swapped_for_a_link_after_listing_is_refused() {
+        let scratch = common::Scratch::new("session-file-swap");
+        let projects = scratch.0.join("projects");
+        let project = projects.join("-p-app");
+        let elsewhere = scratch.0.join("elsewhere");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir(&elsewhere).unwrap();
+        let path = project.join("s.jsonl");
+        fs::write(&path, "first").unwrap();
+        fs::write(elsewhere.join("s.jsonl"), "second").unwrap();
+        let root = open_projects(&projects).unwrap();
+        let entries = project_folders(&projects, &root).unwrap();
+        let folder = open_project(&root, &entries[0]).unwrap();
+        let (files, _) = session_files(&project, &folder, &DenyList::builtin()).unwrap();
+        fs::remove_file(&path).unwrap();
+        symlink(elsewhere.join("s.jsonl"), &path).unwrap();
+        assert_eq!(
+            open_session(&folder, &files[0]).unwrap_err().to_string(),
+            link(&path).to_string()
+        );
+    }
+
+    #[test]
+    fn a_hard_link_made_after_listing_is_left_out() {
+        let scratch = common::Scratch::new("session-hard-link");
+        let projects = scratch.0.join("projects");
+        let project = projects.join("-p-app");
+        fs::create_dir_all(&project).unwrap();
+        let path = project.join("s.jsonl");
+        fs::write(&path, "first").unwrap();
+        let root = open_projects(&projects).unwrap();
+        let entries = project_folders(&projects, &root).unwrap();
+        let folder = open_project(&root, &entries[0]).unwrap();
+        let (files, _) = session_files(&project, &folder, &DenyList::builtin()).unwrap();
+        fs::hard_link(&path, scratch.0.join("outside.jsonl")).unwrap();
+        assert!(open_session(&folder, &files[0]).unwrap().is_none());
+    }
 
     #[test]
     fn open_session_leaves_out_hard_links() {
@@ -814,10 +935,19 @@ mod tests {
         fs::write(&canary, "canary-outside").unwrap();
         let linked = source.0.join("linked.jsonl");
         fs::hard_link(canary, &linked).unwrap();
-        assert!(open_session(&linked).unwrap().is_none());
+        let folder = Folder::open(&source.0, false).unwrap();
+        let linked = Entry {
+            path: linked,
+            name: CString::new("linked.jsonl").unwrap(),
+        };
+        assert!(open_session(&folder, &linked).unwrap().is_none());
         let plain = source.0.join("plain.jsonl");
         fs::write(&plain, "plain").unwrap();
-        assert!(open_session(&plain).unwrap().is_some());
+        let plain = Entry {
+            path: plain,
+            name: CString::new("plain.jsonl").unwrap(),
+        };
+        assert!(open_session(&folder, &plain).unwrap().is_some());
     }
 
     #[test]
@@ -836,7 +966,9 @@ mod tests {
     #[test]
     fn opening_a_fifo_returns_without_waiting_for_a_writer() {
         let _serial = crate::serial_test();
-        let path = std::env::temp_dir().join(format!("voice-fifo-{}", std::process::id()));
+        let scratch = common::Scratch::new("fifo");
+        let path = scratch.0.join("fifo");
+        let folder = Folder::open(&scratch.0, false).unwrap();
         assert!(
             std::process::Command::new("mkfifo")
                 .arg(&path)
@@ -847,8 +979,16 @@ mod tests {
         let (send, receive) = std::sync::mpsc::channel();
         let fifo = path.clone();
         let worker = std::thread::spawn(move || {
-            send.send(open_session(&fifo).map(|_| ()).map_err(|e| e.to_string()))
-                .unwrap();
+            let entry = Entry {
+                path: fifo,
+                name: CString::new("fifo").unwrap(),
+            };
+            send.send(
+                open_session(&folder, &entry)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+            )
+            .unwrap();
         });
         let result = receive.recv_timeout(std::time::Duration::from_secs(1));
         if result.is_err() {

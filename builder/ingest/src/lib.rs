@@ -4,6 +4,7 @@ pub mod claudeai;
 pub mod corpus;
 pub mod dates;
 pub mod filters;
+pub(crate) mod folder;
 pub mod mine;
 pub mod privacy;
 pub mod private;

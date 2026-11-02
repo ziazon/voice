@@ -3,6 +3,7 @@
 use crate::{
     dates::{civil_from_days, days_from_civil, days_in_month},
     filters::{Filters, Kind},
+    folder::Folder,
     mine::{self, Split, message_record, own_message, text_blocks},
     privacy::privacy,
     python::{line_break, py_space, splitlines, truthy},
@@ -11,7 +12,8 @@ use regex::Regex;
 use serde_json::{Map, Value};
 use std::{
     collections::{BTreeSet, HashMap},
-    fs::{self, File, OpenOptions},
+    ffi::CString,
+    fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom},
     os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::Path,
@@ -199,6 +201,50 @@ pub fn read_export_as(path: &Path, deny: &DenyList, folder: bool) -> Result<Expo
 pub fn read_export(path: &Path, deny: &DenyList) -> Result<Export> {
     read_export_expected(path, deny, None)
 }
+fn read_folder(path: &Path, folder: Folder, deny: &DenyList) -> Result<(usize, Vec<u8>)> {
+    let io = |source| Error::Io {
+        path: path.to_owned(),
+        source,
+    };
+    let inner = path.join(CONVERSATIONS);
+    deny.check(&inner)?;
+    let mut files = 0;
+    for name in folder.names().map_err(io)? {
+        if folder
+            .stat(&name, true)
+            .is_ok_and(|m| m.st_mode & libc::S_IFMT == libc::S_IFREG)
+        {
+            files += 1;
+        }
+    }
+    let name = CString::new(CONVERSATIONS).expect("fixed conversations name");
+    let file = folder.file(&name, libc::O_NONBLOCK).map_err(|source| {
+        if source.raw_os_error() == Some(libc::ENOENT) {
+            invalid(format!("{} has no conversations.json", path.display()))
+        } else if source.raw_os_error() == Some(libc::ELOOP) {
+            invalid(format!(
+                "{} is a link: Voice doesn't follow links. Use the export file itself",
+                inner.display()
+            ))
+        } else {
+            Error::Io {
+                path: inner.clone(),
+                source,
+            }
+        }
+    })?;
+    let metadata = file.metadata().map_err(io)?;
+    if !metadata.is_file() {
+        return Err(invalid(format!("{} is not a file", inner.display())));
+    }
+    if metadata.nlink() > 1 {
+        return Err(invalid(format!(
+            "Voice won't read {}: the same file has another name somewhere else on this computer (a hard link). Make a copy of the export folder and choose the copy",
+            inner.display()
+        )));
+    }
+    Ok((files, read_capped(&inner, file, metadata.len())?))
+}
 fn read_export_expected(path: &Path, deny: &DenyList, expected: Option<bool>) -> Result<Export> {
     deny.check(path)?;
     let io = |source| Error::Io {
@@ -214,31 +260,7 @@ fn read_export_expected(path: &Path, deny: &DenyList, expected: Option<bool>) ->
         )));
     }
     let (files, bytes) = if metadata.is_dir() {
-        let inner = path.join(CONVERSATIONS);
-        deny.check(&inner)?;
-        let mut files = 0;
-        for entry in fs::read_dir(path).map_err(io)? {
-            if fs::metadata(entry.map_err(io)?.path()).is_ok_and(|m| m.is_file()) {
-                files += 1;
-            }
-        }
-        let file = open(&inner).map_err(|e| match e {
-            Error::Invalid(m) if m.ends_with("doesn't exist") => {
-                invalid(format!("{} has no conversations.json", path.display()))
-            }
-            other => other,
-        })?;
-        let metadata = file.metadata().map_err(io)?;
-        if !metadata.is_file() {
-            return Err(invalid(format!("{} is not a file", inner.display())));
-        }
-        if metadata.nlink() > 1 {
-            return Err(invalid(format!(
-                "Voice won't read {}: the same file has another name somewhere else on this computer (a hard link). Make a copy of the export folder and choose the copy",
-                inner.display()
-            )));
-        }
-        (files, read_capped(&inner, file, metadata.len())?)
+        read_folder(path, Folder::from_file(file), deny)?
     } else if metadata.is_file() {
         let mut magic = Vec::with_capacity(4);
         (&mut file).take(4).read_to_end(&mut magic).map_err(io)?;
@@ -849,4 +871,67 @@ pub fn mine_summary(m: &MinedExport) -> String {
         m.personal,
         m.secret
     )
+}
+
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+#[allow(clippy::duplicate_mod)]
+mod test_common;
+
+#[cfg(test)]
+mod tests {
+    use super::test_common::Scratch;
+    use super::*;
+    use std::{fs, os::unix::fs::symlink};
+
+    #[test]
+    fn an_export_folder_swapped_after_opening_reads_the_opened_folder() {
+        let scratch = Scratch::new("export-folder-swap");
+        let export = scratch.0.join("export");
+        let other = scratch.0.join("other");
+        fs::create_dir(&export).unwrap();
+        fs::create_dir(&other).unwrap();
+        fs::write(export.join(CONVERSATIONS), "[]").unwrap();
+        fs::write(other.join(CONVERSATIONS), "[{}]").unwrap();
+        let folder = Folder::from_file(open(&export).unwrap());
+        fs::rename(&export, scratch.0.join("moved")).unwrap();
+        symlink(&other, &export).unwrap();
+        let (_, bytes) = read_folder(&export, folder, &DenyList::builtin()).unwrap();
+        assert_eq!(bytes, b"[]");
+    }
+    #[test]
+    fn conversations_swapped_for_a_link_after_opening_is_refused() {
+        let scratch = Scratch::new("export-file-swap");
+        let export = scratch.0.join("export");
+        let other = scratch.0.join("other");
+        fs::create_dir(&export).unwrap();
+        fs::create_dir(&other).unwrap();
+        let inner = export.join(CONVERSATIONS);
+        fs::write(&inner, "[]").unwrap();
+        fs::write(other.join(CONVERSATIONS), "[{}]").unwrap();
+        let folder = Folder::from_file(open(&export).unwrap());
+        fs::remove_file(&inner).unwrap();
+        symlink(other.join(CONVERSATIONS), &inner).unwrap();
+        assert_eq!(
+            read_folder(&export, folder, &DenyList::builtin())
+                .unwrap_err()
+                .to_string(),
+            format!(
+                "{} is a link: Voice doesn't follow links. Use the export file itself",
+                inner.display()
+            )
+        );
+    }
+
+    #[test]
+    fn the_file_count_still_counts_a_link_to_a_file() {
+        let scratch = Scratch::new("export-file-count");
+        fs::write(scratch.0.join(CONVERSATIONS), "[]").unwrap();
+        fs::write(scratch.0.join("a.txt"), "text").unwrap();
+        symlink("a.txt", scratch.0.join("b.txt")).unwrap();
+        fs::create_dir(scratch.0.join("subfolder")).unwrap();
+        let folder = Folder::from_file(open(&scratch.0).unwrap());
+        let (files, _) = read_folder(&scratch.0, folder, &DenyList::builtin()).unwrap();
+        assert_eq!(files, 3);
+    }
 }
