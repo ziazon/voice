@@ -40,8 +40,14 @@ One record per slice, newest first. Paraphrase only; no real person.
   can't panic today); VO11.1c or the app should raise the soft `RLIMIT_NOFILE`.
 - **Verification:** `cargo test -p voice-agent --lib egress` 18 passed, `egress_descriptors`
   passed, clippy and fmt clean on `4a2cb71`; `VOICE_REQUIRE_SANDBOX=1 ci-local.sh` all passed on
-  `99637d3`. **Not yet:** `ci-local.sh` and the repeat Verifier (Opus) on `4a2cb71` (both were
-  running when the run's time ran out), the land.
+  `99637d3`. On `4a2cb71`, one `ci-local.sh` run failed in `--test profile`
+  (`stopped_sign_in_kills_the_process_group_within_a_second`, a file not found in a stub), a test
+  whose files the branch doesn't touch; on `eeb72f4` it passed 5 times alone, and
+  `VOICE_REQUIRE_SANDBOX=1 ci-local.sh` all passed (V1, run `062159-r1`), so a flake under load
+  ~20, not traced.
+- **Repeat Verifier (Opus, on `4a2cb71`): PASS**, no must-fix. Her four should-fixes (a
+  non-blocking accept, a Drop guard for the resolver count, a deterministic no-connection test, a
+  wider `idle` in `one_way_traffic`) are VO11.1d.
 
 ## VO11.1b: the sandboxed launch, as a library (2026-11-01, lane: V1)
 
