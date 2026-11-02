@@ -2,7 +2,7 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
-## VO11.1c: every `claude` through the sandbox (2026-11-02, lane: V1) — built, not landed
+## VO11.1c: every `claude` through the sandbox (2026-11-02, lane: V1)
 
 - **What:** the check's two runs, each call and the sign-in each start their own
   `sandbox::Launch` with their own `egress::Egress` and an environment built from nothing.
@@ -53,8 +53,28 @@ One record per slice, newest first. Paraphrase only; no real person.
   mutation; L2 observed to catch a Linux-only dependency that the old check missed. One should-fix:
   deleting `opened = true` fails no test. Briefed as § 9 item 5 (`0b2f09f`), not yet built.
 - **Held:** the resource gate held on swap-thrash (fseventsd at about 30 GB) before the tests could
-  run. Next: run the Ctrl-C and opener tests plus the old-code red check, dispatch item 5, run a
-  delta Verifier (Opus) if the fix-ups pass 60 lines, then `ci-local.sh` and land.
+  run.
+- **Run `103238-r1`, the tests and item 5:** V1 ran `cargo test -p voice-cli --test agent` (16/16)
+  and `the_browser_opener_uses_a_url_from_the_root_folder` (pass). Red check: with `cce7f00`'s
+  `main.rs`, `claude_sign_in_stops_on_ctrl_c_during_the_first_check` fails on
+  `out.status.code().is_some()` (the CLI dies by SIGINT); restored, `cmp` identical. Codex wrote
+  item 5's test, `sign_in_never_opens_a_second_valid_link` (`a210848`, tests only); her sandbox
+  can't bind loopback, so V1 ran it: `--test profile` 16/16, and with `opened = true` deleted it
+  fails `left: 2, right: 1` (restored, `cmp` identical). fmt and clippy clean.
+- **Repeat Verifier (Opus, on `a210848`): PASS**, no must-fix, no should-fix. She checked that
+  `-u` from `/` and `valid_link` leave no file or option route to `open`, that no Ctrl-C window
+  leaks a run folder or proxy, the three `cargo tree --target all` checks by hand, and that
+  item 5's test can't pass vacuously.
+- **Security review (Opus, on `a210848`'s delta): no HIGH or MEDIUM.** One LOW, already accepted
+  in brief § 9 item 3: Ctrl-C during a hung first check waits out up to two `CHECK_TIMEOUT`s
+  (about 60 s) and starts the `auth status` run after the stop; cleanup holds. A follow-up could
+  pass `stop` into `status`.
+- **Verification:** `bash scripts/ci-local.sh` all passed on `a210848`'s tree (throttled, 2 jobs).
+- **Not verified:** a signed-in sign-in and ask inside the sandbox, through the app (the walk).
+- **Skills Review:** ✅ tdd-skill (both new tests red on their assertions, then green) ·
+  ✅ security-and-hardening (LOWs taken, review and repeat Verifier clean) ·
+  ✅ source-driven-development (`man open`, `cargo tree --help`) · ✅ code-quality (tests only in
+  the last commit; production unchanged)
 
 ## VO11.1d: the egress proxy's should-fixes (2026-11-02, lane: V1)
 
