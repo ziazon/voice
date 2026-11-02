@@ -8,7 +8,7 @@ use std::{
     io::{Read, Write},
     os::unix::{
         fs::{FileTypeExt, MetadataExt, PermissionsExt},
-        io::{FromRawFd, OwnedFd},
+        io::{AsRawFd, FromRawFd, OwnedFd},
     },
     path::Path,
     process::{Command, Stdio},
@@ -131,7 +131,7 @@ fn the_reader_gets_only_stdin_stdout_and_stderr() {
     let reader = folders.reader("/bin/zsh", &[]);
     let args = [
         "-fc",
-        "zmodload zsh/stat; for n in {3..255}; do [[ -e /dev/fd/$n ]] || continue; zstat -A d +device /dev/fd/$n; zstat -A i +inode /dev/fd/$n; print $n $d $i; done",
+        "zmodload zsh/stat; for n in {2..255}; do [[ -e /dev/fd/$n ]] || continue; zstat -A d +device /dev/fd/$n; zstat -A i +inode /dev/fd/$n; print $n $d $i; done",
     ];
     let control = reader.command(&args).output().unwrap();
     assert!(control.status.success(), "zsh measurement failed");
@@ -155,7 +155,11 @@ fn the_reader_gets_only_stdin_stdout_and_stderr() {
     sibling.kill().unwrap();
     sibling.wait().unwrap();
     let measured = parse(&output);
-    assert!(!measured.is_empty(), "zsh printed no descriptor identities");
+    let null = fs::metadata("/dev/null").unwrap();
+    assert!(
+        measured.contains(&(2, (null.dev(), null.ino()))),
+        "{measured:?}"
+    );
     assert!(
         measured
             .iter()
@@ -165,9 +169,44 @@ fn the_reader_gets_only_stdin_stdout_and_stderr() {
 }
 
 #[test]
+fn spawn_and_command_start_the_same_reader() {
+    if !available() {
+        return;
+    }
+    let folders = Folders::new();
+    let reader = folders.reader("/bin/zsh", &[]);
+    let args = [
+        "-fc",
+        "print -r -- $PWD; print -r -- $0 $@; export",
+        "one",
+        "two",
+    ];
+    let output = reader.command(&args).output().unwrap();
+    assert!(output.status.success());
+    let a = String::from_utf8(output.stdout).unwrap();
+    let mut child = reader.spawn(&args).unwrap();
+    drop(child.stdin.take());
+    let mut b = String::new();
+    child.stdout.take().unwrap().read_to_string(&mut b).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(a == b, "the outputs differ");
+    assert_eq!(
+        b.lines().next(),
+        Some(reader.run_folder().to_str().unwrap())
+    );
+}
+
+#[test]
 fn a_spawned_child_reads_stdin_and_writes_stdout() {
     let dir = Scratch::new("spawn-cat");
     let mut child = spawn::spawn(Path::new("/bin/cat"), &[], &[], &dir.0).unwrap();
+    for file in [
+        child.stdin.as_ref().unwrap(),
+        child.stdout.as_ref().unwrap(),
+    ] {
+        // SAFETY: file owns a live descriptor.
+        assert!(unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) } & libc::FD_CLOEXEC != 0);
+    }
     child.stdin.take().unwrap().write_all(b"a line\n").unwrap();
     let mut output = String::new();
     child

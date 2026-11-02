@@ -222,9 +222,9 @@ The 5-second limit also covers a reader that closes its output but does not exit
 Only Voice's own fixed sentences from the reader are shown; any other refusal becomes the step's own sentence.
 The reader starts through `posix_spawn` with `POSIX_SPAWN_CLOEXEC_DEFAULT`, so it gets only stdin, stdout and stderr, measured inside the reader (`builder/agent/tests/reader_spawn.rs`).
 The test compares each descriptor the reader holds with the app's own by device and inode, not by number: under the profile a program also holds a Unix socket it opens itself at start, the system log socket `system.sb` lets every sandboxed program reach (measured 2026-11-02, with the app holding only fds 0 to 2).
-The app's other children still start through Rust's spawn, which on macOS sets close-on-exec on a pipe in a second step.
-One started at the same moment as a reader can inherit the app's end of the reader's pipes.
-Holding its stdout, the app sees a right answer but stops the run as `STOPPED` 5 seconds later; holding its stdin, the reader waits for the end of its request until that child exits or the app stops it after 10 silent minutes. Either way the person tries again.
+macOS has no `pipe2`, so the reader's pipes are made first and marked close-on-exec in a second step, and the app's other children still start through Rust's spawn, which never closes by default.
+One started in that moment can inherit either end of the reader's pipes.
+Holding its stdout open, it turns a right answer into `STOPPED` 5 seconds later, and holding that pipe's write end it could also add lines to the reader's output (the app's own children write no such lines); holding its stdin, the reader waits for the end of its request until that child exits or the app stops it after 10 silent minutes. Either way the person tries again.
 A panic while reading kills and reaps the reader.
 A password or key rule added after a download was chosen shows the password-or-key sentence.
 A download in a password or key folder is refused when chosen, with its own sentence.

@@ -43,6 +43,9 @@ impl Spawned {
                 return Ok(None);
             }
             let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(libc::ECHILD) {
+                self.reaped = true;
+            }
             if error.raw_os_error() != Some(libc::EINTR) {
                 return Err(error);
             }
