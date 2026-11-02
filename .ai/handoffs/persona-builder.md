@@ -18,7 +18,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   metadata reads on every folder above it; metadata-only `literal` rules are enough and still
   refuse the parent's listing and a sibling's content. A descriptor walk from `/` opens those
   folders only with `O_SEARCH` (`O_RDONLY|O_DIRECTORY` is refused), which VO11.2b must apply to
-  `ingest/src/private.rs`.
+  `builder/ingest/src/private.rs`.
 - **Who built it:** Codex, three dispatches (§ 1–5, the § 6 review fixes, the positive control).
   Her sandbox refuses a sandbox inside it, so V1 ran every sandbox test outside it, with
   `VOICE_REQUIRE_SANDBOX=1`. One test bug found that way: the path-in-profile check matched
