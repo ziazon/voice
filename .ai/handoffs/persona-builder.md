@@ -66,10 +66,36 @@ One record per slice, newest first. Paraphrase only; no real person.
   compares query keys raw, so `client%5Fid` sits beside the pinned `client_id`. Should-fixes: a
   folder that already carries an access list is accepted; an old `sign-in-link` in a `Given`
   folder is handed out; two exit codes asserted loosely. All six are brief § 12, not yet built.
-- **Status:** built through § 11; § 12 written, not dispatched (the resource gate held:
-  `swap-thrash`). `ci-local.sh` was not completed on this head. Branch `lane-v1/VO11.1b` at the
-  head after this record, pushed to `origin`; card In Review. Next: dispatch § 12, mutations,
-  `VOICE_REQUIRE_SANDBOX=1` tests, `ci-local.sh`, repeat Verifier on Opus, land.
+- **§ 12 (V1, run `011923-r1`, code `1e6b3f7`):** Codex built all six. V1's 11 mutations outside
+  the sandbox (each of the three new profile names removed, the ACL refusal off, the ACL type
+  zeroed, the key check removed or loosened in Rust and Python, the old link kept) were all
+  killed; the exit codes 4 and 126 held under the real sandbox. **Repeat Verifier (Opus) and the
+  security review: FAIL, the same HIGH found twice and measured:** `setattrlist` (mode 0777,
+  group `everyone`, an access list) still changed both folders past the four operation names, so
+  a child could open the login file to every account. The Verifier also caught a stale build:
+  V1's mutation restore (`shutil.copy2`) kept the files' old mtimes, so cargo kept the last
+  mutant's library; the `ci-local.sh` started then was void and is not counted.
+- **§ 13 (code `fd2cf10`):** one `deny file-write*` on the two folder literals replaces both
+  folder rules; a `setattrlist` regression test with an `(allow default)` control; a fresh run
+  folder goes through `private_folder`; a folder another account owns is not private. V1: real
+  sandbox `launch` 25 and `sandbox_profile` 18 green; 5 mutations killed (the owner check's
+  removal survived, untestable then); the real Claude Code 2.1.292 still runs signed out under
+  the profile (probe `status`). **Repeat Verifier (Opus): PASS** (37 ways to change a folder's
+  own metadata all refused, move and replace still refused, contents writable). Security review:
+  the HIGH and both LOWs closed; one LOW left, the `runs` parent not checked, which was also a
+  Verifier should-fix.
+- **§ 14 (code `9074221`):** the `runs` parent goes through `private_folder`; the owner check is
+  tested against root-owned `/private/var/audit` (it skips if that folder isn't root-owned 0700
+  with no access list; it would panic, not skip, if the folder were missing, which a stock macOS
+  never is). V1's 2 mutations (owner check removed, parent check removed) killed; real sandbox
+  `launch` 27 and `sandbox_profile` 18 green.
+- **Delta Verifier (Opus) on `9074221`: PASS.** Should-fix left: the owner test fails instead of
+  skipping when run as root. Security review of the § 13 and § 14 code: no finding open.
+- **Verification at the land:** `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh`: all passed on
+  `9074221`. **Not verified:** the `SIGN_IN=yes` profile against a real sign-in (signing in needs
+  the person); Linux and Windows (the library refuses off a Mac).
+- **For VO11.1c:** a folder with any access list is refused, even a deny-only one such as macOS
+  puts on `~/Documents`, so don't offer one as `Given`; a sign-in should use `Fresh`.
 
 ## VO1: prove the read-wide fence, the probe (2026-11-01, lane: V1)
 
