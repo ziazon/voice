@@ -2,6 +2,58 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.2c.1: open history files through the listed folder's descriptor (2026-11-02, lane: V1)
+
+- **What:** `voice_ingest::folder::Folder` (new, `builder/ingest/src/folder.rs`) holds one
+  descriptor of a folder: `names()` lists it through a fresh `openat(".")` stream, `stat()` is
+  `fstatat` on it, `folder()` and `file()` are `openat` with `O_NOFOLLOW | O_CLOEXEC`. Mining
+  Claude Code history (`mine_with_progress`, `folders`) opens `~/.claude/projects` once, lists it,
+  opens each project folder through that descriptor, lists the folder and opens each session file
+  through the folder's descriptor; a claude.ai export folder (`claudeai::read_folder`) counts its
+  files and opens `conversations.json` through the descriptor it was already opened with. The
+  checks are as before, and in the same order (deny list, names, link, regular file, hard link on
+  the opened file); the export's file count still counts a link to a file. `skills/read.rs`'s
+  `DirectoryStream`, `errno` and `open_at` moved into `folder.rs` unchanged. A folder swapped for
+  a link after it was listed is refused; one renamed after it was opened is still read where it
+  went. Docs: the two SECURITY rows (the open residual closed, the deny row's limits exact) and a
+  DECISIONS bullet. Brief: `plans/briefs/VO11.2c.1-open-by-folder-descriptor.md`.
+- **Measured (both reviewers' probes):** on macOS `openat(O_DIRECTORY | O_NOFOLLOW)` on a link
+  answers `ENOTDIR`, not `ELOOP`, so `Folder::folder` calls an `ENOTDIR` a link when `fstatat`
+  says the entry is one; on a FIFO it answers `ENOTDIR` at once (no hang).
+- **Who built it:** Codex, one dispatch; V1 wrote the ENOTDIR comment and the doc sentences, and
+  the review fixes.
+- **Tests:** `folder.rs` (names twice, stat with and without following, links refused, a renamed
+  folder can't redirect a read); `mine.rs` swap tests at the walk's seam (a project folder
+  swapped for a link after listing is refused; a session folder swapped after listing reads the
+  listed folder; a session file swapped for a link is refused; a hard link made after listing is
+  left out), the hard-link and FIFO tests ported; `claudeai.rs` (an export folder swapped after
+  opening reads the opened one; `conversations.json` swapped for a link is refused; the count
+  still counts a link to a file). Red seen on the by-path versions for the three swap tests.
+- **Mutations (all killed, `cp` backup and `cmp` restore):** session, project and
+  `conversations.json` opened by path; `O_NOFOLLOW` dropped (session file, export); two hard
+  links allowed; the count without following (Codex's seven); session by path again (V1);
+  session, project, export by path and `open_at` without `O_NOFOLLOW` (Verifier's four).
+- **Verification:** `VOICE_REQUIRE_SANDBOX=1 ci-local.sh` all passed on `1ddc0b2` (the reader's
+  sandbox tests read history and exports through the new code); after the fixes,
+  `cargo test -p voice-ingest` (244), `voice-cli` `mine`, `claudeai`, `reader_app`,
+  `reader_sandbox`, clippy and fmt green on `0560495`.
+- **Security review (Opus, on `1ddc0b2`): no HIGH or MEDIUM.** LOW, all fixed in `0560495`: a
+  projects entry gone between the listing and its `fstatat` stopped mining (now skipped, as the
+  listing's own type did); the deny check resolves links by path while the read goes through the
+  folder already opened, so with `~/.claude/projects` a link repointed mid-read a rule written
+  only in its resolved form can miss (recorded as a known limit); "renamed" said "after it was
+  opened".
+- **Verifier (Fable, on `1ddc0b2`): PASS.** Should-fix done: the deny row over-promised a folder
+  refusal for an export (an export folder swapped after opening is read where it went). Notes:
+  `Folder::open(path, false)` on a link gives `ENOTDIR` (only tests use it); the ENOTDIR to link
+  mapping can show the other sentence under a second swap (a refusal either way); Linux
+  untested.
+- **Not verified:** Linux; a live walk is not owed (no screen changes).
+- **Skills Review:** ✅ tdd-skill (red on the by-path versions, 12 mutations killed) ·
+  ✅ security-and-hardening (review, Verifier, every finding fixed) · ✅ source-driven-development
+  (macOS `openat` errnos probed, std's `DirEntry::file_type` read by the review) ·
+  ✅ plain-language (doc sentences) · ✅ code-quality (helpers moved, not copied)
+
 ## VO11.2c.2: the reader starts with only stdin, stdout and stderr (2026-11-02, lane: V1)
 
 - **What:** `voice_agent::spawn` starts a child with `posix_spawn` and
