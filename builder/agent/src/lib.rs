@@ -12,4 +12,5 @@ pub mod provider;
 pub mod reader;
 pub mod sandbox;
 pub mod self_hosted;
+pub mod spawn;
 pub mod text;

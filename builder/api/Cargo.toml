@@ -19,4 +19,5 @@ ts-rs = { version = "=12.0.1", features = ["no-serde-warnings"] }
 voice-panel-runner = { path = "../panel-runner" }
 
 [dev-dependencies]
+libc = "=0.2.191"
 voice-agent = { path = "../agent", features = ["test-stubs"] }

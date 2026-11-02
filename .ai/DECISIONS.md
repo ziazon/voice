@@ -287,6 +287,11 @@ launch as a library (VO11.1b) and the wiring (VO11.1c).
 - **Missing projects need no reader.** With no `~/.claude/projects`, the app returns the empty answers itself (after the lock for the read) and reads nothing.
 - **macOS only.** Other platforms keep reading in-process; skills wait for VO11.2d.
 
+## 2026-11-02: the reader starts with only stdin, stdout and stderr (VO11.2c.2)
+
+- **The reader starts through `posix_spawn` with close-by-default**, with only fds 0 to 2, instead of `Command`: Rust's macOS spawn can hand it another child's descriptors.
+- **The reverse case is a retry.** Another child started at the same moment can still inherit the app's end of the reader's stdin or stdout; the deadlines (5 seconds after an answer, 10 silent minutes) bound the wait and the person tries again.
+
 ## Recordings
 
 - Recordings of a real person's voice never enter git. `.gitignore` blocks audio; never weaken it.
