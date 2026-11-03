@@ -2,6 +2,43 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO14.4b: the Ask screen (2026-11-03, lane: V1)
+
+- **What:** the app's screen for VO14.4a's Ask, as V-Q12 answered (a). A home card, *Ask one
+  assistant*, between your assistants and Panels, opens `Ask.vue`: pick an assistant (one without
+  your permission is disabled), tick which permissions that are on feed this one question (ticks
+  start empty each time; the calendar's box is disabled when no file is chosen or it moved), see
+  where it may go, type the question (1 to 2,000 characters), then the answer (line breaks kept)
+  and the library's line saying who answered and what it was given. One app command,
+  `ask_assistant`, calls `voice_api::ask` unchanged and is paired with `voice ask` in `PARITY`.
+  Leaving is blocked while a question is out. Brief: `plans/briefs/VO14.4b-ask-screen.md` (§ 9 the
+  review's and the Verifier's fixes).
+- **Decided at pickup (V1):** where it may go is a sentence built from what's ticked, not a route
+  asked of the backend (that would be a second command); the exact answer comes back after the ask,
+  and a refusal comes back as the guard's own sentence. A home card, since Ask starts by picking an
+  assistant, as Panels does.
+- **Who built it:** Codex, two dispatches (§§ 1–8; § 9). V1 committed.
+- **Tests:** `builder/ui/src/screens/Ask.test.ts` (23), `ask/words.test.ts` (2), one in
+  `VoiceApp.test.ts`, one row in `app/tauri-backend.test.ts`, `builder/app/tests/lockdown.rs` and
+  `builder/cli/tests/app_parity.rs` (the new pair).
+- **Mutations (killed, V1, each restored with `cmp`):** `open()` no longer blocked while asking;
+  ticks not cleared on a new choice; a stale permissions answer applied; the radios left enabled
+  while asking.
+- **Gates:** security review (Opus): no HIGH or MEDIUM; LOW, the calendar line said only a model
+  server on your own machines could answer, though one set up with `--network` can be on the local
+  network (fixed, § 9.1); LOW, the plain line didn't say Claude Code sends to Anthropic (fixed,
+  § 9.1); LOW, Ask has no Stop, so a hung call holds the screen until Claude Code's 15-minute limit
+  (recorded, not fixed: a stop belongs to the library). Verifier (Fable) on `91632fd`: PASS, no
+  must-fix, from reading (the resource gate held her test runs; V1's runs below cover them);
+  should-fixes: the plain line didn't say a lowered ceiling with no server means a refusal (fixed,
+  § 9.1), a second `running` after unmount (fixed, § 9.2). Her note: the filter that sends only
+  permissions that are on is defence in depth no test reaches, since the screen never renders an off
+  one. `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh` all passed on `91632fd`; the UI suite (556)
+  and typecheck passed again on `d490116`.
+- **Not verified:** the screen in the running app, light and dark, and a real answer from Claude Code
+  or a model server (walk owed); "nothing else" in the where-lines and the library's line leaves out
+  the names and today's date the prompt carries (VO14.4a's wording, kept the same).
+
 ## VO14.4a: Ask, in the library and the terminal (2026-11-03, lane: V1)
 
 - **What:** `voice_api::ask` and `voice ask <member_dir> --question-file <path> [--with calendar.read]`:
