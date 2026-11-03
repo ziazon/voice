@@ -62,6 +62,19 @@ it.each([false, true])('gives or changes permission with integer inputs, replace
   expect(backend.auditLog).toHaveBeenLastCalledWith({ slug: 'example', last: 50 })
 })
 
+it.each([false, true].flatMap(isOn => [
+  ['', '14'], ['abc', '14'], ['-1', '14'], ['2.5', '14'], ['32', '14'],
+  ['0', '0'], ['0', '93'], ['0', '1e9'],
+].map(([pastDays, nextDays]) => ({ isOn, pastDays: pastDays!, nextDays: nextDays! }))))('rejects invalid window $pastDays, $nextDays (on=$isOn)', async ({ isOn, pastDays, nextDays }) => {
+  const backend = fakeBackend({ listPermissions: vi.fn().mockResolvedValue({ ...list, permissions: [{ ...(isOn ? on : off) }] }) })
+  const wrapper = screen(Permissions, backend, { assistant }); await flushPromises()
+  const inputs = wrapper.findAll('input')
+  await inputs[0]!.setValue(pastDays); await inputs[1]!.setValue(nextDays)
+  await button(wrapper, isOn ? 'Change the window' : 'Give permission').trigger('click'); await flushPromises()
+  expect.soft(backend.givePermission).not.toHaveBeenCalled()
+  expect.soft(wrapper.findAll('.alert-warning').map(alert => alert.text())).toEqual(['The calendar window goes from 0 to 31 days back and from 1 to 92 days ahead.'])
+})
+
 it('turns off with the exact request and replaces the row', async () => {
   const backend = fakeBackend({ listPermissions: vi.fn().mockResolvedValue(enabled), turnOffPermission: vi.fn().mockResolvedValue({ permissions: list, said: 'Permission is off.' }) })
   const wrapper = screen(Permissions, backend, { assistant }); await flushPromises()

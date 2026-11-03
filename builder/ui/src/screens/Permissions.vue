@@ -37,14 +37,21 @@ function retry() {
 
 async function change(permission: Permission, turnOff = false) {
   if (busy.value) return
-  changing.value = true
   message.value = ''
   error.value = ''
+  if (!turnOff && (
+    !Number.isInteger(permission.pastDays) || permission.pastDays < 0 || permission.pastDays > 31 ||
+    !Number.isInteger(permission.nextDays) || permission.nextDays < 1 || permission.nextDays > 92
+  )) {
+    error.value = words.windowRange
+    return
+  }
+  changing.value = true
   try {
     const request = { slug: props.assistant.slug, id: permission.id }
     const result = turnOff
       ? await backend.turnOffPermission(request)
-      : await backend.givePermission({ ...request, pastDays: Math.trunc(Number(permission.pastDays)), nextDays: Math.trunc(Number(permission.nextDays)) })
+      : await backend.givePermission({ ...request, pastDays: permission.pastDays, nextDays: permission.nextDays })
     permissions.value = result.permissions
     message.value = result.said
   } catch (failure) {

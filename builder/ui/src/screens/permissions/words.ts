@@ -18,6 +18,7 @@ export const words = {
   turnOff: 'Turn off',
   turnOffPermission: 'Turn off permission',
   saveFailure: "Voice couldn't save this. Try again.",
+  windowRange: 'The calendar window goes from 0 to 31 days back and from 1 to 92 days ahead.',
   noCalendar: 'No calendar file chosen yet. Export your calendar as an .ics file, then choose it here.',
   chooseFile: 'Choose a file',
   chooseFolder: 'Choose a folder',
