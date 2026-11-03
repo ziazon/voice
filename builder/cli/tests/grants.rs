@@ -220,6 +220,15 @@ fn audit_exact_read_refusal_and_unreadable_sentences() {
 }
 
 #[test]
+fn unknown_capability_replaces_line_separators_and_bidi_controls() {
+    let f = Fixture::new();
+    failure(
+        f.run("give", &["calendar.\u{2028}\u{202e}write"]),
+        "calendar.  write isn't something Voice can be given permission for. It can be given: calendar.read.",
+    );
+}
+
+#[test]
 fn unknown_capability_is_one_line_and_bounded_by_characters() {
     let f = Fixture::new();
     failure(
