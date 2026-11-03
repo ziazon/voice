@@ -1,3 +1,4 @@
+import type { AskAnswer } from '../types/generated/AskAnswer'
 import type { Permissions } from '../types/generated/Permissions'
 import type { PermissionsChanged } from '../types/generated/PermissionsChanged'
 import type { CalendarExport } from '../types/generated/CalendarExport'
@@ -41,6 +42,7 @@ import type { ClaudeaiCounts } from '../types/generated/ClaudeaiCounts'
 import type { MergeCounts } from '../types/generated/MergeCounts'
 
 export const tauriBackend: Backend = {
+  askAssistant: request => invoke<AskAnswer>('ask_assistant', { request }),
   listPermissions: request => invoke<Permissions>('list_permissions', { request }),
   givePermission: request => invoke<PermissionsChanged>('give_permission', { request }),
   turnOffPermission: request => invoke<PermissionsChanged>('turn_off_permission', { request }),

@@ -1,3 +1,5 @@
+import type { AskRequest } from './types/generated/AskRequest'
+import type { AskAnswer } from './types/generated/AskAnswer'
 import type { Permissions } from './types/generated/Permissions'
 import type { PermissionsChanged } from './types/generated/PermissionsChanged'
 import type { GivePermissionRequest } from './types/generated/GivePermissionRequest'
@@ -69,6 +71,7 @@ import type { MergeCounts } from './types/generated/MergeCounts'
  * A host app must keep the same rule.
  */
 export interface Backend {
+  askAssistant(request: AskRequest): Promise<AskAnswer>
   listPermissions(request: SlugRequest): Promise<Permissions>
   givePermission(request: GivePermissionRequest): Promise<PermissionsChanged>
   turnOffPermission(request: PermissionRequest): Promise<PermissionsChanged>

@@ -60,10 +60,22 @@ fn permissions_commands_share_the_terminal_commands() {
         ("choose_calendar_export", "calendar", "choose"),
         ("audit_log", "audit", "show"),
     ];
-    let rows = &PARITY[PARITY.len().saturating_sub(5)..];
+    let rows: Vec<_> = PARITY
+        .iter()
+        .filter(|row| expected.iter().any(|(app, _, _)| *app == row.app))
+        .collect();
     assert_eq!(rows.len(), expected.len());
     for (row, (app, group, action)) in rows.iter().zip(expected) {
         assert_eq!(row.app, app);
         assert_eq!(row.cli, &[&[group, action][..]]);
     }
+}
+
+#[test]
+fn ask_command_shares_the_terminal_ask() {
+    let row = PARITY
+        .iter()
+        .find(|row| row.app == "ask_assistant")
+        .expect("Ask needs app parity");
+    assert_eq!(row.cli, &[&["ask"][..]]);
 }
