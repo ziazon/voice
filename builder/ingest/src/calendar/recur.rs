@@ -90,9 +90,7 @@ impl Rule {
             ordinal_days: Vec::new(),
         };
         if let Some(wkst) = parts.get("WKST") {
-            if !matches!(rule.frequency, Frequency::Weekly) {
-                return None;
-            }
+            // RFC 5545 §3.3.10 allows WKST on every frequency; only WEEKLY uses it.
             rule.week_start = day_name(wkst)?;
         }
         if let Some(days) = parts.get("BYDAY") {

@@ -282,7 +282,7 @@ pub fn require(
         },
         Err(error) => (Reason::Damaged, error),
     };
-    append(
+    let logged = append(
         home,
         slug,
         RawEvent::Refused {
@@ -291,7 +291,12 @@ pub fn require(
             reason: reason.id().into(),
         },
         now,
-    )?;
+    );
+    match logged {
+        Err(Error::Io { source, .. })
+            if reason == Reason::NoGrant && source.kind() == std::io::ErrorKind::NotFound => {}
+        result => result?,
+    }
     Err(error)
 }
 pub fn record_read(

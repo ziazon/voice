@@ -22,15 +22,17 @@ pub enum Step {
     ListClaudeaiChats,
     ReadClaudeai,
     Skills,
+    ReadCalendar,
 }
 impl Step {
-    pub const ALL: [Step; 6] = [
+    pub const ALL: [Step; 7] = [
         Self::ClaudeCodeFolders,
         Self::ReadClaudeCode,
         Self::ClaudeaiExportStatus,
         Self::ListClaudeaiChats,
         Self::ReadClaudeai,
         Self::Skills,
+        Self::ReadCalendar,
     ];
     /// The word after `voice reader`.
     pub fn name(self) -> &'static str {
@@ -41,6 +43,7 @@ impl Step {
             Self::ListClaudeaiChats => "list-claudeai-chats",
             Self::ReadClaudeai => "read-claudeai",
             Self::Skills => "skills",
+            Self::ReadCalendar => "read-calendar",
         }
     }
 }
@@ -61,6 +64,13 @@ pub struct SkillsStep {
     pub action: SkillsAction,
     #[serde(default)]
     pub ids: Vec<String>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CalendarStep {
+    pub slug: String,
+    pub today: String,
+    pub zone: String,
 }
 /// One line the reader prints: progress lines, then exactly one result or error line.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -161,6 +171,10 @@ fn serve_step(
         };
     }
     match step {
+        Step::ReadCalendar => {
+            let request = request!(CalendarStep);
+            lines.result(crate::calendar::read_calendar_in(home, request))
+        }
         Step::ClaudeCodeFolders => {
             let request = request!(SlugRequest);
             lines.result(history::claude_code_folders_in(home, request))
@@ -454,6 +468,26 @@ mod tests {
             error(Some(&home.0), Step::Skills, &mut input.as_bytes(), REQUEST);
         }
     }
+    #[test]
+    fn calendar_refuses_a_day_three_days_off_and_an_unknown_zone() {
+        let home = Home::new(false);
+        let now = std::time::SystemTime::now();
+        let off = voice_agent::ledger::utc_stamp(now + std::time::Duration::from_secs(3 * 86400));
+        let today = voice_agent::ledger::utc_stamp(now);
+        for (day, zone, expected) in [
+            (&off[..10], "UTC", REQUEST),
+            (&today[..10], "Invented/Missing", crate::calendar::ZONE),
+        ] {
+            let raw = serde_json::to_vec(&json!({"slug":"ari","today":day,"zone":zone})).unwrap();
+            error(
+                Some(&home.0),
+                Step::ReadCalendar,
+                &mut raw.as_slice(),
+                expected,
+            );
+        }
+    }
+
     #[test]
     fn oversized_result_becomes_one_error() {
         let home = Home::new(true);

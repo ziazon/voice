@@ -1,4 +1,5 @@
 pub mod assistants;
+pub mod calendar;
 pub use assistants::*;
 pub mod dto;
 pub mod json_object;

@@ -66,6 +66,18 @@ impl<T: DeserializeOwned> Judge<'_, T> {
             reader::Line::Result(value) => self.final_line = Some(Final::Result(value)),
             reader::Line::Error(message) => {
                 let message = if [
+                    crate::calendar::NONE,
+                    crate::calendar::GONE,
+                    crate::calendar::BAD,
+                    crate::calendar::NOT_ICS,
+                    crate::calendar::TOO_MANY,
+                    crate::calendar::TOO_BIG,
+                    crate::calendar::ZONE,
+                    crate::calendar::LOG,
+                    crate::calendar::BAD_GRANTS,
+                    crate::calendar::NO_STATE,
+                    crate::calendar::MAC_ONLY_CALENDAR,
+                    &voice_agent::text::no_grant(voice_agent::grants::Capability::CalendarRead),
                     history::FIND,
                     history::ELSEWHERE,
                     history::PERMISSION,
@@ -185,6 +197,7 @@ fn step_failure(step: Step) -> &'static str {
         Step::ClaudeCodeFolders => history::FOLDERS,
         Step::ReadClaudeCode => history::READ,
         Step::Skills => crate::skills::SKILLS_READ,
+        Step::ReadCalendar => crate::calendar::BAD,
         _ => history::EXPORT_BAD,
     }
 }
@@ -417,6 +430,40 @@ pub fn use_claudeai_export(
         .ok_or_else(|| failure(history::EXPORT_GONE))
 }
 
+pub fn read_calendar(
+    home: &Path,
+    place: &Place<'_>,
+    slug: &str,
+    step: &str,
+) -> Result<CalendarRead> {
+    crate::calendar::read_calendar_through(
+        home,
+        slug,
+        step,
+        std::time::SystemTime::now(),
+        |request| {
+            let member = crate::calendar::member_in(home, slug)?;
+            let (path, folder) = crate::calendar::chosen_export(home, slug)?
+                .ok_or_else(|| failure(crate::calendar::NONE))?;
+            crate::calendar::export_allowed(home, &member, &path)?;
+            let source = if folder {
+                Source::Folder(&path)
+            } else {
+                Source::File(&path)
+            };
+            run(
+                home,
+                place,
+                slug,
+                Step::ReadCalendar,
+                request,
+                &[source],
+                &mut |_| {},
+            )
+        },
+    )
+}
+
 fn skills_run<T: DeserializeOwned>(
     home: &Path,
     place: &Place<'_>,
@@ -580,6 +627,33 @@ mod tests {
             .and_then(|line| line.finish(Some(code)));
         assert_eq!(result.unwrap_err().message, reader::STOPPED);
     }
+    #[test]
+    fn calendar_sentences_pass_through_and_unknown_errors_are_fixed() {
+        use crate::calendar;
+        for message in [
+            calendar::NONE,
+            calendar::GONE,
+            calendar::BAD,
+            calendar::NOT_ICS,
+            calendar::TOO_MANY,
+            calendar::TOO_BIG,
+            calendar::ZONE,
+            calendar::LOG,
+            calendar::BAD_GRANTS,
+            calendar::NO_STATE,
+            calendar::MAC_ONLY_CALENDAR,
+            &voice_agent::text::no_grant(voice_agent::grants::Capability::CalendarRead),
+        ] {
+            refusal(message, message, Step::ReadCalendar);
+        }
+        refusal("private canary path", calendar::BAD, Step::ReadCalendar);
+        stopped(
+            b"{\"progress\":{\"done\":1,\"total\":1}}\n",
+            Step::ReadCalendar,
+            0,
+        );
+    }
+
     #[test]
     fn skills_notes_from_a_reader_keep_only_the_known_sentences() {
         use voice_ingest::skills::{PLUGIN_NOTE, SYNCED_TWICE_NOTE, UNREADABLE_NOTE};

@@ -344,6 +344,11 @@ pub fn read(
     let from = Date::from_day(first).ok_or_else(|| invalid(BAD))?;
     let to = Date::from_day(last).ok_or_else(|| invalid(BAD))?;
     let entries = ics::entries(files)?;
+    let series_uids: HashSet<_> = entries
+        .iter()
+        .filter(|entry| !entry.fields.contains_key("RECURRENCE-ID"))
+        .filter_map(|entry| entry.fields.get("UID").map(|uid| uid.value.as_str()))
+        .collect();
     let mut zones = Zones {
         local,
         root: zones,
@@ -380,6 +385,16 @@ pub fn read(
             continue;
         };
         if p.id.is_some() {
+            if p.uid
+                .as_ref()
+                .is_some_and(|uid| !series_uids.contains(uid.as_str()))
+                && let Some(event) = p.event(p.start.wall, &mut zones, first, last)
+            {
+                if let Some(event) = event {
+                    kept.add(event, filters);
+                }
+                used.insert(i);
+            }
             continue;
         }
         let mut series = Kept::default();

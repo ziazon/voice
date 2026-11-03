@@ -212,6 +212,17 @@ fn require_logs_refusals_only_and_record_read_logs_counts() {
     );
 }
 #[test]
+fn require_without_state_has_a_fixed_refusal_and_creates_nothing() {
+    let f = Fixture::new();
+    assert_eq!(
+        grants::require(&f.0, "absent", CAP, "cli", now())
+            .unwrap_err()
+            .to_string(),
+        "Voice doesn't have your permission to read your calendar for this assistant."
+    );
+    assert!(!f.0.join(".claude/state/absent").exists());
+}
+#[test]
 fn require_propagates_failed_refusal_audit() {
     for damaged in [false, true] {
         let f = Fixture::new();

@@ -13,9 +13,8 @@ pub struct Zone {
 }
 #[derive(Debug, Clone)]
 enum Future {
-    Last,
     Fixed(i32),
-    Daylight,
+    Unavailable,
 }
 
 impl Zone {
@@ -57,9 +56,10 @@ impl Zone {
         }
         let future = if footer.contains(',') {
             daylight_footer(footer)?;
-            Future::Daylight
+            Future::Unavailable
         } else if footer.is_empty() {
-            Future::Last
+            // RFC 9636 §3.3: an empty footer makes future information unavailable.
+            Future::Unavailable
         } else {
             Future::Fixed(fixed_footer(footer)?)
         };
@@ -88,9 +88,8 @@ impl Zone {
     pub fn offset_at(&self, utc: i64) -> Option<i32> {
         if self.transitions.last().is_none_or(|(last, _)| utc > *last) {
             match self.future {
-                Future::Daylight => return None,
+                Future::Unavailable => return None,
                 Future::Fixed(offset) => return Some(offset),
-                Future::Last => (),
             }
         }
         let i = self.transitions.partition_point(|(at, _)| *at <= utc);

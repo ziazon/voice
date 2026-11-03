@@ -188,7 +188,7 @@ pub fn no_grant(capability: crate::grants::Capability) -> String {
         capability.words()
     )
 }
-fn typed_name(name: &str) -> String {
+pub fn typed_name(name: &str) -> String {
     let mut chars = name.chars();
     let mut shown: String = chars
         .by_ref()

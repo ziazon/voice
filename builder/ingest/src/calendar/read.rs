@@ -14,7 +14,7 @@ use voice_core::{
 
 const FILE_CAP: u64 = 64 * 1024 * 1024;
 const TOTAL_CAP: u64 = 128 * 1024 * 1024;
-const HARD_LINK: &str = "Voice won't read this calendar: the same file has another name somewhere else on this computer (a hard link). Make a copy of the export folder and choose the copy";
+const HARD_LINK: &str = "Voice won't read this calendar: the same file has another name somewhere else on this computer (a hard link). Make a copy of it and choose the copy.";
 fn ics(name: &[u8]) -> bool {
     name.len() >= 4 && name[name.len() - 4..].eq_ignore_ascii_case(b".ics")
 }

@@ -6,7 +6,7 @@ use voice_ingest::calendar::read_export;
 const BAD: &str = "Voice couldn't read this calendar. Check it's a calendar you exported (an .ics file), then choose it again.";
 const TOO_MANY: &str =
     "This folder has more than 64 calendar files. Choose a folder with fewer, or one file.";
-const HARD_LINK: &str = "Voice won't read this calendar: the same file has another name somewhere else on this computer (a hard link). Make a copy of the export folder and choose the copy";
+const HARD_LINK: &str = "Voice won't read this calendar: the same file has another name somewhere else on this computer (a hard link). Make a copy of it and choose the copy.";
 #[test]
 fn one_ics_file_is_read() {
     let scratch = Scratch::new("calendar-file");

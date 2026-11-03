@@ -250,6 +250,32 @@ fn monthly_days_skip_short_months_and_ordinals_skip_missing_weekdays() {
     assert_eq!(starts(&c), ["2026-11-30T10:00"]);
 }
 #[test]
+fn week_start_is_allowed_and_ignored_on_nonweekly_rules() {
+    for (rule, expected) in [
+        (
+            "FREQ=MONTHLY;BYMONTHDAY=3;COUNT=3",
+            vec!["2026-11-03T10:00", "2026-12-03T10:00", "2027-01-03T10:00"],
+        ),
+        (
+            "FREQ=DAILY;COUNT=2",
+            vec!["2026-11-03T10:00", "2026-11-04T10:00"],
+        ),
+        ("FREQ=YEARLY;COUNT=2", vec!["2026-11-03T10:00"]),
+    ] {
+        let mut w = window();
+        w.next_days = 92;
+        for wkst in ["", ";WKST=SU"] {
+            let c = parse_at(
+                &entry(&format!("DTSTART:20261103T100000\nRRULE:{rule}{wkst}")),
+                "UTC",
+                w,
+            );
+            assert_eq!(starts(&c), expected, "{rule}{wkst}");
+            assert_eq!(c.not_understood, 0);
+        }
+    }
+}
+#[test]
 fn yearly_leap_day_skips_non_leap_years() {
     let w = Window {
         today: Date {
@@ -295,6 +321,35 @@ fn overrides_replace_one_occurrence_and_keep_cancellations() {
     );
     assert_eq!(c.events[1].title, "Moved");
     assert_eq!(c.events[2].status, Some(Status::Cancelled));
+}
+#[test]
+fn an_override_without_its_series_is_a_single_event() {
+    let c = parse(&entry(
+        "UID:invitation\nRECURRENCE-ID:20261103T100000\nDTSTART:20261103T140000\nDTEND:20261103T150000\nSUMMARY:Team planning\nLOCATION:Room 4\nSTATUS:TENTATIVE",
+    ));
+    assert_eq!(
+        c.events,
+        [Event {
+            title: "Team planning".into(),
+            place: Some("Room 4".into()),
+            start: "2026-11-03T14:00".into(),
+            end: "2026-11-03T15:00".into(),
+            all_day: false,
+            status: Some(Status::Tentative),
+        }]
+    );
+    assert_eq!(c.not_understood, 0);
+}
+#[test]
+fn an_unmatched_override_with_a_series_present_is_not_understood() {
+    for rule in ["FREQ=DAILY;COUNT=1", "FREQ=HOURLY"] {
+        let c = parse(&[
+            entry(&format!("UID:series\nDTSTART:20261102T100000\nRRULE:{rule}")),
+            entry("UID:series\nRECURRENCE-ID:20261103T100000\nDTSTART:20261103T140000\nSUMMARY:Unmatched"),
+        ].concat());
+        assert!(!c.events.iter().any(|event| event.title == "Unmatched"));
+        assert_eq!(c.not_understood, if rule == "FREQ=HOURLY" { 2 } else { 1 });
+    }
 }
 #[test]
 fn daylight_changes_convert_gaps_and_first_overlap_and_keep_weekly_wall_time() {
@@ -607,6 +662,42 @@ fn malformed_zone_footers_are_refused() {
     bad.extend_from_slice(b"nonsense,wat\n");
     fs::write(scratch.0.join("Malformed"), bad).unwrap();
     assert!(Zone::load(&scratch.0, "Malformed").is_none());
+}
+#[test]
+fn an_empty_zone_footer_leaves_future_offsets_unavailable() {
+    let scratch = Scratch::new("calendar-empty-footer");
+    for transitions in [0u32, 1] {
+        let mut bytes = Vec::new();
+        for width in [4, 8] {
+            bytes.extend_from_slice(b"TZif2");
+            bytes.extend_from_slice(&[0; 15]);
+            for count in [0u32, 0, 0, transitions, 1, 4] {
+                bytes.extend_from_slice(&count.to_be_bytes());
+            }
+            if transitions == 1 {
+                if width == 4 {
+                    bytes.extend_from_slice(&100i32.to_be_bytes());
+                } else {
+                    bytes.extend_from_slice(&100i64.to_be_bytes());
+                }
+                bytes.push(0);
+            }
+            bytes.extend_from_slice(&3600i32.to_be_bytes());
+            bytes.extend_from_slice(&[0, 0]);
+            bytes.extend_from_slice(b"STD\0");
+        }
+        bytes.extend_from_slice(b"\n\n");
+        fs::write(scratch.0.join("Empty"), bytes).unwrap();
+        let zone = Zone::load(&scratch.0, "Empty").unwrap();
+        assert_eq!(zone.offset_at(101), None);
+        if transitions == 0 {
+            assert_eq!(zone.offset_at(-1), None);
+            assert_eq!(zone.to_utc(0), None);
+        } else {
+            assert_eq!(zone.offset_at(99), Some(3600));
+            assert_eq!(zone.offset_at(100), Some(3600));
+        }
+    }
 }
 #[test]
 fn oversized_footer_numbers_are_refused_without_panicking() {

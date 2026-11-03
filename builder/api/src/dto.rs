@@ -794,3 +794,44 @@ pub enum MirrorAfter {
     Removed,
     NotRemoved,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarExport {
+    pub name: String,
+    pub folder: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarEvent {
+    pub title: String,
+    pub place: Option<String>,
+    pub start: String,
+    pub end: String,
+    pub all_day: bool,
+    pub status: Option<EventStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum EventStatus {
+    Tentative,
+    Confirmed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarRead {
+    pub events: Vec<CalendarEvent>,
+    pub from: String,
+    pub to: String,
+    pub private_left_out: u32,
+    pub not_understood: u32,
+    pub more: bool,
+}

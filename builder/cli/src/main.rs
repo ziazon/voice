@@ -24,6 +24,7 @@ use voice_save::{
 use voice_steps::input::RecordList as Records;
 
 mod assistants;
+mod calendar;
 mod panel;
 mod record;
 mod skills;
@@ -425,6 +426,11 @@ enum Command {
         #[command(subcommand)]
         command: GrantsCommand,
     },
+    /// Choose or read the calendar you exported
+    Calendar {
+        #[command(subcommand)]
+        command: calendar::CalendarCommand,
+    },
     /// Read this assistant's log of permissions and source reads
     Audit {
         #[command(subcommand)]
@@ -466,6 +472,8 @@ enum ReaderStep {
     ReadClaudeai,
     #[value(name = "skills")]
     Skills,
+    #[value(name = "read-calendar")]
+    ReadCalendar,
 }
 impl From<ReaderStep> for voice_api::reader::Step {
     fn from(step: ReaderStep) -> Self {
@@ -476,6 +484,7 @@ impl From<ReaderStep> for voice_api::reader::Step {
             ReaderStep::ListClaudeaiChats => Self::ListClaudeaiChats,
             ReaderStep::ReadClaudeai => Self::ReadClaudeai,
             ReaderStep::Skills => Self::Skills,
+            ReaderStep::ReadCalendar => Self::ReadCalendar,
         }
     }
 }
@@ -2677,6 +2686,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         ),
         Some(Command::Report { member_dir }) => report(member_dir),
         Some(Command::Grants { command }) => grants(command),
+        Some(Command::Calendar { command }) => calendar::run(command),
         Some(Command::Audit { command }) => audit(command),
         Some(Command::SelfHosted { command }) => self_hosted(command),
         Some(Command::Limit { command }) => match command {
