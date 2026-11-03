@@ -3,14 +3,10 @@
 /// A character a point never holds: control characters, line and paragraph separators, the
 /// invisible ones that could split a word past the shingle check or the filters, and `<`, which
 /// would start hidden markup in the Markdown the assistant reads.
+/// The shared part comes from `voice_ingest::text`.
 pub fn hidden(c: char) -> bool {
-    c.is_control()
+    voice_ingest::text::hidden(c)
         || c == '<'
-        || matches!(c, '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{FEFF}')
-        || ('\u{200B}'..='\u{200F}').contains(&c)
-        || ('\u{2028}'..='\u{202E}').contains(&c)
-        || ('\u{2060}'..='\u{206F}').contains(&c)
-        || ('\u{FFF9}'..='\u{FFFB}').contains(&c)
         || matches!(
             c,
             '\u{034F}' | '\u{115F}' | '\u{1160}' | '\u{3164}' | '\u{FFA0}'
