@@ -2,6 +2,49 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO14.2: the calendar, from a file the person exported (2026-11-02, lane: V1)
+
+- **What:** the first capability that reads. The person picks an exported calendar (`.ics`, one
+  file or a folder of up to 64), kept as `calendar-export.json` in the state folder
+  (`voice calendar choose`, no history consent needed: the grant is this source's permission).
+  It is read only by the sandboxed reader (`voice reader read-calendar`) with that export as its
+  only source; the reader loads the grant itself and uses its window. The broker
+  (`voice_api::calendar::read_calendar_through`) requires the grant first (a refusal is logged),
+  finds the Mac's zone outside the sandbox, checks the reader's answer (window, dates, overlap,
+  count, hidden characters) and logs the read, or drops it when the log line can't be written.
+  `voice_ingest::calendar`: the system zone database (TZif v2+), RFC 5545 content lines, a
+  bounded recurrence subset (daily, weekly BYDAY/WKST, monthly BYMONTHDAY ±/ordinal BYDAY,
+  yearly), EXDATE and overrides matched by instant, the window as overlapping local days, the
+  text filters, caps and a 5,000,000-step budget per read with skip-ahead. Only title, place,
+  start, end, all-day and status leave the parser; descriptions, attendees and the rest are never
+  read. `voice calendar show` prints the read. Brief: `plans/briefs/VO14.2-calendar-from-an-export.md`
+  (§ 13 part A's review, § 14 the security review's and Verifier's fixes, § 15 the live run's).
+- **Decided at pickup (V1):** times are converted with the system database, never guessed (an
+  unknown zone, a Windows zone name or a future DST rule is "not understood" and counted); the
+  zone is found outside the sandbox (the reader can't follow `/etc/localtime` into `/var/db`);
+  off macOS the read refuses; not understood counts only entries that could touch the window.
+- **Who built it:** Codex, four dispatches (part A §§ 2–5; part B §§ 6–13; § 14; § 15).
+- **Tests:** `builder/ingest/tests/calendar_rules.rs` and `calendar_export.rs`, the `recur.rs`
+  and `read.rs` unit tests, `builder/api/src/calendar/tests.rs`, the reader protocol and Judge
+  tests, `builder/agent/tests/grants.rs` (no state folder), `builder/cli/tests/calendar.rs`
+  (through the real sandbox) and the CLI wording unit tests.
+- **Mutations (8, all killed):** the broker's `require` swapped for a bare load; the log error
+  ignored; the window check; the hidden-character check; the `from` check; the text filters;
+  EXDATE; the window's last day.
+- **Live:** the built `voice` in a throwaway home with an invented assistant and calendar:
+  no choice, no grant (refused and logged), a grant, then a Berlin 16:00 entry shown at 10:00 New
+  York and 00:00 Tokyo, a weekly COUNT=4 series showing its two in-window occurrences, an
+  out-of-window entry left out, an HOURLY rule counted, the DESCRIPTION/ATTENDEE canary absent,
+  and the audit log's refused, given and read lines. The first Verifier's hostile shape (199,000
+  daily entries from year 1, 23 MB) went from about 20 minutes to 9 seconds (debug build).
+- **Gates:** security review (Opus): no HIGH, two MEDIUM (CPU and EXDATE memory in the reader),
+  four LOW, all fixed or recorded as limits (§ 14). Verifier (Fable): FAIL on the CPU must-fix,
+  plus the UTC override should-fix; fixed in § 14. Repeat Verifier (Opus) on `83119be`: still running when run `204023-r1` hit its time limit; rerun it before the land.
+  `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh`: all passed on the final code.
+- **Not verified:** a non-macOS build's refusal path at run time; real Google, Apple and Outlook
+  exports (fixtures are shaped like them, invented).
+- **Left:** VO14.3 (the screens) and VO14.4 (first use, V-Q12) are next.
+
 ## VO14.1: grants and the audit log (2026-11-02, lane: V1)
 
 - **What:** `voice_agent::grants`: typed read capabilities (`calendar.read`, source `calendar`; no
