@@ -209,7 +209,7 @@ pub(crate) fn read_calendar_in(home: &Path, request: reader::CalendarStep) -> Re
         },
         &filters,
     )
-    .map_err(|_| failure(BAD))?;
+    .map_err(|e| failure(&e.to_string()))?;
     Ok(CalendarRead {
         events: read
             .events

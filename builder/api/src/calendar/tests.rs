@@ -392,6 +392,34 @@ fn reader_uses_its_own_grant_window_and_never_logs_or_reads_descriptions() {
     );
 }
 #[test]
+fn reader_preserves_too_big_for_an_export_over_the_component_cap() {
+    let h = Home::new(true);
+    fs::write(
+        h.file(),
+        format!(
+            "BEGIN:VCALENDAR\n{}END:VCALENDAR\n",
+            "BEGIN:VEVENT\nEND:VEVENT\n".repeat(200_000)
+        ),
+    )
+    .unwrap();
+    h.choose();
+    h.grant();
+    assert_eq!(
+        read_calendar_in(
+            &h.0,
+            reader::CalendarStep {
+                slug: "ari".into(),
+                today: ledger::utc_stamp(SystemTime::now())[..10].into(),
+                zone: "UTC".into(),
+            }
+        )
+        .unwrap_err()
+        .message,
+        TOO_BIG
+    );
+}
+
+#[test]
 fn reader_refuses_bad_today_and_unknown_zone_before_permission() {
     let h = Home::new(true);
     for today in ["2026-02-30", "2026-2-03", "2000-01-01", "ééééé"] {
