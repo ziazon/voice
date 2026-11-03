@@ -385,3 +385,27 @@ permission belongs to this person and this computer, so copying an assistant doe
   step. Once spent, remaining entries are not understood when they could touch
   the window. Rules without `COUNT` skip ahead to periods that could reach the window, after
   visiting the start; rules with `COUNT` walk from the start so earlier occurrences still count.
+
+## 2026-11-03: Ask is where a capability's read first reaches a model (VO14.4a)
+
+The person chose it (V-Q12, answer a): one question to one assistant, where they tick which granted
+permissions feed it this time. Panel seat briefs stay unchanged, so no other assistant's data is
+mixed in and one seat's calendar can't keep a whole panel on local models.
+
+- **What goes in:** the assistant's `decisions.md` (`crew-folder`), the typed question (`typed`),
+  today's local date, and for each ticked permission what it read (`calendar.read` adds
+  `calendar`). Nothing else: no history, no skills, no other assistant.
+- **The guard routes before anything is read or spent.** A refusal (the calendar ticked and no model
+  server set up, by default) reads nothing, logs nothing, opens no session and runs no `claude`.
+  The calendar is read only after the route is found, through the sandboxed reader, under the
+  grant and its window, with step `ask` in the audit log.
+- **Claude Code is checked only when the route picks it**, so an ask that goes to the person's own
+  model server needs no Claude sign-in.
+- **Nothing is kept.** The reply is returned, never written; the only writes are the ledger line every
+  model step leaves and the audit log's read line. The reply isn't withheld for looking private,
+  because it goes only to the person who asked (a panel withholds posts because they go to other
+  assistants); it is cleaned of control characters and capped at 4,000 characters.
+- **Fixed text only in the system prompt** (it is in the `claude` child's argv): names, decisions,
+  the question and the events go in the prompt, each fenced as data. At most 500 events go, and
+  the person is told when more were left out.
+- **One call, no retry.** The app's screen is VO14.4b.

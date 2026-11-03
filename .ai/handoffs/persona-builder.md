@@ -2,6 +2,40 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO14.4a: Ask, in the library and the terminal (2026-11-03, lane: V1)
+
+- **What:** `voice_api::ask` and `voice ask <member_dir> --question-file <path> [--with calendar.read]`:
+  one question to one built assistant, with the permissions the person ticks this time, as V-Q12
+  answered (a). The brief carries the assistant's `decisions.md`, the question, today's date and,
+  when ticked, the calendar events (at most 500), each fenced as data; the system prompt is fixed
+  text. The guard routes before anything is read: with the calendar ticked and no model server it
+  refuses with its own sentence, reading, logging, spending and running nothing. The calendar is
+  read only after a route is found (step `ask` in the audit log), before the session is opened.
+  Claude Code is checked only when the route picks it. The reply is cleaned, capped at 4,000
+  characters, returned and never kept. Brief: `plans/briefs/VO14.4a-ask.md` (§ 8 the fixes).
+- **Decided at pickup (V1):** VO14.4 split into VO14.4a (this) and VO14.4b (the app's screen), since
+  together they were bigger than VO14.3, which filled a run. The reply isn't withheld for looking
+  private, since it goes only to the person who asked. A question the filters call secret is refused.
+- **Who built it:** Codex, two dispatches (§§ 1–7; § 8). V1 committed.
+- **Tests:** `builder/api/tests/ask.rs` (10), `builder/api/src/ask/tests.rs` (9),
+  `builder/cli/tests/ask.rs` (5).
+- **Mutations (killed):** the Verifier's reasoning over the suite (the calendar read before routing,
+  the consent re-check dropped, Claude checked always, the session before the read), and V1's two:
+  the question file checked against the built-in deny list only; the invisible-character mapping
+  dropped.
+- **Gates:** security review (Opus): no HIGH; MEDIUM, the question file skipped the person's own
+  `denied_paths` (fixed, § 8.1); LOW, invisible characters in the reply (fixed, § 8.2); a residual
+  note recorded as a limit in `.ai/SECURITY.md`. Verifier (Fable) on `9b0b81c`: PASS, no must-fix;
+  should-fixes, all in § 8 (60 added lines in files she saw, inside her pass): the flaky model-server
+  test (an accepted socket keeps the listener's non-blocking flag on macOS, which she proved with a
+  probe), a false comment, an `unreachable!` and a dead fence fallback. Two notes she left, not
+  fixed: `decisions.md` is read and Claude's profile folder ensured before the route (neither is a
+  source read, a log line or a spend); a revoke between the calendar read and the call still sends
+  the events once (the read is logged).
+- **Not verified:** the real sandboxed calendar reader end to end with an Ask (the tests pass the read
+  as a closure; the reader itself is VO14.2's); a real model server and a real Claude Code answer.
+  The walk comes with VO14.4b's screen.
+
 ## VO14.3: the permissions and audit-log screens (2026-11-03, lane: V1)
 
 - **What:** a card on the Save page, `What your assistant may read` (`Permissions.vue`), with
