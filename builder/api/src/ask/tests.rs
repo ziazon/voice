@@ -200,6 +200,25 @@ fn reply_clean_replaces_invisible_characters() {
     );
 }
 #[test]
+fn reply_clean_preserves_line_breaks_and_tabs() {
+    let reply = "First.\n\n- one\n\tdetail";
+    assert_eq!(answer(&json!({"answer": reply})).unwrap(), reply);
+}
+
+#[test]
+fn reply_clean_rejects_only_invisible_characters() {
+    assert_eq!(
+        answer(&json!({"answer": "\u{E0041}"})).unwrap_err().message,
+        text::UNREADABLE
+    );
+}
+
+#[test]
+fn reply_clean_trims_replaced_invisible_characters() {
+    assert_eq!(answer(&json!({"answer": "A\u{E0041}"})).unwrap(), "A");
+}
+
+#[test]
 fn fixed_words_and_schema_match_the_contract() {
     assert_eq!(
         text::BAD_QUESTION,

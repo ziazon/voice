@@ -131,7 +131,7 @@ fn answer(output: &Value) -> Result<String> {
         .map(|s| {
             s.chars()
                 .map(|c| {
-                    if voice_ingest::text::hidden(c) {
+                    if voice_ingest::text::hidden(c) && c != '\n' && c != '\t' {
                         ' '
                     } else {
                         c
@@ -139,6 +139,7 @@ fn answer(output: &Value) -> Result<String> {
                 })
                 .collect::<String>()
         })
+        .map(|s| s.trim().to_owned())
         .filter(|s| !s.is_empty() && s.chars().count() <= MAX_ANSWER)
         .ok_or_else(|| failure(text::UNREADABLE))
 }
