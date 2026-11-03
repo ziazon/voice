@@ -172,6 +172,33 @@ fn compact(day: &str) -> String {
 }
 
 #[test]
+fn show_uses_singular_and_plural_for_entries_not_understood() {
+    if !available() {
+        return;
+    }
+    for (count, sentence) in [
+        (1, "1 couldn't be understood, so Voice left it out."),
+        (2, "2 couldn't be understood, so Voice left them out."),
+    ] {
+        let f = Fixture::new();
+        let entry = format!(
+            "BEGIN:VEVENT\nDTSTART:{}T100000\nRRULE:FREQ=HOURLY\nSUMMARY:Team planning\nEND:VEVENT\n",
+            compact(&day(1))
+        );
+        let file = f.export(
+            "calendar.ics",
+            &format!("BEGIN:VCALENDAR\n{}END:VCALENDAR\n", entry.repeat(count)),
+        );
+        f.choose(&file);
+        success(f.run("grants", "give", &["calendar.read"]));
+        assert_eq!(
+            success(f.run("calendar", "show", &[])),
+            format!("No events from today to 14 days ahead.\n{sentence}\n")
+        );
+    }
+}
+
+#[test]
 fn show_reads_only_allowed_fields_and_window_and_logs_four_items() {
     if !available() {
         return;

@@ -66,6 +66,8 @@ impl<T: DeserializeOwned> Judge<'_, T> {
             reader::Line::Result(value) => self.final_line = Some(Final::Result(value)),
             reader::Line::Error(message) => {
                 let message = if [
+                    crate::calendar::HARD_LINK,
+                    crate::calendar::LINK,
                     crate::calendar::NONE,
                     crate::calendar::GONE,
                     crate::calendar::BAD,
@@ -631,6 +633,8 @@ mod tests {
     fn calendar_sentences_pass_through_and_unknown_errors_are_fixed() {
         use crate::calendar;
         for message in [
+            "Voice won't read this calendar: the same file has another name somewhere else on this computer (a hard link). Make a copy of it and choose the copy.",
+            "Voice doesn't follow links. Choose the calendar file itself.",
             calendar::NONE,
             calendar::GONE,
             calendar::BAD,

@@ -60,10 +60,7 @@ pub fn run(command: CalendarCommand) -> Result<()> {
                 n => println!("{n} left out because they look private."),
             }
             if answer.not_understood > 0 {
-                println!(
-                    "{} couldn't be understood, so Voice left them out.",
-                    answer.not_understood
-                );
+                println!("{}", not_understood_line(answer.not_understood));
             }
             if answer.more {
                 println!("Voice shows the first 2,000.");
@@ -71,6 +68,11 @@ pub fn run(command: CalendarCommand) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn not_understood_line(count: u32) -> String {
+    let pronoun = if count == 1 { "it" } else { "them" };
+    format!("{count} couldn't be understood, so Voice left {pronoun} out.")
 }
 
 // The broker has checked the reader's dates, times and one-line text before any are printed.
@@ -106,4 +108,21 @@ fn event_line(event: &CalendarEvent) -> String {
         Some(EventStatus::Confirmed) | None => "",
     };
     format!("{when}  {title}{place}{status}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::not_understood_line;
+
+    #[test]
+    fn not_understood_uses_singular_for_one_entry() {
+        assert_eq!(
+            not_understood_line(1),
+            "1 couldn't be understood, so Voice left it out."
+        );
+        assert_eq!(
+            not_understood_line(2),
+            "2 couldn't be understood, so Voice left them out."
+        );
+    }
 }

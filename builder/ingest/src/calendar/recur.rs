@@ -4,6 +4,15 @@ use crate::dates::{civil_from_days, days_from_civil, days_in_month};
 use std::collections::BTreeMap;
 
 const MAX_STEPS: usize = 500_000;
+// Count empty periods as well as candidate visits, so sparse rules are bounded too.
+fn step(remaining: &mut usize, steps: &mut usize) -> Option<()> {
+    if *steps == MAX_STEPS {
+        return None;
+    }
+    *remaining = remaining.checked_sub(1)?;
+    *steps += 1;
+    Some(())
+}
 #[derive(Debug)]
 enum Frequency {
     Daily,
@@ -115,13 +124,24 @@ impl Rule {
             }
         }
         if let Some(days) = parts.get("BYMONTHDAY") {
-            if !matches!(rule.frequency, Frequency::Monthly) || !rule.ordinal_days.is_empty() {
-                return None;
+            // RFC 5545 §3.3.10: negative month days count back from the month's end.
+            match rule.frequency {
+                Frequency::Monthly if rule.ordinal_days.is_empty() => {
+                    rule.monthdays = days
+                        .split(',')
+                        .map(|d| {
+                            if let Some(d) = d.strip_prefix('-') {
+                                Some(-positive(d, 31)?)
+                            } else {
+                                positive(d.strip_prefix('+').unwrap_or(d), 31)
+                            }
+                        })
+                        .collect::<Option<_>>()?;
+                }
+                Frequency::Yearly
+                    if positive(days, 31)? == civil_from_days(start.wall.div_euclid(86400)).2 => {}
+                _ => return None,
             }
-            rule.monthdays = days
-                .split(',')
-                .map(|d| positive(d, 31))
-                .collect::<Option<_>>()?;
         }
         if let Some(month) = parts.get("BYMONTH")
             && (!matches!(rule.frequency, Frequency::Yearly)
@@ -133,14 +153,20 @@ impl Rule {
         rule.weekdays.dedup();
         rule.monthdays.sort_unstable();
         rule.monthdays.dedup();
+        rule.ordinal_days.sort_unstable();
+        rule.ordinal_days.dedup();
         Some(rule)
     }
     pub fn expand(
         &self,
         start: &Time,
+        first_day: i64,
         last_day: i64,
+        remaining: &mut usize,
         mut visit: impl FnMut(i64) -> Option<bool>,
     ) -> Option<()> {
+        let mut steps = 0;
+        step(remaining, &mut steps)?;
         // DTSTART counts first even if it does not satisfy the BY selectors (§3.3.10).
         if !visit(start.wall)? || self.count == Some(1) {
             return Some(());
@@ -150,12 +176,24 @@ impl Rule {
         let (year, month, day) = civil_from_days(start_day);
         let week = start_day - (weekday(start_day) - self.week_start).rem_euclid(7);
         let mut emitted = 1;
-        let mut steps = 0;
-        for period in 0i64.. {
-            steps += 1;
-            if steps > MAX_STEPS {
-                return None;
+        // Without COUNT, earlier periods cannot affect membership or the occurrence count.
+        let target = first_day.saturating_sub(2);
+        let (target_year, target_month, _) = civil_from_days(target);
+        let period = if self.count.is_some() {
+            0
+        } else {
+            match self.frequency {
+                Frequency::Daily => (target - start_day).div_euclid(self.interval),
+                Frequency::Weekly => (target - week).div_euclid(7 * self.interval),
+                Frequency::Monthly => {
+                    ((target_year - year) * 12 + target_month - month).div_euclid(self.interval)
+                }
+                Frequency::Yearly => (target_year - year).div_euclid(self.interval),
             }
+            .max(0)
+        };
+        for period in period.. {
+            step(remaining, &mut steps)?;
             let n = period.checked_mul(self.interval)?;
             let (first, mut days) = match self.frequency {
                 Frequency::Daily => {
@@ -186,7 +224,8 @@ impl Rule {
                     let days = if !self.monthdays.is_empty() {
                         self.monthdays
                             .iter()
-                            .filter(|d| **d <= last)
+                            .map(|d| if *d < 0 { last + d + 1 } else { *d })
+                            .filter(|d| (1..=last).contains(d))
                             .map(|d| first + d - 1)
                             .collect()
                     } else if !self.ordinal_days.is_empty() {
@@ -228,6 +267,7 @@ impl Rule {
             days.sort_unstable();
             days.dedup();
             for d in days {
+                step(remaining, &mut steps)?;
                 let wall = d.checked_mul(86400)?.checked_add(time)?;
                 if wall <= start.wall {
                     continue;
@@ -245,5 +285,150 @@ impl Rule {
             }
         }
         Some(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::ics::Frame;
+    use super::*;
+
+    #[test]
+    fn per_rule_cap_counts_candidates_and_does_not_spend_other_rules_budget() {
+        let start = Time {
+            wall: 0,
+            frame: Frame::Utc,
+        };
+        let rule = Rule::parse("FREQ=DAILY", &start).unwrap();
+        let mut remaining = 5_000_000;
+        assert_eq!(
+            rule.expand(&start, 0, 600_000, &mut remaining, |_| Some(true)),
+            None
+        );
+        assert_eq!(remaining, 4_500_000);
+    }
+
+    #[test]
+    fn shared_budget_counts_weekday_candidates_not_just_periods() {
+        let start = Time {
+            wall: 1_793_620_800,
+            frame: Frame::Utc,
+        };
+        let rule = Rule::parse(
+            "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA,SU;COUNT=100000",
+            &start,
+        )
+        .unwrap();
+        let mut visits = 0;
+        assert_eq!(
+            rule.expand(&start, 20_759, 30_000, &mut 30, |_| {
+                visits += 1;
+                Some(true)
+            }),
+            None
+        );
+        assert!(
+            visits <= 30,
+            "visited {visits} candidates on a 30-step budget"
+        );
+    }
+
+    #[test]
+    fn duplicate_ordinal_selectors_do_not_multiply_candidate_work() {
+        let start = Time {
+            wall: 1_793_620_800,
+            frame: Frame::Utc,
+        };
+        let rule = Rule::parse(
+            &format!("FREQ=MONTHLY;BYDAY={}", vec!["-1FR"; 10_000].join(",")),
+            &start,
+        )
+        .unwrap();
+        assert_eq!(rule.ordinal_days.len(), 1);
+    }
+
+    #[test]
+    fn ancient_rules_skip_to_the_window_with_bounded_steps() {
+        let start = Time {
+            wall: -30_610_224_000,
+            frame: Frame::Utc,
+        }; // 1000-01-01
+        let rule = Rule::parse("FREQ=DAILY", &start).unwrap();
+        let mut remaining = 5_000_000;
+        for _ in 0..2_000 {
+            let before = remaining;
+            let result = rule.expand(&start, 20_757, 20_775, &mut remaining, |_| Some(true));
+            assert!(
+                before - remaining < 50,
+                "walk used {} steps",
+                before - remaining
+            );
+            assert_eq!(result, Some(()));
+        }
+        assert!(5_000_000 - remaining < 100_000);
+    }
+
+    #[test]
+    fn weekly_skip_ahead_preserves_interval_phase_and_dtstart() {
+        let start = Time {
+            wall: 631_188_000,
+            frame: Frame::Utc,
+        }; // 1990-01-01 10:00
+        let mut full = Vec::new();
+        let mut skipped = Vec::new();
+        for (rule, first, out) in [
+            (
+                "FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,WE;WKST=SU;COUNT=100000",
+                0,
+                &mut full,
+            ),
+            (
+                "FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,WE;WKST=SU",
+                20_759,
+                &mut skipped,
+            ),
+        ] {
+            assert_eq!(
+                Rule::parse(rule, &start).unwrap().expand(
+                    &start,
+                    first,
+                    20_780,
+                    &mut 5_000_000,
+                    |wall| {
+                        if wall == start.wall || wall.div_euclid(86400) >= 20_757 {
+                            out.push(wall);
+                        }
+                        Some(true)
+                    }
+                ),
+                Some(())
+            );
+        }
+        assert_eq!(skipped, full);
+        assert_eq!(skipped.first(), Some(&631_188_000));
+    }
+
+    #[test]
+    fn expansion_refuses_a_spent_shared_budget_and_preserves_count_walks() {
+        let start = Time {
+            wall: 1_793_620_800,
+            frame: Frame::Utc,
+        };
+        let rule = Rule::parse("FREQ=DAILY;COUNT=3", &start).unwrap();
+        let mut remaining = 2;
+        assert_eq!(
+            rule.expand(&start, 20_759, 20_780, &mut remaining, |_| Some(true)),
+            None
+        );
+        assert_eq!(remaining, 0);
+        let mut called = false;
+        assert_eq!(
+            rule.expand(&start, 20_759, 20_780, &mut remaining, |_| {
+                called = true;
+                Some(true)
+            }),
+            None
+        );
+        assert!(!called);
     }
 }

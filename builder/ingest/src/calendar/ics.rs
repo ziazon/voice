@@ -33,33 +33,37 @@ pub(super) struct Property {
 }
 impl Property {
     pub fn time(&self) -> Option<Time> {
-        let value_type = self.params.get("VALUE").map(|v| v.to_ascii_uppercase());
-        if value_type
-            .as_deref()
-            .is_some_and(|v| !matches!(v, "DATE" | "DATE-TIME"))
-        {
-            return None;
-        }
-        let is_date = value_type.as_deref() == Some("DATE") || self.value.len() == 8;
-        let wall = value(&self.value, is_date)?;
-        let frame = if is_date {
-            if self.params.contains_key("TZID") {
-                return None;
-            }
-            Frame::Date
-        } else if self.value.ends_with('Z') {
-            if self.params.contains_key("TZID") {
-                return None;
-            }
-            Frame::Utc
-        } else if let Some(name) = self.params.get("TZID") {
-            Frame::Named(name.clone())
-        } else {
-            Frame::Local
-        };
-        Some(Time { wall, frame })
+        time(&self.value, &self.params)
     }
 }
+pub(super) fn time(text: &str, params: &BTreeMap<String, String>) -> Option<Time> {
+    let value_type = params.get("VALUE").map(|v| v.to_ascii_uppercase());
+    if value_type
+        .as_deref()
+        .is_some_and(|v| !matches!(v, "DATE" | "DATE-TIME"))
+    {
+        return None;
+    }
+    let is_date = value_type.as_deref() == Some("DATE") || text.len() == 8;
+    let wall = value(text, is_date)?;
+    let frame = if is_date {
+        if params.contains_key("TZID") {
+            return None;
+        }
+        Frame::Date
+    } else if text.ends_with('Z') {
+        if params.contains_key("TZID") {
+            return None;
+        }
+        Frame::Utc
+    } else if let Some(name) = params.get("TZID") {
+        Frame::Named(name.clone())
+    } else {
+        Frame::Local
+    };
+    Some(Time { wall, frame })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum Frame {
     Date,
@@ -221,6 +225,13 @@ impl Parser<'_> {
             }
             return Ok(());
         }
+        if self.stack.len() == 2
+            && let Some(entry) = &mut self.current
+            && outside(head, ';').take(17).count() > 16
+        {
+            entry.bad = true;
+            return Ok(());
+        }
         if self.stack.len() != 2 || self.current.is_none() || !FIELDS.contains(&name.as_str()) {
             return Ok(());
         }
@@ -295,7 +306,7 @@ pub(super) fn clean(text: &str) -> String {
         } else {
             c
         };
-        unescaped.push(if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') { ' ' } else { c });
+        unescaped.push(if crate::text::hidden(c) { ' ' } else { c });
     }
     unescaped.split_whitespace().collect::<Vec<_>>().join(" ")
 }

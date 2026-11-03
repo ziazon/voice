@@ -11,6 +11,7 @@ pub mod privacy;
 pub mod private;
 pub mod python;
 pub mod skills;
+pub mod text;
 
 /// Lib tests that hold a state lock or start a child process run one at a time: a child started
 /// by another test thread holds a copy of every open descriptor until it execs, a lock included.

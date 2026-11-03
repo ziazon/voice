@@ -1,4 +1,9 @@
 //! The chosen calendar export and its grant-checked reader broker.
+//!
+//! In-process calendar reading is private to the reader dispatch.
+//! ```compile_fail,E0603
+//! use voice_api::calendar::read_calendar_in;
+//! ```
 use crate::{
     dto::*,
     history::{self, failure},
@@ -17,7 +22,7 @@ use voice_core::{
     error::Error,
     member::{self, Member},
 };
-pub use voice_ingest::calendar::{BAD, TOO_BIG, TOO_MANY};
+pub use voice_ingest::calendar::{BAD, HARD_LINK, TOO_BIG, TOO_MANY};
 use voice_ingest::{
     calendar::{
         self,
@@ -30,6 +35,7 @@ use voice_ingest::{
 type Result<T> = std::result::Result<T, Failure>;
 pub const NONE: &str = "Choose the calendar file you exported first.";
 pub const GONE: &str = "Voice can't find your calendar file any more. Choose it again.";
+pub const LINK: &str = "Voice doesn't follow links. Choose the calendar file itself.";
 pub const NOT_ICS: &str = "Choose a calendar you exported: an .ics file, or a folder of them.";
 pub const ZONE: &str = "Voice couldn't tell which time zone this Mac is set to. Set it in System Settings, then try again.";
 pub const LOG: &str = "Voice couldn't write down that it read your calendar, so it didn't read it. Check there's space on this computer, then try again.";
@@ -77,20 +83,23 @@ pub fn choose_calendar_export_in(home: &Path, slug: &str, path: &Path) -> Result
         Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
             failure(NO_STATE)
         }
-        _ => failure(BAD),
+        _ => failure(history::SAVE),
     })?;
     let text = path
         .to_str()
         .filter(|_| path.is_absolute())
         .ok_or_else(|| failure(NOT_ICS))?;
     export_allowed(home, &member, path)?;
-    let metadata = fs::metadata(path).map_err(|e| {
+    let metadata = fs::symlink_metadata(path).map_err(|e| {
         failure(if e.kind() == std::io::ErrorKind::NotFound {
             GONE
         } else {
             BAD
         })
     })?;
+    if metadata.file_type().is_symlink() {
+        return Err(failure(LINK));
+    }
     let folder = metadata.is_dir();
     if !folder
         && (!metadata.is_file()
@@ -172,7 +181,7 @@ fn bounds(today: i64, window: grants::Window) -> (String, String) {
         date(today + i64::from(window.next_days())).to_string(),
     )
 }
-pub fn read_calendar_in(home: &Path, request: reader::CalendarStep) -> Result<CalendarRead> {
+pub(crate) fn read_calendar_in(home: &Path, request: reader::CalendarStep) -> Result<CalendarRead> {
     let member = member_in(home, &request.slug)?;
     let today = day(&request.today).ok_or_else(|| failure(reader::REQUEST))?;
     let own = ledger::utc_stamp(SystemTime::now());
@@ -267,7 +276,7 @@ fn instant(value: &str, all_day: bool) -> Option<i64> {
     (hour < 24 && minute < 60).then_some(date * 1440 + hour * 60 + minute)
 }
 fn clean(value: &str) -> bool {
-    value.chars().count() <= 201 && !value.chars().any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'))
+    value.chars().count() <= 201 && !value.chars().any(voice_ingest::text::hidden)
 }
 fn checked(answer: &CalendarRead, today: i64, window: grants::Window) -> bool {
     let (from, to) = bounds(today, window);

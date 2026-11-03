@@ -22,6 +22,7 @@ pub const BAD: &str = "Voice couldn't read this calendar. Check it's a calendar 
 pub const TOO_MANY: &str =
     "This folder has more than 64 calendar files. Choose a folder with fewer, or one file.";
 pub const TOO_BIG: &str = "This calendar is bigger than Voice reads (128 MB). Export a shorter stretch of time, then choose it again.";
+pub const HARD_LINK: &str = "Voice won't read this calendar: the same file has another name somewhere else on this computer (a hard link). Make a copy of it and choose the copy.";
 pub const MAX_EVENTS: usize = 2_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Date {
@@ -164,15 +165,18 @@ impl Parsed {
             return None;
         }
         let mut exceptions = HashSet::new();
+        let mut exception_count = 0;
         for p in &entry.exceptions {
             for v in p.value.split(',') {
-                let mut p = p.clone();
-                p.value = v.into();
-                let ex = p.time()?;
-                if ex.frame != start.frame {
+                exception_count += 1;
+                if exception_count > 10_000 {
                     return None;
                 }
-                exceptions.insert(ex.wall);
+                let ex = ics::time(v, &p.params)?;
+                if ex.all_day() != start.all_day() {
+                    return None;
+                }
+                exceptions.insert(zones.utc(&ex)?);
             }
         }
         let until = if let Some(text) = rule.as_ref().and_then(|r| r.until.as_ref()) {
@@ -365,25 +369,33 @@ pub fn read(
             parsed
         })
         .collect();
-    let mut overrides: HashMap<&str, HashMap<Time, Vec<usize>>> = HashMap::new();
+    let mut overrides: HashMap<&str, HashMap<(bool, i64), Vec<usize>>> = HashMap::new();
     for (i, p) in parsed.iter().enumerate() {
         if let Some(p) = p
             && let (Some(uid), Some(id)) = (&p.uid, &p.id)
+            && let Some(instant) = zones.utc(id)
         {
             overrides
                 .entry(uid.as_str())
                 .or_default()
-                .entry(id.clone())
+                .entry((id.all_day(), instant))
                 .or_default()
                 .push(i);
         }
     }
+    let mut remaining = 5_000_000;
     let mut used = HashSet::new();
     let mut kept = Kept::default();
     for (i, p) in parsed.iter().enumerate() {
         let Some(p) = p else {
             continue;
         };
+        if remaining == 0 {
+            if p.id.is_none() && could_touch(&entries[i], first, last) {
+                not_understood += 1;
+            }
+            continue;
+        }
         if p.id.is_some() {
             if p.uid
                 .as_ref()
@@ -403,16 +415,29 @@ pub fn read(
         let replacements: HashMap<i64, usize> = choices
             .into_iter()
             .flat_map(|choices| choices.iter())
-            .filter(|(id, ids)| id.frame == p.start.frame && ids.len() == 1)
-            .map(|(id, ids)| (id.wall, ids[0]))
+            .filter(|((all_day, _), ids)| *all_day == p.start.all_day() && ids.len() == 1)
+            .map(|((_, instant), ids)| (*instant, ids[0]))
             .collect();
         // The ordinary expansion stops at last + 2. The same bounded walk checks membership
         // of moved overrides beyond that horizon, without converting unrelated candidates.
+        let expansion_first = replacements
+            .keys()
+            .map(|utc| utc.div_euclid(86400))
+            .min()
+            .unwrap_or(first)
+            .min(first);
         let membership_end = replacements
             .keys()
-            .map(|wall| wall.div_euclid(86400))
+            .map(|utc| utc.div_euclid(86400) + 2)
             .max()
             .unwrap_or(last + 2);
+        let replacement_days: HashSet<_> = replacements
+            .keys()
+            .flat_map(|utc| {
+                let day = utc.div_euclid(86400);
+                (day - 2)..=(day + 2)
+            })
+            .collect();
         let mut visit = |wall: i64| {
             // Even an old UNTIL stops the walk, without converting skipped wall times.
             // TZif offsets are at most 93599 seconds (RFC 9636 §3.2).
@@ -421,28 +446,29 @@ pub fn read(
             {
                 return Some(false);
             }
-            if let Some(&index) = replacements.get(&wall) {
-                if p.until.is_some_and(|until| {
-                    zones
-                        .utc(&Time {
-                            wall,
-                            frame: p.start.frame.clone(),
-                        })
-                        .is_none_or(|utc| utc > until)
-                }) {
-                    return Some(false);
-                }
-                if p.exceptions.contains(&wall) {
-                    series_used.push(index);
-                    return Some(true);
-                }
-                let moved = parsed[index].as_ref().expect("parsed override");
-                if let Some(event) = moved.event(moved.start.wall, &mut zones, first, last) {
-                    if let Some(event) = event {
-                        series.add(event, filters);
+            // RFC 5545 §3.8.4.4: IDs and EXDATE use the start's value type,
+            // but date-times identify an instant independently of their zone spelling.
+            if replacement_days.contains(&wall.div_euclid(86400)) {
+                let utc = zones.utc(&Time {
+                    wall,
+                    frame: p.start.frame.clone(),
+                })?;
+                if let Some(&index) = replacements.get(&utc) {
+                    if p.until.is_some_and(|until| utc > until) {
+                        return Some(false);
                     }
-                    series_used.push(index);
-                    return Some(true);
+                    if p.exceptions.contains(&utc) {
+                        series_used.push(index);
+                        return Some(true);
+                    }
+                    let moved = parsed[index].as_ref().expect("parsed override");
+                    if let Some(event) = moved.event(moved.start.wall, &mut zones, first, last) {
+                        if let Some(event) = event {
+                            series.add(event, filters);
+                        }
+                        series_used.push(index);
+                        return Some(true);
+                    }
                 }
             }
             let day = wall.div_euclid(86400);
@@ -457,7 +483,7 @@ pub fn read(
             if p.until.is_some_and(|until| utc > until) {
                 return Some(false);
             }
-            if !p.exceptions.contains(&wall)
+            if !p.exceptions.contains(&utc)
                 && let Some(event) = p.event(wall, &mut zones, first, last)?
             {
                 series.add(event, filters);
@@ -465,8 +491,15 @@ pub fn read(
             Some(true)
         };
         let understood = if let Some(rule) = &p.rule {
-            rule.expand(&p.start, (last + 2).max(membership_end), &mut visit)
+            rule.expand(
+                &p.start,
+                expansion_first,
+                (last + 2).max(membership_end),
+                &mut remaining,
+                &mut visit,
+            )
         } else {
+            remaining -= 1;
             visit(p.start.wall).map(|_| ())
         };
         if understood.is_none() {

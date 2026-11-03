@@ -338,7 +338,8 @@ permission belongs to this person and this computer, so copying an assistant doe
 - **No read without a trace.** After checking the answer, the broker logs its step and item
   count. If the append fails, the answer is dropped. The log holds no calendar text or path.
   With no grant and no state folder, the refusal is the fixed no-permission sentence; nothing
-  is created and there is nowhere to log it.
+  is created and there is nowhere to log it. A reader refusal after opening the export, such
+  as a too-big or bad file, leaves no audit line by design: no calendar answer came out.
 - **Five fields leave the parser:** title, place, start, end and status, with an all-day flag.
   `DESCRIPTION` is never parsed into a field: meeting links and codes often live there.
   Attendees, organizer, URL, contact, comments, attachments, `X-` properties and all other
@@ -356,16 +357,18 @@ permission belongs to this person and this computer, so copying an assistant doe
   one with daylight-saving rules, gives no offset beyond the last transition; an empty footer
   without transitions gives none anywhere. A fixed-offset footer still works in the future.
 - **Recurrence is deliberately bounded.** Daily rules have no `BY` part; weekly rules allow
-  plain `BYDAY`; monthly rules allow `BYMONTHDAY` 1–31 or ordinal `BYDAY` ±1–±5; yearly rules use
-  the start's month and day, with no `BY` part or `BYMONTH` equal to the start's month. Every
-  frequency allows `WKST`, which affects only weekly rules here. `INTERVAL` is 1–1,000; `COUNT`
+  plain `BYDAY`; monthly rules allow `BYMONTHDAY` ±1–±31 or ordinal `BYDAY` ±1–±5; yearly rules use
+  the start's month and day, with optional `BYMONTH` and `BYMONTHDAY` equal to that month and day.
+  Every frequency allows `WKST`, which affects only weekly rules here. `INTERVAL` is 1–1,000; `COUNT`
   is 1–100,000, or `UNTIL` is inclusive. The start counts first, before `EXDATE` removes any;
   missing month days and leap days skip. Expansion uses the start's own clock, then converts.
+  Timed `EXDATE` and `RECURRENCE-ID` values match by UTC instant, even across different zones;
+  all-day values match by date, and the value types must match the start.
   `RECURRENCE-ID` replaces one occurrence, including a cancelled one; without its series in the
   export it is a single event. An unmatched override whose series is present is not understood.
   Other rules, extra recurrence forms, invalid entries and unavailable future zone information
   are left out and counted as not understood when they could touch the window; old unrelated
-  history does not count. A rule stops after 500,000 candidate steps.
+  history does not count.
 - **The grant's window is overlapping local days**, from today minus its past days through
   today plus its next days, both included. An event that starts earlier but ends within it is
   kept. All-day ends are exclusive in the file and inclusive in the answer; a timed end at
@@ -375,4 +378,10 @@ permission belongs to this person and this computer, so copying an assistant doe
   200,000 components. An unfolded line over 64 KiB makes its entry not understood, or the file
   bad when outside an entry. Bad UTF-8 or unmatched components refuse the whole read. Files
   must be regular and not hard-linked; links inside a folder are skipped. At most 2,000 events
-  come out, earliest first, with `more` when some were cut.
+  come out, earliest first, with `more` when some were cut. Each property has at most 16
+  parameters and each entry at most 10,000 `EXDATE` values; exceeding either makes the entry
+  not understood. A rule takes at most 500,000 candidate steps, and the whole read shares a
+  5,000,000-step budget. Each attempted period (even an empty one) and each candidate uses a
+  step. Once spent, remaining entries are not understood when they could touch
+  the window. Rules without `COUNT` skip ahead to periods that could reach the window, after
+  visiting the start; rules with `COUNT` walk from the start so earlier occurrences still count.

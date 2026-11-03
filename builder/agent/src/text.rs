@@ -194,12 +194,7 @@ pub fn typed_name(name: &str) -> String {
         .by_ref()
         .take(64)
         .map(|c| {
-            if c.is_control()
-                || matches!(
-                    c,
-                    '\u{2028}' | '\u{2029}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
-                )
-            {
+            if voice_ingest::text::hidden(c) {
                 ' '
             } else {
                 c
@@ -304,3 +299,21 @@ pub const PROXY_FAILED: &str = "Voice couldn't open the private connection Claud
 pub const READER_SOURCE: &str = "Voice can't read one of the places you chose. Check it's still there and isn't a password or key file, then try again.";
 pub const READER_FOLDER: &str =
     "Voice couldn't open this assistant's own folders. Close Voice and open it again.";
+
+#[cfg(test)]
+mod calendar_text_tests {
+    #[test]
+    fn typed_names_replace_hidden_characters() {
+        for c in [
+            '\u{061c}', '\u{200b}', '\u{200c}', '\u{200d}', '\u{2060}', '\u{2061}', '\u{2062}',
+            '\u{2063}', '\u{2064}', '\u{206a}', '\u{206b}', '\u{206c}', '\u{206d}', '\u{206e}',
+            '\u{206f}', '\u{feff}',
+        ] {
+            assert_eq!(
+                super::typed_name(&format!("Team{c}planning")),
+                "Team planning",
+                "{c:?}"
+            );
+        }
+    }
+}

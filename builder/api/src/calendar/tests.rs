@@ -444,3 +444,65 @@ fn broker_propagates_reader_refusal_without_a_read_line() {
         json!({"title":"Team planning", "place":"Room 4", "start":"2026-11-03T10:00", "end":"2026-11-03T11:00", "allDay":false, "status":"confirmed"})
     );
 }
+
+#[test]
+fn broker_refuses_hidden_bom_without_logging_a_read() {
+    if !in_utc() {
+        return;
+    }
+    let h = Home::new(true);
+    h.choose();
+    h.grant();
+    let mut a = answer();
+    a.events[0].title = "Team\u{feff}planning".into();
+    assert_eq!(
+        read_calendar_through(&h.0, "ari", "cli", now(), |_| Ok(a))
+            .unwrap_err()
+            .message,
+        reader::STOPPED
+    );
+    let mut a = answer();
+    a.events[0].place = Some("Room\u{feff}4".into());
+    assert_eq!(
+        read_calendar_through(&h.0, "ari", "cli", now(), |_| Ok(a))
+            .unwrap_err()
+            .message,
+        reader::STOPPED
+    );
+    assert_eq!(h.audit().lines().count(), 1);
+}
+
+#[test]
+fn choose_refuses_file_folder_and_dangling_links() {
+    let h = Home::new(true);
+    let folder = h.0.join("calendars");
+    fs::create_dir(&folder).unwrap();
+    for (name, target) in [
+        ("linked.ics", h.file()),
+        ("linked-folder", folder),
+        ("dangling.ics", h.0.join("missing.ics")),
+    ] {
+        let link = h.0.join(name);
+        std::os::unix::fs::symlink(target, &link).unwrap();
+        assert_eq!(
+            choose_calendar_export_in(&h.0, "ari", &link)
+                .unwrap_err()
+                .message,
+            "Voice doesn't follow links. Choose the calendar file itself."
+        );
+    }
+    assert!(!h.state().join("calendar-export.json").exists());
+}
+#[test]
+fn choose_reports_save_when_the_state_lock_cannot_be_opened() {
+    let h = Home::new(true);
+    fs::remove_dir(h.state()).unwrap();
+    fs::write(h.state(), "not a folder").unwrap();
+    assert_eq!(
+        choose_calendar_export_in(&h.0, "ari", &h.file())
+            .unwrap_err()
+            .message,
+        history::SAVE
+    );
+    assert!(!h.state().join("calendar-export.json").exists());
+}

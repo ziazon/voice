@@ -292,12 +292,20 @@ pub fn require(
         },
         now,
     );
+    after_refusal_append(home, slug, reason, logged)?;
+    Err(error)
+}
+fn after_refusal_append(home: &Path, slug: &str, reason: Reason, logged: Result<()>) -> Result<()> {
     match logged {
         Err(Error::Io { source, .. })
-            if reason == Reason::NoGrant && source.kind() == std::io::ErrorKind::NotFound => {}
-        result => result?,
+            if reason == Reason::NoGrant
+                && source.kind() == std::io::ErrorKind::NotFound
+                && matches!(std::fs::symlink_metadata(home.join(".claude/state").join(slug)), Err(error) if error.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            Ok(())
+        }
+        result => result,
     }
-    Err(error)
 }
 pub fn record_read(
     home: &Path,
@@ -497,6 +505,25 @@ pub fn audit(home: &Path, slug: &str, last: usize) -> Result<Audit> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_audit_inside_existing_state_keeps_the_append_error() {
+        let home = std::env::temp_dir().join(format!("voice-refusal-{}", std::process::id()));
+        std::fs::create_dir_all(home.join(".claude/state/wren")).unwrap();
+        let result = after_refusal_append(
+            &home,
+            "wren",
+            Reason::NoGrant,
+            Err(Error::Io {
+                path: home.join("audit.jsonl"),
+                source: std::io::Error::from(std::io::ErrorKind::NotFound),
+            }),
+        );
+        std::fs::remove_dir_all(home).unwrap();
+        assert!(
+            matches!(result, Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound)
+        );
+    }
 
     #[test]
     fn restored_grants_keep_the_append_error_without_removing() {

@@ -562,9 +562,9 @@ fn bad_files_refuse_the_whole_read_and_long_entry_lines_are_counted() {
     assert_eq!((c.events.len(), c.not_understood), (0, 1));
 }
 #[test]
-fn candidate_and_component_caps_are_enforced() {
+fn ancient_rules_skip_ahead_and_component_caps_are_enforced() {
     let c = parse(&entry("DTSTART:00010101T100000\nRRULE:FREQ=DAILY"));
-    assert_eq!((c.events.len(), c.not_understood), (0, 1));
+    assert_eq!((c.events.len(), c.not_understood), (15, 0));
     let body = "BEGIN:X\nEND:X\n".repeat(200_000);
     let result = calendar::read(
         &[format!("BEGIN:VCALENDAR\n{body}END:VCALENDAR\n").into_bytes()],
@@ -713,4 +713,174 @@ fn oversized_footer_numbers_are_refused_without_panicking() {
     let loaded = std::panic::catch_unwind(|| Zone::load(&scratch.0, "Malformed"));
     assert!(loaded.is_ok(), "malformed zone file must never panic");
     assert!(loaded.unwrap().is_none());
+}
+
+#[test]
+fn a_read_shares_one_budget_and_counts_remaining_entries_by_window() {
+    let mut body = entry("DTSTART:10000101T000000Z\nRRULE:FREQ=DAILY;COUNT=100000").repeat(51);
+    body.push_str(&entry("DTSTART:20261103T100000Z\nSUMMARY:After budget"));
+    body.push_str(&entry("DTSTART:20190101T100000Z\nSUMMARY:Old history"));
+    let c = parse_at(&body, "UTC", window());
+    assert_eq!(c.events.len(), 0);
+    assert_eq!(c.not_understood, 28);
+}
+
+#[test]
+fn properties_with_more_than_sixteen_parameters_are_not_understood() {
+    for n in [16, 17] {
+        let params: String = (0..n).map(|i| format!(";P{i}=value")).collect();
+        let c = parse(&entry(&format!(
+            "DTSTART{params}:20261103T100000\nSUMMARY:Team planning"
+        )));
+        assert_eq!(
+            (c.events.len(), c.not_understood),
+            if n == 16 { (1, 0) } else { (0, 1) }
+        );
+    }
+}
+
+#[test]
+fn exdate_values_are_capped_across_all_properties_before_deduplication() {
+    for n in [10_000, 10_001] {
+        let mut body = String::from("DTSTART:20261103T100000\nRRULE:FREQ=DAILY;COUNT=3\n");
+        // Each line stays under the independent 64 KiB unfolded-line cap.
+        for chunk in (0..n).collect::<Vec<_>>().chunks(1000) {
+            body.push_str("EXDATE:");
+            body.push_str(&vec!["20261104T100000"; chunk.len()].join(","));
+            body.push('\n');
+        }
+        let c = parse(&entry(&body));
+        assert_eq!(
+            (c.events.len(), c.not_understood),
+            if n == 10_000 { (2, 0) } else { (0, 1) }
+        );
+    }
+}
+
+#[test]
+fn every_new_hidden_character_becomes_a_space_in_titles() {
+    for c in [
+        '\u{061c}', '\u{200b}', '\u{200c}', '\u{200d}', '\u{2060}', '\u{2061}', '\u{2062}',
+        '\u{2063}', '\u{2064}', '\u{206a}', '\u{206b}', '\u{206c}', '\u{206d}', '\u{206e}',
+        '\u{206f}', '\u{feff}',
+    ] {
+        let c = parse(&entry(&format!(
+            "DTSTART:20261103T100000\nSUMMARY:Team{c}planning\nLOCATION:Room{c}4"
+        )));
+        assert_eq!(c.events[0].title, "Team planning");
+        assert_eq!(c.events[0].place.as_deref(), Some("Room 4"));
+    }
+}
+
+#[test]
+fn overrides_match_berlin_occurrences_by_utc_instant() {
+    let c = parse(&[
+        entry("UID:series\nDTSTART;TZID=Europe/Berlin:20261103T100000\nRRULE:FREQ=DAILY;COUNT=3\nSUMMARY:Team planning"),
+        entry("UID:series\nRECURRENCE-ID:20261105T090000Z\nDTSTART:20261105T090000Z\nSUMMARY:Cancelled planning\nSTATUS:CANCELLED"),
+    ].concat());
+    assert_eq!(c.not_understood, 0);
+    assert_eq!(c.events.len(), 3);
+    assert_eq!(
+        c.events[2],
+        Event {
+            status: Some(Status::Cancelled),
+            ..event(
+                "Cancelled planning",
+                "2026-11-05T04:00",
+                "2026-11-05T04:00",
+                false
+            )
+        }
+    );
+}
+
+#[test]
+fn utc_exdates_remove_berlin_occurrences_by_instant() {
+    let c = parse(&entry(
+        "DTSTART;TZID=Europe/Berlin:20261103T100000\nRRULE:FREQ=DAILY;COUNT=3\nEXDATE:20261104T090000Z\nSUMMARY:Team planning",
+    ));
+    assert_eq!(c.not_understood, 0);
+    assert_eq!(starts(&c), ["2026-11-03T04:00", "2026-11-05T04:00"]);
+}
+
+#[test]
+fn exception_value_types_must_match_the_series() {
+    for (start, exdate) in [
+        ("DTSTART;VALUE=DATE:20261103", "EXDATE:20261104T090000Z"),
+        ("DTSTART:20261103T090000Z", "EXDATE;VALUE=DATE:20261104"),
+    ] {
+        let c = parse(&entry(&format!(
+            "{start}\nRRULE:FREQ=DAILY;COUNT=3\n{exdate}"
+        )));
+        assert_eq!((c.events.len(), c.not_understood), (0, 1));
+    }
+}
+
+#[test]
+fn yearly_by_monthday_matches_the_start_day_with_or_without_bymonth() {
+    let w = Window {
+        next_days: 92,
+        ..window()
+    };
+    for rule in [
+        "FREQ=YEARLY;BYMONTHDAY=5",
+        "FREQ=YEARLY;BYMONTH=11;BYMONTHDAY=5",
+    ] {
+        let c = parse_at(
+            &entry(&format!(
+                "DTSTART:20241105T100000\nRRULE:{rule}\nSUMMARY:Planning day"
+            )),
+            "UTC",
+            w,
+        );
+        assert_eq!(c.not_understood, 0);
+        assert_eq!(starts(&c), ["2026-11-05T10:00"]);
+    }
+}
+
+#[test]
+fn monthly_negative_monthdays_and_mixed_lists_skip_short_months() {
+    let w = Window {
+        today: Date {
+            year: 2026,
+            month: 1,
+            day: 1,
+        },
+        next_days: 92,
+        past_days: 0,
+    };
+    for (days, expected) in [
+        (
+            "-1",
+            vec![
+                "2026-01-01T10:00",
+                "2026-01-31T10:00",
+                "2026-02-28T10:00",
+                "2026-03-31T10:00",
+            ],
+        ),
+        ("-31", vec!["2026-01-01T10:00", "2026-03-01T10:00"]),
+        (
+            "1,-1,31",
+            vec![
+                "2026-01-01T10:00",
+                "2026-01-31T10:00",
+                "2026-02-01T10:00",
+                "2026-02-28T10:00",
+                "2026-03-01T10:00",
+                "2026-03-31T10:00",
+                "2026-04-01T10:00",
+            ],
+        ),
+    ] {
+        let c = parse_at(
+            &entry(&format!(
+                "DTSTART:20260101T100000\nRRULE:FREQ=MONTHLY;BYMONTHDAY={days};UNTIL=20260402T100000Z"
+            )),
+            "UTC",
+            w,
+        );
+        assert_eq!(c.not_understood, 0);
+        assert_eq!(starts(&c), expected);
+    }
 }
