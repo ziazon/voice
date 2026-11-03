@@ -62,4 +62,5 @@ pub const COMMANDS: &[&str] = &[
     "turn_off_permission",
     "choose_calendar_export",
     "audit_log",
+    "ask_assistant",
 ];

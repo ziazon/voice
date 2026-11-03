@@ -73,6 +73,7 @@ fn main() {
             commands::turn_off_permission,
             commands::choose_calendar_export,
             commands::audit_log,
+            commands::ask_assistant,
         ])
         .build(tauri::generate_context!());
     match app {

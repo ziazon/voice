@@ -31,6 +31,7 @@ export const saveOptions: SaveOptions = {
 export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
   const reviewStatus = { built: false, areas: [], tests: { waiting: 0, inUse: 0, retired: 0 }, byArea: [], change: null }
   return {
+    askAssistant: vi.fn().mockResolvedValue({ answer: '', said: '' }),
     listPermissions: vi.fn().mockResolvedValue({ permissions: [], calendar: null, calendarProblem: null }),
     givePermission: vi.fn().mockResolvedValue({ permissions: { permissions: [], calendar: null, calendarProblem: null }, said: '' }),
     turnOffPermission: vi.fn().mockResolvedValue({ permissions: { permissions: [], calendar: null, calendarProblem: null }, said: '' }),

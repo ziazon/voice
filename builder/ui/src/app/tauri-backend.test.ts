@@ -183,6 +183,7 @@ it.each([
   ['turnOffPermission', 'turn_off_permission', { slug: 'example', id: 'calendar.read' }],
   ['chooseCalendarExport', 'choose_calendar_export', { slug: 'example', folder: false }],
   ['auditLog', 'audit_log', { slug: 'example', last: 50 }],
+  ['askAssistant', 'ask_assistant', { slug: 'example', question: 'Which day?', capabilities: [] }],
 ] as const)('maps permissions method %s with a request', async (method, command, request) => {
   vi.mocked(invoke).mockClear().mockResolvedValue('answer')
   expect(tauriBackend[method]).toBeTypeOf('function')

@@ -457,3 +457,10 @@ pub fn audit_log(
 ) -> Result<voice_api::dto::AuditLog, voice_api::dto::Failure> {
     voice_api::audit_log(request)
 }
+
+#[tauri::command(async)]
+pub fn ask_assistant(
+    request: voice_api::dto::AskRequest,
+) -> Result<voice_api::dto::AskAnswer, voice_api::dto::Failure> {
+    voice_api::ask(request)
+}

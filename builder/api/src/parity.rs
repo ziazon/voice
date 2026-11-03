@@ -252,4 +252,8 @@ pub const PARITY: &[Parity] = &[
         app: "audit_log",
         cli: &[&["audit", "show"]],
     },
+    Parity {
+        app: "ask_assistant",
+        cli: &[&["ask"]],
+    },
 ];

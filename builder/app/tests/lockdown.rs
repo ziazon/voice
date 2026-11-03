@@ -106,6 +106,7 @@ fn lockdown_1_command_lists_agree_in_order() {
             "turn_off_permission",
             "choose_calendar_export",
             "audit_log",
+            "ask_assistant",
         ]
     );
     let capability = json("capabilities/default.json");
