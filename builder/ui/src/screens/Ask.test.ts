@@ -10,8 +10,8 @@ const example = { ...assistant, consent: { agreed: true, agreedOn: '2026-11-02' 
 const other = { ...assistant, slug: 'other', name: 'Other' }
 const permission = { id: 'calendar.read', words: 'read your calendar', on: true, givenOn: '2026-11-02', pastDays: 0, nextDays: 14, window: 'from today to 14 days ahead' }
 const permissions: Permissions = { permissions: [permission], calendar: { name: 'team.ics', folder: false }, calendarProblem: null }
-const nothing = "Voice will send Example's decisions and your question, nothing else. They go to your own Claude Code, unless you've chosen to keep them on your own machines."
-const calendar = "Voice will send Example's decisions, your question and your calendar for the days you allowed, nothing else. Your calendar is kept on your own machines unless you've let it go to Anthropic. Until you do, only a model server on your own machines can answer, and if none is set up, nothing is sent and Voice tells you why."
+const nothing = "Voice will send Example's decisions and your question, nothing else. They go to Anthropic through your own Claude Code, unless you've chosen to keep them on your own machines. Then only a model server on your own machines or your own network can answer, and if none is set up, nothing is sent and Voice tells you why."
+const calendar = "Voice will send Example's decisions, your question and your calendar for the days you allowed, nothing else. Your calendar is kept on your own machines unless you've let it go to Anthropic. Until you do, only a model server on your own machines or your own network can answer, and if none is set up, nothing is sent and Voice tells you why."
 function backend(overrides: Parameters<typeof fakeBackend>[0] = {}) {
   return fakeBackend({ listAssistants: vi.fn().mockResolvedValue([example, other]), listPermissions: vi.fn().mockResolvedValue(permissions), ...overrides })
 }
@@ -167,10 +167,16 @@ it.each([false, true])('ignores stale permission success or failure after a newe
 it('ends running when unmounted during a question', async () => {
   const pending = deferred<AskAnswer>()
   const { wrapper } = await ready({ askAssistant: vi.fn().mockReturnValue(pending.promise) })
+  const emit = vi.spyOn(wrapper.vm.$, 'emit')
   await wrapper.get('form').trigger('submit')
   expect(wrapper.emitted('running')).toEqual([[true]])
   wrapper.unmount()
   expect(wrapper.emitted('running')).toEqual([[false]])
+  emit.mockClear()
+  pending.resolve({ answer: 'Take the morning slot.', said: 'Claude answered.' })
+  await flushPromises()
+  expect(wrapper.emitted('running')).toEqual([[false]])
+  expect(emit).not.toHaveBeenCalled()
 })
 
 it.each([
