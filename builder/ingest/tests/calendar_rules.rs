@@ -511,6 +511,27 @@ fn cleaning_is_bounded_and_removes_hidden_controls() {
     assert_eq!(c.events[1].place, Some(format!("{}…", "室".repeat(200))));
 }
 #[test]
+fn soft_hyphens_are_dropped_and_tag_characters_blanked() {
+    let c = parse(&[
+        entry("DTSTART:20261103T100000\nSUMMARY:Ver\u{ad}sicherung"),
+        entry("DTSTART:20261104T100000\nSUMMARY:Lunch\u{e0069}\u{e0067}\u{e006e}\nLOCATION:Work\u{e0100}room"),
+    ].concat());
+    let mut lunch = event("Lunch", "2026-11-04T10:00", "2026-11-04T10:00", false);
+    lunch.place = Some("Work room".into());
+    assert_eq!(
+        c.events,
+        vec![
+            event(
+                "Versicherung",
+                "2026-11-03T10:00",
+                "2026-11-03T10:00",
+                false
+            ),
+            lunch
+        ]
+    );
+}
+#[test]
 fn output_is_sorted_and_cut_after_filtering() {
     let mut body = String::new();
     for n in (0..22).rev() {

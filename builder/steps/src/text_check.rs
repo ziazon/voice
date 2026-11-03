@@ -15,8 +15,6 @@ pub fn hidden(c: char) -> bool {
         || ('\u{13430}'..='\u{1343F}').contains(&c)
         || ('\u{1BCA0}'..='\u{1BCA3}').contains(&c)
         || ('\u{1D173}'..='\u{1D17A}').contains(&c)
-        || ('\u{E0000}'..='\u{E007F}').contains(&c)
-        || ('\u{E0100}'..='\u{E01EF}').contains(&c)
 }
 
 #[cfg(test)]

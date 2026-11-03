@@ -4,7 +4,8 @@ pub fn hidden(c: char) -> bool {
         || matches!(c,
             '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{feff}'
             | '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}'
-            | '\u{2060}'..='\u{206f}' | '\u{fff9}'..='\u{fffb}')
+            | '\u{2060}'..='\u{206f}' | '\u{fff9}'..='\u{fffb}'
+            | '\u{e0000}'..='\u{e007f}' | '\u{e0100}'..='\u{e01ef}')
 }
 
 #[cfg(test)]
@@ -14,8 +15,25 @@ mod tests {
     #[test]
     fn controls_and_invisible_characters_are_hidden() {
         for c in [
-            '\n', '\t', '\u{1b}', '\u{00ad}', '\u{061c}', '\u{180e}', '\u{feff}', '\u{200b}',
-            '\u{200f}', '\u{2028}', '\u{202e}', '\u{2060}', '\u{206f}', '\u{fff9}', '\u{fffb}',
+            '\n',
+            '\t',
+            '\u{1b}',
+            '\u{00ad}',
+            '\u{061c}',
+            '\u{180e}',
+            '\u{feff}',
+            '\u{200b}',
+            '\u{200f}',
+            '\u{2028}',
+            '\u{202e}',
+            '\u{2060}',
+            '\u{206f}',
+            '\u{fff9}',
+            '\u{fffb}',
+            '\u{e0000}',
+            '\u{e007f}',
+            '\u{e0100}',
+            '\u{e01ef}',
         ] {
             assert!(hidden(c), "{c:?}");
         }

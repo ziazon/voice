@@ -306,7 +306,9 @@ pub(super) fn clean(text: &str) -> String {
         } else {
             c
         };
-        unescaped.push(if crate::text::hidden(c) { ' ' } else { c });
+        if c != '\u{00ad}' {
+            unescaped.push(if crate::text::hidden(c) { ' ' } else { c });
+        }
     }
     unescaped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
