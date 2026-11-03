@@ -227,3 +227,39 @@ fn private_tail_reads_only_the_bounded_end_and_refuses_unsafe_files() {
     symlink(target, &path).unwrap();
     assert!(tail(&s.0, "wren", "audit.jsonl", 4).is_err());
 }
+
+#[test]
+fn owned_private_reads_are_optional_bounded_and_owner_only() {
+    use voice_ingest::private::read_private_owned_optional_at_max as read;
+    let s = Scratch::new("private-owned");
+    assert_eq!(read(&s.0, "wren", "grants.json", 3).unwrap(), None);
+    assert!(!s.0.join(".claude").exists());
+    let path = write_private(&s.0, "wren", "grants.json", b"one").unwrap();
+    assert_eq!(mode(&path), 0o600);
+    assert_eq!(
+        read(&s.0, "wren", "grants.json", 3).unwrap(),
+        Some(b"one".to_vec())
+    );
+    assert_eq!(read(&s.0, "wren", "missing.json", 3).unwrap(), None);
+    assert!(read(&s.0, "wren", "../grants.json", 3).is_err());
+    assert_eq!(
+        read(&s.0, "wren", "grants.json", 2)
+            .unwrap_err()
+            .to_string(),
+        "grants.json is too big to read (over 0 KiB)"
+    );
+    for permissions in [0o640, 0o604, 0o620, 0o602] {
+        fs::set_permissions(&path, fs::Permissions::from_mode(permissions)).unwrap();
+        assert!(
+            read(&s.0, "wren", "grants.json", 3).is_err(),
+            "mode {permissions:o}"
+        );
+    }
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    let linked = path.parent().unwrap().join("linked.json");
+    symlink(&path, &linked).unwrap();
+    assert!(read(&s.0, "wren", "linked.json", 3).is_err());
+    fs::remove_file(&path).unwrap();
+    fs::create_dir(&path).unwrap();
+    assert!(read(&s.0, "wren", "grants.json", 3).is_err());
+}

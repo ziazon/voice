@@ -644,6 +644,30 @@ pub fn read_private_optional_at_max(
     read_private_optional_at_limit(home, slug, folder, name, Some(max))
 }
 
+/// An optional bounded read that also refuses files accessible by other accounts.
+pub fn read_private_owned_optional_at_max(
+    home: &Path,
+    slug: &str,
+    name: &str,
+    max: u64,
+) -> Result<Option<Vec<u8>>> {
+    let (mut file, path) = match open_private_read(home, slug, None, name) {
+        Ok(found) => found,
+        Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    only_mine(&file, &path, 0o077, "opened")?;
+    if file.metadata().map_err(|e| io(&path, e))?.len() > max {
+        return Err(Error::Invalid(format!(
+            "{name} is too big to read (over {} KiB)",
+            max / 1024
+        )));
+    }
+    read_private_bytes(&mut file, &path, name, Some(max)).map(Some)
+}
+
 fn read_private_optional_at_limit(
     home: &Path,
     slug: &str,

@@ -218,3 +218,26 @@ fn audit_exact_read_refusal_and_unreadable_sentences() {
         .unwrap();
     assert_eq!(success(audit(&f, &[])), "2 entries couldn't be read.\n");
 }
+
+#[test]
+fn unknown_capability_is_one_line_and_bounded_by_characters() {
+    let f = Fixture::new();
+    failure(
+        f.run("give", &["calendar.\n\t\r\u{7f}write"]),
+        "calendar.    write isn't something Voice can be given permission for. It can be given: calendar.read.",
+    );
+    failure(
+        f.run("give", &[&"é".repeat(65)]),
+        &format!(
+            "{}… isn't something Voice can be given permission for. It can be given: calendar.read.",
+            "é".repeat(64)
+        ),
+    );
+    failure(
+        f.run("give", &[&"é".repeat(64)]),
+        &format!(
+            "{} isn't something Voice can be given permission for. It can be given: calendar.read.",
+            "é".repeat(64)
+        ),
+    );
+}

@@ -174,6 +174,7 @@ pub const AUDIT_LAST: &str = "Show between 1 and 1,000 entries.";
 pub const AUDIT_STEP: &str = "A step name starts with a lowercase letter and uses only lowercase letters, digits and dashes, from 1 to 32 characters.";
 pub const NO_STATE_FOR_GRANTS: &str =
     "This assistant has no private state yet. Build it once, then give permission.";
+pub const GRANT_NOT_LOGGED: &str = "Voice couldn't log this, so it took back every permission for this assistant. Give permission again once there's space on this computer.";
 pub const AUDIT_OLDER: &str = "Older entries aren't shown.";
 pub fn grants_damaged(path: &Path) -> String {
     format!(
@@ -187,7 +188,20 @@ pub fn no_grant(capability: crate::grants::Capability) -> String {
         capability.words()
     )
 }
+fn typed_name(name: &str) -> String {
+    let mut chars = name.chars();
+    let mut shown: String = chars
+        .by_ref()
+        .take(64)
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    if chars.next().is_some() {
+        shown.push('…');
+    }
+    shown
+}
 pub fn unknown_capability(id: &str) -> String {
+    let id = typed_name(id);
     let ids = crate::grants::Capability::ALL
         .map(|cap| cap.id())
         .join(", ");
