@@ -8,16 +8,16 @@ One record per slice, newest first. Paraphrase only; no real person.
   one question to one built assistant, with the permissions the person ticks this time, as V-Q12
   answered (a). The brief carries the assistant's `decisions.md`, the question, today's date and,
   when ticked, the calendar events (at most 500), each fenced as data; the system prompt is fixed
-  text. The guard routes before anything is read: with the calendar ticked and no model server it
+  text. The guard routes before the calendar is read: with the calendar ticked and no model server it
   refuses with its own sentence, reading, logging, spending and running nothing. The calendar is
   read only after a route is found (step `ask` in the audit log), before the session is opened.
-  Claude Code is checked only when the route picks it. The reply is cleaned, capped at 4,000
-  characters, returned and never kept. Brief: `plans/briefs/VO14.4a-ask.md` (§ 8 the fixes).
+  Claude Code's sign-in is checked only when the route picks it (it must still be installed). The reply is cleaned, capped at 4,000
+  characters, returned and never kept. Brief: `plans/briefs/VO14.4a-ask.md` (§ 8 the review's fixes, § 9 the delta Verifier's).
 - **Decided at pickup (V1):** VO14.4 split into VO14.4a (this) and VO14.4b (the app's screen), since
   together they were bigger than VO14.3, which filled a run. The reply isn't withheld for looking
   private, since it goes only to the person who asked. A question the filters call secret is refused.
-- **Who built it:** Codex, two dispatches (§§ 1–7; § 8). V1 committed.
-- **Tests:** `builder/api/tests/ask.rs` (10), `builder/api/src/ask/tests.rs` (9),
+- **Who built it:** Codex, three dispatches (§§ 1–7; § 8; § 9). V1 committed.
+- **Tests:** `builder/api/tests/ask.rs` (10), `builder/api/src/ask/tests.rs` (12),
   `builder/cli/tests/ask.rs` (5).
 - **Mutations (killed):** the Verifier's reasoning over the suite (the calendar read before routing,
   the consent re-check dropped, Claude checked always, the session before the read), and V1's two:
@@ -31,7 +31,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   probe), a false comment, an `unreachable!` and a dead fence fallback. Two notes she left, not
   fixed: `decisions.md` is read and Claude's profile folder ensured before the route (neither is a
   source read, a log line or a spend); a revoke between the calendar read and the call still sends
-  the events once (the read is logged).
+  the events once (the read is logged). Delta Verifier (Opus) on `ccb5ad7`: code PASS, records FAIL
+  (the names were said to be fenced; they aren't, so the record now says so; the route was said to
+  come before anything is read, now narrowed to the calendar). Her should-fix: § 8.2 as V1 wrote it
+  flattened every answer's line breaks (`hidden` counts `\n` and `\t`) and let an all-invisible reply
+  through as a space; fixed in § 9.
 - **Not verified:** the real sandboxed calendar reader end to end with an Ask (the tests pass the read
   as a closure; the reader itself is VO14.2's); a real model server and a real Claude Code answer.
   The walk comes with VO14.4b's screen.

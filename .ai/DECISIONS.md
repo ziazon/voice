@@ -395,17 +395,23 @@ mixed in and one seat's calendar can't keep a whole panel on local models.
 - **What goes in:** the assistant's `decisions.md` (`crew-folder`), the typed question (`typed`),
   today's local date, and for each ticked permission what it read (`calendar.read` adds
   `calendar`). Nothing else: no history, no skills, no other assistant.
-- **The guard routes before anything is read or spent.** A refusal (the calendar ticked and no model
+- **The guard routes before any source is read or anything is spent.** (The assistant's own
+  settings, its `decisions.md` and its model-server settings are read first, to know what to
+  route.) A refusal (the calendar ticked and no model
   server set up, by default) reads nothing, logs nothing, opens no session and runs no `claude`.
   The calendar is read only after the route is found, through the sandboxed reader, under the
   grant and its window, with step `ask` in the audit log.
-- **Claude Code is checked only when the route picks it**, so an ask that goes to the person's own
-  model server needs no Claude sign-in.
+- **Claude Code's sign-in is checked only when the route picks it**, so an ask that goes to the
+  person's own model server needs no Claude sign-in. Claude Code must still be installed, as for
+  every step.
 - **Nothing is kept.** The reply is returned, never written; the only writes are the ledger line every
   model step leaves and the audit log's read line. The reply isn't withheld for looking private,
   because it goes only to the person who asked (a panel withholds posts because they go to other
-  assistants); it is cleaned of control characters and capped at 4,000 characters.
-- **Fixed text only in the system prompt** (it is in the `claude` child's argv): names, decisions,
-  the question and the events go in the prompt, each fenced as data. At most 500 events go, and
+  assistants); it is cleaned of control and invisible characters (line breaks and tabs kept) and capped at
+  4,000 characters.
+- **Fixed text only in the system prompt** (it is in the `claude` child's argv): the names, the
+  decisions, the question and the events go in the prompt. The decisions, the question and the
+  events are fenced as data; the two names go in the unfenced first line, cleaned and cut to 64
+  characters, as a panel turn does. At most 500 events go, and
   the person is told when more were left out.
 - **One call, no retry.** The app's screen is VO14.4b.
