@@ -95,7 +95,7 @@ fn too_big() -> Error {
     invalid("the export's conversations.json is bigger than the 2 GB cap")
 }
 
-fn open(path: &Path) -> Result<File> {
+pub(crate) fn open(path: &Path) -> Result<File> {
     OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
@@ -116,18 +116,18 @@ fn open(path: &Path) -> Result<File> {
             }
         })
 }
-fn read_capped(path: &Path, file: File, declared: u64) -> Result<Vec<u8>> {
-    if declared > CAP {
+pub(crate) fn read_capped(path: &Path, file: File, declared: u64, cap: u64) -> Result<Vec<u8>> {
+    if declared > cap {
         return Err(too_big());
     }
     let mut bytes = Vec::new();
-    file.take(CAP + 1)
+    file.take(cap.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|source| Error::Io {
             path: path.to_owned(),
             source,
         })?;
-    if bytes.len() as u64 > CAP {
+    if bytes.len() as u64 > cap {
         return Err(too_big());
     }
     Ok(bytes)
@@ -243,7 +243,7 @@ fn read_folder(path: &Path, folder: Folder, deny: &DenyList) -> Result<(usize, V
             inner.display()
         )));
     }
-    Ok((files, read_capped(&inner, file, metadata.len())?))
+    Ok((files, read_capped(&inner, file, metadata.len(), CAP)?))
 }
 fn read_export_expected(path: &Path, deny: &DenyList, expected: Option<bool>) -> Result<Export> {
     deny.check(path)?;
@@ -271,7 +271,7 @@ fn read_export_expected(path: &Path, deny: &DenyList, expected: Option<bool>) ->
             }
             from_zip(file)?
         } else {
-            (1, read_capped(path, file, metadata.len())?)
+            (1, read_capped(path, file, metadata.len(), CAP)?)
         }
     } else {
         return Err(invalid(format!(

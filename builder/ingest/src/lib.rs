@@ -1,4 +1,5 @@
 pub mod anonymize;
+pub mod calendar;
 pub mod check;
 pub mod claudeai;
 pub mod corpus;
