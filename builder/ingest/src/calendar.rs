@@ -335,12 +335,57 @@ impl Kept {
         }
     }
 }
+struct Prepared {
+    replacements: HashMap<i64, usize>,
+    days: HashSet<i64>,
+    first_day: Option<i64>,
+    last_day: Option<i64>,
+}
+fn prepare<'a>(
+    overrides: &HashMap<&'a str, HashMap<(bool, i64), Vec<usize>>>,
+    remaining: &mut usize,
+) -> HashMap<(&'a str, bool), Prepared> {
+    let mut prepared = HashMap::new();
+    let mut count = 0;
+    for (uid, by_key) in overrides {
+        for (&(all_day, instant), ids) in by_key {
+            if ids.len() != 1 {
+                continue;
+            }
+            let p = prepared.entry((*uid, all_day)).or_insert_with(|| Prepared {
+                replacements: HashMap::new(),
+                days: HashSet::new(),
+                first_day: None,
+                last_day: None,
+            });
+            let day = instant.div_euclid(86400);
+            p.replacements.insert(instant, ids[0]);
+            p.days.extend((day - 2)..=(day + 2));
+            p.first_day = Some(p.first_day.map_or(day, |first| first.min(day)));
+            p.last_day = Some(p.last_day.map_or(day, |last| last.max(day)));
+            count += 1;
+        }
+    }
+    *remaining = remaining.saturating_sub(count);
+    prepared
+}
 pub fn read(
     files: &[Vec<u8>],
     local: &Zone,
     zones: &Path,
     window: Window,
     filters: &Filters,
+) -> Result<Calendar> {
+    let mut remaining = 5_000_000;
+    read_budgeted(files, local, zones, window, filters, &mut remaining)
+}
+fn read_budgeted(
+    files: &[Vec<u8>],
+    local: &Zone,
+    zones: &Path,
+    window: Window,
+    filters: &Filters,
+    remaining: &mut usize,
 ) -> Result<Calendar> {
     let today = window.today.day().ok_or_else(|| invalid(BAD))?;
     let first = today - i64::from(window.past_days);
@@ -383,14 +428,14 @@ pub fn read(
                 .push(i);
         }
     }
-    let mut remaining = 5_000_000;
+    let prepared = prepare(&overrides, remaining);
     let mut used = HashSet::new();
     let mut kept = Kept::default();
     for (i, p) in parsed.iter().enumerate() {
         let Some(p) = p else {
             continue;
         };
-        if remaining == 0 {
+        if *remaining == 0 {
             if p.id.is_none() && could_touch(&entries[i], first, last) {
                 not_understood += 1;
             }
@@ -411,33 +456,19 @@ pub fn read(
         }
         let mut series = Kept::default();
         let mut series_used = Vec::new();
-        let choices = p.uid.as_ref().and_then(|uid| overrides.get(uid.as_str()));
-        let replacements: HashMap<i64, usize> = choices
-            .into_iter()
-            .flat_map(|choices| choices.iter())
-            .filter(|((all_day, _), ids)| *all_day == p.start.all_day() && ids.len() == 1)
-            .map(|((_, instant), ids)| (*instant, ids[0]))
-            .collect();
+        let prepared = p
+            .uid
+            .as_ref()
+            .and_then(|uid| prepared.get(&(uid.as_str(), p.start.all_day())));
         // The ordinary expansion stops at last + 2. The same bounded walk checks membership
         // of moved overrides beyond that horizon, without converting unrelated candidates.
-        let expansion_first = replacements
-            .keys()
-            .map(|utc| utc.div_euclid(86400))
-            .min()
+        let expansion_first = prepared
+            .and_then(|p| p.first_day)
             .unwrap_or(first)
             .min(first);
-        let membership_end = replacements
-            .keys()
-            .map(|utc| utc.div_euclid(86400) + 2)
-            .max()
-            .unwrap_or(last + 2);
-        let replacement_days: HashSet<_> = replacements
-            .keys()
-            .flat_map(|utc| {
-                let day = utc.div_euclid(86400);
-                (day - 2)..=(day + 2)
-            })
-            .collect();
+        let membership_end = prepared
+            .and_then(|p| p.last_day)
+            .map_or(last + 2, |d| d + 2);
         let mut visit = |wall: i64| {
             // Even an old UNTIL stops the walk, without converting skipped wall times.
             // TZif offsets are at most 93599 seconds (RFC 9636 §3.2).
@@ -448,12 +479,14 @@ pub fn read(
             }
             // RFC 5545 §3.8.4.4: IDs and EXDATE use the start's value type,
             // but date-times identify an instant independently of their zone spelling.
-            if replacement_days.contains(&wall.div_euclid(86400)) {
+            if let Some(prepared) = prepared
+                && prepared.days.contains(&wall.div_euclid(86400))
+            {
                 let utc = zones.utc(&Time {
                     wall,
                     frame: p.start.frame.clone(),
                 })?;
-                if let Some(&index) = replacements.get(&utc) {
+                if let Some(&index) = prepared.replacements.get(&utc) {
                     if p.until.is_some_and(|until| utc > until) {
                         return Some(false);
                     }
@@ -495,11 +528,11 @@ pub fn read(
                 &p.start,
                 expansion_first,
                 (last + 2).max(membership_end),
-                &mut remaining,
+                remaining,
                 &mut visit,
             )
         } else {
-            remaining -= 1;
+            *remaining -= 1;
             visit(p.start.wall).map(|_| ())
         };
         if understood.is_none() {
@@ -527,4 +560,65 @@ pub fn read(
         not_understood,
         more: kept.more,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn filters(personal: &str, secret: &str) -> Filters {
+        Filters::compile(&voice_core::member::Filters {
+            personal: personal.into(),
+            secret: secret.into(),
+            excluded_folders: "a^".into(),
+            pasted_prefixes: Vec::new(),
+            denied_paths: Vec::new(),
+            extra: Default::default(),
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn overrides_sharing_one_uid_are_prepared_once() {
+        let local = Zone::load(Path::new(zone::ZONEINFO), "UTC").unwrap();
+        let window = Window {
+            today: Date {
+                year: 2026,
+                month: 11,
+                day: 2,
+            },
+            past_days: 0,
+            next_days: 14,
+        };
+        let mut file = String::from("BEGIN:VCALENDAR\n");
+        for _ in 0..2_000 {
+            file.push_str("BEGIN:VEVENT\nUID:shared\nDTSTART:20261102T100000Z\nDURATION:PT1H\nRRULE:FREQ=DAILY;COUNT=2\nSUMMARY:Standup\nEND:VEVENT\n");
+        }
+        for k in 0..2_000 {
+            file.push_str(&format!("BEGIN:VEVENT\nUID:shared\nRECURRENCE-ID:20261102T10{:02}{:02}Z\nDTSTART:20261102T15{:02}{:02}Z\nSUMMARY:Moved\nEND:VEVENT\n", k / 60, k % 60, k / 60, k % 60));
+        }
+        file.push_str("END:VCALENDAR\n");
+        let mut remaining = 5_000_000;
+        let calendar = read_budgeted(
+            &[file.into_bytes()],
+            &local,
+            Path::new(zone::ZONEINFO),
+            window,
+            &filters("a^", "a^"),
+            &mut remaining,
+        )
+        .unwrap();
+        assert_eq!(calendar.events.len(), 2_000);
+        assert!(calendar.more);
+        assert_eq!(calendar.not_understood, 1_999);
+        assert_eq!(calendar.private_left_out, 0);
+        let first = calendar.events.first().unwrap();
+        let last = calendar.events.last().unwrap();
+        assert_eq!(first.start, "2026-11-02T15:00");
+        assert_eq!(first.title, "Moved");
+        assert_eq!(last.start, "2026-11-02T15:00");
+        assert_eq!(last.title, "Moved");
+        let old_spent = 10_000;
+        assert_eq!(5_000_000 - remaining, old_spent + 2_000);
+    }
 }
