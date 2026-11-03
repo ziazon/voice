@@ -54,7 +54,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh`: all passed on the final code.
 - **Not verified:** a non-macOS build's refusal path at run time; real Google, Apple and Outlook
   exports (fixtures are shaped like them, invented).
-- **Left:** VO14.3 (the screens) and VO14.4 (first use, V-Q12) are next.
+- **Left:** VO14.3 (the screens) and VO14.4 (first use, V-Q12) are next. Not done, from the
+  delta Verifier on `3fed7f8` (existing before this slice): a zero-width character inside a word
+  becomes a space before the text filters see it (`Ther<U+200B>apy` reads as `Ther apy`), so a
+  split word can slip past a filter; dropping in-word format characters, as § 18 does for the
+  soft hyphen, would close it.
 
 ## VO14.1: grants and the audit log (2026-11-02, lane: V1)
 
