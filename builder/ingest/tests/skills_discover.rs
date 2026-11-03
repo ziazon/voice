@@ -870,6 +870,47 @@ fn linked_synced_containers_require_a_regular_child_skill() {
 }
 
 #[test]
+fn linked_synced_root_is_kept_after_a_link_to_one_of_its_skills() {
+    let scratch = Scratch::new("skills-linked-synced-ancestor");
+    let home = scratch.0.canonicalize().unwrap();
+    let target = home.join("elsewhere/synced-root");
+    fs::create_dir_all(home.join(".claude/skills")).unwrap();
+    for name in ["outline", "notes"] {
+        skill(&home, &format!("elsewhere/synced-root/account/{name}"));
+    }
+    symlink(
+        target.join("account/outline"),
+        home.join(".claude/skills/alpha"),
+    )
+    .unwrap();
+    symlink(&target, home.join(".claude/skills/synced")).unwrap();
+
+    let sources = skills::sources(&home, &Rules::builtin());
+    assert_eq!(
+        sources,
+        vec![
+            (home.join(".claude/skills"), true),
+            (target.join("account/outline"), true),
+            (target.clone(), true),
+        ]
+    );
+    let found = skills::discover(&home, &Rules::builtin()).unwrap();
+    assert_eq!(
+        found
+            .skills
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["claude:alpha", "synced:notes", "synced:outline"]
+    );
+    assert!(found.skills.iter().all(|skill| {
+        sources
+            .iter()
+            .any(|(path, folder)| *folder && skill.folder.starts_with(path))
+    }));
+}
+
+#[test]
 fn linked_synced_root_requires_a_skill_inside_an_account() {
     for populated in [false, true] {
         let scratch = Scratch::new("skills-linked-synced-root");
