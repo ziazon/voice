@@ -18,19 +18,22 @@ One record per slice, newest first. Paraphrase only; no real person.
   text filters, caps and a 5,000,000-step budget per read with skip-ahead. Only title, place,
   start, end, all-day and status leave the parser; descriptions, attendees and the rest are never
   read. `voice calendar show` prints the read. Brief: `plans/briefs/VO14.2-calendar-from-an-export.md`
-  (§ 13 part A's review, § 14 the security review's and Verifier's fixes, § 15 the live run's).
+  (§ 13 part A's review, § 14 the security review's and Verifier's fixes, § 15 the live run's,
+  §§ 16–17 the repeat Verifier's must-fix, § 18 her should-fixes).
 - **Decided at pickup (V1):** times are converted with the system database, never guessed (an
   unknown zone, a Windows zone name or a future DST rule is "not understood" and counted); the
   zone is found outside the sandbox (the reader can't follow `/etc/localtime` into `/var/db`);
   off macOS the read refuses; not understood counts only entries that could touch the window.
-- **Who built it:** Codex, four dispatches (part A §§ 2–5; part B §§ 6–13; § 14; § 15).
+- **Who built it:** Codex, six dispatches (part A §§ 2–5; part B §§ 6–13; § 14; § 15; § 17;
+  § 18). V1 committed §§ 17–18 herself: Codex's sandbox can't write a worktree's git index.
 - **Tests:** `builder/ingest/tests/calendar_rules.rs` and `calendar_export.rs`, the `recur.rs`
   and `read.rs` unit tests, `builder/api/src/calendar/tests.rs`, the reader protocol and Judge
   tests, `builder/agent/tests/grants.rs` (no state folder), `builder/cli/tests/calendar.rs`
   (through the real sandbox) and the CLI wording unit tests.
-- **Mutations (8, all killed):** the broker's `require` swapped for a bare load; the log error
+- **Mutations (12, all killed):** the broker's `require` swapped for a bare load; the log error
   ignored; the window check; the hidden-character check; the `from` check; the text filters;
-  EXDATE; the window's last day.
+  EXDATE; the window's last day; the override build left uncharged; the override maps built per
+  master; the soft hyphen dropped from the shared hidden list; `text_check` no longer sharing it.
 - **Live:** the built `voice` in a throwaway home with an invented assistant and calendar:
   no choice, no grant (refused and logged), a grant, then a Berlin 16:00 entry shown at 10:00 New
   York and 00:00 Tokyo, a weekly COUNT=4 series showing its two in-window occurrences, an
@@ -39,7 +42,15 @@ One record per slice, newest first. Paraphrase only; no real person.
   daily entries from year 1, 23 MB) went from about 20 minutes to 9 seconds (debug build).
 - **Gates:** security review (Opus): no HIGH, two MEDIUM (CPU and EXDATE memory in the reader),
   four LOW, all fixed or recorded as limits (§ 14). Verifier (Fable): FAIL on the CPU must-fix,
-  plus the UTC override should-fix; fixed in § 14. Repeat Verifier (Opus) on `83119be`: still running when run `204023-r1` hit its time limit; rerun it before the land.
+  plus the UTC override should-fix; fixed in § 14. Repeat Verifier (Opus) on `83119be`: FAIL, the
+  override maps rebuilt per master from every override sharing its UID (quadratic, about 18
+  minutes at 100k × 100k); fixed in § 17 (built once per UID and all-day, charged once). Repeat
+  Verifier (Opus) on `fea0e58`: PASS (4,000 random calendars identical to `83119be`'s output;
+  99,990 × 99,990 under one UID at most 1.41 s in release), with should-fixes: tag characters
+  and supplementary variation selectors reaching the model, and a soft hyphen shown as a space,
+  both fixed in § 18 (45 lines, inside the pass); the § 17 test pins one `prepare` call, not
+  other per-master work, accepted. Security review (Opus) of § 17's delta: no findings; the one
+  LOW it noted outside the delta (tag characters) is § 18's first fix.
   `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh`: all passed on the final code.
 - **Not verified:** a non-macOS build's refusal path at run time; real Google, Apple and Outlook
   exports (fixtures are shaped like them, invented).
