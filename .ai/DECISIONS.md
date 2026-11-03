@@ -302,3 +302,23 @@ launch as a library (VO11.1b) and the wiring (VO11.1c).
 - **Link targets are sources one by one and must hold a skill.** Their parent folders would let the reader see unlinked neighbours.
 - **A refused source drops its skills.** It does not fail the skills screen. No source may be inside any assistant's state or crew folder.
 - **A panel asks with `refresh-held`.** It already holds each seat's state lock, so the lock does not pass across processes.
+
+## 2026-11-02: permission for each capability, and a log the person can read (VO14.1)
+
+A grant says whether Voice may read a source for one assistant; its ceiling still says where that
+source's data may go. Every grant is dated on the person's local day, scoped to a window, and
+revocable. It lives in `grants.json` in the assistant's private state folder, never member.json:
+permission belongs to this person and this computer, so copying an assistant doesn't copy consent.
+
+- **Reads only.** The first capability is `calendar.read`. A write or send will need the person's
+  confirmation for each action (A4), never a standing grant.
+- **Every grant, revoke, read and refusal leaves an audit line.** `audit.jsonl` holds only the UTC
+  time, event and capability, plus the window for a grant, the step and item count for a read, or
+  the step and fixed reason for a refusal. Never a path, title, name, error text or source content.
+  The person reads it with `voice audit show`; `voice grants show|give|revoke` manages permission.
+- **Damaged permissions refuse reads.** A grant or revoke that can't be logged restores the exact
+  previous permissions file (or removes the new file when there wasn't one). Permission nobody
+  can see in the log must not stand.
+- **Calendar first, from an exported file (VO14.2),** following mail's local-export precedent,
+  rather than a live connector. Nothing reads a calendar in this slice. The app's screens come
+  in VO14.3.

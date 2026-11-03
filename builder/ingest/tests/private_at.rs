@@ -195,3 +195,35 @@ fn bounded_private_reads_refuse_oversized_files_before_reading() {
     symlink(&path, path.parent().unwrap().join("linked.json")).unwrap();
     assert!(read_private_at_max(&s.0, "wren", Some("growth"), "linked.json", u64::MAX).is_err());
 }
+
+#[test]
+fn private_tail_reads_only_the_bounded_end_and_refuses_unsafe_files() {
+    use voice_ingest::private::read_private_tail_optional as tail;
+    let s = Scratch::new("private-tail");
+    assert_eq!(tail(&s.0, "wren", "audit.jsonl", 4).unwrap(), None);
+    assert!(!s.0.join(".claude").exists());
+    let path = write_private(&s.0, "wren", "audit.jsonl", b"abcdef").unwrap();
+    assert_eq!(
+        tail(&s.0, "wren", "audit.jsonl", 9).unwrap(),
+        Some((b"abcdef".to_vec(), false))
+    );
+    assert_eq!(
+        tail(&s.0, "wren", "audit.jsonl", 6).unwrap(),
+        Some((b"abcdef".to_vec(), false))
+    );
+    assert_eq!(
+        tail(&s.0, "wren", "audit.jsonl", 4).unwrap(),
+        Some((b"cdef".to_vec(), true))
+    );
+    assert_eq!(tail(&s.0, "wren", "missing.jsonl", 4).unwrap(), None);
+    assert!(tail(&s.0, "wren", "../audit.jsonl", 4).is_err());
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(tail(&s.0, "wren", "audit.jsonl", 4).is_err());
+    fs::remove_file(&path).unwrap();
+    fs::create_dir(&path).unwrap();
+    assert!(tail(&s.0, "wren", "audit.jsonl", 4).is_err());
+    fs::remove_dir(&path).unwrap();
+    let target = write_private(&s.0, "wren", "target.jsonl", b"private").unwrap();
+    symlink(target, &path).unwrap();
+    assert!(tail(&s.0, "wren", "audit.jsonl", 4).is_err());
+}

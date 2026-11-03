@@ -2,7 +2,7 @@
 use std::{
     ffi::{CStr, CString},
     fs::{self, File, OpenOptions, Permissions},
-    io::{Read, Write},
+    io::{Read, Seek, SeekFrom, Write},
     os::{
         fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
         unix::{
@@ -410,16 +410,33 @@ fn read_private_at_limit(
     name: &str,
     max: Option<u64>,
 ) -> Result<Vec<u8>> {
+    let (mut file, path) =
+        open_private_read(home, slug, folder, name).map_err(|error| match error {
+            Error::Io { path, source } if source.kind() == std::io::ErrorKind::NotFound => {
+                Error::Invalid(format!("{} doesn't exist", path.display()))
+            }
+            other => other,
+        })?;
+    if let Some(max) = max
+        && file.metadata().map_err(|e| io(&path, e))?.len() > max
+    {
+        return Err(Error::Invalid(format!(
+            "{name} is too big to read (over {} KiB)",
+            max / 1024
+        )));
+    }
+    read_private_bytes(&mut file, &path, name, max)
+}
+
+fn open_private_read(
+    home: &Path,
+    slug: &str,
+    folder: Option<&str>,
+    name: &str,
+) -> Result<(File, PathBuf)> {
     validate_private_name(name)?;
-    let missing = |error| match error {
-        Error::Io { path, source } if source.kind() == std::io::ErrorKind::NotFound => {
-            Error::Invalid(format!("{} doesn't exist", path.display()))
-        }
-        other => other,
-    };
-    let (directory, path) = place_directory(home, slug, folder, false).map_err(missing)?;
+    let (directory, path) = place_directory(home, slug, folder, false)?;
     let path = path.join(name);
-    let file_name = name;
     let name = CString::new(name).expect("validated file name");
     // SAFETY: directory is live and name is terminated; flags refuse links and avoid blocking on pipes.
     let fd = unsafe {
@@ -437,24 +454,42 @@ fn read_private_at_limit(
                 path.display()
             )));
         }
-        return Err(missing(directory_error(&path, source)));
+        return Err(directory_error(&path, source));
     }
     // SAFETY: openat returned a fresh valid descriptor, owned exactly once from here.
     let owned = unsafe { OwnedFd::from_raw_fd(fd) };
-    let mut file = File::from(owned);
+    let file = File::from(owned);
     let metadata = file.metadata().map_err(|e| io(&path, e))?;
     if !metadata.is_file() {
         return Err(Error::Invalid(format!("{} is not a file", path.display())));
     }
-    if let Some(max) = max
-        && metadata.len() > max
-    {
-        return Err(Error::Invalid(format!(
-            "{file_name} is too big to read (over {} KiB)",
-            max / 1024
-        )));
-    }
-    read_private_bytes(&mut file, &path, file_name, max)
+    Ok((file, path))
+}
+
+/// Read at most the last `max` bytes without creating state or following links.
+pub fn read_private_tail_optional(
+    home: &Path,
+    slug: &str,
+    name: &str,
+    max: u64,
+) -> Result<Option<(Vec<u8>, bool)>> {
+    let (mut file, path) = match open_private_read(home, slug, None, name) {
+        Ok(found) => found,
+        Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    only_mine(&file, &path, 0o077, "opened")?;
+    let length = file.metadata().map_err(|e| io(&path, e))?.len();
+    let start = length.saturating_sub(max);
+    file.seek(SeekFrom::Start(start))
+        .map_err(|e| io(&path, e))?;
+    let mut bytes = Vec::new();
+    file.take(length - start)
+        .read_to_end(&mut bytes)
+        .map_err(|e| io(&path, e))?;
+    Ok(Some((bytes, start > 0)))
 }
 
 fn read_private_bytes(

@@ -420,6 +420,16 @@ enum Command {
     },
     /// Show how well your assistant knows you, from its last build.
     Report { member_dir: PathBuf },
+    /// Show or change what this assistant has permission to read
+    Grants {
+        #[command(subcommand)]
+        command: GrantsCommand,
+    },
+    /// Read this assistant's log of permissions and source reads
+    Audit {
+        #[command(subcommand)]
+        command: AuditCommand,
+    },
     /// Use a model server on your own machines for this assistant
     SelfHosted {
         #[command(subcommand)]
@@ -468,6 +478,122 @@ impl From<ReaderStep> for voice_api::reader::Step {
             ReaderStep::Skills => Self::Skills,
         }
     }
+}
+
+#[derive(Subcommand)]
+enum GrantsCommand {
+    /// Show what this assistant has permission to read
+    Show { member_dir: PathBuf },
+    /// Give this assistant permission to read a source
+    Give {
+        member_dir: PathBuf,
+        capability: String,
+        #[arg(long, default_value_t = 0)]
+        past_days: u16,
+        #[arg(long, default_value_t = 14)]
+        next_days: u16,
+    },
+    /// Take back permission to read a source
+    Revoke {
+        member_dir: PathBuf,
+        capability: String,
+    },
+}
+#[derive(Subcommand)]
+enum AuditCommand {
+    /// Show the latest permissions and reads for this assistant
+    Show {
+        member_dir: PathBuf,
+        #[arg(long, default_value_t = 50)]
+        last: usize,
+    },
+}
+fn grants(command: GrantsCommand) -> Result<()> {
+    use voice_agent::{
+        grants::{self, Capability, Window},
+        text,
+    };
+    let member_dir = match &command {
+        GrantsCommand::Show { member_dir }
+        | GrantsCommand::Give { member_dir, .. }
+        | GrantsCommand::Revoke { member_dir, .. } => member_dir,
+    };
+    let (member, home) = member_and_home(member_dir)?;
+    let capability = |id: &str| {
+        Capability::from_id(id).ok_or_else(|| Error::Invalid(text::unknown_capability(id)))
+    };
+    let lock = || {
+        voice_ingest::private::lock_existing_state(&home, &member.slug).map_err(|error| match error
+        {
+            Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                Error::Invalid(text::NO_STATE_FOR_GRANTS.into())
+            }
+            error => error,
+        })
+    };
+    match command {
+        GrantsCommand::Show { .. } => {
+            let grants = grants::load(&home, &member.slug)?;
+            for capability in Capability::ALL {
+                println!(
+                    "{}",
+                    text::grant_shown(
+                        capability,
+                        grants.iter().find(|g| g.capability == capability)
+                    )
+                );
+            }
+        }
+        GrantsCommand::Give {
+            capability: id,
+            past_days,
+            next_days,
+            ..
+        } => {
+            let capability = capability(&id)?;
+            let window = Window::new(past_days, next_days)?;
+            let _lock = lock()?;
+            let grant = grants::give(
+                &home,
+                &member.slug,
+                capability,
+                window,
+                std::time::SystemTime::now(),
+            )?;
+            println!("{}", text::grant_given(&member.name, &grant));
+        }
+        GrantsCommand::Revoke { capability: id, .. } => {
+            let capability = capability(&id)?;
+            let _lock = lock()?;
+            let changed = grants::revoke(
+                &home,
+                &member.slug,
+                capability,
+                std::time::SystemTime::now(),
+            )?;
+            println!("{}", text::grant_revoked(&member.name, capability, changed));
+        }
+    }
+    Ok(())
+}
+fn audit(command: AuditCommand) -> Result<()> {
+    use voice_agent::{grants, text};
+    let AuditCommand::Show { member_dir, last } = command;
+    let (member, home) = member_and_home(&member_dir)?;
+    let audit = grants::audit(&home, &member.slug, last)?;
+    for entry in &audit.entries {
+        println!("{}", text::audit_entry(entry));
+    }
+    if audit.unreadable > 0 {
+        println!("{}", text::audit_unreadable(audit.unreadable));
+    }
+    if audit.older {
+        println!("{}", text::AUDIT_OLDER);
+    }
+    if audit.entries.is_empty() && audit.unreadable == 0 && !audit.older {
+        println!("{}", text::audit_empty(&member.name));
+    }
+    Ok(())
 }
 
 #[derive(Subcommand)]
@@ -2550,6 +2676,8 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             },
         ),
         Some(Command::Report { member_dir }) => report(member_dir),
+        Some(Command::Grants { command }) => grants(command),
+        Some(Command::Audit { command }) => audit(command),
         Some(Command::SelfHosted { command }) => self_hosted(command),
         Some(Command::Limit { command }) => match command {
             LimitCommand::Show { member_dir } => limit_show(member_dir),
