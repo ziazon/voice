@@ -18,8 +18,8 @@ export const words = {
 }
 export function whereWords(name: string, ticked: string[]): string {
   return ticked.includes('calendar.read')
-    ? `Voice will send ${name}'s decisions, your question and your calendar for the days you allowed, nothing else. Your calendar is kept on your own machines unless you've let it go to Anthropic. Until you do, only a model server on your own machines can answer, and if none is set up, nothing is sent and Voice tells you why.`
-    : `Voice will send ${name}'s decisions and your question, nothing else. They go to your own Claude Code, unless you've chosen to keep them on your own machines.`
+    ? `Voice will send ${name}'s decisions, your question and your calendar for the days you allowed, nothing else. Your calendar is kept on your own machines unless you've let it go to Anthropic. Until you do, only a model server on your own machines or your own network can answer, and if none is set up, nothing is sent and Voice tells you why.`
+    : `Voice will send ${name}'s decisions and your question, nothing else. They go to Anthropic through your own Claude Code, unless you've chosen to keep them on your own machines. Then only a model server on your own machines or your own network can answer, and if none is set up, nothing is sent and Voice tells you why.`
 }
 export function noPermissionsWords(name: string): string {
   return `${name} hasn't been given permission to read anything, so it will use only its decisions and your question. You can give permission on its Save page.`

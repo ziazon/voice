@@ -26,6 +26,7 @@ const answer = ref('')
 const said = ref('')
 const error = ref('')
 let permissionRequest = 0
+let unmounted = false
 const valid = computed(() => chosen.value?.consent.agreed && permissions.value !== null
   && !permissionsLoading.value && !permissionsError.value && count.value >= 1 && count.value <= 2000 && !asking.value)
 
@@ -70,10 +71,11 @@ async function ask() {
   } catch (failure) { error.value = failureMessage(failure, words.askFailure) }
   finally {
     asking.value = false
-    emit('running', false)
+    if (!unmounted) emit('running', false)
   }
 }
 onBeforeUnmount(() => {
+  unmounted = true
   permissionRequest++
   if (asking.value) emit('running', false)
 })
