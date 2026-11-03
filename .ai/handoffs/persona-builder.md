@@ -2,6 +2,69 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO11.2d: the skills reading goes through the reader (2026-11-02, lane: V1)
+
+- **What:** on macOS the app's four skill actions (`voice_api::{list,agree,withdraw,refresh}_skills`)
+  and a panel's refresh of each seat's skills copy start the shipped `voice` as the reader
+  (`voice reader skills`) instead of reading in the app's process. Its sources are
+  `voice_ingest::skills::sources`, named beside `discover`: the skill roots that exist
+  (`~/.claude/skills`, the plugin list and each plugin's `skills`, each listed project's
+  `.claude/skills`, `~/.codex/skills`) plus the real folder of each linked skill, synced account or
+  linked `synced` folder that holds a skill; then `voice_agent::reader::usable`, the reader's own
+  per-source rule (`bounds` + `accepted`, shared with `Reader::new`), drops what the reader would
+  refuse. `MAX_SOURCES` 64 to 256. A panel already holds every seat's state lock, so it sends
+  `refresh-held`, which takes the lock when free and runs unlocked only on `BUSY`. A skill root the
+  reader may not read (`EPERM`) is skipped with the "couldn't be read" note, in the terminal too.
+  Brief: `plans/briefs/VO11.2d-skills-through-the-reader.md` (§ 11 the reviews' fixes).
+- **Decided at pickup (V1, measured on this Mac, Darwin 27):** inside a Seatbelt profile a missing
+  path answers `ENOENT` even where reading isn't allowed and an existing non-allowed folder
+  `EPERM`, so absent roots needn't be sources; `sandbox-exec` took 300 `-D` parameters and rules,
+  each still biting. Link targets are sources one by one, never their parent folders (one real
+  setup links 48 skills from one folder; a parent would expose unlinked neighbours). A refused
+  source drops its skills rather than failing the screen. `refresh-held` rather than passing the
+  lock across processes.
+- **Who built it:** Codex, five dispatches (the slice; § 11 the reviews' fixes; § 11.9 a linked
+  `synced` folder holds accounts, found in V1's review of § 11.1; § 11.10 and § 11.11 the repeat
+  Verifiers' should-fixes).
+- **Tests:** `skills_discover.rs` (`sources` covers every discovered skill, in order, plugin links
+  inside and outside the install, a `.ssh` target out; empty home; an unreadable project root noted
+  once; link targets need a regular `SKILL.md`; synced containers at both depths);
+  `reader_profile.rs` (`usable` keeps what `Reader::new` accepts, drops state, crew, deny-listed and
+  overlapping sources, caps at 256); reader protocol (`refresh-held` under a held lock, with a free
+  lock, with ids, on a lock error); `reader_client` (unknown notes dropped, a bad deny entry shows
+  the step's sentence); panel runner (the injected refresh's result reported per seat, skipped when
+  the mirror isn't in use); `reader_app.rs` through the built `voice` under the real sandbox (list,
+  agree, refresh, withdraw and `refresh-held` equal the in-process answers and mirror files; `GONE`
+  and `NONE` pass through; a skill linked into a member-denied folder or another assistant's folders
+  isn't listed; a canary outside every source never reaches the state folder; no run folder left).
+- **Mutations (all killed, `mutate-check.sh`):** link targets dropped from `sources`; the member
+  deny check removed from `accepted` (path and canonical both: one alone survives, since a
+  canonical target makes them the same check); root `EPERM` back to an error; `refresh_held_in`
+  taking the lock unconditionally; the panel ignoring the refresh result; the holds-a-skill check
+  removed; the state and crew refusal removed (through the real sandbox); `refresh-held` dropping
+  the lock it took; the ancestor-of-a-root refusal removed; the crew-link refusal removed; the
+  ancestor check run over link targets too.
+- **Verification:** `VOICE_REQUIRE_SANDBOX=1 ci-local.sh` all passed on `08b4cd3`, `bcda62a` and
+  `8a53154`; after § 11.11, `skills_discover` and `reader_app` green with no skip on `ed5c587`.
+- **Security review (Opus, on `08b4cd3`): one MEDIUM, fixed:** a linked folder became a whole
+  source with no skill in it (`~/.codex/skills/x -> ~/.codex`), and nothing refused another
+  assistant's folders; now a target must hold a skill and no source may sit in any assistant's
+  state or crew folder. LOW, fixed: `refresh-held` unlocked when the lock was free; notes not
+  re-checked by the client; a deny entry's text could reach the screen; quadratic canonicalizing.
+  LOW, recorded as a limit in SECURITY: withdrawing in the app needs the reader to start.
+- **Verifier (Fable, on `08b4cd3`): PASS**, four should-fixes, done: plugin skills linked inside
+  their install; the doc's list of refused sources; SECURITY's limits for an unreadable root; a
+  `SKILL.md` that is a link outside the sources shows the note through the reader.
+- **Repeat Verifiers (Opus):** on `bcda62a` PASS, three should-fixes, done in `8a53154`: a linked
+  `synced` folder pointing at a folder that holds a skill root (`~/.codex`) made it all a source,
+  now refused; the crew refusal now follows links (a crew folder or entry linked into a private
+  copy); the depth wording. On `8a53154` PASS, one should-fix, done in `ed5c587`: the
+  ancestor check compared with link targets too, so entry order could hide synced skills; now it
+  compares with the roots only. Noted, accepted: a crew entry linked to home refuses every source
+  (fails closed).  On `ed5c587` PASS, no findings.
+- **Not verified:** the app's own screens (a walk is owed); a `-D` argument list near 256 sources
+  with long paths (300 short ones measured).
+
 ## VO11.2c.1: open history files through the listed folder's descriptor (2026-11-02, lane: V1)
 
 - **What:** `voice_ingest::folder::Folder` (new, `builder/ingest/src/folder.rs`) holds one
