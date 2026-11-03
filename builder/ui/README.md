@@ -3,7 +3,7 @@
 `@voice/screens` is the app's Vue screens as a source package that another app can mount.
 It uses Tabler's CSS and a host-provided `Backend` for the app's commands.
 
-The screens so far: assistants, a new one, permission, connect Claude, your history, build and the interview, the report and review, panels, save a copy, turn it on, the claude.ai files, your skills, what your assistant may read and its log, forget.
+The screens so far: assistants, a new one, permission, connect Claude, your history, build and the interview, the report and review, panels, save a copy, turn it on, the claude.ai files, your skills, what your assistant may read and its log, forget, and asking one assistant a question.
 
 Node and pnpm 10 or later are needed. From the repo root, run the desktop app with:
 
