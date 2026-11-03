@@ -193,7 +193,18 @@ fn typed_name(name: &str) -> String {
     let mut shown: String = chars
         .by_ref()
         .take(64)
-        .map(|c| if c.is_control() { ' ' } else { c })
+        .map(|c| {
+            if c.is_control()
+                || matches!(
+                    c,
+                    '\u{2028}' | '\u{2029}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+                )
+            {
+                ' '
+            } else {
+                c
+            }
+        })
         .collect();
     if chars.next().is_some() {
         shown.push('…');

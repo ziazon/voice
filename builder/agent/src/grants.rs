@@ -11,9 +11,8 @@ use voice_ingest::private::{
     write_private,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Capability {
-    #[serde(rename = "calendar.read")]
     CalendarRead,
 }
 impl Capability {
@@ -347,8 +346,7 @@ pub enum Event {
         reason: Reason,
     },
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
     NoGrant,
     Damaged,
