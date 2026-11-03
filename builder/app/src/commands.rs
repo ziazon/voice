@@ -405,3 +405,55 @@ pub fn refresh_skills(
 ) -> Result<voice_api::dto::SkillsRefreshed, voice_api::dto::Failure> {
     voice_api::refresh_skills(request)
 }
+
+#[tauri::command(async)]
+pub fn list_permissions(
+    request: voice_api::dto::SlugRequest,
+) -> Result<voice_api::dto::Permissions, voice_api::dto::Failure> {
+    voice_api::list_permissions(request)
+}
+
+#[tauri::command(async)]
+pub fn give_permission(
+    request: voice_api::dto::GivePermissionRequest,
+) -> Result<voice_api::dto::PermissionsChanged, voice_api::dto::Failure> {
+    voice_api::give_permission(request)
+}
+
+#[tauri::command(async)]
+pub fn turn_off_permission(
+    request: voice_api::dto::PermissionRequest,
+) -> Result<voice_api::dto::PermissionsChanged, voice_api::dto::Failure> {
+    voice_api::turn_off_permission(request)
+}
+
+#[tauri::command(async)]
+pub fn choose_calendar_export(
+    request: voice_api::dto::ChooseCalendarRequest,
+) -> Result<Option<voice_api::dto::CalendarExport>, voice_api::dto::Failure> {
+    let slug = request.slug;
+    voice_api::check_calendar_choice(voice_api::dto::SlugRequest { slug: slug.clone() })?;
+    let mut dialog = rfd::FileDialog::new().set_title("Choose the calendar you exported");
+    if let Some(home) = std::env::var_os("HOME") {
+        let downloads = std::path::PathBuf::from(home).join("Downloads");
+        if downloads.is_dir() {
+            dialog = dialog.set_directory(downloads);
+        }
+    }
+    let chosen = if request.folder {
+        dialog.pick_folder()
+    } else {
+        dialog.add_filter("Calendar", &["ics"]).pick_file()
+    };
+    match chosen {
+        None => Ok(None),
+        Some(path) => voice_api::use_calendar_export(&slug, &path).map(Some),
+    }
+}
+
+#[tauri::command(async)]
+pub fn audit_log(
+    request: voice_api::dto::AuditRequest,
+) -> Result<voice_api::dto::AuditLog, voice_api::dto::Failure> {
+    voice_api::audit_log(request)
+}

@@ -68,6 +68,11 @@ fn main() {
             commands::agree_skills,
             commands::withdraw_skills,
             commands::refresh_skills,
+            commands::list_permissions,
+            commands::give_permission,
+            commands::turn_off_permission,
+            commands::choose_calendar_export,
+            commands::audit_log,
         ])
         .build(tauri::generate_context!());
     match app {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-permissions"
+description = "Enables the list_permissions command without any pre-configured scope."
+commands.allow = ["list_permissions"]
+
+[[permission]]
+identifier = "deny-list-permissions"
+description = "Denies the list_permissions command without any pre-configured scope."
+commands.deny = ["list_permissions"]

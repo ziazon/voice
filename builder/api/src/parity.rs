@@ -232,4 +232,24 @@ pub const PARITY: &[Parity] = &[
         app: "refresh_skills",
         cli: &[&["skills", "refresh"]],
     },
+    Parity {
+        app: "list_permissions",
+        cli: &[&["grants", "show"]],
+    },
+    Parity {
+        app: "give_permission",
+        cli: &[&["grants", "give"]],
+    },
+    Parity {
+        app: "turn_off_permission",
+        cli: &[&["grants", "revoke"]],
+    },
+    Parity {
+        app: "choose_calendar_export",
+        cli: &[&["calendar", "choose"]],
+    },
+    Parity {
+        app: "audit_log",
+        cli: &[&["audit", "show"]],
+    },
 ];

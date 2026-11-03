@@ -835,3 +835,76 @@ pub struct CalendarRead {
     pub not_understood: u32,
     pub more: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Permission {
+    pub id: String,
+    pub words: String,
+    pub on: bool,
+    pub given_on: Option<String>,
+    pub past_days: u16,
+    pub next_days: u16,
+    pub window: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Permissions {
+    pub permissions: Vec<Permission>,
+    pub calendar: Option<CalendarExport>,
+    pub calendar_problem: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PermissionsChanged {
+    pub permissions: Permissions,
+    pub said: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct GivePermissionRequest {
+    pub slug: String,
+    pub id: String,
+    pub past_days: u16,
+    pub next_days: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct PermissionRequest {
+    pub slug: String,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct ChooseCalendarRequest {
+    pub slug: String,
+    pub folder: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct AuditRequest {
+    pub slug: String,
+    pub last: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AuditLog {
+    pub lines: Vec<String>,
+    pub unreadable: u32,
+    pub older: bool,
+}

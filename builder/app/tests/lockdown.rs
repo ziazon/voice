@@ -101,6 +101,11 @@ fn lockdown_1_command_lists_agree_in_order() {
             "agree_skills",
             "withdraw_skills",
             "refresh_skills",
+            "list_permissions",
+            "give_permission",
+            "turn_off_permission",
+            "choose_calendar_export",
+            "audit_log",
         ]
     );
     let capability = json("capabilities/default.json");

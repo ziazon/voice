@@ -1,3 +1,7 @@
+import type { Permissions } from '../types/generated/Permissions'
+import type { PermissionsChanged } from '../types/generated/PermissionsChanged'
+import type { CalendarExport } from '../types/generated/CalendarExport'
+import type { AuditLog } from '../types/generated/AuditLog'
 import type { Skills } from '../types/generated/Skills'
 import type { SkillsWithdrawn } from '../types/generated/SkillsWithdrawn'
 import type { SkillsRefreshed } from '../types/generated/SkillsRefreshed'
@@ -37,6 +41,11 @@ import type { ClaudeaiCounts } from '../types/generated/ClaudeaiCounts'
 import type { MergeCounts } from '../types/generated/MergeCounts'
 
 export const tauriBackend: Backend = {
+  listPermissions: request => invoke<Permissions>('list_permissions', { request }),
+  givePermission: request => invoke<PermissionsChanged>('give_permission', { request }),
+  turnOffPermission: request => invoke<PermissionsChanged>('turn_off_permission', { request }),
+  chooseCalendarExport: request => invoke<CalendarExport | null>('choose_calendar_export', { request }),
+  auditLog: request => invoke<AuditLog>('audit_log', { request }),
   listSkills: request => invoke<Skills>('list_skills', { request }),
   agreeSkills: request => invoke<Skills>('agree_skills', { request }),
   withdrawSkills: request => invoke<SkillsWithdrawn>('withdraw_skills', { request }),

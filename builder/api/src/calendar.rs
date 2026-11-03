@@ -39,7 +39,7 @@ pub const LINK: &str = "Voice doesn't follow links. Choose the calendar file its
 pub const NOT_ICS: &str = "Choose a calendar you exported: an .ics file, or a folder of them.";
 pub const ZONE: &str = "Voice couldn't tell which time zone this Mac is set to. Set it in System Settings, then try again.";
 pub const LOG: &str = "Voice couldn't write down that it read your calendar, so it didn't read it. Check there's space on this computer, then try again.";
-pub const BAD_GRANTS: &str = "Voice's permissions file for this assistant is damaged, so it read nothing. Give permission again.";
+pub const BAD_GRANTS: &str = "Voice's permissions file for this assistant is damaged, so it read nothing. To see where it is, run voice grants show in a terminal, delete it, then give permission again.";
 pub const NO_STATE: &str =
     "This assistant has no private state yet. Build it once, then choose your calendar.";
 pub const MAC_ONLY_CALENDAR: &str =
@@ -315,7 +315,8 @@ pub fn read_calendar_through(
     chosen_export(home, slug)?.ok_or_else(|| failure(NONE))?;
     let grant =
         grants::require(home, slug, Capability::CalendarRead, step, now).map_err(|e| match e {
-            Error::Invalid(text) => failure(&text),
+            Error::Invalid(t) if t == text::no_grant(Capability::CalendarRead) => failure(&t),
+            Error::Invalid(_) => failure(BAD_GRANTS),
             _ => failure(LOG),
         })?;
     let today = ledger::local_day(now);

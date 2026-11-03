@@ -534,3 +534,28 @@ fn choose_reports_save_when_the_state_lock_cannot_be_opened() {
     );
     assert!(!h.state().join("calendar-export.json").exists());
 }
+
+#[test]
+fn broker_damaged_grants_are_a_fixed_failure_and_log_one_refusal() {
+    let h = Home::new(true);
+    h.choose();
+    private::write_private(&h.0, "ari", "grants.json", br#"{"version":2,"grants":[]}"#).unwrap();
+    let error = read_calendar_through(&h.0, "ari", "cli", now(), |_| {
+        panic!("damaged grants must not read")
+    })
+    .unwrap_err();
+    assert_eq!(error.message, BAD_GRANTS);
+    assert!(!error.message.contains(h.0.to_str().unwrap()));
+    assert!(!error.message.contains("grants.json"));
+    assert_eq!(
+        h.audit(),
+        "{\"at\":\"2026-11-02T12:00:00Z\",\"event\":\"refused\",\"capability\":\"calendar.read\",\"step\":\"cli\",\"reason\":\"damaged\"}\n"
+    );
+}
+#[test]
+fn damaged_grants_advice_names_the_terminal_recovery() {
+    assert_eq!(
+        BAD_GRANTS,
+        "Voice's permissions file for this assistant is damaged, so it read nothing. To see where it is, run voice grants show in a terminal, delete it, then give permission again."
+    );
+}

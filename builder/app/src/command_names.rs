@@ -57,4 +57,9 @@ pub const COMMANDS: &[&str] = &[
     "agree_skills",
     "withdraw_skills",
     "refresh_skills",
+    "list_permissions",
+    "give_permission",
+    "turn_off_permission",
+    "choose_calendar_export",
+    "audit_log",
 ];

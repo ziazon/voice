@@ -50,3 +50,20 @@ fn skills_commands_share_the_terminal_skills_commands() {
         assert_eq!(row.cli, &[&["skills", action][..]]);
     }
 }
+
+#[test]
+fn permissions_commands_share_the_terminal_commands() {
+    let expected = [
+        ("list_permissions", "grants", "show"),
+        ("give_permission", "grants", "give"),
+        ("turn_off_permission", "grants", "revoke"),
+        ("choose_calendar_export", "calendar", "choose"),
+        ("audit_log", "audit", "show"),
+    ];
+    let rows = &PARITY[PARITY.len().saturating_sub(5)..];
+    assert_eq!(rows.len(), expected.len());
+    for (row, (app, group, action)) in rows.iter().zip(expected) {
+        assert_eq!(row.app, app);
+        assert_eq!(row.cli, &[&[group, action][..]]);
+    }
+}

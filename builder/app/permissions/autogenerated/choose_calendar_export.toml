@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-choose-calendar-export"
+description = "Enables the choose_calendar_export command without any pre-configured scope."
+commands.allow = ["choose_calendar_export"]
+
+[[permission]]
+identifier = "deny-choose-calendar-export"
+description = "Denies the choose_calendar_export command without any pre-configured scope."
+commands.deny = ["choose_calendar_export"]

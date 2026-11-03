@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-turn-off-permission"
+description = "Enables the turn_off_permission command without any pre-configured scope."
+commands.allow = ["turn_off_permission"]
+
+[[permission]]
+identifier = "deny-turn-off-permission"
+description = "Denies the turn_off_permission command without any pre-configured scope."
+commands.deny = ["turn_off_permission"]

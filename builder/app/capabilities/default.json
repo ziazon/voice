@@ -60,6 +60,11 @@
     "allow-list-skills",
     "allow-agree-skills",
     "allow-withdraw-skills",
-    "allow-refresh-skills"
+    "allow-refresh-skills",
+    "allow-list-permissions",
+    "allow-give-permission",
+    "allow-turn-off-permission",
+    "allow-choose-calendar-export",
+    "allow-audit-log"
   ]
 }

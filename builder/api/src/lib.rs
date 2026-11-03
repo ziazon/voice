@@ -40,3 +40,6 @@ pub mod skills;
 pub use skills::*;
 
 pub mod reader_client;
+
+pub mod permissions;
+pub use permissions::*;

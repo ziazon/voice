@@ -176,3 +176,16 @@ it.each([
   expect(await (tauriBackend[method] as (value: typeof request) => Promise<unknown>)(request)).toBe('answer')
   expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
 })
+
+it.each([
+  ['listPermissions', 'list_permissions', { slug: 'example' }],
+  ['givePermission', 'give_permission', { slug: 'example', id: 'calendar.read', pastDays: 3, nextDays: 30 }],
+  ['turnOffPermission', 'turn_off_permission', { slug: 'example', id: 'calendar.read' }],
+  ['chooseCalendarExport', 'choose_calendar_export', { slug: 'example', folder: false }],
+  ['auditLog', 'audit_log', { slug: 'example', last: 50 }],
+] as const)('maps permissions method %s with a request', async (method, command, request) => {
+  vi.mocked(invoke).mockClear().mockResolvedValue('answer')
+  expect(tauriBackend[method]).toBeTypeOf('function')
+  expect(await (tauriBackend[method] as (value: typeof request) => Promise<unknown>)(request)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith(command, { request })
+})

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-give-permission"
+description = "Enables the give_permission command without any pre-configured scope."
+commands.allow = ["give_permission"]
+
+[[permission]]
+identifier = "deny-give-permission"
+description = "Denies the give_permission command without any pre-configured scope."
+commands.deny = ["give_permission"]

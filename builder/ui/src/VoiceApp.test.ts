@@ -116,12 +116,12 @@ it('opens save without requiring permission and gates report and review', async 
   expect(backend.agreeConsent).not.toHaveBeenCalled()
 })
 
-it('shows five save cards and preserves the forget message while resetting permission', async () => {
+it('shows six save cards and preserves the forget message while resetting permission', async () => {
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed: true, agreedOn: '2026-10-25' } }]), forgetPreview: vi.fn().mockResolvedValue({ files: 7 }) })
   const wrapper = screen(VoiceApp, backend)
   await flushPromises(); await button(wrapper, 'Open').trigger('click'); await flushPromises()
   await button(wrapper, 'Save').trigger('click'); await flushPromises()
-  expect(wrapper.findAll('main h2').map(h => h.text())).toEqual([`Keep ${assistant.name} safe`, 'Use it in Claude Code', 'Use it in claude.ai', 'Your skills', 'Forget what Example learned from'])
+  expect(wrapper.findAll('main h2').map(h => h.text())).toEqual([`Keep ${assistant.name} safe`, 'Use it in Claude Code', 'Use it in claude.ai', 'Your skills', 'What your assistant may read', 'Forget what Example learned from'])
   await button(wrapper, 'Forget…').trigger('click'); await flushPromises()
   await button(wrapper, 'Delete these files').trigger('click'); await flushPromises()
   expect(wrapper.get('.alert-success').text()).toBe('Deleted 7 files.')

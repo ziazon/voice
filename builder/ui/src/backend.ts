@@ -1,3 +1,11 @@
+import type { Permissions } from './types/generated/Permissions'
+import type { PermissionsChanged } from './types/generated/PermissionsChanged'
+import type { GivePermissionRequest } from './types/generated/GivePermissionRequest'
+import type { PermissionRequest } from './types/generated/PermissionRequest'
+import type { ChooseCalendarRequest } from './types/generated/ChooseCalendarRequest'
+import type { CalendarExport } from './types/generated/CalendarExport'
+import type { AuditRequest } from './types/generated/AuditRequest'
+import type { AuditLog } from './types/generated/AuditLog'
 import type { Skills } from './types/generated/Skills'
 import type { SkillsRequest } from './types/generated/SkillsRequest'
 import type { SkillsWithdrawn } from './types/generated/SkillsWithdrawn'
@@ -61,6 +69,11 @@ import type { MergeCounts } from './types/generated/MergeCounts'
  * A host app must keep the same rule.
  */
 export interface Backend {
+  listPermissions(request: SlugRequest): Promise<Permissions>
+  givePermission(request: GivePermissionRequest): Promise<PermissionsChanged>
+  turnOffPermission(request: PermissionRequest): Promise<PermissionsChanged>
+  chooseCalendarExport(request: ChooseCalendarRequest): Promise<CalendarExport | null>
+  auditLog(request: AuditRequest): Promise<AuditLog>
   listSkills(request: SlugRequest): Promise<Skills>
   agreeSkills(request: SkillsRequest): Promise<Skills>
   withdrawSkills(request: SkillsRequest): Promise<SkillsWithdrawn>
