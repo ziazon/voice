@@ -168,6 +168,108 @@ pub fn server(server: &crate::self_hosted::Server) -> String {
     }
 }
 
+pub const WINDOW_RANGE: &str =
+    "The calendar window goes from 0 to 31 days back and from 1 to 92 days ahead.";
+pub const AUDIT_LAST: &str = "Show between 1 and 1,000 entries.";
+pub const AUDIT_STEP: &str = "A step name starts with a lowercase letter and uses only lowercase letters, digits and dashes, from 1 to 32 characters.";
+pub const NO_STATE_FOR_GRANTS: &str =
+    "This assistant has no private state yet. Build it once, then give permission.";
+pub const AUDIT_OLDER: &str = "Older entries aren't shown.";
+pub fn grants_damaged(path: &Path) -> String {
+    format!(
+        "{} is damaged, so Voice reads nothing it needs permission for. Delete it and give permission again.",
+        path.display()
+    )
+}
+pub fn no_grant(capability: crate::grants::Capability) -> String {
+    format!(
+        "Voice doesn't have your permission to {} for this assistant.",
+        capability.words()
+    )
+}
+pub fn unknown_capability(id: &str) -> String {
+    let ids = crate::grants::Capability::ALL
+        .map(|cap| cap.id())
+        .join(", ");
+    format!("{id} isn't something Voice can be given permission for. It can be given: {ids}.")
+}
+pub fn grant_window(window: crate::grants::Window) -> String {
+    let past = match window.past_days() {
+        0 => "from today".into(),
+        1 => "from 1 day back".into(),
+        n => format!("from {n} days back"),
+    };
+    let next = window.next_days();
+    let unit = if next == 1 { "day" } else { "days" };
+    format!("{past} to {next} {unit} ahead")
+}
+pub fn grant_shown(
+    capability: crate::grants::Capability,
+    grant: Option<&crate::grants::Grant>,
+) -> String {
+    let id = capability.id();
+    let words = capability.words();
+    match grant {
+        Some(grant) => format!(
+            "{id}\ton\t{words}, {}, given {}",
+            grant_window(grant.window),
+            grant.given_on
+        ),
+        None => format!("{id}\toff\t{words}"),
+    }
+}
+pub fn grant_given(name: &str, grant: &crate::grants::Grant) -> String {
+    format!(
+        "Voice may now {} for {name}, {}.",
+        grant.capability.words(),
+        grant_window(grant.window)
+    )
+}
+pub fn grant_revoked(name: &str, capability: crate::grants::Capability, changed: bool) -> String {
+    let words = capability.words();
+    if changed {
+        format!("Voice may no longer {words} for {name}.")
+    } else {
+        format!("Voice didn't have permission to {words} for {name}, so nothing changed.")
+    }
+}
+pub fn audit_entry(entry: &crate::grants::Entry) -> String {
+    use crate::grants::{Event, Reason};
+    let what = match &entry.event {
+        Event::Grant { capability, window } => {
+            format!("given: {}, {}", capability.words(), grant_window(*window))
+        }
+        Event::Revoke { capability } => format!("taken back: {}", capability.words()),
+        Event::Read {
+            capability,
+            step,
+            items,
+        } => {
+            let unit = if *items == 1 { "item" } else { "items" };
+            format!("read: {}, {items} {unit}, for {step}", capability.words())
+        }
+        Event::Refused {
+            capability,
+            step,
+            reason,
+        } => {
+            let reason = match reason {
+                Reason::NoGrant => "no permission",
+                Reason::Damaged => "the permissions file is damaged",
+            };
+            format!("refused: {}, for {step}, {reason}", capability.words())
+        }
+    };
+    format!("{} UTC  {what}", entry.at[..16].replace('T', " "))
+}
+pub fn audit_unreadable(count: usize) -> String {
+    let unit = if count == 1 { "entry" } else { "entries" };
+    format!("{count} {unit} couldn't be read.")
+}
+pub fn audit_empty(name: &str) -> String {
+    format!("Nothing has been logged for {name} yet.")
+}
+
 pub const MAC_ONLY: &str =
     "Voice runs Claude Code inside the Mac's own sandbox, so for now it works on a Mac only.";
 pub const NOT_NATIVE: &str = "This Claude Code is an older kind that runs as a script, which Voice can't run inside its sandbox. Install the current Claude Code (https://code.claude.com/docs/en/setup), then try again.";
