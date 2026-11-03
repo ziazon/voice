@@ -22,7 +22,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   file, so it now points to `voice grants show`; and `read_calendar_through` passed a damaged
   file's text, which holds its path, into a `Failure`. A moved or damaged calendar choice is shown
   on the card (`calendar_problem`) instead of failing it, so the person can choose again.
-- **Who built it:** Codex, three dispatches (§§ 1–9; § 10; § 11). V1 committed: Codex's sandbox
+- **Who built it:** Codex, four dispatches (§§ 1–9; § 10; § 11; § 12). V1 committed: Codex's sandbox
   can't write a worktree's git index.
 - **Tests:** `builder/api/tests/permissions.rs` (10), the broker test in
   `builder/api/src/calendar/tests.rs`, `lockdown.rs`, `app_parity.rs` (the five pairs),
@@ -34,8 +34,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   change; an input not disabled while busy; the calendar problem not cleared on a choice; the
   days-back bound moved to 32.
 - **Gates:** security review (Opus): no HIGH or MEDIUM; two LOW, recorded below. Verifier (Fable)
-  on `78b88a7`: PASS, two should-fixes: a blank window input sent as 0 (fixed in § 11, 31 lines in
+  on `78b88a7`: PASS, two should-fixes: a blank window input sent as 0 (fixed in § 11, 23 added lines in
   files she saw, inside her pass) and the broker's wide `BAD_GRANTS` mapping (recorded below).
+  Delta Verifier (Opus) on `869427e`: PASS; her should-fixes: a test that Turn off works while
+  the window inputs are invalid (§ 12, the one mutation that had survived) and this record's line
+  count, both fixed.
   `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh`: all passed on `78b88a7`, and again at the land.
 - **Not verified:** the native file window and the screens in a running app (no Tauri launch in a
   run); a walk is owed.

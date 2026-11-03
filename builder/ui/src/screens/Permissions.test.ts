@@ -86,6 +86,15 @@ it('turns off with the exact request and replaces the row', async () => {
   expect(backend.auditLog).toHaveBeenCalledTimes(2)
 })
 
+it.each(['', 'abc'])('turns off despite invalid Days back %j without a window sentence', async pastDays => {
+  const backend = fakeBackend({ listPermissions: vi.fn().mockResolvedValue(enabled), turnOffPermission: vi.fn().mockResolvedValue({ permissions: list, said: 'Permission is off.' }) })
+  const wrapper = screen(Permissions, backend, { assistant }); await flushPromises()
+  await wrapper.get('input').setValue(pastDays)
+  await button(wrapper, 'Turn off').trigger('click'); await flushPromises()
+  expect.soft(backend.turnOffPermission).toHaveBeenCalledExactlyOnceWith({ slug: 'example', id: 'calendar.read' })
+  expect.soft(wrapper.text()).not.toContain('The calendar window goes from 0 to 31 days back and from 1 to 92 days ahead.')
+})
+
 it.each([
   [false, { message: 'Try this again.' }, 'Try this again.'],
   [false, new Error('private detail'), "Voice couldn't save this. Try again."],
