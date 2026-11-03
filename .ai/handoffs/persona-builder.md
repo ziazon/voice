@@ -7,7 +7,7 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **What:** the app's screen for VO14.4a's Ask, as V-Q12 answered (a). A home card, *Ask one
   assistant*, between your assistants and Panels, opens `Ask.vue`: pick an assistant (one without
   your permission is disabled), tick which permissions that are on feed this one question (ticks
-  start empty each time; the calendar's box is disabled when no file is chosen or it moved), see
+  start empty each time; the calendar's box is disabled when no file is chosen, or it moved or is damaged), see
   where it may go, type the question (1 to 2,000 characters), then the answer (line breaks kept)
   and the library's line saying who answered and what it was given. One app command,
   `ask_assistant`, calls `voice_api::ask` unchanged and is paired with `voice ask` in `PARITY`.
@@ -27,14 +27,14 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Gates:** security review (Opus): no HIGH or MEDIUM; LOW, the calendar line said only a model
   server on your own machines could answer, though one set up with `--network` can be on the local
   network (fixed, § 9.1); LOW, the plain line didn't say Claude Code sends to Anthropic (fixed,
-  § 9.1); LOW, Ask has no Stop, so a hung call holds the screen until Claude Code's 15-minute limit
+  § 9.1); LOW, Ask has no Stop, so a hung call holds the screen until the 15-minute call limit (Claude Code's and the model server's)
   (recorded, not fixed: a stop belongs to the library). Verifier (Fable) on `91632fd`: PASS, no
   must-fix, from reading (the resource gate held her test runs; V1's runs below cover them);
   should-fixes: the plain line didn't say a lowered ceiling with no server means a refusal (fixed,
   § 9.1), a second `running` after unmount (fixed, § 9.2). Her note: the filter that sends only
   permissions that are on is defence in depth no test reaches, since the screen never renders an off
   one. `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh` all passed on `91632fd`; the UI suite (556)
-  and typecheck passed again on `d490116`.
+  and typecheck passed again on `d490116`, and `ci-local.sh` all passed on `6c0d22c`. Delta Verifier (Opus) on `6c0d22c`: PASS; her should-fixes (the security row said Ask routes before anything is read, when only the calendar comes after the route; the calendar box is also disabled for a damaged choice; the 15-minute limit is every call's) fixed in the records.
 - **Not verified:** the screen in the running app, light and dark, and a real answer from Claude Code
   or a model server (walk owed); "nothing else" in the where-lines and the library's line leaves out
   the names and today's date the prompt carries (VO14.4a's wording, kept the same).
