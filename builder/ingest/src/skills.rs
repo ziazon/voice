@@ -281,7 +281,8 @@ pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
     }
     fn linked(
         paths: &mut Vec<(PathBuf, bool)>,
-        canonical: &mut Vec<PathBuf>,
+        canonical_links: &mut Vec<PathBuf>,
+        canonical_roots: &[PathBuf],
         path: &Path,
         skill_depth: u8,
         install: Option<&Path>,
@@ -295,40 +296,51 @@ pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
         };
         if install.is_some_and(|install| !target.starts_with(install))
             || deny.denied(&target)
-            || canonical
+            || canonical_roots
                 .iter()
-                .any(|kept| target.starts_with(kept) || kept.starts_with(&target))
+                .chain(canonical_links.iter())
+                .any(|kept| target.starts_with(kept))
+            || canonical_roots.iter().any(|kept| kept.starts_with(&target))
             || !holds_skill(&target, skill_depth)
         {
             return;
         }
         if target.is_dir() {
             paths.push((target.clone(), true));
-            canonical.push(target);
+            canonical_links.push(target);
         }
     }
     let deny = DenyList::builtin();
     let mut paths = vec![];
-    let mut canonical = vec![];
+    let mut canonical_links = vec![];
+    let mut canonical_roots = vec![];
     let mut roots = vec![];
     let claude = home.join(".claude/skills");
-    if keep(&mut paths, &mut canonical, claude.clone(), true) {
+    if keep(&mut paths, &mut canonical_roots, claude.clone(), true) {
         roots.push(claude);
     }
     keep(
         &mut paths,
-        &mut canonical,
+        &mut canonical_roots,
         home.join(".claude/plugins/installed_plugins.json"),
         false,
     );
     if let Ok(plugins) = plugin_roots(home) {
         for (_, install) in plugins {
             let root = install.join("skills");
-            if keep(&mut paths, &mut canonical, root.clone(), true)
+            if keep(&mut paths, &mut canonical_roots, root.clone(), true)
                 && let Ok(entries) = children(&root, &mut vec![])
             {
                 for (_, child) in entries {
-                    linked(&mut paths, &mut canonical, &child, 0, Some(&install), &deny);
+                    linked(
+                        &mut paths,
+                        &mut canonical_links,
+                        &canonical_roots,
+                        &child,
+                        0,
+                        Some(&install),
+                        &deny,
+                    );
                 }
             }
         }
@@ -336,13 +348,13 @@ pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
     for project in rules.projects() {
         if !deny.denied(project) {
             let root = project.join(".claude/skills");
-            if keep(&mut paths, &mut canonical, root.clone(), true) {
+            if keep(&mut paths, &mut canonical_roots, root.clone(), true) {
                 roots.push(root);
             }
         }
     }
     let codex = home.join(".codex/skills");
-    if keep(&mut paths, &mut canonical, codex.clone(), true) {
+    if keep(&mut paths, &mut canonical_roots, codex.clone(), true) {
         roots.push(codex);
     }
     let mut notes = vec![];
@@ -355,7 +367,15 @@ pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
                 } else {
                     0
                 };
-                linked(&mut paths, &mut canonical, &child, skill_depth, None, &deny);
+                linked(
+                    &mut paths,
+                    &mut canonical_links,
+                    &canonical_roots,
+                    &child,
+                    skill_depth,
+                    None,
+                    &deny,
+                );
             }
         }
     }
@@ -364,10 +384,26 @@ pub fn sources(home: &Path, rules: &Rules) -> Vec<(PathBuf, bool)> {
             if !account.is_dir() || deny.denied(&account) {
                 continue;
             }
-            linked(&mut paths, &mut canonical, &account, 1, None, &deny);
+            linked(
+                &mut paths,
+                &mut canonical_links,
+                &canonical_roots,
+                &account,
+                1,
+                None,
+                &deny,
+            );
             if let Ok(entries) = children(&account, &mut notes) {
                 for (_, child) in entries {
-                    linked(&mut paths, &mut canonical, &child, 0, None, &deny);
+                    linked(
+                        &mut paths,
+                        &mut canonical_links,
+                        &canonical_roots,
+                        &child,
+                        0,
+                        None,
+                        &deny,
+                    );
                 }
             }
         }
