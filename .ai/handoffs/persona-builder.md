@@ -2,6 +2,49 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO14.3: the permissions and audit-log screens (2026-11-03, lane: V1)
+
+- **What:** a card on the Save page, `What your assistant may read` (`Permissions.vue`), with
+  `What Voice has logged` (`AuditLog.vue`) inside it. Per capability (only `calendar.read` today):
+  on or off, the day given and the window in the CLI's words, the window's two inputs, Give
+  permission or Change the window, and Turn off; under the calendar, the chosen file or folder
+  (its name cleaned as the CLI shows it) and Choose a file / Choose a folder through the native file
+  window. The log shows the last 50 lines newest first in the CLI's words, then up to 1,000.
+  `voice_api::permissions`: `list_permissions`, `give_permission`, `turn_off_permission`,
+  `check_calendar_choice` and `use_calendar_export` (for the native window), `audit_log`; five new
+  app commands through the lockdown lists, each paired with its `voice grants|calendar|audit`
+  command. Brief: `plans/briefs/VO14.3-permissions-and-audit-screens.md` (§ 10 the review's fix,
+  § 11 the Verifier's should-fix).
+- **Decided at pickup (V1):** giving permission is in the app too, not only Turn off (the person
+  is there, and the grant is their own dated consent; giving again is how the window changes).
+  Only fixed sentences cross as failures; an unknown capability id isn't echoed. Two fixes in
+  VO14.2's code: `BAD_GRANTS` told the person to give permission again, which fails on a damaged
+  file, so it now points to `voice grants show`; and `read_calendar_through` passed a damaged
+  file's text, which holds its path, into a `Failure`. A moved or damaged calendar choice is shown
+  on the card (`calendar_problem`) instead of failing it, so the person can choose again.
+- **Who built it:** Codex, three dispatches (§§ 1–9; § 10; § 11). V1 committed: Codex's sandbox
+  can't write a worktree's git index.
+- **Tests:** `builder/api/tests/permissions.rs` (10), the broker test in
+  `builder/api/src/calendar/tests.rs`, `lockdown.rs`, `app_parity.rs` (the five pairs),
+  `Permissions.test.ts`, `AuditLog.test.ts`, `permissions/words.test.ts`, `VoiceApp.test.ts`,
+  `tauri-backend.test.ts`.
+- **Mutations (10, all killed, the Verifier's nine plus V1's one):** the damaged check under the
+  lock dropped; every `Invalid` passed through the broker; `UNKNOWN` echoing the id; the GONE/BAD
+  mapping dropped; give without the lock; the 1–1,000 bound dropped; no reload after a failed
+  change; an input not disabled while busy; the calendar problem not cleared on a choice; the
+  days-back bound moved to 32.
+- **Gates:** security review (Opus): no HIGH or MEDIUM; two LOW, recorded below. Verifier (Fable)
+  on `78b88a7`: PASS, two should-fixes: a blank window input sent as 0 (fixed in § 11, 31 lines in
+  files she saw, inside her pass) and the broker's wide `BAD_GRANTS` mapping (recorded below).
+  `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh`: all passed on `78b88a7`, and again at the land.
+- **Not verified:** the native file window and the screens in a running app (no Tauri launch in a
+  run); a walk is owed.
+- **Left (known limits):** any `grants::load` error, a passing read error included, is shown as
+  "damaged, delete it", so a person could delete a good file after a passing fault. In
+  `read_calendar_through` every refusal other than no-permission reads as `BAD_GRANTS`, including
+  a bad step name, which no person can send today (the steps are constants), and an error reading
+  the file is shown as `LOG`. VO14.4 (first use, V-Q12) is next.
+
 ## VO14.2: the calendar, from a file the person exported (2026-11-02, lane: V1)
 
 - **What:** the first capability that reads. The person picks an exported calendar (`.ics`, one
