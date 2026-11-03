@@ -474,6 +474,7 @@ fn model_server_gets_calendar_without_even_checking_claude() {
                 Err(e) => panic!("{e}"),
             }
         };
+        socket.set_nonblocking(false).unwrap();
         socket
             .set_read_timeout(Some(Duration::from_secs(3)))
             .unwrap();

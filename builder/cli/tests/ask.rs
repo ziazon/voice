@@ -53,7 +53,7 @@ impl Fixture {
             .output()
             .unwrap();
         assert!(python.status.success());
-        fs::write(bin.join("claude"),format!("#!{} -I\nimport json, os, sys\np = os.path.dirname(os.path.realpath(__file__))\na = sys.argv[3:]\nif a[:1] == ['--version']: print('2.1.292 (Claude Code)')\nelif a[:1] == ['auth']: print(json.dumps({{'loggedIn':True}}))\nelse:\n with open(os.path.join(p, 'stdin'), 'w') as f: f.write(sys.stdin.read())\n print(json.dumps({{'type':'result','subtype':'success','is_error':False,'total_cost_usd':0.02,'structured_output':{{'answer':'Try the smaller change.'}}}}))\n",String::from_utf8(python.stdout).unwrap().trim())).unwrap();
+        fs::write(bin.join("claude"),format!("#!{} -I\nimport json, os, sys\np = os.path.dirname(os.path.realpath(__file__))\na = sys.argv[3:]\nwith open(os.path.join(p, 'checked'), 'a') as f: f.write('run\\n')\nif a[:1] == ['--version']: print('2.1.292 (Claude Code)')\nelif a[:1] == ['auth']: print(json.dumps({{'loggedIn':True}}))\nelse:\n with open(os.path.join(p, 'stdin'), 'w') as f: f.write(sys.stdin.read())\n print(json.dumps({{'type':'result','subtype':'success','is_error':False,'total_cost_usd':0.02,'structured_output':{{'answer':'Try the smaller change.'}}}}))\n",String::from_utf8(python.stdout).unwrap().trim())).unwrap();
         fs::set_permissions(bin.join("claude"), fs::Permissions::from_mode(0o755)).unwrap();
         Self {
             home,
@@ -120,6 +120,22 @@ fn missing_and_denied_question_files_have_one_fixed_sentence() {
     fs::write(&denied, "never read").unwrap();
     failure(f.run(&denied, &[]), voice_api::ask::text::READ_INPUT);
     assert!(!f.bin.join("stdin").exists());
+}
+#[test]
+fn question_file_honours_members_denied_paths() {
+    let f = Fixture::new();
+    let file = f.home.join(".claude/crew/wren/member.json");
+    let mut member: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    member["filters"]["denied_paths"] = serde_json::json!(["notes"]);
+    fs::write(file, serde_json::to_vec(&member).unwrap()).unwrap();
+    let notes = f.home.join("notes");
+    fs::create_dir(&notes).unwrap();
+    let question = notes.join("q.txt");
+    fs::write(&question, "What comes first?").unwrap();
+
+    failure(f.run(&question, &[]), voice_api::ask::text::READ_INPUT);
+    assert!(!f.bin.join("stdin").exists());
+    assert!(!f.bin.join("checked").exists());
 }
 #[test]
 fn unknown_capability_uses_fixed_sentence() {

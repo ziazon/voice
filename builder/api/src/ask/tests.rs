@@ -1,5 +1,4 @@
 use super::*;
-use voice_panels::clean;
 
 fn calendar() -> CalendarRead {
     CalendarRead {
@@ -179,10 +178,27 @@ fn exact_said_for_providers_counts_and_all_extra_sentences() {
     );
 }
 #[test]
+fn unknown_provider_has_fixed_disclosure() {
+    assert_eq!(
+        text::said("another-provider", "Wren", None),
+        "A model you set up answered. It was given Wren's decisions and your question, nothing else."
+    );
+}
+#[test]
 fn reply_clean_replaces_terminal_escape() {
-    assert_eq!(clean("A\u{1b}[31m reply", MAX_ANSWER + 1), "A [31m reply");
+    assert_eq!(
+        answer(&json!({"answer": "A\u{1b}[31m reply"})).unwrap(),
+        "A [31m reply"
+    );
 }
 
+#[test]
+fn reply_clean_replaces_invisible_characters() {
+    assert_eq!(
+        answer(&json!({"answer": "A\u{E0041}B\u{00AD}C"})).unwrap(),
+        "A B C"
+    );
+}
 #[test]
 fn fixed_words_and_schema_match_the_contract() {
     assert_eq!(

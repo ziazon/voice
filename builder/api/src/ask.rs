@@ -82,7 +82,7 @@ pub fn ask_in(
             .check(home)
             .map_err(|e| failure(&claude_message(e)))?;
     }
-    // The reader takes the state lock itself: finish reading before opening the session.
+    // Read before opening the session, so nothing is spent until every read has worked.
     let mut calendar = None;
     for capability in capabilities {
         match capability {
@@ -114,11 +114,7 @@ pub fn ask_in(
             },
         )
         .map_err(|e| building::call_failure(e, &session, text::FAILED))?;
-    let answer = reply.output["answer"]
-        .as_str()
-        .map(|s| clean(s, MAX_ANSWER + 1))
-        .filter(|s| !s.is_empty() && s.chars().count() <= MAX_ANSWER)
-        .ok_or_else(|| failure(text::UNREADABLE))?;
+    let answer = answer(&reply.output)?;
     Ok(AskAnswer {
         answer,
         said: text::said(
@@ -127,6 +123,24 @@ pub fn ask_in(
             calendar.as_ref(),
         ),
     })
+}
+fn answer(output: &Value) -> Result<String> {
+    output["answer"]
+        .as_str()
+        .map(|s| clean(s, MAX_ANSWER + 1))
+        .map(|s| {
+            s.chars()
+                .map(|c| {
+                    if voice_ingest::text::hidden(c) {
+                        ' '
+                    } else {
+                        c
+                    }
+                })
+                .collect::<String>()
+        })
+        .filter(|s| !s.is_empty() && s.chars().count() <= MAX_ANSWER)
+        .ok_or_else(|| failure(text::UNREADABLE))
 }
 pub fn ask(request: AskRequest) -> Result<AskAnswer> {
     let home = home(text::FAILED)?;
@@ -142,9 +156,7 @@ fn schema() -> Value {
     json!({"type":"object","additionalProperties":false,"required":["answer"],"properties":{"answer":{"type":"string","minLength":1,"maxLength":4000}}})
 }
 fn section(label: &str, value: &str) -> String {
-    fence(label, value)
-        .or_else(|_| fence(crate::panels::text::POST, &format!("{label}\n{value}")))
-        .unwrap_or_default()
+    fence(label, value).expect("a fixed fence label")
 }
 fn prompt(
     name: &str,

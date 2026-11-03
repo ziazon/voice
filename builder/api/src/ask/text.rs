@@ -65,7 +65,7 @@ pub fn said(provider_id: &str, name: &str, read: Option<&CalendarRead>) -> Strin
     let who = match provider_id {
         claude::AGENT_ID => "Claude answered, through your own Claude Code.",
         self_hosted::AGENT_ID => "Your model server answered, on your own machines.",
-        _ => unreachable!("the guard only has Claude Code and the person's model server"),
+        _ => "A model you set up answered.",
     };
     let Some(read) = read else {
         return format!("{who} It was given {name}'s decisions and your question, nothing else.");
