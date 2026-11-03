@@ -2,6 +2,59 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO14.1: grants and the audit log (2026-11-02, lane: V1)
+
+- **What:** `voice_agent::grants`: typed read capabilities (`calendar.read`, source `calendar`; no
+  write kind exists), a dated (the local day), scoped (a window of 0–31 days back and 1–92 ahead)
+  and revocable grant per assistant in its state folder (`grants.json`, 0600, strict, versioned,
+  read only when owner-only; a damaged file is never "no grants"), and an append-only audit log
+  (`audit.jsonl`: four line shapes, UTC time, capability, window, step, count and a fixed reason,
+  never a path, content or error text). `require` refuses and logs; `record_read` logs a read
+  (both for VO14.2). A grant or revoke whose log line can't be written puts the old file back; a
+  grant whose rollback also fails is removed (fail closed). New
+  `voice_ingest::private::{read_private_tail_optional, read_private_owned_optional_at_max}`, sharing
+  one opener with `read_private_at_limit`. CLI `voice grants show|give|revoke`, `voice audit show
+  [--last N]` (newest first, the last 1 MiB). Brief: `plans/briefs/VO14.1-grants-and-audit-log.md`
+  (§ 9 the review's test gaps, § 10 the security review's and Verifier's fixes, § 11 the repeat
+  Verifier's should-fixes).
+- **Decided at pickup (V1):** VO14 split into VO14.1 to VO14.4; calendar first from an exported
+  file (the mail precedent), contacts and a live calendar later and not carded; no write
+  capability; where a read is first used is V-Q12 (VO14.4 waits on it). Grants live in the
+  state folder, never member.json (permission belongs to this person and this computer). Grants
+  sit in `voice_agent` beside the privacy guard and the ledger (`local_day`, `utc_stamp`).
+- **Who built it:** Codex, four dispatches (the slice; § 9; § 10; § 11).
+- **Tests:** `builder/agent/tests/grants.rs` (round trip and exact bytes, window bounds, re-give,
+  revoke twice, every damaged form incl. version 0, the object spellings and 0640, `require`'s
+  refusal lines, the rollback both ways, a refusal whose log append fails, step names, the audit
+  reader's shapes, bad lines, `last`, the 1 MiB tail, symlink and 0644 logs, forget); the
+  `grants.rs` unit tests (each branch of the fail-closed rollback); `builder/cli/tests/grants.rs`
+  (exact output, no state folder, unknown or multi-line capability, ranges, lock);
+  `builder/ingest/tests/private_at.rs` (tail read and owner-only read).
+- **Mutations (20, all killed, `mutate-check.sh`):** give and revoke rollback removed; revoke's
+  no-op guard; version check loosened (survived first, test added in § 9); duplicate check;
+  window bound; `require`'s refusal append error swallowed (survived first, test added in § 9);
+  a damaged refusal not logged; the step check in `require` and in the reader; the stamp check;
+  `older` on the last cut; the cut first line kept; the tail's owner check; the CLI give lock;
+  the owner-only grants read swapped and its check removed; control characters kept; the remove
+  result ignored in the rollback.
+- **Live:** the built `voice` in a throwaway home with an invented assistant: give, show, a bad
+  capability and window, revoke twice, an audit line with an extra field (counted, not shown),
+  `--last 1001`; files 0600.
+- **Verification:** `VOICE_REQUIRE_SANDBOX=1 bash scripts/ci-local.sh` all passed on `d89a1a9`
+  `8ed801f` and d737eb9.
+- **Security review (Opus, on `d89a1a9`):** no HIGH or MEDIUM. LOW, fixed in § 10: a failed
+  rollback could leave a grant unlogged (now fail closed); an object spelling of an id was
+  accepted. LOW, recorded as a limit in SECURITY: a torn audit line after a failed append can hide
+  the next entry.
+- **Verifier (Fable, on `d89a1a9`): PASS**, should-fixes done in § 10: the object spelling; a
+  group- or world-readable `grants.json` was read; the unknown capability shown raw. Carried to
+  VO14.2's brief: `require` on an assistant with no state folder returns the append's raw error,
+  so VO14.2 needs a fixed sentence there. Not done (trivial): a cut landing exactly on a line
+  start drops that line; a second `fstat` in `read_private_at_limit`.
+- **Repeat Verifier (Opus, on `8ed801f`):** PASS, should-fixes done in § 11 (d737eb9, 23 lines in files she saw): line and paragraph separators and bidi controls in a shown id become spaces; `Capability` and `Reason` no longer derive serde. Not done: a 0640 `grants.json` is called damaged rather than naming the real cause, as the brief asked.
+- **Not verified:** `local_day` under non-UTC time zones (tests fix the clock at midday UTC); a
+  real full disk (the fail-closed branch is unit-tested through its decision function).
+
 ## VO11.2d: the skills reading goes through the reader (2026-11-02, lane: V1)
 
 - **What:** on macOS the app's four skill actions (`voice_api::{list,agree,withdraw,refresh}_skills`)
