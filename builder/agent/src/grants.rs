@@ -7,7 +7,7 @@ use voice_core::{
     error::{Error, Result},
 };
 use voice_ingest::private::{
-    append_private, read_private_optional_at_max, read_private_tail_optional, remove_private,
+    append_private, read_private_owned_optional_at_max, read_private_tail_optional, remove_private,
     write_private,
 };
 
@@ -82,7 +82,7 @@ struct Saved {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SavedGrant {
-    capability: Capability,
+    capability: String,
     given_on: String,
     past_days: u16,
     next_days: u16,
@@ -133,7 +133,7 @@ fn check_step(step: &str) -> Result<()> {
 fn loaded(home: &Path, slug: &str) -> Result<(Vec<Grant>, Option<Vec<u8>>)> {
     let path = home.join(".claude/state").join(slug).join("grants.json");
     let damaged = || Error::Invalid(text::grants_damaged(&path));
-    let bytes = read_private_optional_at_max(home, slug, None, "grants.json", 64 * 1024)
+    let bytes = read_private_owned_optional_at_max(home, slug, "grants.json", 64 * 1024)
         .map_err(|_| damaged())?;
     let Some(raw) = &bytes else {
         return Ok((Vec::new(), None));
@@ -144,15 +144,12 @@ fn loaded(home: &Path, slug: &str) -> Result<(Vec<Grant>, Option<Vec<u8>>)> {
     }
     let mut grants = Vec::new();
     for grant in saved.grants {
-        if !day(&grant.given_on)
-            || grants
-                .iter()
-                .any(|g: &Grant| g.capability == grant.capability)
-        {
+        let capability = Capability::from_id(&grant.capability).ok_or_else(damaged)?;
+        if !day(&grant.given_on) || grants.iter().any(|g: &Grant| g.capability == capability) {
             return Err(damaged());
         }
         grants.push(Grant {
-            capability: grant.capability,
+            capability,
             given_on: grant.given_on,
             window: Window::new(grant.past_days, grant.next_days).map_err(|_| damaged())?,
         });
@@ -174,7 +171,7 @@ fn save(home: &Path, slug: &str, grants: &[Grant]) -> Result<()> {
                 .into_iter()
                 .filter_map(|cap| grants.iter().find(|g| g.capability == cap))
                 .map(|g| SavedGrant {
-                    capability: g.capability,
+                    capability: g.capability.id().into(),
                     given_on: g.given_on.clone(),
                     past_days: g.window.past_days,
                     next_days: g.window.next_days,
@@ -201,6 +198,17 @@ fn restore(home: &Path, slug: &str, bytes: Option<&[u8]>) -> Result<()> {
     }
     Ok(())
 }
+fn after_failed_append(
+    restored: Result<()>,
+    remove: impl FnOnce() -> Result<bool>,
+    appended: Error,
+) -> Error {
+    if restored.is_err() && remove().is_ok() {
+        Error::Invalid(text::GRANT_NOT_LOGGED.into())
+    } else {
+        appended
+    }
+}
 /// Save and log consent; the caller holds the state lock.
 pub fn give(
     home: &Path,
@@ -222,15 +230,17 @@ pub fn give(
         home,
         slug,
         RawEvent::Grant {
-            capability,
+            capability: capability.id().into(),
             past_days: window.past_days,
             next_days: window.next_days,
         },
         now,
     ) {
-        // Keep the append error even if restoring the previous file also fails.
-        let _ = restore(home, slug, before.as_deref());
-        return Err(error);
+        return Err(after_failed_append(
+            restore(home, slug, before.as_deref()),
+            || remove_private(home, slug, "grants.json"),
+            error,
+        ));
     }
     Ok(grant)
 }
@@ -243,7 +253,14 @@ pub fn revoke(home: &Path, slug: &str, capability: Capability, now: SystemTime) 
         return Ok(false);
     }
     save(home, slug, &grants)?;
-    if let Err(error) = append(home, slug, RawEvent::Revoke { capability }, now) {
+    if let Err(error) = append(
+        home,
+        slug,
+        RawEvent::Revoke {
+            capability: capability.id().into(),
+        },
+        now,
+    ) {
         // Keep the append error even if restoring the previous file also fails.
         let _ = restore(home, slug, before.as_deref());
         return Err(error);
@@ -270,9 +287,9 @@ pub fn require(
         home,
         slug,
         RawEvent::Refused {
-            capability,
+            capability: capability.id().into(),
             step: step.into(),
-            reason,
+            reason: reason.id().into(),
         },
         now,
     )?;
@@ -291,7 +308,7 @@ pub fn record_read(
         home,
         slug,
         RawEvent::Read {
-            capability,
+            capability: capability.id().into(),
             step: step.into(),
             items,
         },
@@ -336,6 +353,21 @@ pub enum Reason {
     NoGrant,
     Damaged,
 }
+impl Reason {
+    fn id(self) -> &'static str {
+        match self {
+            Self::NoGrant => "no-grant",
+            Self::Damaged => "damaged",
+        }
+    }
+    fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "no-grant" => Some(Self::NoGrant),
+            "damaged" => Some(Self::Damaged),
+            _ => None,
+        }
+    }
+}
 #[derive(Serialize, Deserialize)]
 struct RawEntry {
     at: String,
@@ -346,22 +378,22 @@ struct RawEntry {
 #[serde(tag = "event", rename_all = "lowercase", deny_unknown_fields)]
 enum RawEvent {
     Grant {
-        capability: Capability,
+        capability: String,
         past_days: u16,
         next_days: u16,
     },
     Revoke {
-        capability: Capability,
+        capability: String,
     },
     Read {
-        capability: Capability,
+        capability: String,
         step: String,
         items: u64,
     },
     Refused {
-        capability: Capability,
+        capability: String,
         step: String,
-        reason: Reason,
+        reason: String,
     },
 }
 fn append(home: &Path, slug: &str, event: RawEvent, now: SystemTime) -> Result<()> {
@@ -385,10 +417,12 @@ fn entry(bytes: &[u8]) -> Option<Entry> {
             past_days,
             next_days,
         } => Event::Grant {
-            capability,
+            capability: Capability::from_id(&capability)?,
             window: Window::new(past_days, next_days).ok()?,
         },
-        RawEvent::Revoke { capability } => Event::Revoke { capability },
+        RawEvent::Revoke { capability } => Event::Revoke {
+            capability: Capability::from_id(&capability)?,
+        },
         RawEvent::Read {
             capability,
             step,
@@ -398,7 +432,7 @@ fn entry(bytes: &[u8]) -> Option<Entry> {
                 return None;
             }
             Event::Read {
-                capability,
+                capability: Capability::from_id(&capability)?,
                 step,
                 items,
             }
@@ -412,9 +446,9 @@ fn entry(bytes: &[u8]) -> Option<Entry> {
                 return None;
             }
             Event::Refused {
-                capability,
+                capability: Capability::from_id(&capability)?,
                 step,
-                reason,
+                reason: Reason::from_id(&reason)?,
             }
         }
     };
@@ -455,4 +489,54 @@ pub fn audit(home: &Path, slug: &str, last: usize) -> Result<Audit> {
         }
     }
     Ok(audit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restored_grants_keep_the_append_error_without_removing() {
+        let error = after_failed_append(
+            Ok(()),
+            || panic!("a successful restore must not remove grants"),
+            Error::Invalid("append failed".into()),
+        );
+        assert_eq!(error.to_string(), "append failed");
+    }
+
+    #[test]
+    fn failed_restore_removes_grants_and_explains_for_either_remove_result() {
+        for removed in [true, false] {
+            let called = std::cell::Cell::new(false);
+            let error = after_failed_append(
+                Err(Error::Invalid("restore failed".into())),
+                || {
+                    called.set(true);
+                    Ok(removed)
+                },
+                Error::Invalid("append failed".into()),
+            );
+            assert!(called.get());
+            assert_eq!(
+                error.to_string(),
+                "Voice couldn't log this, so it took back every permission for this assistant. Give permission again once there's space on this computer."
+            );
+        }
+    }
+
+    #[test]
+    fn failed_restore_and_remove_keep_the_append_error() {
+        let called = std::cell::Cell::new(false);
+        let error = after_failed_append(
+            Err(Error::Invalid("restore failed".into())),
+            || {
+                called.set(true);
+                Err(Error::Invalid("remove failed".into()))
+            },
+            Error::Invalid("append failed".into()),
+        );
+        assert!(called.get());
+        assert_eq!(error.to_string(), "append failed");
+    }
 }

@@ -113,7 +113,7 @@ fn replace_and_revoke() {
 #[test]
 fn damaged_grants_never_become_missing() {
     let valid = String::from_utf8(SAVED.to_vec()).unwrap();
-    let bads=[valid.replace("\"version\":1","\"version\":0"), valid.replace("\"version\":1","\"version\":2"), valid.replace("\"version\":1","\"extra\":0,\"version\":1"), valid.replace("\"past_days\":0","\"extra\":0,\"past_days\":0"), valid.replace("calendar.read","calendar.write"), valid.replace("}]}","},{\"capability\":\"calendar.read\",\"given_on\":\"2026-11-02\",\"past_days\":0,\"next_days\":14}]}"), valid.replace("2026-11-02","2026-13-02"), valid.replace("2026-11-02","2026-11-00"), valid.replace("2026-11-02","2026/11/02"), valid.replace("\"next_days\":14","\"next_days\":93"), "not JSON".into()];
+    let bads=[valid.replace("\"capability\":\"calendar.read\"", "\"capability\":{\"calendar.read\":null}"), valid.replace("\"version\":1","\"version\":0"), valid.replace("\"version\":1","\"version\":2"), valid.replace("\"version\":1","\"extra\":0,\"version\":1"), valid.replace("\"past_days\":0","\"extra\":0,\"past_days\":0"), valid.replace("calendar.read","calendar.write"), valid.replace("}]}","},{\"capability\":\"calendar.read\",\"given_on\":\"2026-11-02\",\"past_days\":0,\"next_days\":14}]}"), valid.replace("2026-11-02","2026-13-02"), valid.replace("2026-11-02","2026-11-00"), valid.replace("2026-11-02","2026/11/02"), valid.replace("\"next_days\":14","\"next_days\":93"), "not JSON".into()];
     for bad in bads {
         let f = Fixture::new();
         let _lock = lock_state(&f.0, "ari").unwrap();
@@ -140,6 +140,26 @@ fn damaged_grants_never_become_missing() {
             REFUSED.replace("no-grant", "damaged")
         );
     }
+    let f = Fixture::new();
+    f.write("grants.json", SAVED);
+    fs::set_permissions(f.path("grants.json"), fs::Permissions::from_mode(0o640)).unwrap();
+    assert_eq!(
+        grants::load(&f.0, "ari").unwrap_err().to_string(),
+        f.damaged()
+    );
+    assert_eq!(
+        grants::give(&f.0, "ari", CAP, Window::DEFAULT, now())
+            .unwrap_err()
+            .to_string(),
+        f.damaged()
+    );
+    assert_eq!(fs::read(f.path("grants.json")).unwrap(), SAVED);
+    assert_eq!(
+        grants::require(&f.0, "ari", CAP, "cli", now())
+            .unwrap_err()
+            .to_string(),
+        f.damaged()
+    );
     let f = Fixture::new();
     f.write("target.json", SAVED);
     symlink(f.path("target.json"), f.path("grants.json")).unwrap();
@@ -304,6 +324,11 @@ fn audit_typed_events_bounds_and_bad_lines() {
         GIVEN.replace("\"event\":\"grant\"", "\"extra\":0,\"event\":\"grant\""),
         GIVEN.replace("grant", "write"),
         GIVEN.replace("calendar.read", "calendar.write"),
+        GIVEN.replace(
+            "\"capability\":\"calendar.read\"",
+            "\"capability\":{\"calendar.read\":null}",
+        ),
+        REFUSED.replace("\"reason\":\"no-grant\"", "\"reason\":{\"no-grant\":null}"),
         GIVEN.replace("\"next_days\":14", "\"next_days\":0"),
         READ.replace("cli", "1x"),
         READ.replace("\"items\":12", "\"items\":-1"),
