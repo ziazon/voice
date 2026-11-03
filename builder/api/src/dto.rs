@@ -908,3 +908,20 @@ pub struct AuditLog {
     pub unreadable: u32,
     pub older: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct AskRequest {
+    pub slug: String,
+    pub question: String,
+    pub capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AskAnswer {
+    pub answer: String,
+    pub said: String,
+}

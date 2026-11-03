@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+voice-panels = { path = "../panels" }
 voice-grow = { path = "../grow" }
 voice-build = { path = "../build" }
 voice-steps = { path = "../steps" }

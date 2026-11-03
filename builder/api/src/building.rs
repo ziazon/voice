@@ -31,7 +31,7 @@ use voice_steps::{book::book, input::pretty, round};
 type Result<T> = std::result::Result<T, Failure>;
 const STOPPED: &str = "Stopped. Your assistant is as it was before this build. What was already finished is kept, so running the build again carries on from there.";
 const NOTHING_YET: &str = "There's nothing to build from yet. Read your history and put it together first, in Your history.";
-const SETTINGS: &str =
+pub(crate) const SETTINGS: &str =
     "Something in this assistant's settings stops the build. Use the voice command to see what.";
 const BUILD_FAILED: &str = "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.";
 const PRIVATE: &str = "The new version had something in it that looked personal or secret, so nothing was saved and your assistant is as it was. Run the build again to try once more.";

@@ -23,6 +23,7 @@ use voice_save::{
 };
 use voice_steps::input::RecordList as Records;
 
+mod ask;
 mod assistants;
 mod calendar;
 mod panel;
@@ -147,6 +148,14 @@ fn ceilings(command: CeilingsCommand) -> Result<()> {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Ask your assistant one question
+    Ask {
+        member_dir: PathBuf,
+        #[arg(long)]
+        question_file: PathBuf,
+        #[arg(long = "with", action = clap::ArgAction::Append)]
+        capabilities: Vec<String>,
+    },
     /// Skills on this computer, and which ones your assistant may copy
     Skills {
         #[command(subcommand)]
@@ -2687,6 +2696,11 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         Some(Command::Report { member_dir }) => report(member_dir),
         Some(Command::Grants { command }) => grants(command),
         Some(Command::Calendar { command }) => calendar::run(command),
+        Some(Command::Ask {
+            member_dir,
+            question_file,
+            capabilities,
+        }) => ask::run(member_dir, question_file, capabilities),
         Some(Command::Audit { command }) => audit(command),
         Some(Command::SelfHosted { command }) => self_hosted(command),
         Some(Command::Limit { command }) => match command {
