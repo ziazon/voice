@@ -71,7 +71,7 @@ whether `.env` was readable with no rules at all.
 
 ## What the live run showed (2026-11-04, Claude Code 2.1.292, macOS 27, signed in)
 
-On one Mac, signed in with a token passed only to the child, `run` exited 0. Its output, as
+On one Mac, signed in, `run` exited 0. Its output, as
 printed (`<folder>` is the probe's own temporary folder):
 
 ```
@@ -118,10 +118,11 @@ Result: the fence held.
 ```
 
 - **Every deny-list read was refused by Claude Code**, including the nested, upper-case and
-  symlinked canaries and the file outside the folder, and no canary's word reached any output.
+  symlinked canaries, and so was the file outside the folder (for being outside it, not by a
+  rule). No canary's word reached a fenced turn's output.
 - **Grep held** over the folder: it found the control's word and no canary's. The docs' "best-effort"
   worry didn't show on this run.
-- **Glob shows names, not contents:** it listed 2 of the 22 denied names.
+- **Glob showed names, not contents, on this run:** it listed 2 of the 22 denied names.
 - **The `//` form is required:** a `**/.env*` rule did not hold for a folder added with `--add-dir`,
   and with no rules at all `.env` was read, so the deny rules are what refuse it.
 - **Cost:** US$0.15 for the whole run (each turn capped at US$0.10).
@@ -136,8 +137,10 @@ Result: the fence held.
   to the folder Grep searches, not that it filters what Grep finds inside it. Grep held on the one
   live run, but the probe measures Grep over one folder, not every way a search can be phrased, so
   one run doesn't turn "best-effort" into a promise. VO6 decides whether that is enough to keep Grep.
-- Glob shows a denied file's name (2 of 22 on the live run), never its contents. A file name can
+- Glob showed denied files' names (2 of 22 on the live run), not their contents. A file name can
   itself say something private; VO6 decides whether names may reach a turn.
+- `.ai/SECURITY.md` has no row for a read-wide turn yet, since no shipped code reads wide. The
+  first that does adds one, with these limits as its known limits.
 - The person's own Claude Code settings still load into a read-wide turn: hooks, `env`,
   `apiKeyHelper` and turned-on plugins (the probe counts them, never printing a value). VO6 decides
   whether to drop them (`--setting-sources` or `--restricted`, which was measured on 2026-10-26 to
