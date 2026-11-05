@@ -25,11 +25,12 @@ One record per slice, newest first. Paraphrase only; no real person.
   Verifier (Opus, a records pass on VO1, whose code passes are on record) on `0f3b07c`: FAIL, one
   must-fix, the same "any output" claim (the no-rules turn did read `.env`), fixed; should-fixes
   made: the outside file is refused for being outside the folder, not by a rule; "only to the child"
-  unverified and dropped; Glob's names stated for this run only.
+  unverified and dropped; Glob's names stated for this run only. Delta Verifier (Opus) on `137fc34`:
+  PASS; her two optional wording fixes made (which turns the no-word check covers; the hooks line).
 - **Not verified:** the second Mac (VO1.1); which two names Glob listed (the probe prints counts only);
   whether any of the Mac's 18 hooks or 7 plugins played a part in a refusal (the Verifier found none
   of the person's own settings hooks act on Read, Grep or Glob; plugins' hooks unchecked; the no-rules
-  turn shows nothing but the rules refuses `.env`).
+  turn shows only the rules refuse `.env`: with the same settings loaded and no rules, it was read).
 
 ## VO14.4b: the Ask screen (2026-11-03, lane: V1)
 
