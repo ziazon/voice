@@ -119,7 +119,7 @@ Result: the fence held.
 
 - **Every deny-list read was refused by Claude Code**, including the nested, upper-case and
   symlinked canaries, and so was the file outside the folder (for being outside it, not by a
-  rule). No canary's word reached a fenced turn's output.
+  rule). No canary's word reached a turn run under the `//` rules (Read, Grep, Glob).
 - **Grep held** over the folder: it found the control's word and no canary's. The docs' "best-effort"
   worry didn't show on this run.
 - **Glob showed names, not contents, on this run:** it listed 2 of the 22 denied names.
