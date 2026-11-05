@@ -2,6 +2,24 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO1: the live run, and VO1 closes (2026-11-04, lane: V1)
+
+- **What:** the record of the attended live run of `scripts/read_fence_probe.py run` on Mimi
+  (2026-11-04, Claude Code 2.1.292, signed in through a job token passed only to the child): exit 0,
+  *the fence held*. Its output is now in `docs/spikes/VO1-read-fence.md` (*What the live run showed*),
+  and DECISIONS has a 2026-11-04 entry superseding the 2026-11-01 one's *until both Macs have passed*.
+  The owner chose to close VO1 on this one Mac (V-Q11, option B); the second Mac's run is its own
+  follow-up, VO1.1 (attended), and blocks nothing.
+- **Findings recorded for VO6:** every deny-list read refused by Claude Code, nested, upper-case and
+  symlinked canaries and the file outside the folder included; Grep held; Glob listed 2 of the 22
+  denied names (names only); a `**/.env*` rule did not hold for an `--add-dir` folder, so the `//`
+  form stays required; with no rules `.env` was read. The run cost US$0.15 against V-Q11's "a few
+  cents" estimate. Whether to keep Grep and whether a denied name may reach a turn are left to VO6.
+- **Who wrote it:** V1 directly (records only, no code; nothing for Codex).
+- **Verified:** the output block matches V-Q11's pasted output line for line (compared by `diff`);
+  `bash scripts/ci-local.sh`: see the land.
+- **Not verified:** the second Mac (VO1.1); which two names Glob listed (the probe prints counts only).
+
 ## VO14.4b: the Ask screen (2026-11-03, lane: V1)
 
 - **What:** the app's screen for VO14.4a's Ask, as V-Q12 answered (a). A home card, *Ask one
