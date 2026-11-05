@@ -6,10 +6,10 @@ no other tool offered, and is a settings file that fails validation caught rathe
 ignored? VO6 (the deliberation relay's read-wide seats) copies the answer, and so does any later
 Voice turn that is given file tools.
 
-**Status: the fence held on one Mac (2026-11-04).** An unattended run's nested `claude` can't sign
-in, so the live run is attended: `python3 scripts/read_fence_probe.py run` with a signed-in Claude
-Code. The owner accepted that one Mac's run as the proof; a second Mac's run is owed for the record,
-and does not block anything that relies on the fence.
+**Status: the fence held on two Macs (2026-11-04 and 2026-11-05).** An unattended run's nested
+`claude` can't sign in, so the live run is attended: `python3 scripts/read_fence_probe.py run` with a
+signed-in Claude Code. The owner accepted the first Mac's run as the proof; the second Mac's run is
+the one owed for the record, and every check came out the same.
 
 ## The flags and rules a read-wide turn uses
 
@@ -71,7 +71,7 @@ whether `.env` was readable with no rules at all.
 
 ## What the live run showed (2026-11-04, Claude Code 2.1.292, macOS 27, signed in)
 
-On one Mac, signed in, `run` exited 0. Its output, as
+On the first Mac, signed in, `run` exited 0. Its output, as
 printed (`<folder>` is the probe's own temporary folder):
 
 ```
@@ -127,6 +127,26 @@ Result: the fence held.
   and with no rules at all `.env` was read, so the deny rules are what refuse it.
 - **Cost:** US$0.15 for the whole run (each turn capped at US$0.10).
 
+## The second Mac's run (2026-11-05, Claude Code 2.1.292, signed in)
+
+The same command on a second Mac, from a different person's own signed-in Claude Code, in a fresh
+clone of the public repo at `10ee408`. Over a remote shell that Claude Code read as signed out, so
+the run was made at the Mac's own screen. `run` printed *Result: the fence held.*, and its output matches the first Mac's line for
+line except two:
+
+```
+This Mac's own settings also bring: 7 hooks, 1 plugins turned on.
+Cost: $0.2349.
+```
+
+- **Every check came out the same:** the control read; all 22 canaries inside the folder refused
+  by Claude Code, and the file outside it refused for being outside; Grep held; Glob listed 2 of the 22 denied names (names only), the `**/.env*` rule did not
+  hold for the `--add-dir` folder, and with no rules `.env` was read.
+- **The Mac's own settings were different** (7 hooks and 1 plugin, against 18 and 7), and the
+  results didn't change.
+- **Cost:** US$0.23 for the whole run, against US$0.15 on the first Mac (each turn capped at
+  US$0.10 on both).
+
 ## Not covered
 
 - Paths a seat may not list at all (the whole home folder, Q5) are VO6's to refuse.
@@ -134,10 +154,10 @@ Result: the fence held.
   Read, Grep or Glob) is VO6's `doctor` to refuse; the probe only reports it.
 - Hard links under an ordinary name are outside a path list, as in `.ai/SECURITY.md`.
 - Claude Code applies Read rules to Grep and Glob "best-effort", and its docs say it applies them
-  to the folder Grep searches, not that it filters what Grep finds inside it. Grep held on the one
-  live run, but the probe measures Grep over one folder, not every way a search can be phrased, so
-  one run doesn't turn "best-effort" into a promise. VO6 decides whether that is enough to keep Grep.
-- Glob showed denied files' names (2 of 22 on the live run), not their contents. A file name can
+  to the folder Grep searches, not that it filters what Grep finds inside it. Grep held on both
+  live runs, but the probe measures Grep over one folder, not every way a search can be phrased, so
+  two runs don't turn "best-effort" into a promise. VO6 decides whether that is enough to keep Grep.
+- Glob showed denied files' names (2 of 22 on each live run), not their contents. A file name can
   itself say something private; VO6 decides whether names may reach a turn.
 - `.ai/SECURITY.md` has no row for a read-wide turn yet, since no shipped code reads wide. The
   first that does adds one, with these limits as its known limits.
