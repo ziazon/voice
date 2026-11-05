@@ -2,6 +2,23 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO1.1: the read-fence probe on a second Mac (2026-11-05, lane: V1)
+
+- **What:** the record of the attended run of `scripts/read_fence_probe.py run` on a second Mac
+  (2026-11-05, Claude Code 2.1.292, a different person's own sign-in, a fresh clone of the public
+  repo at `10ee408`): *the fence held*. `docs/spikes/VO1-read-fence.md` gains *The second Mac's
+  run*, its status now says two Macs, and *Not covered* says "both live runs" for Grep and Glob.
+  DECISIONS has a 2026-11-05 entry superseding the 2026-11-04 one's *a second Mac's run is owed*.
+- **For VO6:** nothing changes. Every check line matched the first Mac's; only the Mac's own hooks
+  and plugins (7 and 1, against 18 and 7) and the cost (US$0.23, against US$0.15) differed.
+- **Who wrote it:** V1 directly (records only, no code; nothing for Codex).
+- **Verified:** the two runs' outputs compared by `diff`, 40 lines each: exactly the two lines above
+  differ. The second output is as pasted into the lane's question by the owner; this runner did not
+  see the run.
+- **Not verified:** which 2 names Glob listed on either Mac (the probe prints counts only); why the
+  second run cost more (each turn is capped at US$0.10 on both); why the remote shell read signed
+  out (not measured here, so the spike states only that it did).
+
 ## VO1: the live run, and VO1 closes (2026-11-04, lane: V1)
 
 - **What:** the record of the attended live run of `scripts/read_fence_probe.py run` on Mimi
