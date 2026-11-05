@@ -5,20 +5,31 @@ One record per slice, newest first. Paraphrase only; no real person.
 ## VO1: the live run, and VO1 closes (2026-11-04, lane: V1)
 
 - **What:** the record of the attended live run of `scripts/read_fence_probe.py run` on Mimi
-  (2026-11-04, Claude Code 2.1.292, signed in through a job token passed only to the child): exit 0,
-  *the fence held*. Its output is now in `docs/spikes/VO1-read-fence.md` (*What the live run showed*),
-  and DECISIONS has a 2026-11-04 entry superseding the 2026-11-01 one's *until both Macs have passed*.
+  (2026-11-04, Claude Code 2.1.292, signed in): exit 0, *the fence held*. Its output is now in
+  `docs/spikes/VO1-read-fence.md` (*What the live run showed*), and DECISIONS has a 2026-11-04
+  entry superseding the 2026-11-01 one's *until both Macs have passed*.
   The owner chose to close VO1 on this one Mac (V-Q11, option B); the second Mac's run is its own
   follow-up, VO1.1 (attended), and blocks nothing.
 - **Findings recorded for VO6:** every deny-list read refused by Claude Code, nested, upper-case and
-  symlinked canaries and the file outside the folder included; Grep held; Glob listed 2 of the 22
-  denied names (names only); a `**/.env*` rule did not hold for an `--add-dir` folder, so the `//`
-  form stays required; with no rules `.env` was read. The run cost US$0.15 against V-Q11's "a few
-  cents" estimate. Whether to keep Grep and whether a denied name may reach a turn are left to VO6.
+  symlinked canaries included, and the file outside the folder refused for being outside it; Grep
+  held; Glob listed 2 of the 22 denied names (names only); a `**/.env*` rule did not hold for an
+  `--add-dir` folder, so the `//` form stays required; with no rules `.env` was read. The run cost
+  US$0.15 against V-Q11's "a few cents" estimate. Whether to keep Grep and whether a denied name may
+  reach a turn are left to VO6.
 - **Who wrote it:** V1 directly (records only, no code; nothing for Codex).
 - **Verified:** the output block matches V-Q11's pasted output line for line (compared by `diff`);
-  `bash scripts/ci-local.sh`: see the land.
-- **Not verified:** the second Mac (VO1.1); which two names Glob listed (the probe prints counts only).
+  `bash scripts/ci-local.sh` all passed on `0f3b07c` (records only since).
+- **Reviews:** security review (Opus): no HIGH or MEDIUM; two LOW wording fixes made (a fenced
+  turn's output, not any output; no private-tool word), and one noted: `.ai/SECURITY.md` gets a
+  read-wide row from the first shipped code that reads wide (now in the spike's *Not covered*).
+  Verifier (Opus, a records pass on VO1, whose code passes are on record) on `0f3b07c`: FAIL, one
+  must-fix, the same "any output" claim (the no-rules turn did read `.env`), fixed; should-fixes
+  made: the outside file is refused for being outside the folder, not by a rule; "only to the child"
+  unverified and dropped; Glob's names stated for this run only.
+- **Not verified:** the second Mac (VO1.1); which two names Glob listed (the probe prints counts only);
+  whether any of the Mac's 18 hooks or 7 plugins played a part in a refusal (the Verifier found none
+  of the person's own settings hooks act on Read, Grep or Glob; plugins' hooks unchecked; the no-rules
+  turn shows nothing but the rules refuses `.env`).
 
 ## VO14.4b: the Ask screen (2026-11-03, lane: V1)
 
