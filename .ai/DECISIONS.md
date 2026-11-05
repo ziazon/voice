@@ -437,7 +437,7 @@ Supersedes the VO1 entry's *Until both Macs have passed, nothing relies on the f
 Supersedes the 2026-11-04 entry's *A second Mac's run is owed for the record*.
 
 - **The same result.** `python3 scripts/read_fence_probe.py run` passed on a second Mac with Claude
-  Code 2.1.292, from a different person's own sign-in and a fresh clone of the public repo. Every
+  Code 2.1.292, from another account's own sign-in and a fresh clone of the public repo. Every
   check line matched the first Mac's; only the Mac's own hooks and plugins (7 and 1, against 18
   and 7) and the cost (US$0.23, against US$0.15) differed. The output is in
   `docs/spikes/VO1-read-fence.md`.

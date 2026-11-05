@@ -7,9 +7,9 @@ ignored? VO6 (the deliberation relay's read-wide seats) copies the answer, and s
 Voice turn that is given file tools.
 
 **Status: the fence held on two Macs (2026-11-04 and 2026-11-05).** An unattended run's nested
-`claude` can't sign in, so the live run is attended: `python3 scripts/read_fence_probe.py run` with a
-signed-in Claude Code. The owner accepted the first Mac's run as the proof; the second Mac's run is
-the one owed for the record, and every check came out the same.
+`claude` can't sign in, so the live run is attended: `python3 scripts/read_fence_probe.py run`
+with a signed-in Claude Code. The owner accepted the first Mac's run as the proof; the second Mac's
+run is the one owed for the record, and every check came out the same.
 
 ## The flags and rules a read-wide turn uses
 
@@ -129,19 +129,20 @@ Result: the fence held.
 
 ## The second Mac's run (2026-11-05, Claude Code 2.1.292, signed in)
 
-The same command on a second Mac, from a different person's own signed-in Claude Code, in a fresh
-clone of the public repo at `10ee408`. Over a remote shell that Claude Code read as signed out, so
-the run was made at the Mac's own screen. `run` printed *Result: the fence held.*, and its output matches the first Mac's line for
-line except two:
+The same command ran on a second Mac, from another account's own signed-in Claude Code, in a fresh
+clone of the public repo at `10ee408`. The owner reports that over a remote shell Claude Code read
+as signed out, so the run was made at the Mac's own screen. `run` printed *Result: the fence
+held.*, and its output matches the first Mac's line for line except two:
 
 ```
 This Mac's own settings also bring: 7 hooks, 1 plugins turned on.
 Cost: $0.2349.
 ```
 
-- **Every check came out the same:** the control read; all 22 canaries inside the folder refused
-  by Claude Code, and the file outside it refused for being outside; Grep held; Glob listed 2 of the 22 denied names (names only), the `**/.env*` rule did not
-  hold for the `--add-dir` folder, and with no rules `.env` was read.
+- **Every check came out the same:** the control was read; all 22 canaries inside the folder (the
+  two symlinks included) and the file outside it were refused by Claude Code; Grep held; Glob
+  listed 2 of the 22 denied names (names only); the `**/.env*` rule did not hold for the
+  `--add-dir` folder; and with no rules `.env` was read.
 - **The Mac's own settings were different** (7 hooks and 1 plugin, against 18 and 7), and the
   results didn't change.
 - **Cost:** US$0.23 for the whole run, against US$0.15 on the first Mac (each turn capped at
