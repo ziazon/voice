@@ -415,3 +415,19 @@ mixed in and one seat's calendar can't keep a whole panel on local models.
   characters, as a panel turn does. At most 500 events go, and
   the person is told when more were left out.
 - **One call, no retry.** The app's screen is VO14.4b.
+
+## 2026-11-04: the read-wide fence is proven, on one Mac (VO1)
+
+Supersedes the VO1 entry's *Until both Macs have passed, nothing relies on the fence*.
+
+- **The fence held.** `python3 scripts/read_fence_probe.py run` passed on one Mac with Claude Code
+  2.1.292: every deny-list canary inside the granted folder (nested, upper-case and symlinked ones
+  included) and the file outside it were refused by Claude Code itself, and no canary's word reached
+  any output. The output is in `docs/spikes/VO1-read-fence.md`.
+- **One Mac is enough.** The owner accepted that run as the proof, so VO6 and any later read-wide
+  turn may rely on the fence now. A second Mac's run is owed for the record and blocks nothing.
+- **The `//` form stays required:** on the live run a `**/.env*` rule did not hold for a folder
+  added with `--add-dir`, and with no rules `.env` was read.
+- **Glob shows names, never contents** (2 of 22 denied names on the run), and **Grep held** there.
+  Grep's fence is still "best-effort" in Claude Code's docs, so whether to keep Grep, and whether a
+  denied file's name may reach a turn, are VO6's decisions.
