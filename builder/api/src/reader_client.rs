@@ -930,7 +930,7 @@ mod tests {
                     json!({"progress": {"done": done, "total": 8}})
                 )
                 .unwrap();
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                std::thread::sleep(std::time::Duration::from_millis(250));
             }
             output.write_all(b"{\"result\":null}\n").unwrap();
         });
@@ -940,8 +940,8 @@ mod tests {
             input,
             Step::ReadClaudeai,
             &mut |p| progress.push(p),
-            std::time::Duration::from_millis(200),
-            std::time::Duration::from_millis(100),
+            std::time::Duration::from_secs(1),
+            std::time::Duration::from_secs(1),
             || kills += 1,
         )
         .unwrap()
