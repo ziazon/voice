@@ -171,4 +171,30 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn term_patterns_stay_small() {
+        // regex 1.13.1, largest pattern now / with 1425860 reverted: three-run 97128 / 764000, 12-word 532152 / 4206264.
+        for (text, limit) in [
+            ("zindle7-vorpet-glimnar", 1 << 18),
+            (
+                "zindle vorpet glimnar frindle plomvek snorbil drempik flontra brelvic quarnet spindal wexnor",
+                1 << 20,
+            ),
+        ] {
+            let term = Term::new(text, "term")
+                .unwrap_or_else(|error| panic!("term {text:?} failed to build: {error}"));
+            for re in std::iter::once(&term.exact).chain(term.rescans.iter().map(|(re, _)| re)) {
+                let result = RegexBuilder::new(re.as_str())
+                    .case_insensitive(true)
+                    .size_limit(limit)
+                    .build();
+                assert!(
+                    result.is_ok(),
+                    "term {text:?}, pattern {:?}: {result:?}",
+                    re.as_str()
+                );
+            }
+        }
+    }
 }
