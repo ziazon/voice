@@ -70,6 +70,34 @@ what is named here.
 5. Leave `Upstream::untouched`'s 300 ms wait (line 733) alone: load makes it less sensitive, never
    flaky.
 
+## 1a. Amendment: one more test (after the first pass)
+
+The first pass landed §1 in the working tree's last commit. Then `ci-local.sh` failed on a fifth
+test of the same shape, `builder/api/src/reader_client.rs`
+`progress_resets_the_quiet_deadline` (3 of 6 runs of
+`cargo test -p voice-api --lib reader_client::tests` failed at load about 14, with "Voice's reader
+stopped unexpectedly"). It gives `judge_with_deadlines` a 200 ms `quiet` window and writes a
+progress line every 50 ms. The fault it guards: the quiet deadline doesn't restart on each line
+(set once for the whole read), so a reader that keeps reporting progress is killed.
+
+5. **`progress_resets_the_quiet_deadline` gets a 1 s window and 0.25 s gaps.** In that test only:
+   `std::thread::sleep(Duration::from_millis(50))` becomes `from_millis(250)`; the `quiet` argument
+   `from_millis(200)` becomes `from_secs(1)`; the `after` argument `from_millis(100)` becomes
+   `from_secs(1)` (it only waits for the end of output after the result line, which arrives at once
+   when nothing is wrong). Keep the 8 progress lines and every assertion. Eight gaps (2 s) outlast
+   one window, so a deadline set once still kills the reader; each gap leaves 0.75 s of slack. This
+   adds about 1.6 s to the gate. Change nothing else in `reader_client.rs`.
+
+For this amendment only, do step 1 for `reader_client::tests` (three runs before the change), make
+change 5, then **M5** below, then 10 runs of `cargo test -p voice-api --lib reader_client::tests -j 2`
+with the load, then `cargo clippy -p voice-api --all-targets --locked -- -D warnings` and
+`cargo fmt --check`. Skip M1 to M4; they are done.
+
+- **M5, a quiet deadline set once:** with a `cp` backup of `reader_client.rs`, in
+  `judge_with_deadlines` add `let started = std::time::Instant::now();` just before `loop {`, and
+  change the `quiet` branch of `let deadline = …` to `quiet.saturating_sub(started.elapsed())`.
+  `progress_resets_the_quiet_deadline` must fail. Restore with `cp`, check with `cmp`.
+
 ## 2. Test first, and prove each guard still catches its fault
 
 Run tests with `-j 2` and `RUST_TEST_THREADS=2` (the computer is busy).
