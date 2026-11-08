@@ -120,13 +120,13 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(sum(n for _, n in counts.values()), 40)
 
     def test_idle_tunnel_closes_but_traffic_resets_deadline(self):
-        with patch.object(probe, 'TUNNEL_IDLE_TIMEOUT', 0.3, create=True):
+        with patch.object(probe, 'TUNNEL_IDLE_TIMEOUT', 1.0, create=True):
             child, reply = self.request(b'CONNECT claude.ai:443 HTTP/1.1')
             self.assertIn(b'200', reply)
             peer = self.peers[-1]
             peer.settimeout(2)
-            for _ in range(3):
-                time.sleep(0.15)
+            for _ in range(6):
+                time.sleep(0.25)
                 peer.sendall(b'x')
                 self.assertEqual(child.recv(1), b'x')
             self.assertEqual(child.recv(1), b'')

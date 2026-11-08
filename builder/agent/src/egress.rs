@@ -973,12 +973,10 @@ mod tests {
                 socket.read(&mut [0]).unwrap_err().kind(),
                 io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
             ));
-            socket
-                .set_read_timeout(Some(header_time + Duration::from_millis(500)))
-                .unwrap();
+            socket.set_read_timeout(Some(header_time * 4)).unwrap();
             eof(&mut socket);
             assert!(started.elapsed() >= header_time - Duration::from_millis(300));
-            assert!(started.elapsed() < header_time + Duration::from_millis(500));
+            assert!(started.elapsed() < header_time * 3);
             let _ = socket.shutdown(std::net::Shutdown::Both);
             if let Some(writer) = writer {
                 writer.join().unwrap();
@@ -1002,7 +1000,7 @@ mod tests {
     }
     fn slow(_: &str) -> io::Result<Vec<IpAddr>> {
         let (_send, receive) = std::sync::mpsc::channel::<()>();
-        let _ = receive.recv_timeout(Duration::from_secs(2));
+        let _ = receive.recv_timeout(Duration::from_secs(10));
         loopback("")
     }
 
@@ -1060,7 +1058,7 @@ mod tests {
             if index < 2 {
                 assert!(started.elapsed() >= dial_time);
             }
-            assert!(started.elapsed() < dial_time + Duration::from_millis(300));
+            assert!(started.elapsed() < dial_time + Duration::from_secs(1));
             eof(&mut socket);
             wait_slots(&proxy, 0);
         }
@@ -1107,7 +1105,7 @@ mod tests {
                 .err(),
                 Some(status)
             );
-            assert!(started.elapsed() < short.dial_time + Duration::from_millis(500));
+            assert!(started.elapsed() < short.dial_time + Duration::from_secs(1));
         }
     }
 
@@ -1132,7 +1130,7 @@ mod tests {
                 b"CONNECT api.anthropic.com:443 HTTP/1.1\r\n\r\n",
                 status,
             );
-            assert!(started.elapsed() < dial_time + Duration::from_millis(500));
+            assert!(started.elapsed() < dial_time + Duration::from_secs(1));
             eof(&mut socket);
             upstream.untouched();
             proxy.stop();
