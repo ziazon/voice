@@ -2,6 +2,40 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF2: three anonymizer tests hold on a busy computer (2026-11-08, lane: V1)
+
+- **What:** three tests in `builder/ingest/tests/anonymize_file.rs` asserted wall time and failed
+  `ci-local.sh` at load 11 to 19 with no change to the code. The two term-word tests (from
+  `9f77698` and `ffaca9e`) lose their timing and become
+  `punctuation_only_term_word_is_found_after_a_long_dash_run` and
+  `combining_mark_only_term_word_is_found_after_a_long_mark_run`; their guard moves to a new unit
+  test in `builder/ingest/src/anonymize/terms.rs`, `letterless_words_are_left_out_of_bounded_patterns`,
+  which checks that `"- Rowan"` and `"\u{0903} Rowan"` build the same bounded patterns as
+  `"Rowan"`. That is what the two fixes changed, and it doesn't depend on time.
+  `verifier_10_many_matches_have_bounded_line_lookup` (from `0dff027`, the linear line lookup) keeps
+  a timing check, because nothing else can see that fault: it compares a 512 KiB scan with the
+  median of five 8 KiB scans in the same run, with a relative deadline of 256 times (at least 1 s).
+  Test-only. Brief: `plans/briefs/VF2-anonymizer-tests-under-load.md`.
+- **Who built it:** Codex, from the brief, in one pass.
+- **Verified:** mutations, each by `cp` and `cmp` (by Codex): both term-word filters removed
+  (`9f77698` reverted) fails the unit test on `"- Rowan"`; the filters back on
+  `char::is_alphanumeric` (`ffaca9e` reverted) fails it on `"\u{0903} Rowan"` only; the old
+  newline-counting lookup (`0dff027` reverted) fails `verifier_10` on its deadline, after 216 s.
+  Ten runs of `anonymize_file` in a row at load 12 to 14, all green, ratios 13 to 60 against the
+  256 bound. Clippy and fmt pass. `bash scripts/ci-local.sh` all passed on the stack's head
+  `dff08da` (VF4, VF2, then VF1's test-only commits on top) at load about 14; VF2 alone had clippy,
+  fmt and its ten runs.
+- **Swept:** every other wall-clock assert in the crates the last gate never reached
+  (`voice-ingest`'s other test files, keystore, panel-runner, panels, save, steps) and the Python
+  tests: the ones left have 5 s or more of slack and have passed in every gate so far.
+- **Reviews:** security review (Opus): no HIGH or MEDIUM. Two LOW, left as they are: the
+  test's comment says a regression fails fast, but with `0dff027` reverted it takes about 230 s (the
+  small scan slows too); and no end-to-end timing guard on term inputs is left. Verifier: not required (test-only).
+- **Not verified:** the ratio at load above about 14 (the gate ran at about 14); VF1's
+  review LOW (bound how many patterns one term builds) was considered and left: `Term::new` builds at
+  most five (one exact, and a word and a run pattern for each of at most two spellings), by its
+  structure.
+
 ## VF4: the gate's timing tests hold on a busy computer (2026-11-08, lane: V1)
 
 - **What:** four egress tests in `builder/agent/src/egress.rs`, one probe test in
