@@ -285,3 +285,23 @@ same for the cli. Run before you stop, with 2 test threads: `cargo fmt --check`;
 feature; `python3 -m unittest tests.claude_sandbox_probe_test`; `shellcheck scripts/ci-local.sh`.
 Skills: `~/.codex/skills/tdd-skill/SKILL.md`, `~/.codex/skills/security-and-hardening/SKILL.md`.
 Commit nothing; leave the changes in the worktree.
+
+### Fix-up 2: the probe accepts the Console sign-in page (the repeat Verifier, 2026-11-09)
+
+Fix 1 made the probe start `auth login --console`, but its `valid_link`
+(`scripts/claude_sandbox_probe.py`) still accepts only the two subscription pages, so a probe
+sign-in can never succeed. The probe signs in with Console only, so match the Rust
+`valid_link(link, SignIn::Console)` in `builder/agent/src/sandbox.rs`:
+
+- Test first, in `tests/claude_sandbox_probe_test.py`: change `SIGN_IN_LINK` to start
+  `https://platform.claude.com/oauth/authorize?` (same query). In
+  `test_valid_link_matches_the_launch_rules`, set `prefix` to that page; the accepted list is
+  `SIGN_IN_LINK` and the 4096-character one; the refused list keeps its cases rewritten for the new
+  host (`http://platform.claude.com/...`, `https://platform.claude.com.example/...`,
+  `.../authorize@x?`, `.../authorizex?`, the 4097-character one) and adds both subscription pages,
+  `https://claude.com/cai/oauth/authorize?` and `https://claude.ai/oauth/authorize?`, with the same
+  query. Fix any other test in the file that builds a link from the old prefix.
+- Then in the probe: `link.startswith('https://platform.claude.com/oauth/authorize?')` only. The
+  query checks stay as they are.
+- Run `python3 -m unittest tests.claude_sandbox_probe_test` and report the result. Do not run cargo
+  (a gate is building in this worktree), a built binary, the app, or a real `claude`. Commit nothing.
