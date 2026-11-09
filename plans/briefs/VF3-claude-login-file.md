@@ -161,3 +161,70 @@ point it at a stub that records it ran); a failing tmutil stub does not fail `fi
 - `git diff --stat` touches only the files named here plus their tests.
 - Your report lists: each test and what it proves, which tests were skipped in your sandbox, and
   anything in this brief you found wrong in the code (stop and say so rather than guessing).
+
+## Fix-up 1 (2026-11-09): register the app command
+
+The brief left out the app's registration files. They are in scope: register `claude_sign_out` in
+`builder/app/src/command_names.rs`, `builder/app/src/main.rs` and `builder/app/capabilities/default.json`,
+in the same order as the other lists, exactly as `github_sign_out` is registered. Then run
+`bash scripts/ci-local.sh` to the end and report the result. Change nothing else. Commit nothing.
+
+## Fix-up 2 (2026-11-09): two review findings
+
+1. `builder/cli/src/main.rs` `claude_sign_in` repeats the agent's macOS Console rule
+   (`!cfg!(target_os = "macos") || sign_in != claude::SignIn::Console`) to decide whether to print
+   `SIGN_IN_WAITING`. Keep the rule in one place: add `pub fn starts(sign_in: SignIn) -> bool` (or
+   a similarly named function) in `builder/agent/src/claude.rs`, use it in `sign_in_with`'s guard and
+   in the CLI, and test it in the agent.
+2. In `ClaudeCommand`, put `SignOut` after `SignIn`, so `voice claude --help` lists check, sign-in,
+   sign-out.
+
+Run the agent and CLI suites in both builds (default and `--features claude-subscription`) and
+clippy with `-D warnings`. Change nothing else. Commit nothing.
+
+## Fix-up 3 (2026-11-09): the Verifier's should-fixes
+
+1. **`builder/agent/tests/sandbox_profile.rs` `the_keychain_stays_closed`:** the
+   `find-generic-password` assertion is vacuous (the item never exists, so it fails with or
+   without the bug). Make it real: outside the sandbox, create the throwaway item first
+   (`security add-generic-password -a voice-test -s <fresh random service> -w unused`, output
+   discarded), then assert the sandboxed `find-generic-password -s <that service>` exits non-zero,
+   and delete it in the cleanup guard (the existing guard; it must now expect to find one). Keep the
+   sandboxed `add-generic-password` assertion on a second fresh service as it is, with its own
+   guard that fails if a delete finds one.
+2. **`builder/api/src/assistants.rs` `claude_sign_out_in` holds `sign_ins.state` across up to
+   ~90 s of child runs,** so `claude_sign_in_shutdown` (app quit) and a concurrent
+   `claude_sign_in_in` block on the mutex. Add a separate "signing out" marker to `ClaudeSignIns`
+   (for example an `AtomicBool` or a second variant in the state): take the lock only to check that
+   no sign-in runs and set the marker, release it, run the sign-out and the status check, then clear
+   the marker on every path (a drop guard). While the marker is set, `claude_sign_in_in` refuses at
+   once with a fixed sentence: "Wait for the sign-out to finish, then sign in." and a second sign-out
+   refuses with the existing "Wait for the sign-in to finish…" style sentence adapted: "Voice is
+   already signing out." Put all three refusal sentences and the CLI/UI success sentence in
+   `text.rs` (or the api's existing fixed-text place) rather than as literals, matching how the
+   other fixed sentences are kept. Tests: sign-in refused while a sign-out runs; shutdown/cancel does
+   not wait for a running sign-out (bounded, e.g. returns within 1 s while a stub logout sleeps);
+   the marker is cleared after a failed sign-out.
+3. **`.ai/SECURITY.md`, the new sandbox row:** add one sentence: `/usr/bin/security` carries
+   private Apple entitlements and the base profile allows `com.apple.AppSSO.service-xpc`; the
+   commands that reach it (`security platformsso …`) need an admin's authorization, which the
+   sandboxed child can't get (no UI), measured refused on 2026-11-09.
+
+Run the agent, api and CLI suites in both builds and clippy with `-D warnings`, and the UI suite if
+you touched it. Change nothing else. Commit nothing.
+
+## Fix-up 4 (2026-11-09): the repeat Verifier's findings
+
+1. **`.ai/SECURITY.md`, the new sandbox row:** fix-up 3's sentence was wrong. In
+   `/System/Library/Sandbox/Profiles/system.sb` the `com.apple.AppSSO.service-xpc` allow sits inside
+   `(define (system-network) …)` (checked: lines 277-311), which `claude-code.sb` never calls, so the
+   lookup falls under `(deny default)`. Replace the sentence with: "`/usr/bin/security` carries
+   private Apple entitlements; `system.sb` defines an AppSSO allow only inside `system-network`,
+   which this profile doesn't call, and `security platformsso …` was measured refused on
+   2026-11-09."
+2. **`builder/api/tests/claude_sign_in.rs` (around line 538):** the shutdown-does-not-wait test
+   passes `claude_sign_in_shutdown(Duration::from_millis(100))` and checks it returns within 1 s, so
+   a shutdown that waited on the sign-out marker up to its bound would still pass. Pass a wait of
+   5 s and keep the 1 s check, so waiting on the marker fails it.
+
+Run the api suite in both builds. Change nothing else. Commit nothing.
