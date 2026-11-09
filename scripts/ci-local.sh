@@ -20,15 +20,15 @@ if command -v cargo >/dev/null 2>&1; then
   echo 'cargo clippy --all-targets --locked -- -D warnings'
   cargo clippy --all-targets --locked -- -D warnings
   if [ "$(uname -s)" = Darwin ]; then
-    echo 'VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked'
-    VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked
     echo 'VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked -p voice-agent -p voice-api -p voice-cli --features claude-subscription'
     VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked -p voice-agent -p voice-api -p voice-cli --features claude-subscription
+    echo 'VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked'
+    VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked
   else
-    echo 'VOICE_REQUIRE_PARITY=1 cargo test --locked'
-    VOICE_REQUIRE_PARITY=1 cargo test --locked
     echo 'VOICE_REQUIRE_PARITY=1 cargo test --locked -p voice-agent -p voice-api -p voice-cli --features claude-subscription'
     VOICE_REQUIRE_PARITY=1 cargo test --locked -p voice-agent -p voice-api -p voice-cli --features claude-subscription
+    echo 'VOICE_REQUIRE_PARITY=1 cargo test --locked'
+    VOICE_REQUIRE_PARITY=1 cargo test --locked
   fi
   echo 'cargo tree --locked --target all -p voice-cli -e features,normal,build,dev -i voice-agent'
   tree=$(cargo tree --locked --target all -p voice-cli -e features,normal,build,dev -i voice-agent)

@@ -302,7 +302,7 @@ class ProbeTests(unittest.TestCase):
                   '-D', 'PROFILE_DIR=' + str(self.profile), '-D', 'RUN_DIR=' + str(self.run),
                   '-D', 'PROXY_PORT=4321', '-D']
         suffixes = {'version': ['--version'], 'status': ['auth', 'status', '--json'],
-                    'sign-in': ['auth', 'login', '--claudeai'], 'sign-out': ['auth', 'logout'],
+                    'sign-in': ['auth', 'login', '--console'], 'sign-out': ['auth', 'logout'],
                     'ask': ['-p', '--model', 'haiku', '--safe-mode', '--no-session-persistence',
                             '--tools', '', '--output-format', 'json', '--strict-mcp-config', '--mcp-config',
                             '{"mcpServers":{}}', '--permission-mode', 'dontAsk',

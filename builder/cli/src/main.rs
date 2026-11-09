@@ -1649,11 +1649,14 @@ fn claude_sign_in(sign_in: voice_agent::claude::SignIn) -> Result<()> {
     {
         return result;
     }
-    if let Ok(status) = claude.status(&home)
-        && status.signed_in
-    {
-        println!("{}", text::ready(&status.version));
-        return Ok(());
+    if let Ok(status) = claude.status(&home) {
+        if status.signed_in {
+            println!("{}", text::ready(&status.version));
+            return Ok(());
+        }
+        if status.subscription_refused {
+            return Err(Error::Invalid(text::SUBSCRIPTION_REFUSED.into()));
+        }
     }
     Err(result
         .err()

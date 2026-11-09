@@ -180,6 +180,59 @@ esac"#);
     );
 }
 
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn claude_subscription_sign_in_uses_its_profile_then_checks_the_result() {
+    let f = Fixture::new();
+    f.stub(r#"here="$(dirname "$0")"
+case "$1 $2" in
+    '--version ') echo '2.1.292 (Claude Code)';;
+    'auth status') if [ -f "$here/login" ]; then echo '{"loggedIn":true,"authMethod":"api_key"}'; else echo '{"loggedIn":false}'; fi;;
+    'auth login') printf '%s\n' "$@" > "$here/login"; printf '%s' "$CLAUDE_CONFIG_DIR" > "$here/profile";;
+esac"#);
+    let out = f.run(&["claude", "sign-in", "--subscription"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        fs::read_to_string(f.bin.join("login")).unwrap(),
+        "auth\nlogin\n--claudeai\n"
+    );
+    #[cfg(target_os = "macos")]
+    let profile = f.home.join("Library/Application Support/Voice/claude-code");
+    #[cfg(not(target_os = "macos"))]
+    let profile = f.home.join(".local/share/voice/claude-code");
+    assert_eq!(
+        fs::read_to_string(f.bin.join("profile")).unwrap(),
+        profile.to_str().unwrap()
+    );
+    assert_eq!(
+        text(&out.stdout),
+        "Finish signing in on the page that opened in your browser. Voice carries on when you're done.\nClaude Code 2.1.292 is installed and signed in.\n"
+    );
+}
+
+#[cfg(not(feature = "claude-subscription"))]
+#[test]
+fn claude_sign_in_reports_a_subscription_account_as_refused() {
+    let f = Fixture::new();
+    f.stub(r#"here="$(dirname "$0")"
+case "$1 $2" in
+    '--version ') echo '2.1.292 (Claude Code)';;
+    'auth status') if [ -f "$here/login" ]; then echo '{"loggedIn":true,"authMethod":"claude.ai"}'; else echo '{"loggedIn":false}'; fi;;
+    'auth login') printf '%s\n' "$@" > "$here/login";;
+esac"#);
+    let out = f.run(&["claude", "sign-in"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text(&out.stderr).contains(voice_agent::text::SUBSCRIPTION_REFUSED),
+        "{}",
+        text(&out.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(f.bin.join("login")).unwrap(),
+        "auth\nlogin\n--console\n"
+    );
+}
+
 #[test]
 fn claude_sign_in_fails_when_login_does_not_sign_in() {
     let f = Fixture::new();

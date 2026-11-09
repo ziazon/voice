@@ -207,6 +207,15 @@ fn ready_status(status: claude::Status) -> dto::ClaudeStatus {
         can_sign_in_with_subscription: false,
     }
 }
+fn subscription_refused_status() -> dto::ClaudeStatus {
+    dto::ClaudeStatus {
+        ready: false,
+        message: text::SUBSCRIPTION_REFUSED.into(),
+        note: None,
+        can_sign_in: true,
+        can_sign_in_with_subscription: claude::SUBSCRIPTION_OFFERED,
+    }
+}
 fn unavailable_status(error: Error) -> dto::ClaudeStatus {
     dto::ClaudeStatus {
         ready: false,
@@ -227,13 +236,7 @@ pub fn claude_check_in(
     };
     Ok(match claude.status(home) {
         Ok(status) if status.signed_in => ready_status(status),
-        Ok(status) if status.subscription_refused => dto::ClaudeStatus {
-            ready: false,
-            message: text::SUBSCRIPTION_REFUSED.into(),
-            note: None,
-            can_sign_in: true,
-            can_sign_in_with_subscription: claude::SUBSCRIPTION_OFFERED,
-        },
+        Ok(status) if status.subscription_refused => subscription_refused_status(),
         Ok(status) => dto::ClaudeStatus {
             ready: false,
             message: text::signed_out_at(
@@ -398,10 +401,13 @@ pub fn claude_sign_in_in(
     {
         return Ok(stopped_sign_in_status());
     }
-    if let Ok(status) = claude.status(home)
-        && status.signed_in
-    {
-        return Ok(ready_status(status));
+    if let Ok(status) = claude.status(home) {
+        if status.signed_in {
+            return Ok(ready_status(status));
+        }
+        if status.subscription_refused {
+            return Ok(subscription_refused_status());
+        }
     }
     Ok(dto::ClaudeStatus {
         ready: false,

@@ -363,7 +363,7 @@ def command(claude, profile, run, port, action):
                        ('SIGN_IN', 'yes' if action == 'sign-in' else 'no')]:
         argv.extend(['-D', '%s=%s' % (key, value)])
     actions = {'version': ['--version'], 'status': ['auth', 'status', '--json'],
-               'sign-in': ['auth', 'login', '--claudeai'], 'ask': ASK_FLAGS,
+               'sign-in': ['auth', 'login', '--console'], 'ask': ASK_FLAGS,
                'sign-out': ['auth', 'logout']}
     return argv + [str(claude), '--setting-sources', 'project,local'] + actions[action]
 
