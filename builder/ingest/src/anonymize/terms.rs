@@ -143,3 +143,32 @@ pub(super) fn replace(
     out.push_str(&text[offset..]);
     (out, inserted)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bounded(term: &Term) -> Vec<&str> {
+        std::iter::once(term.exact.as_str())
+            .chain(
+                term.rescans
+                    .iter()
+                    .filter(|(_, bounded)| *bounded)
+                    .map(|(pattern, _)| pattern.as_str()),
+            )
+            .collect()
+    }
+
+    #[test]
+    fn letterless_words_are_left_out_of_bounded_patterns() {
+        // A leading letterless word makes matches restart at every character in a long run of it.
+        for text in ["- Rowan", "\u{0903} Rowan"] {
+            let term = Term::new(text, "term").unwrap();
+            assert_eq!(
+                bounded(&term),
+                bounded(&Term::new("Rowan", "term").unwrap()),
+                "{text:?}"
+            );
+        }
+    }
+}
