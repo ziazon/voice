@@ -2,6 +2,40 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO17: a Console sign-in for everyone, the subscription only in testers' builds (2026-11-09, lane: V1)
+
+- **What:** Voice signs its own Claude Code in with `claude auth login --console` (an Anthropic
+  Console account, API billing), by the owner's ruling VO-D10. The subscription sign-in
+  (`--claudeai`) is compiled only with a new cargo feature, `claude-subscription`, off by default
+  and passed through by the api, CLI and app crates; `build-mac-app.sh --testers` builds a tester's
+  copy. Status reads `loggedIn` and `authMethod`: `api_key` is signed in, while `claude.ai` and
+  `oauth_token` count only in a testers' build; a public build tells the person to sign in again
+  with a Console account, also when a sign-in itself ends on a subscription account. The link
+  check takes the sign-in kind (Console: `platform.claude.com/oauth/authorize?` only), and so does
+  the sandbox probe, which now signs in with Console too. Connect Claude shows the subscription
+  button, and the CLI the `--subscription` flag, only in a testers' build. The egress list is
+  unchanged: the Console sign-in's hosts were already on it (read from Claude Code 2.1.292's
+  bundle). `ci-local.sh` runs the agent, api and CLI suites with the feature first, then the
+  default build, checks that default app and CLI builds lack the feature, and runs clippy with it.
+  Brief: `plans/briefs/VO17-console-sign-in.md` (with two fix-up sections).
+- **Who built it:** Codex, from the brief and its two fix-ups.
+- **Verified:** api and CLI suites green with and without the feature (2 test threads, load about
+  15); mutation checks by `cp` and `cmp`: removing the post-sign-in refusal turns the new api and
+  CLI tests red, a subscription login that runs `--console` turns both new feature tests red, and
+  the probe's old link check fails 5 probe tests; the probe test passes on `e2ebd2e` (40 OK).
+  **Owed before the land:** `bash scripts/ci-local.sh` on the head. A run on `e6821fe` was cut off
+  by the job run's time limit, with no failure in the 170-odd test binaries it had finished.
+- **Reviews:** security review: no findings, on the first build and on the fix-ups. Verifier: Fable
+  PASS on `e65e06e` with three should-fixes (all applied); a repeat pass (Opus) found the probe
+  still accepted only subscription pages (fixed in `e2ebd2e`); a further repeat pass (Opus) PASS on
+  `e2ebd2e`.
+- **Incident:** the first Verifier ran a freshly built testers' CLI and started a real
+  `claude auth login --claudeai` in Voice's own profile; it was left waiting for the browser and
+  nothing was saved. Every later brief and Verifier prompt forbids running a built binary, the app
+  or the real `claude`.
+- **Not verified (walk owed, attended):** a real Console sign-in on Mimi, a tester build's
+  subscription sign-in, and a default build refusing a profile signed in with a subscription.
+
 ## VF1: the anonymizer's load test holds on a busy computer (2026-11-08, lane: V1)
 
 - **What:** `two_hundred_three_run_terms_load_within_five_seconds` asserted a 5-second wall-clock
