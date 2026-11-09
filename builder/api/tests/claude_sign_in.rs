@@ -95,6 +95,40 @@ fn successful_login_is_checked_again_and_releases_the_slot() {
     assert!(stub.runs().contains("auth login --console"));
     assert!(stub.sign_in(&state).ready);
 }
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_request_uses_subscription_login() {
+    let stub = Stub::new("touch \"$here/ready\"");
+    let answer = claude_sign_in_in(
+        &stub.0,
+        None,
+        &[stub.0.join("claude")],
+        &ClaudeSignIns::new(),
+        &ClaudeSignInRequest { subscription: true },
+    )
+    .unwrap();
+    assert!(answer.ready);
+    let runs = stub.runs();
+    assert!(runs.contains("auth login --claudeai"), "{runs}");
+    assert!(!runs.contains("--console"), "{runs}");
+}
+
+#[cfg(not(feature = "claude-subscription"))]
+#[test]
+fn sign_in_reports_a_subscription_account_as_refused() {
+    let stub = Stub::new("touch \"$here/ready\"");
+    let program = stub.0.join("claude");
+    let script = fs::read_to_string(&program).unwrap();
+    fs::write(&program, script.replace("api_key", "claude.ai")).unwrap();
+    let answer = stub.sign_in(&ClaudeSignIns::new());
+    assert_eq!(answer.message, text::SUBSCRIPTION_REFUSED);
+    assert!(!answer.ready);
+    assert!(answer.can_sign_in);
+    assert!(!answer.can_sign_in_with_subscription);
+    assert_eq!(answer.note, None);
+    assert!(stub.runs().contains("auth login --console"));
+}
+
 #[test]
 fn exit_zero_without_sign_in_is_failed_and_can_try_again() {
     let stub = Stub::new("exit 0");
