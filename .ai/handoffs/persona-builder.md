@@ -2,6 +2,40 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF3: Claude Code keeps its own login file inside Voice's sandbox (2026-11-09, attended)
+
+- **What:** the subscription sign-in failed inside the sandbox because Claude Code 2.1.292 saves
+  its login by running `security`, which the profile refused, and then skipped its own file
+  fallback. By the owner's choice (V-Q15 option 1) the profile now lets the child start
+  `/usr/bin/security` and nothing more: the Keychain stays closed (no Keychain services,
+  `Library/Keychains` denied), so Claude Code keeps its own `.credentials.json` (0600) in Voice's
+  profile, which Voice never reads. Voice excludes the profile folder from Time Machine (checks the
+  exclusion attribute, else runs `/usr/bin/tmutil addexclusion`; a failure is silent and retried).
+  New `voice claude sign-out` and an app *Sign out* button run Claude Code's own `auth logout` and
+  report an error if the file is left, never deleting it; a sign-in and a sign-out never run
+  together, and neither waits on the other's lock. On macOS the Console sign-in is refused before
+  anything starts: Claude Code's `auth login --console` creates an API key on the person's Console
+  and then cannot save it with the Keychain closed (measured), so VF5 gives the public build a pasted
+  key instead. Brief: `plans/briefs/VF3-claude-login-file.md` (with four fix-ups).
+- **Who built it:** Codex, from the brief and its fix-ups.
+- **Measured first (attended, real sandbox, Claude Code 2.1.292):** the subscription sign-in with
+  only the `security` line added succeeds, writes the file in the profile, answers a call, and
+  `auth logout` removes it; the Console sign-in asks for `org:create_api_key` and fails to save; a
+  key passed in the child's environment works with no sandbox change (VF5's basis). Recorded in the
+  lane handoff, V-Q15.
+- **Verified:** `bash scripts/ci-local.sh` all passed outside Codex's sandbox (it requires the
+  sandbox tests to run) on the build plus fix-ups 1-2, and again with fix-up 3 at load about 15
+  (2 build jobs, 2 test threads); `the_keychain_stays_closed` ran in both builds. Codex saw the
+  core tests red first; not every test did (listed in her report).
+- **Reviews:** Verifier: Fable PASS with three should-fixes (a vacuous find assertion, the sign-out
+  holding the sign-in lock over child runs, a SECURITY sentence on `security`'s entitlements), all
+  applied in fix-up 3; repeat pass (Opus) PASS with one doc should-fix (fix-up 3's SECURITY sentence said the base profile allows the AppSSO service; `system.sb` defines it only inside `system-network`, which this profile doesn't call, checked by the attended session) and one test nit (the shutdown test's wait too short to fail), both applied in fix-up 4. Security review: no HIGH or MEDIUM; three
+  LOW, left as known limits: the CLI and the app hold separate locks, so a CLI sign-out can overlap
+  an app sign-in (as two sign-ins already can); the backup check follows a link swapped in at the
+  wrong moment inside the 0700 folder; quitting the app mid-sign-out does not wait for it.
+- **Not verified (walk owed, attended):** a real subscription sign-in, call and sign-out in a
+  testers' build on Mimi, then G0.1.
+
 ## VO17: a Console sign-in for everyone, the subscription only in testers' builds (2026-11-09, lane: V1)
 
 - **What:** Voice signs its own Claude Code in with `claude auth login --console` (an Anthropic
