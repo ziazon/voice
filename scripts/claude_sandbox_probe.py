@@ -42,8 +42,7 @@ HELPER_SCRIPT = '#!/bin/bash\numask 077\nprintf \'%s\\n\' "$1" > "${0%/*}/sign-i
 def valid_link(link):
     if not (1 <= len(link) <= MAX_LINK
             and all(0x21 <= ord(char) <= 0x7e and char not in '"<>\\^`{|}#' for char in link)
-            and link.startswith(('https://claude.com/cai/oauth/authorize?',
-                                 'https://claude.ai/oauth/authorize?'))):
+            and link.startswith('https://platform.claude.com/oauth/authorize?')):
         return False
     query = {}
     for pair in link.split('?', 1)[1].split('&'):

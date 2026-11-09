@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
 import claude_sandbox_probe as probe
 
 
-SIGN_IN_LINK = 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y'
+SIGN_IN_LINK = 'https://platform.claude.com/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y'
 
 
 class ProxyTests(unittest.TestCase):
@@ -345,14 +345,16 @@ class ProbeTests(unittest.TestCase):
     def test_valid_link_matches_the_launch_rules(self):
         check = getattr(probe, 'valid_link', None)
         self.assertTrue(callable(check), 'the probe needs one link check')
-        prefix = 'https://claude.com/cai/oauth/authorize?'
-        for link in [SIGN_IN_LINK, SIGN_IN_LINK.replace(prefix, 'https://claude.ai/oauth/authorize?'),
+        prefix = 'https://platform.claude.com/oauth/authorize?'
+        for link in [SIGN_IN_LINK,
                      SIGN_IN_LINK + 'x' * (4096 - len(SIGN_IN_LINK))]:
             self.assertTrue(check(link), link)
-        for link in ['', 'http://claude.com/cai/oauth/authorize?a',
-                     'https://claude.com.example/cai/oauth/authorize?a',
-                     'https://claude.com/cai/oauth/authorize@x?a',
-                     'https://claude.com/cai/oauth/authorizex?a',
+        for link in ['', 'http://platform.claude.com/oauth/authorize?a',
+                     'https://platform.claude.com.example/oauth/authorize?a',
+                     'https://platform.claude.com/oauth/authorize@x?a',
+                     'https://platform.claude.com/oauth/authorizex?a',
+                     SIGN_IN_LINK.replace(prefix, 'https://claude.com/cai/oauth/authorize?'),
+                     SIGN_IN_LINK.replace(prefix, 'https://claude.ai/oauth/authorize?'),
                      SIGN_IN_LINK + 'x' * (4097 - len(SIGN_IN_LINK))]:
             link = link.replace('?a', '?' + SIGN_IN_LINK.split('?', 1)[1])
             self.assertFalse(check(link), link)
