@@ -248,7 +248,7 @@ shift 2
 here="$(cd "$(dirname "$0")" && pwd -P)"
 case "$1" in
     --version) echo '2.1.292 (Claude Code)';;
-    auth) {auth}; echo '{{"loggedIn":true}}';;
+    auth) {auth}; echo '{{"loggedIn":true,"authMethod":"api_key"}}';;
     *) cat > "$here/stdin"; echo x >> "$here/calls"; cat "$here/reply";;
 esac
 "#

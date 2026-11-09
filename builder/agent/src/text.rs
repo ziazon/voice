@@ -1,9 +1,13 @@
 //! Every sentence the agent crate shows a person: plain words, no tool words.
 use std::path::Path;
 
-pub const NOT_INSTALLED: &str = "Voice works through your own Claude Code, and it isn't on this computer yet. Install it (https://code.claude.com/docs/en/setup), sign in with your own Claude account, then try again. Claude Code needs a paid Claude plan; the free plan doesn't include it.";
+pub const NOT_INSTALLED: &str = "Voice works through your own Claude Code, and it isn't on this computer yet. Install it (https://code.claude.com/docs/en/setup), then try again. Voice signs it in with an Anthropic Console account, which is billed for what it uses (API billing).";
 pub const DOES_NOT_RUN: &str = "Claude Code is on this computer but didn't start. Open it once on its own to check it works, then try again.";
-pub const SIGNED_OUT: &str = "Claude Code isn't signed in for Voice. Sign in on Connect Claude, or with `voice claude sign-in`, then try again.";
+pub const SIGNED_OUT: &str = "Claude Code isn't signed in for Voice. Sign in with your Anthropic Console account on Connect Claude, or with `voice claude sign-in`, then try again.";
+pub const SUBSCRIPTION_REFUSED: &str = "Claude Code is signed in for Voice with a Claude subscription, which this copy of Voice can't use. Sign in again with an Anthropic Console account on Connect Claude, or with `voice claude sign-in`.";
+pub const SUBSCRIPTION_NOT_OFFERED: &str =
+    "This copy of Voice signs in with an Anthropic Console account only.";
+
 pub const PLAN_STOPPED: &str = "Your Claude plan is nearly used up, so Voice has stopped for today and left the rest for you. Run the build again tomorrow to carry on.";
 pub const FAILED: &str = "Claude Code couldn't finish this step. Open Claude Code and check it answers you, then try again.";
 
@@ -63,8 +67,9 @@ pub fn limit(cap: crate::ledger::Cap) -> String {
 pub const NO_STATE_FOR_LIMIT: &str = "This assistant has no private folder yet, so there's nowhere to keep its limit. Run `voice consent agree` first.";
 
 pub const SIGN_IN_CLI: &str = "Run voice claude sign-in to sign in.";
-pub const SIGN_IN_WAITING: &str = "Finish signing in on the Claude page that opened in your browser. Voice carries on when you're done.";
-pub const SIGN_IN_FAILED: &str = "Claude Code didn't finish signing in. Try again. If no Claude page opened in your browser, check that this computer has a default browser.";
+pub const SIGN_IN_WAITING: &str =
+    "Finish signing in on the page that opened in your browser. Voice carries on when you're done.";
+pub const SIGN_IN_FAILED: &str = "Claude Code didn't finish signing in. Try again. If no sign-in page opened in your browser, check that this computer has a default browser.";
 pub const SIGN_IN_TIMED_OUT: &str =
     "Signing in took more than 10 minutes, so Voice stopped waiting. Try again.";
 pub const SIGN_IN_STOPPED: &str =
@@ -72,7 +77,7 @@ pub const SIGN_IN_STOPPED: &str =
 pub const PROFILE_FAILED: &str = "Voice couldn't set up its own Claude Code folder. Check there's space on this computer, then try again.";
 pub fn signed_out_at(version: &str, program: &str) -> String {
     format!(
-        "Claude Code {version} at {program} isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account."
+        "Claude Code {version} at {program} isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account."
     )
 }
 pub fn shown_program(program: &Path, home: &Path) -> String {

@@ -2,6 +2,11 @@
 
 export type ClaudeStatus = { ready: boolean, message: string, note: string | null, 
 /**
- * Claude Code is here and runs but isn't signed in, so the screen offers Sign in to Claude.
+ * Claude Code is here and runs but isn't signed in, so the screen offers Console sign-in.
  */
-canSignIn: boolean, };
+canSignIn: boolean, 
+/**
+ * The screen also offers the testers' subscription sign-in; true only when can_sign_in
+ * and the build has the feature.
+ */
+canSignInWithSubscription: boolean, };

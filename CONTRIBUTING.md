@@ -20,3 +20,10 @@ Thanks for helping. This kit handles people's private history, so a few rules co
   outside the repo, with files 0600 and folders 0700.
 
 Open a pull request with what changed, why, and how you tested it.
+
+## Testers' builds
+
+The public build signs in with an Anthropic Console account only. A tester's copy also offers
+Claude subscription sign-in. Build it with `bash scripts/build-mac-app.sh --testers`, or
+`cargo build -p voice-cli --features claude-subscription` for the command alone. Never hand a
+testers' build to anyone outside the testing group. No release passes this feature.

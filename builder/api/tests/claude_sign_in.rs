@@ -8,7 +8,10 @@ use std::{
     time::{Duration, Instant},
 };
 use voice_agent::text;
-use voice_api::{dto::ClaudeStatus, *};
+use voice_api::{
+    dto::{ClaudeSignInRequest, ClaudeStatus},
+    *,
+};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Stub(PathBuf);
 impl Stub {
@@ -32,14 +35,23 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 printf '%s\n' "$*" >> "$here/runs"
 case "$1 $2" in
 '--version ') echo '2.1.292 (Claude Code)';;
-'auth status') if [ -f "$here/ready" ]; then echo '{{"loggedIn":true}}'; else echo '{{"loggedIn":false}}'; fi;;
+'auth status') if [ -f "$here/ready" ]; then echo '{{"loggedIn":true,"authMethod":"api_key"}}'; else echo '{{"loggedIn":false}}'; fi;;
 'auth login') touch "$here/login"; {login};;
 esac
 "#)).unwrap();
         fs::set_permissions(program, fs::Permissions::from_mode(0o700)).unwrap();
     }
     fn sign_in(&self, state: &ClaudeSignIns) -> ClaudeStatus {
-        claude_sign_in_in(&self.0, None, &[self.0.join("claude")], state).unwrap()
+        claude_sign_in_in(
+            &self.0,
+            None,
+            &[self.0.join("claude")],
+            state,
+            &ClaudeSignInRequest {
+                subscription: false,
+            },
+        )
+        .unwrap()
     }
     fn runs(&self) -> String {
         fs::read_to_string(self.0.join("runs")).unwrap_or_default()
@@ -80,7 +92,7 @@ fn successful_login_is_checked_again_and_releases_the_slot() {
     let answer = stub.sign_in(&state);
     assert!(answer.ready);
     assert!(!answer.can_sign_in);
-    assert!(stub.runs().contains("auth login --claudeai"));
+    assert!(stub.runs().contains("auth login --console"));
     assert!(stub.sign_in(&state).ready);
 }
 #[test]
@@ -91,6 +103,10 @@ fn exit_zero_without_sign_in_is_failed_and_can_try_again() {
         let answer = stub.sign_in(&state);
         assert!(!answer.ready);
         assert!(answer.can_sign_in);
+        assert_eq!(
+            answer.can_sign_in_with_subscription,
+            voice_agent::claude::SUBSCRIPTION_OFFERED
+        );
         assert_eq!(answer.message, text::SIGN_IN_FAILED);
     }
     assert_eq!(stub.runs().matches("auth login").count(), 2);
@@ -117,9 +133,27 @@ fn busy_cancel_and_retry_never_check_status_after_cancel() {
     thread::scope(|scope| {
         let first = scope.spawn(|| stub.sign_in(&state));
         stub.wait_for_login();
-        let busy = claude_sign_in_in(&stub.0, None, &[], &state);
+        let busy = claude_sign_in_in(
+            &stub.0,
+            None,
+            &[],
+            &state,
+            &ClaudeSignInRequest {
+                subscription: false,
+            },
+        );
+        #[cfg(not(feature = "claude-subscription"))]
+        let refused = claude_sign_in_in(
+            &stub.0,
+            None,
+            &[],
+            &state,
+            &ClaudeSignInRequest { subscription: true },
+        );
         // Cancel even if the busy guard regresses, so no waiting child leaks from this test.
         claude_sign_in_cancel_in(&state).unwrap();
+        #[cfg(not(feature = "claude-subscription"))]
+        assert_eq!(refused.unwrap().message, text::SUBSCRIPTION_NOT_OFFERED);
         assert_eq!(busy.unwrap_err().message, SIGN_IN_BUSY);
         let begun = Instant::now();
         let answer = first.join().unwrap();
@@ -184,7 +218,16 @@ esac
 fn unavailable_or_broken_program_does_not_offer_or_run_login() {
     let stub = Stub::new("exit 1");
     let state = ClaudeSignIns::new();
-    let missing = claude_sign_in_in(&stub.0, None, &[], &state).unwrap();
+    let missing = claude_sign_in_in(
+        &stub.0,
+        None,
+        &[],
+        &state,
+        &ClaudeSignInRequest {
+            subscription: false,
+        },
+    )
+    .unwrap();
     assert!(!missing.can_sign_in);
     assert_eq!(missing.message, text::NOT_INSTALLED);
     fs::write(
@@ -198,4 +241,81 @@ fn unavailable_or_broken_program_does_not_offer_or_run_login() {
     assert!(!stub.runs().contains("auth login"));
     stub.program("touch \"$here/ready\"");
     assert!(stub.sign_in(&state).ready);
+}
+
+#[test]
+fn subscription_status_obeys_the_build_feature() {
+    let stub = Stub::new("exit 1");
+    fs::write(
+        stub.0.join("claude"),
+        r#"#!/bin/sh
+shift 2
+case "$1" in
+--version) echo '2.1.292 (Claude Code)';;
+auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';;
+esac
+"#,
+    )
+    .unwrap();
+    let status = claude_check_in(&stub.0, None, &[stub.0.join("claude")]).unwrap();
+    if voice_agent::claude::SUBSCRIPTION_OFFERED {
+        assert!(status.ready);
+        assert!(!status.can_sign_in);
+        assert!(!status.can_sign_in_with_subscription);
+        assert_eq!(status.message, text::ready("2.1.292"));
+    } else {
+        assert!(!status.ready);
+        assert!(status.can_sign_in);
+        assert!(!status.can_sign_in_with_subscription);
+        assert_eq!(status.message, text::SUBSCRIPTION_REFUSED);
+    }
+}
+
+#[cfg(not(feature = "claude-subscription"))]
+#[test]
+fn unavailable_subscription_never_finds_or_starts_claude() {
+    let stub = Stub::new("exit 1");
+    let state = ClaudeSignIns::new();
+    let request = ClaudeSignInRequest { subscription: true };
+    for fallbacks in [vec![], vec![stub.0.join("claude")]] {
+        let status = claude_sign_in_in(&stub.0, None, &fallbacks, &state, &request).unwrap();
+        assert!(!status.ready);
+        assert!(status.can_sign_in);
+        assert!(!status.can_sign_in_with_subscription);
+        assert_eq!(status.note, None);
+        assert_eq!(status.message, text::SUBSCRIPTION_NOT_OFFERED);
+    }
+    assert!(stub.runs().is_empty());
+    assert!(!voice_agent::claude::profile_folder(&stub.0).exists());
+}
+
+#[test]
+fn signed_out_status_offers_subscription_only_in_testers_builds() {
+    let stub = Stub::new("exit 1");
+    let status = claude_check_in(&stub.0, None, &[stub.0.join("claude")]).unwrap();
+    assert!(!status.ready);
+    assert!(status.can_sign_in);
+    assert_eq!(
+        status.can_sign_in_with_subscription,
+        voice_agent::claude::SUBSCRIPTION_OFFERED
+    );
+}
+
+#[test]
+fn sign_in_request_requires_a_boolean_and_refuses_unknown_fields() {
+    use serde_json::{from_value, json, to_value};
+    for subscription in [false, true] {
+        let value = json!({"subscription": subscription});
+        let request: ClaudeSignInRequest = from_value(value.clone()).unwrap();
+        assert_eq!(request.subscription, subscription);
+        assert_eq!(to_value(request).unwrap(), value);
+    }
+    for value in [
+        json!({}),
+        json!({"subscription": null}),
+        json!({"subscription": "true"}),
+        json!({"subscription": false, "extra": true}),
+    ] {
+        assert!(from_value::<ClaudeSignInRequest>(value).is_err());
+    }
 }

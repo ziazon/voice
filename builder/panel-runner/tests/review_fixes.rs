@@ -466,7 +466,7 @@ fn unknown_long_seat_has_a_short_error() {
     let program = bin.join("claude");
     fs::write(
         &program,
-        "#!/bin/sh\nshift 2\nif [ \"$1\" = '--version' ]; then printf '2.1.292\\n'; exit 0; fi\nprintf '{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}\\n'\n",
+        "#!/bin/sh\nshift 2\nif [ \"$1\" = '--version' ]; then printf '2.1.292\\n'; exit 0; fi\nprintf '{\"loggedIn\":true,\"authMethod\":\"api_key\"}\\n'\n",
     )
     .unwrap();
     fs::set_permissions(program, fs::Permissions::from_mode(0o755)).unwrap();

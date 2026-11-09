@@ -1,5 +1,8 @@
 //! The person's own Claude Code (PB-D9): finding it, checking it is signed in, and one tool-less
-//! call. Voice starts Claude Code's login but never reads, sets or passes a token.
+//! call. Voice starts Claude Code's own `auth login --console`; `--claudeai` is only in
+//! testers' builds (VO-D10). Voice never reads, sets or passes a token.
+//! Source, read 2026-11-08: Claude Code 2.1.292's own bundle and `claude auth login --help`
+//! (Console uses API billing; subscription authMethod is `claude.ai` or `oauth_token`).
 //!
 //! Every `claude` runs inside the sandbox (`sandbox::Launch`) with a proxy of its own
 //! (`egress::Egress`) and an environment built from nothing, so no credential, provider switch
@@ -36,6 +39,24 @@ use std::{
     time::{Duration, Instant},
 };
 use voice_core::error::{Error, Result};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignIn {
+    Console,
+    Subscription,
+}
+
+pub const SUBSCRIPTION_OFFERED: bool = cfg!(feature = "claude-subscription");
+
+fn login_args(sign_in: SignIn) -> Option<[&'static str; 3]> {
+    match sign_in {
+        SignIn::Console => Some(["auth", "login", "--console"]),
+        #[cfg(feature = "claude-subscription")]
+        SignIn::Subscription => Some(["auth", "login", "--claudeai"]),
+        #[cfg(not(feature = "claude-subscription"))]
+        SignIn::Subscription => None,
+    }
+}
 
 pub const AGENT_ID: &str = "claude-code";
 pub const AGENT_NAME: &str = "Claude, through your own Claude Code";
@@ -318,10 +339,24 @@ fn ensure_profile(home: &Path) -> Result<PathBuf> {
     Ok(folder)
 }
 
+// Claude Code 2.1.292's bundle, read 2026-11-08: Console is api_key; both
+// claude.ai and setup-token's oauth_token are subscriptions (VO-D10).
+fn sign_in_status(status: &Value) -> (bool, bool) {
+    if status.get("loggedIn").and_then(Value::as_bool) != Some(true) {
+        return (false, false);
+    }
+    match status.get("authMethod").and_then(Value::as_str) {
+        Some("api_key") => (true, false),
+        Some("claude.ai" | "oauth_token") => (SUBSCRIPTION_OFFERED, !SUBSCRIPTION_OFFERED),
+        _ => (false, false),
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Status {
     pub version: String,
     pub signed_in: bool,
+    pub subscription_refused: bool,
 }
 
 /// How long Voice waits for the person to finish signing in.
@@ -346,8 +381,8 @@ impl Claude {
     }
 
     /// Wait for Claude Code's login inside the sandbox; the sign-in page opens in the browser.
-    pub fn sign_in(&self, home: &Path, stop: &AtomicBool) -> Result<()> {
-        self.sign_in_with(home, stop, &open_in_browser)
+    pub fn sign_in(&self, home: &Path, stop: &AtomicBool, sign_in: SignIn) -> Result<()> {
+        self.sign_in_with(home, stop, sign_in, &open_in_browser)
     }
 
     /// `sign_in`, with the opener given (tests).
@@ -355,10 +390,12 @@ impl Claude {
         &self,
         home: &Path,
         stop: &AtomicBool,
+        sign_in: SignIn,
         open: &(dyn Fn(&str) -> std::io::Result<()> + Sync),
     ) -> Result<()> {
+        let args = login_args(sign_in).ok_or_else(|| invalid(text::SUBSCRIPTION_NOT_OFFERED))?;
         let (egress, launch) = self.launch(home, true)?;
-        let mut command = launch.command(&["auth", "login", "--claudeai"]);
+        let mut command = launch.command(&args);
         let abort = AtomicBool::new(false);
         let done = AtomicBool::new(false);
         let refused = AtomicBool::new(false);
@@ -371,7 +408,7 @@ impl Claude {
                         break;
                     }
                     if !opened {
-                        match launch.sign_in_link() {
+                        match launch.sign_in_link(sign_in) {
                             Link::NotYet => (),
                             Link::Ready(link) => {
                                 opened = true;
@@ -451,8 +488,8 @@ impl Claude {
         })
     }
 
-    /// Check the version and sign-in. Only `loggedIn` is read from the status: the object can
-    /// carry an email address, which is never kept or shown.
+    /// Check the version and sign-in. Only `loggedIn` and `authMethod` are read from the status:
+    /// the object can carry an email address, which is never kept or shown.
     pub fn status(&self, home: &Path) -> Result<Status> {
         let stdout = self
             .ask(home, &["--version"])?
@@ -463,19 +500,24 @@ impl Claude {
             .filter(|version| valid_version(version))
             .map(str::to_owned)
             .ok_or_else(|| invalid(text::DOES_NOT_RUN))?;
-        let logged_in = self
+        let (signed_in, subscription_refused) = self
             .ask(home, &["auth", "status", "--json"])?
             .and_then(|stdout| serde_json::from_slice::<Value>(&stdout).ok())
-            .and_then(|status| status.get("loggedIn").and_then(Value::as_bool));
+            .map(|status| sign_in_status(&status))
+            .unwrap_or((false, false));
         Ok(Status {
             version,
-            signed_in: logged_in == Some(true),
+            signed_in,
+            subscription_refused,
         })
     }
 
     /// Claude Code runs and is signed in for this profile.
     pub fn check(&self, home: &Path) -> Result<Ready> {
         let status = self.status(home)?;
+        if status.subscription_refused {
+            return Err(invalid(text::SUBSCRIPTION_REFUSED));
+        }
         if !status.signed_in {
             return Err(invalid(text::SIGNED_OUT));
         }
@@ -687,6 +729,67 @@ mod tests {
             );
             drop(launch);
             egress.stop();
+        }
+    }
+}
+
+#[cfg(test)]
+mod sign_in_status_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn login_arguments_offer_only_the_builds_allowed_accounts() {
+        assert_eq!(
+            login_args(SignIn::Console),
+            Some(["auth", "login", "--console"])
+        );
+        #[cfg(feature = "claude-subscription")]
+        assert_eq!(
+            login_args(SignIn::Subscription),
+            Some(["auth", "login", "--claudeai"])
+        );
+        #[cfg(not(feature = "claude-subscription"))]
+        assert_eq!(login_args(SignIn::Subscription), None);
+    }
+
+    #[test]
+    fn sign_in_status_accepts_only_console_or_an_offered_subscription() {
+        for method in [
+            "api_key",
+            "claude.ai",
+            "oauth_token",
+            "none",
+            "api_key_helper",
+            "third_party",
+            "unknown",
+        ] {
+            for logged_in in [true, false] {
+                let subscription = matches!(method, "claude.ai" | "oauth_token");
+                let expected = (
+                    logged_in && (method == "api_key" || (subscription && SUBSCRIPTION_OFFERED)),
+                    logged_in && subscription && !SUBSCRIPTION_OFFERED,
+                );
+                assert_eq!(
+                    sign_in_status(&json!({"loggedIn": logged_in, "authMethod": method})),
+                    expected,
+                    "{method}, loggedIn={logged_in}"
+                );
+            }
+        }
+        assert_eq!(SUBSCRIPTION_OFFERED, cfg!(feature = "claude-subscription"));
+        for value in [
+            json!({}),
+            json!({"loggedIn": true}),
+            json!({"loggedIn": true, "authMethod": 7}),
+            json!({"loggedIn": true, "authMethod": null}),
+            json!({"loggedIn": false}),
+            json!({"loggedIn": false, "authMethod": 7}),
+            json!({"loggedIn": false, "authMethod": null}),
+            json!({"authMethod": "api_key"}),
+            json!({"loggedIn": "true", "authMethod": "api_key"}),
+        ] {
+            assert_eq!(sign_in_status(&value), (false, false), "{value}");
         }
     }
 }

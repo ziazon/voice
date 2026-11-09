@@ -797,8 +797,15 @@ enum ConsentCommand {
 enum ClaudeCommand {
     /// Check that Claude Code is installed and signed in.
     Check,
-    /// Sign in to Claude Code in Voice's own profile folder, on Claude's page in your browser.
-    SignIn,
+    /// Sign in with an Anthropic Console account.
+    SignIn {
+        #[cfg(feature = "claude-subscription")]
+        #[arg(
+            long,
+            help = "Sign in with a Claude subscription (testers' builds only)."
+        )]
+        subscription: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1605,6 +1612,9 @@ fn claude_check() -> Result<()> {
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     let ready = claude.status(&home)?;
+    if ready.subscription_refused {
+        return Err(Error::Invalid(text::SUBSCRIPTION_REFUSED.into()));
+    }
     if !ready.signed_in {
         return Err(Error::Invalid(format!(
             "{} {}",
@@ -1618,7 +1628,7 @@ fn claude_check() -> Result<()> {
     println!("{}", text::ready(&ready.version));
     Ok(())
 }
-fn claude_sign_in() -> Result<()> {
+fn claude_sign_in(sign_in: voice_agent::claude::SignIn) -> Result<()> {
     use voice_agent::{claude, text};
     let stop = claude::stop_on_interrupt();
     let home = home()?;
@@ -1633,7 +1643,7 @@ fn claude_sign_in() -> Result<()> {
         return Ok(());
     }
     println!("{}", text::SIGN_IN_WAITING);
-    let result = claude.sign_in(&home, stop);
+    let result = claude.sign_in(&home, stop, sign_in);
     if let Err(Error::Invalid(message)) = &result
         && message == text::SIGN_IN_STOPPED
     {
@@ -2619,7 +2629,20 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         Some(Command::Agents) => agents(),
         Some(Command::Claude { command }) => match command {
             ClaudeCommand::Check => claude_check(),
-            ClaudeCommand::SignIn => claude_sign_in(),
+            ClaudeCommand::SignIn {
+                #[cfg(feature = "claude-subscription")]
+                subscription,
+            } => {
+                #[cfg(feature = "claude-subscription")]
+                let sign_in = if subscription {
+                    voice_agent::claude::SignIn::Subscription
+                } else {
+                    voice_agent::claude::SignIn::Console
+                };
+                #[cfg(not(feature = "claude-subscription"))]
+                let sign_in = voice_agent::claude::SignIn::Console;
+                claude_sign_in(sign_in)
+            }
         },
         Some(Command::Interview { command }) => match command {
             InterviewCommand::Draft {

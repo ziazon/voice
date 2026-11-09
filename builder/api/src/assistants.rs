@@ -204,6 +204,7 @@ fn ready_status(status: claude::Status) -> dto::ClaudeStatus {
         message: text::ready(&status.version),
         note: None,
         can_sign_in: false,
+        can_sign_in_with_subscription: false,
     }
 }
 fn unavailable_status(error: Error) -> dto::ClaudeStatus {
@@ -212,6 +213,7 @@ fn unavailable_status(error: Error) -> dto::ClaudeStatus {
         message: claude_message(error),
         note: None,
         can_sign_in: false,
+        can_sign_in_with_subscription: false,
     }
 }
 pub fn claude_check_in(
@@ -225,6 +227,13 @@ pub fn claude_check_in(
     };
     Ok(match claude.status(home) {
         Ok(status) if status.signed_in => ready_status(status),
+        Ok(status) if status.subscription_refused => dto::ClaudeStatus {
+            ready: false,
+            message: text::SUBSCRIPTION_REFUSED.into(),
+            note: None,
+            can_sign_in: true,
+            can_sign_in_with_subscription: claude::SUBSCRIPTION_OFFERED,
+        },
         Ok(status) => dto::ClaudeStatus {
             ready: false,
             message: text::signed_out_at(
@@ -233,6 +242,7 @@ pub fn claude_check_in(
             ),
             note: None,
             can_sign_in: true,
+            can_sign_in_with_subscription: claude::SUBSCRIPTION_OFFERED,
         },
         Err(error) => unavailable_status(error),
     })
@@ -270,6 +280,8 @@ pub(crate) fn claude_message(error: Error) -> String {
                 text::NOT_INSTALLED,
                 text::DOES_NOT_RUN,
                 text::SIGNED_OUT,
+                text::SUBSCRIPTION_REFUSED,
+                text::SUBSCRIPTION_NOT_OFFERED,
                 text::PLAN_STOPPED,
                 text::SIGN_IN_FAILED,
                 text::SIGN_IN_TIMED_OUT,
@@ -334,6 +346,7 @@ fn stopped_sign_in_status() -> dto::ClaudeStatus {
         message: text::SIGN_IN_STOPPED.into(),
         note: None,
         can_sign_in: true,
+        can_sign_in_with_subscription: claude::SUBSCRIPTION_OFFERED,
     }
 }
 pub fn claude_sign_in_in(
@@ -341,7 +354,22 @@ pub fn claude_sign_in_in(
     path: Option<&OsStr>,
     fallbacks: &[PathBuf],
     sign_ins: &ClaudeSignIns,
+    request: &dto::ClaudeSignInRequest,
 ) -> Result<dto::ClaudeStatus> {
+    if request.subscription && !claude::SUBSCRIPTION_OFFERED {
+        return Ok(dto::ClaudeStatus {
+            ready: false,
+            message: text::SUBSCRIPTION_NOT_OFFERED.into(),
+            note: None,
+            can_sign_in: true,
+            can_sign_in_with_subscription: false,
+        });
+    }
+    let sign_in = if request.subscription {
+        claude::SignIn::Subscription
+    } else {
+        claude::SignIn::Console
+    };
     let flag = {
         let mut state = sign_ins.state.lock().unwrap_or_else(|p| p.into_inner());
         if state.is_some() {
@@ -364,7 +392,7 @@ pub fn claude_sign_in_in(
     if flag.load(Ordering::SeqCst) {
         return Ok(stopped_sign_in_status());
     }
-    let result = claude.sign_in(home, &flag);
+    let result = claude.sign_in(home, &flag, sign_in);
     if let Err(Error::Invalid(message)) = &result
         && message == text::SIGN_IN_STOPPED
     {
@@ -383,6 +411,7 @@ pub fn claude_sign_in_in(
             .unwrap_or_else(|| text::SIGN_IN_FAILED.into()),
         note: None,
         can_sign_in: true,
+        can_sign_in_with_subscription: claude::SUBSCRIPTION_OFFERED,
     })
 }
 pub fn claude_sign_in_cancel_in(sign_ins: &ClaudeSignIns) -> Result<()> {
@@ -396,7 +425,7 @@ pub fn claude_sign_in_cancel_in(sign_ins: &ClaudeSignIns) -> Result<()> {
     }
     Ok(())
 }
-pub fn claude_sign_in() -> Result<dto::ClaudeStatus> {
+pub fn claude_sign_in(request: dto::ClaudeSignInRequest) -> Result<dto::ClaudeStatus> {
     let Ok(home) = home(text::FAILED) else {
         return Ok(unavailable_status(Error::Invalid(text::FAILED.into())));
     };
@@ -405,6 +434,7 @@ pub fn claude_sign_in() -> Result<dto::ClaudeStatus> {
         std::env::var_os("PATH").as_deref(),
         &claude::fallbacks(&home),
         claude_sign_ins(),
+        &request,
     )
 }
 pub fn claude_sign_in_cancel() -> Result<()> {

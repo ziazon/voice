@@ -119,7 +119,7 @@ fn the_usual_places_are_the_installers() {
 
 const READY_BODY: &str = r#"case "$3" in
 --version) echo "2.1.292 (Claude Code)";;
-auth) echo '{"loggedIn":true,"authMethod":"claude.ai","email":"someone@example.invalid"}';;
+auth) echo '{"loggedIn":true,"authMethod":"api_key","email":"someone@example.com"}';;
 esac"#;
 
 #[test]
@@ -155,7 +155,7 @@ fn check_reads_the_version_and_the_sign_in() {
             .unwrap()
     );
     assert!(!cwd.exists());
-    assert!(!format!("{ready:?}").contains("example.invalid"));
+    assert!(!format!("{ready:?}").contains("example.com"));
 }
 
 #[test]
@@ -192,5 +192,76 @@ fn check_says_when_claude_is_signed_out() {
         ));
         let error = stub.claude().check(&home.0).unwrap_err();
         assert_eq!(error.to_string(), text::SIGNED_OUT, "{status}");
+    }
+}
+
+#[test]
+fn subscription_profile_is_ready_only_in_testers_builds() {
+    let home = Scratch::new("check-subscription");
+    for method in ["claude.ai", "oauth_token"] {
+        let stub = Stub::new(&format!(
+            r#"case "$3" in
+--version) echo '2.1.292 (Claude Code)';;
+auth) echo '{{"loggedIn":true,"authMethod":"{method}"}}';;
+esac"#
+        ));
+        let result = stub.claude().check(&home.0);
+        if voice_agent::claude::SUBSCRIPTION_OFFERED {
+            assert_eq!(
+                result.unwrap(),
+                Ready {
+                    version: "2.1.292".into()
+                }
+            );
+        } else {
+            assert_eq!(result.unwrap_err().to_string(), text::SUBSCRIPTION_REFUSED);
+        }
+    }
+}
+
+#[test]
+fn console_sign_in_uses_only_console_arguments() {
+    sign_in_with_kind(voice_agent::claude::SignIn::Console);
+}
+
+#[test]
+fn subscription_sign_in_obeys_the_build_feature_before_launching() {
+    sign_in_with_kind(voice_agent::claude::SignIn::Subscription);
+}
+
+fn sign_in_with_kind(kind: voice_agent::claude::SignIn) {
+    use std::sync::atomic::AtomicBool;
+    use voice_agent::claude::{SUBSCRIPTION_OFFERED, SignIn};
+    let home = Scratch::new("sign-in-kind");
+    let stub = Stub::new("exit 0");
+    let result = stub
+        .claude()
+        .sign_in_with(&home.0, &AtomicBool::new(false), kind, &|_| {
+            panic!("stub never opens a page")
+        });
+    if kind == SignIn::Subscription && !SUBSCRIPTION_OFFERED {
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            text::SUBSCRIPTION_NOT_OFFERED
+        );
+        assert!(!stub.ran(), "refused subscription started the child");
+        assert!(
+            !voice_agent::sandbox::runs_folder(&stub.profile()).exists(),
+            "refused subscription prepared a launch"
+        );
+    } else {
+        result.unwrap();
+        let flag = match kind {
+            SignIn::Console => "--console",
+            #[cfg(feature = "claude-subscription")]
+            SignIn::Subscription => "--claudeai",
+            #[cfg(not(feature = "claude-subscription"))]
+            SignIn::Subscription => panic!("subscription must have been refused"),
+        };
+        assert_eq!(
+            stub.argv(0).unwrap(),
+            ["--setting-sources", "project,local", "auth", "login", flag]
+        );
+        assert!(stub.argv(1).is_none());
     }
 }

@@ -164,10 +164,15 @@ fn sign_in_has_exact_argv_empty_stdin_and_maps_exit_status() {
         let stub = Stub::new(body);
         let claude = found(&stub, &home.0);
         let opened = Mutex::new(Vec::<String>::new());
-        let result = claude.sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
-            opened.lock().unwrap().push(link.to_owned());
-            Ok(())
-        });
+        let result = claude.sign_in_with(
+            &home.0,
+            &AtomicBool::new(false),
+            voice_agent::claude::SignIn::Console,
+            &|link| {
+                opened.lock().unwrap().push(link.to_owned());
+                Ok(())
+            },
+        );
         assert!(opened.lock().unwrap().is_empty());
         assert_eq!(
             result.err().map(|error| error.to_string()),
@@ -180,7 +185,7 @@ fn sign_in_has_exact_argv_empty_stdin_and_maps_exit_status() {
                 "project,local",
                 "auth",
                 "login",
-                "--claudeai"
+                "--console"
             ]
         );
         assert_eq!(stub.file("stdin"), "");
@@ -194,18 +199,24 @@ fn sign_in_timeout_and_failed_spawn_are_fixed_messages() {
     assert_eq!(
         found(&stub, &home.0)
             .with_timeout(Duration::from_secs(1))
-            .sign_in_with(&home.0, &AtomicBool::new(false), &|_| panic!(
-                "no browser requested"
-            ))
+            .sign_in_with(
+                &home.0,
+                &AtomicBool::new(false),
+                voice_agent::claude::SignIn::Console,
+                &|_| panic!("no browser requested")
+            )
             .unwrap_err()
             .to_string(),
         text::SIGN_IN_TIMED_OUT
     );
     assert_eq!(
         Claude::at(home.0.join("missing"), private_profile(&home.0))
-            .sign_in_with(&home.0, &AtomicBool::new(false), &|_| panic!(
-                "no browser requested"
-            ))
+            .sign_in_with(
+                &home.0,
+                &AtomicBool::new(false),
+                voice_agent::claude::SignIn::Console,
+                &|_| panic!("no browser requested")
+            )
             .unwrap_err()
             .to_string(),
         text::DOES_NOT_RUN
@@ -225,7 +236,12 @@ fn stopped_sign_in_kills_the_process_group_within_a_second() {
             stop.store(true, Ordering::SeqCst);
         });
         claude
-            .sign_in_with(&home.0, &stop, &|_| panic!("no browser requested"))
+            .sign_in_with(
+                &home.0,
+                &stop,
+                voice_agent::claude::SignIn::Console,
+                &|_| panic!("no browser requested"),
+            )
             .unwrap_err()
     });
     assert_eq!(error.to_string(), text::SIGN_IN_STOPPED);
@@ -253,11 +269,11 @@ fn displayed_paths_hide_the_home_and_signed_out_text_is_exact() {
     );
     assert_eq!(
         text::signed_out_at("2.1.292", "~/.local/bin/claude"),
-        "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account."
+        "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account."
     );
 }
 
-const SIGN_IN_LINK: &str = "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y";
+const SIGN_IN_LINK: &str = "https://platform.claude.com/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y";
 
 fn waiting_sign_in(link: &str) -> Stub {
     Stub::new(&format!(
@@ -318,10 +334,15 @@ fn sign_in_opens_the_valid_link_exactly_once_and_retains_no_link() {
             fs::write(stub.folder.0.join("go"), "").unwrap();
         });
         claude
-            .sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
-                opened.lock().unwrap().push(link.to_owned());
-                Ok(())
-            })
+            .sign_in_with(
+                &home.0,
+                &AtomicBool::new(false),
+                voice_agent::claude::SignIn::Console,
+                &|link| {
+                    opened.lock().unwrap().push(link.to_owned());
+                    Ok(())
+                },
+            )
             .unwrap();
     });
     assert!(opened.lock().unwrap().as_slice() == [SIGN_IN_LINK]);
@@ -337,11 +358,16 @@ fn sign_in_never_opens_a_second_valid_link() {
     let claude = found(&stub, &home.0);
     let opened = Mutex::new(Vec::<String>::new());
     claude
-        .sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
-            opened.lock().unwrap().push(link.to_owned());
-            fs::write(stub.folder.0.join("opened"), "").unwrap();
-            Ok(())
-        })
+        .sign_in_with(
+            &home.0,
+            &AtomicBool::new(false),
+            voice_agent::claude::SignIn::Console,
+            &|link| {
+                opened.lock().unwrap().push(link.to_owned());
+                fs::write(stub.folder.0.join("opened"), "").unwrap();
+                Ok(())
+            },
+        )
         .unwrap();
     let opened = opened.lock().unwrap();
     assert_eq!(opened.len(), 1);
@@ -355,10 +381,15 @@ fn sign_in_refuses_an_invalid_link_without_opening_it_and_kills_the_child() {
     let opened = Mutex::new(Vec::<String>::new());
     let started = Instant::now();
     let error = found(&stub, &home.0)
-        .sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
-            opened.lock().unwrap().push(link.to_owned());
-            Ok(())
-        })
+        .sign_in_with(
+            &home.0,
+            &AtomicBool::new(false),
+            voice_agent::claude::SignIn::Console,
+            &|link| {
+                opened.lock().unwrap().push(link.to_owned());
+                Ok(())
+            },
+        )
         .unwrap_err();
     assert_eq!(error.to_string(), text::SIGN_IN_FAILED);
     assert!(started.elapsed() < Duration::from_secs(5));
@@ -373,10 +404,15 @@ fn sign_in_opener_failure_kills_the_child() {
     let opened = Mutex::new(Vec::<String>::new());
     let started = Instant::now();
     let error = found(&stub, &home.0)
-        .sign_in_with(&home.0, &AtomicBool::new(false), &|link| {
-            opened.lock().unwrap().push(link.to_owned());
-            Err(std::io::Error::other("invented opener failure"))
-        })
+        .sign_in_with(
+            &home.0,
+            &AtomicBool::new(false),
+            voice_agent::claude::SignIn::Console,
+            &|link| {
+                opened.lock().unwrap().push(link.to_owned());
+                Err(std::io::Error::other("invented opener failure"))
+            },
+        )
         .unwrap_err();
     assert_eq!(error.to_string(), text::SIGN_IN_FAILED);
     assert!(started.elapsed() < Duration::from_secs(5));
@@ -392,11 +428,16 @@ fn sign_in_stops_while_waiting_after_the_browser_opens() {
     let opened = Mutex::new(Vec::<String>::new());
     let started = Instant::now();
     let error = found(&stub, &home.0)
-        .sign_in_with(&home.0, &stop, &|link| {
-            opened.lock().unwrap().push(link.to_owned());
-            stop.store(true, Ordering::SeqCst);
-            Ok(())
-        })
+        .sign_in_with(
+            &home.0,
+            &stop,
+            voice_agent::claude::SignIn::Console,
+            &|link| {
+                opened.lock().unwrap().push(link.to_owned());
+                stop.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        )
         .unwrap_err();
     assert_eq!(error.to_string(), text::SIGN_IN_STOPPED);
     assert!(started.elapsed() < Duration::from_secs(5));

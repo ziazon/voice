@@ -258,3 +258,16 @@ The reader takes the lock if it is free. If it is busy, the reader trusts that t
 because only the app and the person's own terminal can send the request.
 
 The `voice` commands in the terminal still read outside the sandbox.
+
+## Console sign-in (VO17, 2026-11-08)
+
+Read from Claude Code 2.1.292's own bundle and `claude auth login --help`: `--console` uses an
+Anthropic Console account with API usage billing; `--claudeai` uses a Claude subscription and is
+only offered in testers' builds (VO-D10). The Console page starts with
+`https://platform.claude.com/oauth/authorize?`, with the same client id and localhost callback as
+the subscription page. The browser opens it, never the child. The child calls
+`https://platform.claude.com/v1/oauth/token`,
+`https://api.anthropic.com/api/oauth/claude_cli/create_api_key` and
+`https://api.anthropic.com/api/oauth/claude_cli/roles`, so the proxy's three allowed hosts are
+unchanged. Status reads `loggedIn` and `authMethod` only: `api_key` is Console, and `claude.ai` or
+`oauth_token` is a subscription. This Console sign-in has not yet been walked live.

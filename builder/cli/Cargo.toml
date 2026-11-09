@@ -24,3 +24,6 @@ serde_json = { version = "1", features = ["preserve_order"] }
 
 [dev-dependencies]
 voice-agent = { path = "../agent", features = ["test-stubs"] }
+
+[features]
+claude-subscription = ["voice-api/claude-subscription", "voice-agent/claude-subscription"]

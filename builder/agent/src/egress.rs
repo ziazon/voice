@@ -17,8 +17,11 @@ use voice_core::error::{Error, Result};
 
 struct Rules {
     /// Claude Code 2.1.292 uses platform.claude.com/v1/oauth/token and
-    /// api.anthropic.com/api/oauth/claude_cli/roles. The sign-in page on claude.com
-    /// is opened by the browser, never the child, so claude.com is not in the list.
+    /// api.anthropic.com/api/oauth/claude_cli/roles. Its Console sign-in also uses
+    /// api.anthropic.com/api/oauth/claude_cli/create_api_key; its page is
+    /// https://platform.claude.com/oauth/authorize? (bundle read 2026-11-08, VO17).
+    /// Sign-in pages are opened by the browser, never the child, so the subscription
+    /// page's claude.com is not in the list.
     hosts: &'static [&'static str],
     resolve: fn(&str) -> io::Result<Vec<IpAddr>>,
     public: fn(IpAddr) -> bool,
