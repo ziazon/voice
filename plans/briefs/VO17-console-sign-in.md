@@ -238,3 +238,50 @@ The computer is loaded: use 2 test threads (`-- --test-threads=2` is fine; or `C
 Out of scope: an API-key provider in the broker; OpenAI or Gemini adapters; where the login is stored
 inside the sandbox (VF3, parked); `PLAN_STOPPED`'s wording; README and `bootstrap/PROMPT.md` (they
 don't mention signing in today).
+
+## Fix-up after the Verifier (2026-11-09)
+
+The Verifier passed `e65e06e` with three should-fixes. Make exactly these, nothing else, test first.
+
+**Never run a built `voice` binary, the app, or the real `claude` in this fix-up.** Every test uses the
+existing stub `claude` scripts and disposable homes. A built binary can start a real sign-in.
+
+1. **The sandbox probe signs in with Console.** In `scripts/claude_sandbox_probe.py` (`command()`,
+   the `actions` table) change `'sign-in': ['auth', 'login', '--claudeai']` to
+   `['auth', 'login', '--console']`. Update the expectation in `tests/claude_sandbox_probe_test.py`
+   (`test_exact_commands`) first, so it goes red, then fix the script.
+2. **Feature-build tests that the subscription request reaches `--claudeai`.** Gate each with
+   `#[cfg(feature = "claude-subscription")]`.
+   - api `builder/api/tests/claude_sign_in.rs`: a stub whose `auth login` writes its argv (as
+     `successful_login_is_checked_again_and_releases_the_slot` does through `runs`) and touches
+     `ready`; call `claude_sign_in_in` with `ClaudeSignInRequest { subscription: true }`; assert the
+     answer is ready and `stub.runs()` contains `auth login --claudeai` and not `--console`.
+   - cli `builder/cli/tests/agent.rs`: copy `claude_sign_in_uses_its_profile_then_checks_the_result`
+     into a feature-gated test that runs `["claude", "sign-in", "--subscription"]` and asserts the
+     login file reads `"auth\nlogin\n--claudeai\n"`.
+3. **A sign-in that ends on the subscription account says so.** If the browser signs in with a
+   subscription in a public build, the re-check after `sign_in` sees `subscription_refused`, and today
+   both callers fall through to the generic failure. After the post-sign-in `claude.status(home)`:
+   - api `claude_sign_in_in` (`builder/api/src/assistants.rs`): when `status.subscription_refused`,
+     return the same `dto::ClaudeStatus` that `claude_check_in` returns for that case
+     (`text::SUBSCRIPTION_REFUSED`, `ready: false`, `can_sign_in: true`,
+     `can_sign_in_with_subscription: claude::SUBSCRIPTION_OFFERED`). Factor it into one private
+     `subscription_refused_status()` used by both, like `ready_status`.
+   - cli `claude_sign_in` (`builder/cli/src/main.rs`): when the re-check has `subscription_refused`,
+     return `Err(Error::Invalid(text::SUBSCRIPTION_REFUSED.into()))`.
+   - Tests, `#[cfg(not(feature = "claude-subscription"))]`: an api stub and a cli stub whose
+     `auth login` makes the next `auth status` answer `{"loggedIn":true,"authMethod":"claude.ai"}`;
+     the api answer's message is `text::SUBSCRIPTION_REFUSED` and not ready; the cli exits non-zero
+     with that text on stderr.
+4. **`scripts/ci-local.sh` runs the feature tests before the default ones**, on both the Darwin and
+   the other branch, so `target/debug/voice` ends as the public build. Move each
+   `--features claude-subscription` `cargo test` pair (echo and command) above the default
+   `cargo test --locked` line. Change nothing else in the script.
+
+Mutation checks: revert fix 3 in the api (`cp` backup, `cmp` after) and the new api test goes red; the
+same for the cli. Run before you stop, with 2 test threads: `cargo fmt --check`;
+`cargo test --locked -p voice-api -p voice-cli` with and without `--features claude-subscription`;
+`cargo clippy --locked -p voice-api -p voice-cli --all-targets -- -D warnings` with and without the
+feature; `python3 -m unittest tests.claude_sandbox_probe_test`; `shellcheck scripts/ci-local.sh`.
+Skills: `~/.codex/skills/tdd-skill/SKILL.md`, `~/.codex/skills/security-and-hardening/SKILL.md`.
+Commit nothing; leave the changes in the worktree.
