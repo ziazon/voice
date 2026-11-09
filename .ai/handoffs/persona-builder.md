@@ -21,15 +21,23 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Measured first (attended, real sandbox, Claude Code 2.1.292):** the subscription sign-in with
   only the `security` line added succeeds, writes the file in the profile, answers a call, and
   `auth logout` removes it; the Console sign-in asks for `org:create_api_key` and fails to save; a
-  key passed in the child's environment works with no sandbox change (VF5's basis). Recorded in the
-  lane handoff, V-Q15.
+  made-up key passed in the child's environment is accepted with no sandbox change (`auth status`
+  signed in, the call reaches the API and is refused as an invalid key; a real key not yet run;
+  VF5's basis). Recorded in the lane handoff, V-Q15.
 - **Verified:** `bash scripts/ci-local.sh` all passed outside Codex's sandbox (it requires the
   sandbox tests to run) on the build plus fix-ups 1-2, and again with fix-up 3 at load about 15
-  (2 build jobs, 2 test threads); `the_keychain_stays_closed` ran in both builds. Codex saw the
-  core tests red first; not every test did (listed in her report).
+  (2 build jobs, 2 test threads); `the_keychain_stays_closed` ran in both builds. After fix-up 4
+  (a doc sentence and one test's wait) Codex ran the api suite in both builds (368 and 375
+  passed); the land reruns the whole gate. Codex saw the core tests red first; not every test did
+  (listed in her report).
 - **Reviews:** Verifier: Fable PASS with three should-fixes (a vacuous find assertion, the sign-out
   holding the sign-in lock over child runs, a SECURITY sentence on `security`'s entitlements), all
-  applied in fix-up 3; repeat pass (Opus) PASS with one doc should-fix (fix-up 3's SECURITY sentence said the base profile allows the AppSSO service; `system.sb` defines it only inside `system-network`, which this profile doesn't call, checked by the attended session) and one test nit (the shutdown test's wait too short to fail), both applied in fix-up 4. Security review: no HIGH or MEDIUM; three
+  applied in fix-up 3; a repeat pass (Opus) PASS with one doc should-fix (fix-up 3's SECURITY
+  sentence said the base profile allows the AppSSO service; `system.sb` defines it only inside
+  `system-network`, which this profile doesn't call, checked by the attended session) and one test
+  nit (the shutdown test's wait too short to fail), both applied in fix-up 4; a final pass (Opus) on
+  the committed head PASS, after which this record's one overclaim was corrected. Security review:
+  no HIGH or MEDIUM; three
   LOW, left as known limits: the CLI and the app hold separate locks, so a CLI sign-out can overlap
   an app sign-in (as two sign-ins already can); the backup check follows a link swapped in at the
   wrong moment inside the 0700 folder; quitting the app mid-sign-out does not wait for it.
