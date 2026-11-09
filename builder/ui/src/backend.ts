@@ -48,6 +48,7 @@ import type { SlugRequest } from './types/generated/SlugRequest'
 import type { ConsentText } from './types/generated/ConsentText'
 import type { Consent } from './types/generated/Consent'
 import type { ClaudeStatus } from './types/generated/ClaudeStatus'
+import type { ClaudeSignInRequest } from './types/generated/ClaudeSignInRequest'
 import type { SaveOptions } from './types/generated/SaveOptions'
 import type { LinkRequest } from './types/generated/LinkRequest'
 import type { SignInCode } from './types/generated/SignInCode'
@@ -108,7 +109,7 @@ export interface Backend {
   consentText(): Promise<ConsentText>
   agreeConsent(request: SlugRequest): Promise<Consent>
   claudeCheck(): Promise<ClaudeStatus>
-  claudeSignIn(): Promise<ClaudeStatus>
+  claudeSignIn(request: ClaudeSignInRequest): Promise<ClaudeStatus>
   claudeSignInCancel(): Promise<void>
   saveOptions(request: SlugRequest): Promise<SaveOptions>
   openLink(request: LinkRequest): Promise<void>

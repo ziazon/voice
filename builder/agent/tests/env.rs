@@ -27,7 +27,7 @@ fn every_launch_gets_only_its_own_environment() {
     let stub = Stub::new(&format!(
         r#"case "$3" in
 --version) echo '2.1.292 (Claude Code)';;
-auth) echo '{{"loggedIn":true}}';;
+auth) echo '{{"loggedIn":true,"authMethod":"api_key"}}';;
 -p) echo '{}';;
 esac"#,
         ok_reply(&json!({}))
@@ -39,9 +39,12 @@ esac"#,
         .unwrap();
     claude.check(&home.0).unwrap();
     claude
-        .sign_in_with(&home.0, &AtomicBool::new(false), &|_| {
-            panic!("no browser requested")
-        })
+        .sign_in_with(
+            &home.0,
+            &AtomicBool::new(false),
+            voice_agent::claude::SignIn::Console,
+            &|_| panic!("no browser requested"),
+        )
         .unwrap();
     for n in 0..4 {
         assert_launch_env(&stub, n, &stub.profile());

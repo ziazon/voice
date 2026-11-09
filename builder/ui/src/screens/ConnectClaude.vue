@@ -23,21 +23,23 @@ async function check() {
       message: failureMessage(failure, "Voice couldn't check Claude Code. Close it and open it again."),
       note: null,
       canSignIn: false,
+      canSignInWithSubscription: false,
     }
   } finally {
     loading.value = false
   }
 }
-async function signIn() {
+async function signIn(subscription: boolean) {
   signingIn.value = true
   try {
-    status.value = await backend.claudeSignIn()
+    status.value = await backend.claudeSignIn({ subscription })
   } catch (failure) {
     status.value = {
       ready: false,
       message: failureMessage(failure, "Voice couldn't start signing in to Claude. Close it and open it again."),
       note: null,
       canSignIn: true,
+      canSignInWithSubscription: false,
     }
   } finally {
     signingIn.value = false
@@ -126,10 +128,10 @@ onMounted(loadLimit)
   <section class="card">
     <div class="card-body p-5">
       <h2 class="mb-3">Connect Claude</h2>
-      <p>Voice works through your own Claude Code, signed in to your own Claude account. It checks that now, and you set how much it may use in a day.</p>
+      <p>Voice works through your own Claude Code, signed in with your own Anthropic Console account, which is billed for what it uses. It checks that now, and you set how much it may use in a day.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Checking Claude Code…</span></div>
       <template v-else-if="signingIn">
-        <div class="mb-3" role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Finish signing in on the Claude page that opened in your browser. Voice carries on when you're done.</div>
+        <div class="mb-3" role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Finish signing in on the page that opened in your browser. Voice carries on when you're done.</div>
         <button type="button" class="btn btn-outline-secondary" @click="cancelSignIn">Cancel</button>
       </template>
       <template v-else-if="status">
@@ -137,11 +139,12 @@ onMounted(loadLimit)
         <p v-if="status.ready && status.note" class="text-secondary">{{ status.note }}</p>
         <button v-if="status.ready" type="button" class="btn btn-primary" @click="emit('next')">Next: your history</button>
         <template v-if="!status.ready">
-          <button v-if="status.canSignIn" type="button" class="btn btn-primary" @click="signIn">Sign in to Claude</button>
+          <button v-if="status.canSignIn" type="button" class="btn btn-primary" @click="signIn(false)">Sign in with Anthropic Console</button>
+          <button v-if="status.canSignInWithSubscription" type="button" class="btn btn-outline-secondary ms-2" @click="signIn(true)">Sign in with a Claude subscription (testers)</button>
           <button type="button" :class="status.canSignIn ? 'btn btn-outline-secondary ms-2' : 'btn btn-primary'" @click="check">Check again</button>
         </template>
       </template>
-      <p class="text-secondary mt-3 mb-0">Voice never sees your Claude password: you sign in on Claude's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later.</p>
+      <p class="text-secondary mt-3 mb-0">Voice never sees your password: you sign in on Anthropic's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later.</p>
     </div>
   </section>
   <section class="card mt-3">

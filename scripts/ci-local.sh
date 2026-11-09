@@ -22,9 +22,13 @@ if command -v cargo >/dev/null 2>&1; then
   if [ "$(uname -s)" = Darwin ]; then
     echo 'VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked'
     VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked
+    echo 'VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked -p voice-agent -p voice-api -p voice-cli --features claude-subscription'
+    VOICE_REQUIRE_PARITY=1 VOICE_REQUIRE_SANDBOX=1 cargo test --locked -p voice-agent -p voice-api -p voice-cli --features claude-subscription
   else
     echo 'VOICE_REQUIRE_PARITY=1 cargo test --locked'
     VOICE_REQUIRE_PARITY=1 cargo test --locked
+    echo 'VOICE_REQUIRE_PARITY=1 cargo test --locked -p voice-agent -p voice-api -p voice-cli --features claude-subscription'
+    VOICE_REQUIRE_PARITY=1 cargo test --locked -p voice-agent -p voice-api -p voice-cli --features claude-subscription
   fi
   echo 'cargo tree --locked --target all -p voice-cli -e features,normal,build,dev -i voice-agent'
   tree=$(cargo tree --locked --target all -p voice-cli -e features,normal,build,dev -i voice-agent)
@@ -40,6 +44,22 @@ if command -v cargo >/dev/null 2>&1; then
       exit 1
     fi
   done
+  for package in voice-cli voice-app; do
+    echo "cargo tree --locked --target all -p $package -e features,normal,build -i voice-agent"
+    tree=$(cargo tree --locked --target all -p "$package" -e features,normal,build -i voice-agent)
+    if grep -Fq 'voice-agent feature "claude-subscription"' <<< "$tree"; then
+      echo "ci-local: $package builds voice-agent with claude-subscription"
+      exit 1
+    fi
+  done
+  echo 'cargo tree --locked --target all -p voice-app --features claude-subscription -e features,normal,build -i voice-agent'
+  tree=$(cargo tree --locked --target all -p voice-app --features claude-subscription -e features,normal,build -i voice-agent)
+  if ! grep -Fq 'voice-agent feature "claude-subscription"' <<< "$tree"; then
+    echo "ci-local: voice-app's claude-subscription feature does not reach voice-agent"
+    exit 1
+  fi
+  echo 'cargo clippy --locked -p voice-agent -p voice-api -p voice-cli -p voice-app --all-targets --features claude-subscription -- -D warnings'
+  cargo clippy --locked -p voice-agent -p voice-api -p voice-cli -p voice-app --all-targets --features claude-subscription -- -D warnings
   echo 'cargo clippy --locked -p voice-cli -p voice-app -- -D warnings'
   cargo clippy --locked -p voice-cli -p voice-app -- -D warnings
   echo 'git diff --exit-code -- builder/ui/src/types/generated'

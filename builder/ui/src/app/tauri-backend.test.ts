@@ -20,7 +20,6 @@ it.each([
   ['listAssistants', 'list_assistants'],
   ['consentText', 'consent_text'],
   ['claudeCheck', 'claude_check'],
-  ['claudeSignIn', 'claude_sign_in'],
   ['claudeSignInCancel', 'claude_sign_in_cancel'],
   ['githubSignInStart', 'github_sign_in_start'],
   ['githubSignInFinish', 'github_sign_in_finish'],
@@ -33,6 +32,8 @@ it.each([
   expect(invoke).toHaveBeenCalledExactlyOnceWith(command)
 })
 it.each([
+  ['claudeSignIn', 'claude_sign_in', { subscription: false }],
+  ['claudeSignIn', 'claude_sign_in', { subscription: true }],
   ['newAssistant', 'new_assistant', { name: 'Example', pronouns: 'they/them', principal: 'Sample', principalPronouns: 'they/them' }],
   ['showAssistantFolder', 'show_assistant_folder', { slug: 'example' }],
   ['agreeConsent', 'agree_consent', { slug: 'example' }],

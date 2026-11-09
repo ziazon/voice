@@ -17,6 +17,9 @@ ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
 # `scripts/ci-local.sh` checks the app and CLI builds lack it.
 [features]
 test-stubs = []
+# Off by default; testers' builds only (VO-D10).
+# scripts/ci-local.sh checks the default app and CLI builds lack it.
+claude-subscription = []
 
 [dev-dependencies]
 voice-agent = { path = ".", features = ["test-stubs"] }

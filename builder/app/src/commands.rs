@@ -40,8 +40,10 @@ pub fn claude_check() -> Result<voice_api::dto::ClaudeStatus, voice_api::dto::Fa
 }
 
 #[tauri::command(async)]
-pub fn claude_sign_in() -> Result<voice_api::dto::ClaudeStatus, voice_api::dto::Failure> {
-    voice_api::claude_sign_in()
+pub fn claude_sign_in(
+    request: voice_api::dto::ClaudeSignInRequest,
+) -> Result<voice_api::dto::ClaudeStatus, voice_api::dto::Failure> {
+    voice_api::claude_sign_in(request)
 }
 
 #[tauri::command(async)]

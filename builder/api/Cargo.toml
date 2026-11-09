@@ -22,3 +22,6 @@ voice-panel-runner = { path = "../panel-runner" }
 [dev-dependencies]
 libc = "=0.2.191"
 voice-agent = { path = "../agent", features = ["test-stubs"] }
+
+[features]
+claude-subscription = ["voice-agent/claude-subscription"]

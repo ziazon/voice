@@ -49,7 +49,7 @@ impl Fixture {
     fn signed_in(&self, reply: &str) {
         fs::write(self.bin.join("reply"), reply).unwrap();
         self.stub(
-            "here=\"$(cd \"$(dirname \"$0\")\" && pwd -P)\"\ncase \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; *) cat > \"$here/stdin\"; echo x >> \"$here/calls\"; cat \"$here/reply\";; esac",
+            "here=\"$(cd \"$(dirname \"$0\")\" && pwd -P)\"\ncase \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":true,\"authMethod\":\"api_key\"}';; *) cat > \"$here/stdin\"; echo x >> \"$here/calls\"; cat \"$here/reply\";; esac",
         );
     }
     fn stub(&self, body: &str) {

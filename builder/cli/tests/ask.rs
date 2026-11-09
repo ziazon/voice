@@ -53,7 +53,7 @@ impl Fixture {
             .output()
             .unwrap();
         assert!(python.status.success());
-        fs::write(bin.join("claude"),format!("#!{} -I\nimport json, os, sys\np = os.path.dirname(os.path.realpath(__file__))\na = sys.argv[3:]\nwith open(os.path.join(p, 'checked'), 'a') as f: f.write('run\\n')\nif a[:1] == ['--version']: print('2.1.292 (Claude Code)')\nelif a[:1] == ['auth']: print(json.dumps({{'loggedIn':True}}))\nelse:\n with open(os.path.join(p, 'stdin'), 'w') as f: f.write(sys.stdin.read())\n print(json.dumps({{'type':'result','subtype':'success','is_error':False,'total_cost_usd':0.02,'structured_output':{{'answer':'Try the smaller change.'}}}}))\n",String::from_utf8(python.stdout).unwrap().trim())).unwrap();
+        fs::write(bin.join("claude"),format!("#!{} -I\nimport json, os, sys\np = os.path.dirname(os.path.realpath(__file__))\na = sys.argv[3:]\nwith open(os.path.join(p, 'checked'), 'a') as f: f.write('run\\n')\nif a[:1] == ['--version']: print('2.1.292 (Claude Code)')\nelif a[:1] == ['auth']: print(json.dumps({{'loggedIn':True,'authMethod':'api_key'}}))\nelse:\n with open(os.path.join(p, 'stdin'), 'w') as f: f.write(sys.stdin.read())\n print(json.dumps({{'type':'result','subtype':'success','is_error':False,'total_cost_usd':0.02,'structured_output':{{'answer':'Try the smaller change.'}}}}))\n",String::from_utf8(python.stdout).unwrap().trim())).unwrap();
         fs::set_permissions(bin.join("claude"), fs::Permissions::from_mode(0o755)).unwrap();
         Self {
             home,

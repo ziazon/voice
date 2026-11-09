@@ -239,6 +239,7 @@ fn claude_status_uses_only_safe_messages() {
             message: text::NOT_INSTALLED.into(),
             note: None,
             can_sign_in: false,
+            can_sign_in_with_subscription: false,
         }
     );
     let bin = h.join("bin");
@@ -246,9 +247,9 @@ fn claude_status_uses_only_safe_messages() {
     let program = bin.join("claude");
     for (auth, expected) in [
         ("true", text::ready("2.1.292")),
-        ("false", "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account.".into()),
+        ("false", "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account.".into()),
     ] {
-        fs::write(&program,format!("#!/bin/sh\nshift 2\nif [ \"$1\" = --version ]; then echo '2.1.292 (Claude Code)'; else echo '{{\"loggedIn\":{auth}}}'; fi\n")).unwrap();
+        fs::write(&program,format!("#!/bin/sh\nshift 2\nif [ \"$1\" = --version ]; then echo '2.1.292 (Claude Code)'; else echo '{{\"loggedIn\":{auth},\"authMethod\":\"api_key\"}}'; fi\n")).unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
         let status = claude_check_in(h, Some(bin.as_os_str()), &[]).unwrap();
         assert_eq!(status.ready, auth == "true");
@@ -356,6 +357,7 @@ fn missing_home_claude_check_returns_a_status() {
                 message: text::FAILED.into(),
                 note: None,
                 can_sign_in: false,
+                can_sign_in_with_subscription: false,
             }
         );
         return;

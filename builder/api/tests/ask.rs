@@ -81,7 +81,7 @@ impl Home {
             .unwrap();
         assert!(python.status.success());
         let source = format!(
-            "#!{} -I\nimport json, os, sys\np = os.path.dirname(os.path.realpath(__file__))\na = sys.argv[3:]\nwith open(os.path.join(p, 'checked'), 'a') as f: f.write('run\\n')\nif a[:1] == ['--version']:\n print('2.1.292 (Claude Code)')\nelif a[:1] == ['auth']:\n print(json.dumps({{'loggedIn': True}}))\nelse:\n with open(os.path.join(p, 'stdin'), 'a') as f: f.write(sys.stdin.read())\n with open(os.path.join(p, 'argv'), 'w') as f: json.dump(sys.argv[1:], f)\n print(json.dumps({{'type':'result','subtype':'success','is_error':False,'total_cost_usd':0.02,'structured_output':json.loads({:?})}}))\n",
+            "#!{} -I\nimport json, os, sys\np = os.path.dirname(os.path.realpath(__file__))\na = sys.argv[3:]\nwith open(os.path.join(p, 'checked'), 'a') as f: f.write('run\\n')\nif a[:1] == ['--version']:\n print('2.1.292 (Claude Code)')\nelif a[:1] == ['auth']:\n print(json.dumps({{'loggedIn': True, 'authMethod': 'api_key'}}))\nelse:\n with open(os.path.join(p, 'stdin'), 'a') as f: f.write(sys.stdin.read())\n with open(os.path.join(p, 'argv'), 'w') as f: json.dump(sys.argv[1:], f)\n print(json.dumps({{'type':'result','subtype':'success','is_error':False,'total_cost_usd':0.02,'structured_output':json.loads({:?})}}))\n",
             String::from_utf8(python.stdout).unwrap().trim(),
             answer.to_string()
         );

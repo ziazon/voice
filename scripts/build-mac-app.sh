@@ -2,11 +2,14 @@
 set -euo pipefail
 
 universal=false
-case "$#:${1-}" in
-  0:) ;;
-  1:--universal) universal=true ;;
-  *) echo 'Usage: bash scripts/build-mac-app.sh [--universal]' >&2; exit 2 ;;
-esac
+testers=false
+for argument in "$@"; do
+  case "$argument" in
+    --universal) universal=true ;;
+    --testers) testers=true ;;
+    *) echo 'Usage: bash scripts/build-mac-app.sh [--universal] [--testers]' >&2; exit 2 ;;
+  esac
+done
 
 cd "$(dirname "$0")/.."
 repo="$PWD"
@@ -24,6 +27,11 @@ elif [ "$pnpm_major" -lt 10 ]; then
 fi
 
 build_args=(build --bundles app)
+cli_args=(build --release --locked -p voice-cli)
+if "$testers"; then
+  build_args+=(--features claude-subscription)
+  cli_args+=(--features claude-subscription)
+fi
 bundle_dir=release/bundle/macos
 if "$universal"; then
   label=universal
@@ -52,6 +60,9 @@ app="$target_dir/$bundle_dir/Voice.app"
 codesign --verify --deep --strict "$app" >/dev/null 2>&1 || fail "signature check failed: $app"
 
 name="voice-$version-mac-$label"
+if "$testers"; then
+  name+=-testers
+fi
 mkdir -p "$repo/dist"
 staging="$repo/dist/$name"
 trap 'rm -rf "$staging"' EXIT
@@ -62,7 +73,7 @@ mkdir -p "$package"
 if "$universal"; then
   cli_binaries=()
   for target in aarch64-apple-darwin x86_64-apple-darwin; do
-    CARGO_NET_OFFLINE=true cargo build --release --locked -p voice-cli --target "$target"
+    CARGO_NET_OFFLINE=true cargo "${cli_args[@]}" --target "$target"
     binary="$target_dir/$target/release/voice"
     [ -f "$binary" ] || fail 'the voice command was not built'
     cli_binaries+=("$binary")
@@ -70,7 +81,7 @@ if "$universal"; then
   staging_cli="$staging/voice"
   lipo -create -output "$staging_cli" "${cli_binaries[@]}"
 else
-  CARGO_NET_OFFLINE=true cargo build --release --locked -p voice-cli
+  CARGO_NET_OFFLINE=true cargo "${cli_args[@]}"
   staging_cli="$target_dir/release/voice"
 fi
 [ -f "$staging_cli" ] || fail 'the voice command was not built'

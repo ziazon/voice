@@ -15,3 +15,6 @@ tauri-build = { version = "=2.7.0", features = [] }
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["preserve_order"] }
+
+[features]
+claude-subscription = ["voice-api/claude-subscription"]

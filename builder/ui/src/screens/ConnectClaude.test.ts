@@ -5,7 +5,7 @@ import ConnectClaude from './ConnectClaude.vue'
 import type { ClaudeStatus } from '../types/generated/ClaudeStatus'
 
 it('announces checking and shows ready with its note', async () => {
-  const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ready: true, message: 'Ready.', note: 'API key is set.', canSignIn: false }) }), { assistant })
+  const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ready: true, message: 'Ready.', note: 'API key is set.', canSignIn: false, canSignInWithSubscription: false }) }), { assistant })
   expect(wrapper.get('[role="status"]').text()).toBe('Checking Claude Code…')
   await flushPromises()
   expect(wrapper.get('.alert-success').text()).toBe('Ready.')
@@ -15,7 +15,7 @@ it('announces checking and shows ready with its note', async () => {
 })
 it('shows not-ready text without links and checks again', async () => {
   const pending = deferred<ClaudeStatus>()
-  const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValueOnce({ ready: false, message: 'Visit https://example.test/setup <a>setup</a>', note: null, canSignIn: false }).mockReturnValueOnce(pending.promise) })
+  const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValueOnce({ ready: false, message: 'Visit https://example.test/setup <a>setup</a>', note: null, canSignIn: false, canSignInWithSubscription: false }).mockReturnValueOnce(pending.promise) })
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
   expect(wrapper.get('.alert-warning').text()).toBe('Visit https://example.test/setup <a>setup</a>')
@@ -23,7 +23,7 @@ it('shows not-ready text without links and checks again', async () => {
   await button(wrapper, 'Check again').trigger('click')
   expect(wrapper.get('[role="status"]').text()).toBe('Checking Claude Code…')
   expect(backend.claudeCheck).toHaveBeenCalledTimes(2)
-  pending.resolve({ ready: true, message: 'Ready.', note: null, canSignIn: false })
+  pending.resolve({ ready: true, message: 'Ready.', note: null, canSignIn: false, canSignInWithSubscription: false })
   await flushPromises()
   expect(wrapper.get('.alert-success').text()).toBe('Ready.')
 })
@@ -36,7 +36,7 @@ it('shows the safe bridge rejection and retry', async () => {
 })
 
 it('loads the dollar limits even when Claude Code is not ready, and saves unchanged defaults', async () => {
-  const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ready: false, message: 'Not ready.', note: null, canSignIn: false }), spendingLimit: vi.fn().mockResolvedValue({ dailyUsd: 50, callUsd: 5 }) })
+  const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ready: false, message: 'Not ready.', note: null, canSignIn: false, canSignInWithSubscription: false }), spendingLimit: vi.fn().mockResolvedValue({ dailyUsd: 50, callUsd: 5 }) })
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
   expect(backend.spendingLimit).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug })
@@ -139,15 +139,15 @@ it('explains the account, daily use and provider choice while checking and after
   const check = deferred<ClaudeStatus>()
   const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockReturnValue(check.promise) }), { assistant })
   const card = wrapper.findAll('.card')[0]!
-  expect(card.text()).toContain('Voice works through your own Claude Code, signed in to your own Claude account.')
+  expect(card.text()).toContain('Voice works through your own Claude Code, signed in with your own Anthropic Console account, which is billed for what it uses.')
   expect(card.text()).toContain('It checks that now, and you set how much it may use in a day.')
-  const explanation = "Voice never sees your Claude password: you sign in on Claude's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later."
+  const explanation = "Voice never sees your password: you sign in on Anthropic's own page. Its sign-in is separate from the Claude app and from the Claude Code you use yourself. Claude is the only choice for now. Other AI providers come later."
   expect(card.get('p.text-secondary.mt-3.mb-0').text()).toBe(explanation)
-  expect(card.text()).toContain("Voice never sees your Claude password: you sign in on Claude's own page.")
+  expect(card.text()).toContain("Voice never sees your password: you sign in on Anthropic's own page.")
   expect(card.text()).toContain('Claude is the only choice for now.')
   expect(card.text()).toContain('Other AI providers come later.')
   expect(wrapper.findAll('.card')[1]!.text()).not.toContain(explanation)
-  check.resolve({ ready: true, message: 'Ready.', note: null, canSignIn: false })
+  check.resolve({ ready: true, message: 'Ready.', note: null, canSignIn: false, canSignInWithSubscription: false })
   await flushPromises()
   expect(card.get('p.text-secondary.mt-3.mb-0').text()).toBe(explanation)
 })
@@ -207,20 +207,21 @@ it('explains that either field can have no limit', async () => {
   expect(wrapper.text()).toContain('Enter 0 in either box for no limit.')
 })
 
-const signedOut: ClaudeStatus = { ready: false, message: 'Sign in for Voice.', note: null, canSignIn: true }
-const waiting = "Finish signing in on the Claude page that opened in your browser. Voice carries on when you're done."
+const signedOut: ClaudeStatus = { ready: false, message: 'Sign in for Voice.', note: null, canSignIn: true, canSignInWithSubscription: false }
+const waiting = "Finish signing in on the page that opened in your browser. Voice carries on when you're done."
 
-it('offers sign-in and a secondary check when Claude Code can sign in', async () => {
+it('offers only Console sign-in and a secondary check in the public build', async () => {
   const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut) }), { assistant })
   await flushPromises()
-  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in to Claude')
-  expect(button(wrapper, 'Sign in to Claude').classes()).toContain('btn-primary')
+  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in with Anthropic Console')
+  expect(button(wrapper, 'Sign in with Anthropic Console').classes()).toContain('btn-primary')
+  expect(wrapper.findAll('button').filter(item => item.text().startsWith('Sign in with'))).toHaveLength(1)
   expect(button(wrapper, 'Check again').classes()).toEqual(['btn', 'btn-outline-secondary', 'ms-2'])
 })
 it('offers only a primary check when Claude Code is not installed', async () => {
-  const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ...signedOut, canSignIn: false }) }), { assistant })
+  const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ...signedOut, canSignIn: false, canSignInWithSubscription: false }) }), { assistant })
   await flushPromises()
-  expect(wrapper.findAll('button').map(item => item.text())).not.toContain('Sign in to Claude')
+  expect(wrapper.findAll('button').map(item => item.text())).not.toContain('Sign in with Anthropic Console')
   expect(button(wrapper, 'Check again').classes()).toContain('btn-primary')
 })
 it('waits for sign-in, cancels, and replaces the status with the answer', async () => {
@@ -228,9 +229,9 @@ it('waits for sign-in, cancels, and replaces the status with the answer', async 
   const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut), claudeSignIn: vi.fn().mockReturnValue(pending.promise) })
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
-  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in to Claude')
-  await button(wrapper, 'Sign in to Claude').trigger('click')
-  expect(backend.claudeSignIn).toHaveBeenCalledExactlyOnceWith()
+  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in with Anthropic Console')
+  await button(wrapper, 'Sign in with Anthropic Console').trigger('click')
+  expect(backend.claudeSignIn).toHaveBeenCalledExactlyOnceWith({ subscription: false })
   expect(wrapper.get('[role="status"]').text()).toBe(waiting)
   expect(wrapper.get('[role="status"] .spinner-border').classes()).toEqual(['spinner-border', 'spinner-border-sm', 'me-2'])
   expect(wrapper.get('[role="status"] .spinner-border').attributes('aria-hidden')).toBe('true')
@@ -238,7 +239,7 @@ it('waits for sign-in, cancels, and replaces the status with the answer', async 
   expect(wrapper.findAll('button').map(item => item.text())).not.toContain('Check again')
   await button(wrapper, 'Cancel').trigger('click')
   expect(backend.claudeSignInCancel).toHaveBeenCalledExactlyOnceWith()
-  pending.resolve({ ready: true, message: 'Ready after signing in.', note: null, canSignIn: false })
+  pending.resolve({ ready: true, message: 'Ready after signing in.', note: null, canSignIn: false, canSignInWithSubscription: false })
   await flushPromises()
   expect(wrapper.get('.alert-success').text()).toBe('Ready after signing in.')
   expect(button(wrapper, 'Next: your history').text()).toBe('Next: your history')
@@ -250,15 +251,15 @@ it('ignores a failed cancel until the pending sign-in ends', async () => {
   const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut), claudeSignIn: vi.fn().mockReturnValue(pending.promise), claudeSignInCancel: vi.fn().mockRejectedValue(new Error('private detail')) })
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
-  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in to Claude')
-  await button(wrapper, 'Sign in to Claude').trigger('click')
+  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in with Anthropic Console')
+  await button(wrapper, 'Sign in with Anthropic Console').trigger('click')
   await button(wrapper, 'Cancel').trigger('click')
   await flushPromises()
   expect(wrapper.get('[role="status"]').text()).toBe(waiting)
   pending.resolve({ ...signedOut, message: 'You stopped signing in.' })
   await flushPromises()
   expect(wrapper.get('.alert-warning').text()).toBe('You stopped signing in.')
-  expect(button(wrapper, 'Sign in to Claude').text()).toBe('Sign in to Claude')
+  expect(button(wrapper, 'Sign in with Anthropic Console').text()).toBe('Sign in with Anthropic Console')
 })
 it.each([
   [new Error('private detail'), "Voice couldn't start signing in to Claude. Close it and open it again."],
@@ -267,21 +268,40 @@ it.each([
   const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut), claudeSignIn: vi.fn().mockRejectedValue(failure) })
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
-  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in to Claude')
-  await button(wrapper, 'Sign in to Claude').trigger('click')
+  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in with Anthropic Console')
+  await button(wrapper, 'Sign in with Anthropic Console').trigger('click')
   await flushPromises()
   expect(wrapper.get('.alert-warning').text()).toBe(message)
-  expect(button(wrapper, 'Sign in to Claude').text()).toBe('Sign in to Claude')
+  expect(button(wrapper, 'Sign in with Anthropic Console').text()).toBe('Sign in with Anthropic Console')
 })
 it('cancels sign-in when the screen unmounts while waiting', async () => {
   const pending = deferred<ClaudeStatus>()
   const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut), claudeSignIn: vi.fn().mockReturnValue(pending.promise) })
   const wrapper = screen(ConnectClaude, backend, { assistant })
   await flushPromises()
-  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in to Claude')
-  await button(wrapper, 'Sign in to Claude').trigger('click')
+  expect(wrapper.findAll('button').map(item => item.text())).toContain('Sign in with Anthropic Console')
+  await button(wrapper, 'Sign in with Anthropic Console').trigger('click')
   wrapper.unmount()
   expect(backend.claudeSignInCancel).toHaveBeenCalledExactlyOnceWith()
   pending.resolve(signedOut)
   await flushPromises()
+})
+
+it('offers both sign-ins in a testers build and sends the subscription request', async () => {
+  const pending = deferred<ClaudeStatus>()
+  const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ...signedOut, canSignInWithSubscription: true }), claudeSignIn: vi.fn().mockReturnValue(pending.promise) })
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  expect(wrapper.findAll('button').filter(item => item.text().startsWith('Sign in with')).map(item => item.text())).toEqual([
+    'Sign in with Anthropic Console',
+    'Sign in with a Claude subscription (testers)',
+  ])
+  expect(button(wrapper, 'Sign in with a Claude subscription (testers)').classes()).toEqual(['btn', 'btn-outline-secondary', 'ms-2'])
+  await button(wrapper, 'Sign in with a Claude subscription (testers)').trigger('click')
+  expect(backend.claudeSignIn).toHaveBeenCalledExactlyOnceWith({ subscription: true })
+  expect(wrapper.get('[role="status"]').text()).toBe(waiting)
+  expect(wrapper.findAll('button').some(item => item.text().startsWith('Sign in with'))).toBe(false)
+  pending.resolve({ ready: true, message: 'Ready.', note: null, canSignIn: false, canSignInWithSubscription: false })
+  await flushPromises()
+  expect(wrapper.get('.alert-success').text()).toBe('Ready.')
 })

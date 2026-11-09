@@ -84,8 +84,18 @@ pub struct ClaudeStatus {
     pub ready: bool,
     pub message: String,
     pub note: Option<String>,
-    /// Claude Code is here and runs but isn't signed in, so the screen offers Sign in to Claude.
+    /// Claude Code is here and runs but isn't signed in, so the screen offers Console sign-in.
     pub can_sign_in: bool,
+    /// The screen also offers the testers' subscription sign-in; true only when can_sign_in
+    /// and the build has the feature.
+    pub can_sign_in_with_subscription: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct ClaudeSignInRequest {
+    pub subscription: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

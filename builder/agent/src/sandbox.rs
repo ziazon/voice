@@ -2,7 +2,7 @@
 //! docs/spikes/VO11-os-sandbox.md, https://code.claude.com/docs/en/setup and
 //! https://code.claude.com/docs/en/network-config.
 
-use crate::text;
+use crate::{claude::SignIn, text};
 #[cfg(target_os = "macos")]
 use libc::{c_char, c_int, c_void};
 #[cfg(target_os = "macos")]
@@ -102,14 +102,19 @@ pub fn resolve_program(program: &Path) -> Result<PathBuf> {
 }
 
 /// Whether `link` is a sign-in page Voice may open.
-pub fn valid_link(link: &str) -> bool {
+pub fn valid_link(link: &str, sign_in: SignIn) -> bool {
     if link.is_empty()
         || link.len() > MAX_LINK
         || !link
             .bytes()
             .all(|byte| (0x21..=0x7e).contains(&byte) && !b"\"<>\\^`{|}#".contains(&byte))
-        || !(link.starts_with("https://claude.com/cai/oauth/authorize?")
-            || link.starts_with("https://claude.ai/oauth/authorize?"))
+        || !match sign_in {
+            SignIn::Console => link.starts_with("https://platform.claude.com/oauth/authorize?"),
+            SignIn::Subscription => {
+                link.starts_with("https://claude.com/cai/oauth/authorize?")
+                    || link.starts_with("https://claude.ai/oauth/authorize?")
+            }
+        }
     {
         return false;
     }
@@ -326,7 +331,7 @@ impl Launch {
 
     /// Read the link once; a ready link's file is removed before handing it out.
     #[cfg(unix)]
-    pub fn sign_in_link(&self) -> Link {
+    pub fn sign_in_link(&self, sign_in: SignIn) -> Link {
         let path = self.run.join(LINK);
         let file = match OpenOptions::new()
             .read(true)
@@ -350,13 +355,13 @@ impl Launch {
             return Link::Refused;
         }
         match String::from_utf8(bytes) {
-            Ok(link) if valid_link(&link) => Link::Ready(link),
+            Ok(link) if valid_link(&link, sign_in) => Link::Ready(link),
             _ => Link::Refused,
         }
     }
 
     #[cfg(not(unix))]
-    pub fn sign_in_link(&self) -> Link {
+    pub fn sign_in_link(&self, _sign_in: SignIn) -> Link {
         Link::Refused
     }
 }

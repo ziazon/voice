@@ -7,7 +7,7 @@ args = sys.argv[3:]
 if args[:1] == ["--version"]:
     print("2.1.292 (Claude Code)")
 elif args[:1] == ["auth"]:
-    print(json.dumps({"loggedIn": True}))
+    print(json.dumps({"loggedIn": True, "authMethod": "api_key"}))
 else:
     prompt = sys.stdin.read()
     found = re.match(r"Round (\d+)\.", prompt)

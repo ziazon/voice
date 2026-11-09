@@ -93,7 +93,7 @@ fn agents_lists_claude_code() {
 fn claude_check_says_ready_or_what_to_do() {
     let f = Fixture::new();
     f.stub(
-        "case \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":true,\"email\":\"someone@example.invalid\"}';; esac",
+        "case \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":true,\"authMethod\":\"api_key\",\"email\":\"someone@example.com\"}';; esac",
     );
     let out = f.run(&["claude", "check"]);
     assert!(out.status.success(), "{}", text(&out.stderr));
@@ -101,7 +101,7 @@ fn claude_check_says_ready_or_what_to_do() {
         text(&out.stdout),
         "Claude Code 2.1.292 is installed and signed in.\n"
     );
-    assert!(!text(&out.stdout).contains("example.invalid"));
+    assert!(!text(&out.stdout).contains("example.com"));
     let out = f
         .command(&["claude", "check"])
         .env("ANTHROPIC_API_KEY", "not-a-real-key")
@@ -126,7 +126,7 @@ fn claude_check_says_ready_or_what_to_do() {
         text(&out.stderr),
         format!(
             "voice: {}\n",
-            "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude account. Run voice claude sign-in to sign in."
+            "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account. Run voice claude sign-in to sign in."
         )
     );
 }
@@ -138,7 +138,7 @@ fn claude_sign_in_skips_login_when_already_signed_in() {
         r#"here="$(dirname "$0")"
 case "$1 $2" in
     '--version ') echo '2.1.292 (Claude Code)';;
-    'auth status') echo '{"loggedIn":true}';;
+    'auth status') echo '{"loggedIn":true,"authMethod":"api_key"}';;
     'auth login') touch "$here/login";;
 esac"#,
     );
@@ -157,14 +157,14 @@ fn claude_sign_in_uses_its_profile_then_checks_the_result() {
     f.stub(r#"here="$(dirname "$0")"
 case "$1 $2" in
     '--version ') echo '2.1.292 (Claude Code)';;
-    'auth status') if [ -f "$here/login" ]; then echo '{"loggedIn":true}'; else echo '{"loggedIn":false}'; fi;;
+    'auth status') if [ -f "$here/login" ]; then echo '{"loggedIn":true,"authMethod":"api_key"}'; else echo '{"loggedIn":false}'; fi;;
     'auth login') printf '%s\n' "$@" > "$here/login"; printf '%s' "$CLAUDE_CONFIG_DIR" > "$here/profile";;
 esac"#);
     let out = f.run(&["claude", "sign-in"]);
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert_eq!(
         fs::read_to_string(f.bin.join("login")).unwrap(),
-        "auth\nlogin\n--claudeai\n"
+        "auth\nlogin\n--console\n"
     );
     #[cfg(target_os = "macos")]
     let profile = f.home.join("Library/Application Support/Voice/claude-code");
@@ -176,7 +176,7 @@ esac"#);
     );
     assert_eq!(
         text(&out.stdout),
-        "Finish signing in on the Claude page that opened in your browser. Voice carries on when you're done.\nClaude Code 2.1.292 is installed and signed in.\n"
+        "Finish signing in on the page that opened in your browser. Voice carries on when you're done.\nClaude Code 2.1.292 is installed and signed in.\n"
     );
 }
 
@@ -188,7 +188,7 @@ fn claude_sign_in_fails_when_login_does_not_sign_in() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        "voice: Claude Code didn't finish signing in. Try again. If no Claude page opened in your browser, check that this computer has a default browser.\n"
+        "voice: Claude Code didn't finish signing in. Try again. If no sign-in page opened in your browser, check that this computer has a default browser.\n"
     );
 }
 
@@ -571,7 +571,7 @@ fn daily_override_budget(saved_day: &str, saved_step: &str, daily: &str, expecte
         r#"here="$(cd "$(dirname "$0")" && pwd -P)"
 case "$1" in
     --version) echo '2.1.292 (Claude Code)';;
-    auth) echo '{"loggedIn":true}';;
+    auth) echo '{"loggedIn":true,"authMethod":"api_key"}';;
     *) printf '%s\n' "$@" > "$here/argv"; cat > "$here/stdin"; cat "$here/reply";;
 esac"#,
     );
@@ -587,4 +587,32 @@ esac"#,
     let saved = Cap::load(&f.home, "wren").unwrap();
     assert_eq!(saved.daily_usd(), saved_day.parse::<f64>().unwrap());
     assert_eq!(saved.call_usd(), saved_step.parse::<f64>().unwrap());
+}
+
+#[cfg(not(feature = "claude-subscription"))]
+#[test]
+fn public_sign_in_refuses_the_subscription_flag() {
+    let fixture = Fixture::new();
+    let out = fixture.run(&["claude", "sign-in", "--subscription"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        text(&out.stderr).contains("unexpected argument '--subscription'"),
+        "{}",
+        text(&out.stderr)
+    );
+    let help = fixture.run(&["claude", "sign-in", "--help"]);
+    assert!(help.status.success());
+    assert!(!text(&help.stdout).contains("--subscription"));
+}
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn testers_sign_in_help_offers_the_subscription_flag() {
+    let fixture = Fixture::new();
+    let out = fixture.run(&["claude", "sign-in", "--help"]);
+    assert!(out.status.success());
+    assert!(text(&out.stdout).contains("--subscription"));
+    assert!(
+        text(&out.stdout).contains("Sign in with a Claude subscription (testers' builds only).")
+    );
 }

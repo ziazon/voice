@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
-use voice_agent::{sandbox, text};
+use voice_agent::{claude::SignIn, sandbox, text};
 use voice_core::error::Error;
 
 const SIGN_IN_LINK: &str = "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y";
@@ -56,15 +56,21 @@ fn valid_links_have_only_the_two_sign_in_pages_and_safe_ascii() {
         "https://claude.ai/oauth/authorize?",
     ] {
         let good = SIGN_IN_LINK.replace("https://claude.com/cai/oauth/authorize?", prefix);
-        assert!(sandbox::valid_link(&good));
-        assert!(!sandbox::valid_link(prefix));
+        assert!(sandbox::valid_link(&good, SignIn::Subscription));
+        assert!(!sandbox::valid_link(prefix, SignIn::Subscription));
         let exact = format!("{good}{}", "a".repeat(sandbox::MAX_LINK - good.len()));
-        assert!(sandbox::valid_link(&exact));
-        assert!(!sandbox::valid_link(&format!("{exact}a")));
+        assert!(sandbox::valid_link(&exact, SignIn::Subscription));
+        assert!(!sandbox::valid_link(
+            &format!("{exact}a"),
+            SignIn::Subscription
+        ));
         for byte in 0..=255_u8 {
             if !(0x21..=0x7e).contains(&byte) || b"\"<>\\^`{|}".contains(&byte) {
                 let link = format!("{good}{}", char::from(byte));
-                assert!(!sandbox::valid_link(&link), "accepted byte {byte}");
+                assert!(
+                    !sandbox::valid_link(&link, SignIn::Subscription),
+                    "accepted byte {byte}"
+                );
             }
         }
     }
@@ -85,13 +91,16 @@ fn valid_links_have_only_the_two_sign_in_pages_and_safe_ascii() {
             "?a",
             &format!("?{}", SIGN_IN_LINK.split_once('?').unwrap().1),
         );
-        assert!(!sandbox::valid_link(&link), "accepted {link:?}");
+        assert!(
+            !sandbox::valid_link(&link, SignIn::Subscription),
+            "accepted {link:?}"
+        );
     }
 }
 
 #[test]
 fn sign_in_query_keys_are_plain_and_nonempty() {
-    assert!(sandbox::valid_link(SIGN_IN_LINK));
+    assert!(sandbox::valid_link(SIGN_IN_LINK, SignIn::Subscription));
     let accepted: Vec<_> = [
         "&client%5Fid=other",
         "&redirect%5Furi=https%3A%2F%2Fexample.com%2Fcallback",
@@ -99,7 +108,7 @@ fn sign_in_query_keys_are_plain_and_nonempty() {
         "&client_id+=other",
     ]
     .into_iter()
-    .filter(|suffix| sandbox::valid_link(&format!("{SIGN_IN_LINK}{suffix}")))
+    .filter(|suffix| sandbox::valid_link(&format!("{SIGN_IN_LINK}{suffix}"), SignIn::Subscription))
     .collect();
     assert!(accepted.is_empty(), "accepted query keys: {accepted:?}");
 }
@@ -107,13 +116,18 @@ fn sign_in_query_keys_are_plain_and_nonempty() {
 #[test]
 fn sign_in_requires_the_claude_code_client_and_local_callback() {
     for port in ["1", "65535"] {
-        assert!(sandbox::valid_link(&SIGN_IN_LINK.replace("59244", port)));
+        assert!(sandbox::valid_link(
+            &SIGN_IN_LINK.replace("59244", port),
+            SignIn::Subscription
+        ));
     }
     assert!(sandbox::valid_link(
-        &SIGN_IN_LINK.replace("code=true", "code=a+b=c")
+        &SIGN_IN_LINK.replace("code=true", "code=a+b=c"),
+        SignIn::Subscription
     ));
     assert!(sandbox::valid_link(
-        &SIGN_IN_LINK.replace("response_type=code", "response_type=%63ode")
+        &SIGN_IN_LINK.replace("response_type=code", "response_type=%63ode"),
+        SignIn::Subscription
     ));
     let mut invalid = vec![
         SIGN_IN_LINK.replace("9d1c250a-e61b-44d9-88ed-5944d1962f5e", "other"),
@@ -149,7 +163,10 @@ fn sign_in_requires_the_claude_code_client_and_local_callback() {
         invalid.push(format!("{SIGN_IN_LINK}&extra={escape}"));
     }
     for link in invalid {
-        assert!(!sandbox::valid_link(&link), "accepted {link}");
+        assert!(
+            !sandbox::valid_link(&link, SignIn::Subscription),
+            "accepted {link}"
+        );
     }
 }
 
@@ -499,7 +516,7 @@ mod mac {
             fs::write(&link, &bytes).unwrap();
         }
         let launch = launch(&profile, &scratch.0, RunFolder::Given(&given), true);
-        assert_eq!(launch.sign_in_link(), Link::NotYet);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::NotYet);
         assert!(fs::symlink_metadata(link).is_err());
         assert_eq!(fs::read(target).unwrap(), bytes.as_bytes());
     }
@@ -972,22 +989,28 @@ mod mac {
         let profile = profile(&scratch);
         let launch = launch(&profile, &scratch.0, RunFolder::Fresh, true);
         let path = launch.run_folder().join(sandbox::LINK);
-        assert_eq!(launch.sign_in_link(), Link::NotYet);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::NotYet);
         let good = SIGN_IN_LINK;
         fs::write(&path, format!("{good}\n")).unwrap();
-        assert_eq!(launch.sign_in_link(), Link::Ready(good.into()));
+        assert_eq!(
+            launch.sign_in_link(SignIn::Subscription),
+            Link::Ready(good.into())
+        );
         assert!(!path.exists());
-        assert_eq!(launch.sign_in_link(), Link::NotYet);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::NotYet);
         for bytes in [b"".as_slice(), good.as_bytes()] {
             fs::write(&path, bytes).unwrap();
-            assert_eq!(launch.sign_in_link(), Link::NotYet);
+            assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::NotYet);
             assert_eq!(fs::read(&path).unwrap(), bytes);
             let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
             if bytes.is_empty() {
                 file.write_all(good.as_bytes()).unwrap();
             }
             file.write_all(b"\n").unwrap();
-            assert_eq!(launch.sign_in_link(), Link::Ready(good.into()));
+            assert_eq!(
+                launch.sign_in_link(SignIn::Subscription),
+                Link::Ready(good.into())
+            );
             assert!(!path.exists());
         }
         for bytes in [
@@ -999,34 +1022,37 @@ mod mac {
             vec![b'\n'],
         ] {
             fs::write(&path, bytes).unwrap();
-            assert_eq!(launch.sign_in_link(), Link::Refused);
+            assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::Refused);
             assert!(!path.exists());
         }
         let mut invalid_utf8 = good.as_bytes().to_vec();
         invalid_utf8.extend_from_slice(&[0xff, b'\n']);
         fs::write(&path, invalid_utf8).unwrap();
-        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::Refused);
         assert!(!path.exists());
         let exact = format!("{good}{}", "x".repeat(sandbox::MAX_LINK - good.len()));
         fs::write(&path, &exact).unwrap();
-        assert_eq!(launch.sign_in_link(), Link::NotYet);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::NotYet);
         assert_eq!(fs::read(&path).unwrap(), exact.as_bytes());
         fs::write(&path, format!("{exact}\n")).unwrap();
-        assert_eq!(launch.sign_in_link(), Link::Ready(exact.clone()));
+        assert_eq!(
+            launch.sign_in_link(SignIn::Subscription),
+            Link::Ready(exact.clone())
+        );
         fs::write(&path, format!("{exact}\nx")).unwrap();
-        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::Refused);
         assert!(!path.exists());
         fs::write(&path, format!("{exact}x\n")).unwrap();
-        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::Refused);
         assert!(!path.exists());
         let outside = scratch.0.join("outside");
         fs::write(&outside, format!("{good}\n")).unwrap();
         symlink(&outside, &path).unwrap();
-        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::Refused);
         assert_eq!(fs::read_to_string(&outside).unwrap(), format!("{good}\n"));
         fs::remove_file(&path).unwrap();
         fs::create_dir(&path).unwrap();
-        assert_eq!(launch.sign_in_link(), Link::Refused);
+        assert_eq!(launch.sign_in_link(SignIn::Subscription), Link::Refused);
     }
 
     #[test]
@@ -1041,7 +1067,10 @@ mod mac {
         // SAFETY: name is a live, null-terminated path and the mode is valid.
         assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
         let (send, receive) = mpsc::channel();
-        let reader = thread::spawn(move || send.send(launch.sign_in_link()).unwrap());
+        let reader = thread::spawn(move || {
+            send.send(launch.sign_in_link(SignIn::Subscription))
+                .unwrap()
+        });
         assert_eq!(
             receive
                 .recv_timeout(Duration::from_secs(2))
@@ -1153,11 +1182,43 @@ int main(int argc, char **argv) {
             if sign_in {
                 assert!(output.status.success(), "{output:?}");
                 assert_eq!(mode(&launch.run_folder().join(sandbox::LINK)), 0o600);
-                assert_eq!(launch.sign_in_link(), Link::Ready(SIGN_IN_LINK.into()));
+                assert_eq!(
+                    launch.sign_in_link(SignIn::Subscription),
+                    Link::Ready(SIGN_IN_LINK.into())
+                );
             } else {
                 assert_eq!(output.status.code(), Some(4), "{output:?}");
                 assert!(!launch.run_folder().join(sandbox::LINK).exists());
             }
         }
+    }
+}
+
+#[test]
+fn sign_in_links_are_specific_to_the_chosen_account_kind() {
+    let console = SIGN_IN_LINK.replace(
+        "https://claude.com/cai/oauth/authorize?",
+        "https://platform.claude.com/oauth/authorize?",
+    );
+    assert!(sandbox::valid_link(&console, SignIn::Console));
+    assert!(!sandbox::valid_link(&console, SignIn::Subscription));
+    for prefix in [
+        "https://claude.com/cai/oauth/authorize?",
+        "https://claude.ai/oauth/authorize?",
+    ] {
+        let subscription = SIGN_IN_LINK.replace("https://claude.com/cai/oauth/authorize?", prefix);
+        assert!(sandbox::valid_link(&subscription, SignIn::Subscription));
+        assert!(!sandbox::valid_link(&subscription, SignIn::Console));
+    }
+    for bad in [
+        console.replace(
+            "client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+            "client_id=other",
+        ),
+        console.replace("localhost", "example.com"),
+        format!("{console}#fragment"),
+        format!("{console}&state=duplicate"),
+    ] {
+        assert!(!sandbox::valid_link(&bad, SignIn::Console));
     }
 }

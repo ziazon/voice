@@ -18,7 +18,7 @@ def main():
         print("2.1.292 (Claude Code)")
         return 0
     if ARGS[:1] == ["auth"]:
-        print(json.dumps({"loggedIn": True}))
+        print(json.dumps({"loggedIn": True, "authMethod": "api_key"}))
         return 0
     n = len([f for f in os.listdir(HERE) if f.startswith("stdin")])
     prompt = sys.stdin.read()
