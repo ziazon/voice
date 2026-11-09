@@ -13,6 +13,7 @@
     "allow-claude-check",
     "allow-claude-sign-in",
     "allow-claude-sign-in-cancel",
+    "allow-claude-sign-out",
     "allow-save-options",
     "allow-open-link",
     "allow-github-sign-in-start",

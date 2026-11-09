@@ -97,6 +97,7 @@ export const tauriBackend: Backend = {
   claudeCheck: () => invoke<ClaudeStatus>('claude_check'),
   claudeSignIn: request => invoke<ClaudeStatus>('claude_sign_in', { request }),
   claudeSignInCancel: () => invoke<void>('claude_sign_in_cancel'),
+  claudeSignOut: () => invoke<ClaudeStatus>('claude_sign_out'),
   saveOptions: request => invoke<SaveOptions>('save_options', { request }),
   openLink: request => invoke<void>('open_link', { request }),
   githubSignInStart: () => invoke<SignInCode>('github_sign_in_start'),

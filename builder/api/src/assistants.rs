@@ -286,6 +286,9 @@ pub(crate) fn claude_message(error: Error) -> String {
                 text::SUBSCRIPTION_REFUSED,
                 text::SUBSCRIPTION_NOT_OFFERED,
                 text::PLAN_STOPPED,
+                text::CONSOLE_NOT_AVAILABLE,
+                text::SIGN_OUT_FAILED,
+                text::SIGN_OUT_FILE_LEFT,
                 text::SIGN_IN_FAILED,
                 text::SIGN_IN_TIMED_OUT,
                 text::SIGN_IN_STOPPED,
@@ -320,10 +323,11 @@ mod tests {
     }
 }
 
-/// The single Claude sign-in currently waiting for the browser.
+/// The single Claude sign-in or sign-out currently running.
 #[derive(Default)]
 pub struct ClaudeSignIns {
     state: Mutex<Option<Arc<AtomicBool>>>,
+    signing_out: AtomicBool,
 }
 impl ClaudeSignIns {
     pub fn new() -> Self {
@@ -343,6 +347,13 @@ impl Drop for ClaudeSignInGuard<'_> {
         *self.0.state.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
 }
+/// Clears the marker even when a child fails or a call unwinds.
+struct ClaudeSignOutGuard<'a>(&'a ClaudeSignIns);
+impl Drop for ClaudeSignOutGuard<'_> {
+    fn drop(&mut self) {
+        self.0.signing_out.store(false, Ordering::SeqCst);
+    }
+}
 fn stopped_sign_in_status() -> dto::ClaudeStatus {
     dto::ClaudeStatus {
         ready: false,
@@ -359,15 +370,6 @@ pub fn claude_sign_in_in(
     sign_ins: &ClaudeSignIns,
     request: &dto::ClaudeSignInRequest,
 ) -> Result<dto::ClaudeStatus> {
-    if request.subscription && !claude::SUBSCRIPTION_OFFERED {
-        return Ok(dto::ClaudeStatus {
-            ready: false,
-            message: text::SUBSCRIPTION_NOT_OFFERED.into(),
-            note: None,
-            can_sign_in: true,
-            can_sign_in_with_subscription: false,
-        });
-    }
     let sign_in = if request.subscription {
         claude::SignIn::Subscription
     } else {
@@ -375,6 +377,18 @@ pub fn claude_sign_in_in(
     };
     let flag = {
         let mut state = sign_ins.state.lock().unwrap_or_else(|p| p.into_inner());
+        if sign_ins.signing_out.load(Ordering::SeqCst) {
+            return Err(failure(text::SIGN_IN_DURING_SIGN_OUT));
+        }
+        if request.subscription && !claude::SUBSCRIPTION_OFFERED {
+            return Ok(dto::ClaudeStatus {
+                ready: false,
+                message: text::SUBSCRIPTION_NOT_OFFERED.into(),
+                note: None,
+                can_sign_in: true,
+                can_sign_in_with_subscription: false,
+            });
+        }
         if state.is_some() {
             return Err(failure(SIGN_IN_BUSY));
         }
@@ -420,6 +434,42 @@ pub fn claude_sign_in_in(
         can_sign_in_with_subscription: claude::SUBSCRIPTION_OFFERED,
     })
 }
+pub fn claude_sign_out_in(
+    home: &Path,
+    path: Option<&OsStr>,
+    fallbacks: &[PathBuf],
+    sign_ins: &ClaudeSignIns,
+) -> Result<dto::ClaudeStatus> {
+    {
+        // Check and reserve under the same lock as sign-in, without holding it over child runs.
+        let state = sign_ins.state.lock().unwrap_or_else(|p| p.into_inner());
+        if state.is_some() {
+            return Err(failure(text::SIGN_OUT_DURING_SIGN_IN));
+        }
+        if sign_ins.signing_out.swap(true, Ordering::SeqCst) {
+            return Err(failure(text::SIGN_OUT_BUSY));
+        }
+    }
+    let _guard = ClaudeSignOutGuard(sign_ins);
+    let claude =
+        claude::find_in(home, path, fallbacks).map_err(|error| failure(&claude_message(error)))?;
+    claude
+        .sign_out(home)
+        .map_err(|error| failure(&claude_message(error)))?;
+    let mut status = claude_check_in(home, path, fallbacks)?;
+    status.note = Some(text::SIGN_OUT_SUCCESS.into());
+    Ok(status)
+}
+pub fn claude_sign_out() -> Result<dto::ClaudeStatus> {
+    let home = home(text::SIGN_OUT_FAILED)?;
+    claude_sign_out_in(
+        &home,
+        std::env::var_os("PATH").as_deref(),
+        &claude::fallbacks(&home),
+        claude_sign_ins(),
+    )
+}
+
 pub fn claude_sign_in_cancel_in(sign_ins: &ClaudeSignIns) -> Result<()> {
     if let Some(flag) = sign_ins
         .state

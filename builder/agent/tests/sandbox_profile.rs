@@ -729,13 +729,18 @@ fn all_parameters_are_required_before_the_program_runs() {
 }
 
 #[test]
-fn runs_only_the_program() {
+fn starts_only_the_program_and_the_keychain_program() {
     if !available() {
         return;
     }
     let sb = Sandbox::new();
-    let output = sb.run("/bin/bash", &["-c", "/usr/bin/true"]);
-    assert_eq!(output.status.code(), Some(126), "{output:?}");
+    for program in ["/usr/bin/true", "/bin/echo"] {
+        let output = sb.run("/bin/bash", &["-c", program]);
+        assert_eq!(output.status.code(), Some(126), "{output:?}");
+    }
+    let output = sb.run("/bin/bash", &["-c", "/usr/bin/security help"]);
+    assert_ne!(output.status.code(), Some(126));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("Operation not permitted"));
     let output = sb.run("/bin/bash", &["-c", "exit 0"]);
     assert!(output.status.success(), "{output:?}");
 }
@@ -777,4 +782,91 @@ fn the_helper_runs_only_while_signing_in() {
             assert!(!link.exists());
         }
     }
+}
+
+// This guard always removes only the fresh test service, including on an assertion failure.
+struct KeychainCleanup(String, bool);
+
+impl KeychainCleanup {
+    fn new(expect_item: bool) -> Self {
+        let mut random = [0u8; 16];
+        fs::File::open("/dev/urandom")
+            .unwrap()
+            .read_exact(&mut random)
+            .unwrap();
+        Self(
+            format!("voice-sandbox-test-{:032x}", u128::from_ne_bytes(random)),
+            expect_item,
+        )
+    }
+    fn delete(&self) -> bool {
+        Command::new("/usr/bin/security")
+            .args(["delete-generic-password", "-s", &self.0])
+            .output()
+            .expect("clean up the test service")
+            .status
+            .success()
+    }
+}
+
+impl Drop for KeychainCleanup {
+    fn drop(&mut self) {
+        let found = self.delete();
+        if !std::thread::panicking() {
+            assert_eq!(found, self.1, "unexpected test Keychain item at cleanup");
+        }
+    }
+}
+
+#[test]
+fn the_keychain_stays_closed() {
+    if !available() {
+        return;
+    }
+    let sb = Sandbox::new();
+    // A random, throwaway service avoids reading any person's existing Keychain item.
+    let readable = KeychainCleanup::new(true);
+    let created = Command::new("/usr/bin/security")
+        .args([
+            "add-generic-password",
+            "-a",
+            "voice-test",
+            "-s",
+            &readable.0,
+            "-w",
+            "unused",
+        ])
+        .output()
+        .unwrap()
+        .status;
+    assert!(created.success(), "couldn't create the test Keychain item");
+    let cleanup = KeychainCleanup::new(false);
+    let added = sb
+        .command("/bin/bash", 1, "no", None)
+        .args([
+            "/usr/bin/security",
+            "add-generic-password",
+            "-a",
+            "voice-test",
+            "-s",
+            &cleanup.0,
+            "-w",
+            "unused",
+        ])
+        .output()
+        .unwrap()
+        .status;
+    let found = sb
+        .command("/bin/bash", 1, "no", None)
+        .args([
+            "/usr/bin/security",
+            "find-generic-password",
+            "-s",
+            &readable.0,
+        ])
+        .output()
+        .unwrap()
+        .status;
+    assert!(!added.success(), "the sandbox wrote a Keychain item");
+    assert!(!found.success(), "the sandbox found the test Keychain item");
 }

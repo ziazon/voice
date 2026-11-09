@@ -4,11 +4,12 @@ use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
     path::Path,
-    sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::atomic::AtomicBool,
     thread,
+};
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
+use std::{
+    sync::{Mutex, atomic::Ordering},
     time::{Duration, Instant},
 };
 use voice_agent::{
@@ -158,21 +159,18 @@ fn status_keeps_the_version_when_signed_out() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn sign_in_has_exact_argv_empty_stdin_and_maps_exit_status() {
     let home = Scratch::new("sign-in");
     for (body, expected) in [("exit 0", None), ("exit 1", Some(text::SIGN_IN_FAILED))] {
         let stub = Stub::new(body);
         let claude = found(&stub, &home.0);
         let opened = Mutex::new(Vec::<String>::new());
-        let result = claude.sign_in_with(
-            &home.0,
-            &AtomicBool::new(false),
-            voice_agent::claude::SignIn::Console,
-            &|link| {
+        let result =
+            claude.sign_in_with(&home.0, &AtomicBool::new(false), test_sign_in(), &|link| {
                 opened.lock().unwrap().push(link.to_owned());
                 Ok(())
-            },
-        );
+            });
         assert!(opened.lock().unwrap().is_empty());
         assert_eq!(
             result.err().map(|error| error.to_string()),
@@ -185,7 +183,11 @@ fn sign_in_has_exact_argv_empty_stdin_and_maps_exit_status() {
                 "project,local",
                 "auth",
                 "login",
-                "--console"
+                if cfg!(target_os = "macos") {
+                    "--claudeai"
+                } else {
+                    "--console"
+                }
             ]
         );
         assert_eq!(stub.file("stdin"), "");
@@ -193,6 +195,7 @@ fn sign_in_has_exact_argv_empty_stdin_and_maps_exit_status() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn sign_in_timeout_and_failed_spawn_are_fixed_messages() {
     let home = Scratch::new("sign-in-timeout");
     let stub = Stub::new("sleep 30");
@@ -202,7 +205,7 @@ fn sign_in_timeout_and_failed_spawn_are_fixed_messages() {
             .sign_in_with(
                 &home.0,
                 &AtomicBool::new(false),
-                voice_agent::claude::SignIn::Console,
+                test_sign_in(),
                 &|_| panic!("no browser requested")
             )
             .unwrap_err()
@@ -214,7 +217,7 @@ fn sign_in_timeout_and_failed_spawn_are_fixed_messages() {
             .sign_in_with(
                 &home.0,
                 &AtomicBool::new(false),
-                voice_agent::claude::SignIn::Console,
+                test_sign_in(),
                 &|_| panic!("no browser requested")
             )
             .unwrap_err()
@@ -224,6 +227,7 @@ fn sign_in_timeout_and_failed_spawn_are_fixed_messages() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn stopped_sign_in_kills_the_process_group_within_a_second() {
     let home = Scratch::new("sign-in-stop");
     let stub = Stub::new("echo $$ > \"$here/parent\"\nsleep 30 &\necho $! > \"$here/pid\"\nwait");
@@ -236,12 +240,9 @@ fn stopped_sign_in_kills_the_process_group_within_a_second() {
             stop.store(true, Ordering::SeqCst);
         });
         claude
-            .sign_in_with(
-                &home.0,
-                &stop,
-                voice_agent::claude::SignIn::Console,
-                &|_| panic!("no browser requested"),
-            )
+            .sign_in_with(&home.0, &stop, test_sign_in(), &|_| {
+                panic!("no browser requested")
+            })
             .unwrap_err()
     });
     assert_eq!(error.to_string(), text::SIGN_IN_STOPPED);
@@ -273,8 +274,12 @@ fn displayed_paths_hide_the_home_and_signed_out_text_is_exact() {
     );
 }
 
+#[cfg(not(target_os = "macos"))]
 const SIGN_IN_LINK: &str = "https://platform.claude.com/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y";
+#[cfg(all(target_os = "macos", feature = "claude-subscription"))]
+const SIGN_IN_LINK: &str = "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A59244%2Fcallback&scope=user%3Aprofile&code_challenge=x&code_challenge_method=S256&state=y";
 
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn waiting_sign_in(link: &str) -> Stub {
     Stub::new(&format!(
         r#""$BROWSER" '{link}'
@@ -286,6 +291,7 @@ exit 1"#
     ))
 }
 
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn two_link_sign_in(first: &str, second: &str) -> Stub {
     Stub::new(&format!(
         r#""$BROWSER" '{first}'
@@ -300,6 +306,7 @@ exit 0"#
     ))
 }
 
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn assert_no_link_in_files(folder: &Path, link: &str) {
     for entry in fs::read_dir(folder).unwrap() {
         let path = entry.unwrap().path();
@@ -318,6 +325,7 @@ fn assert_no_link_in_files(folder: &Path, link: &str) {
 }
 
 #[test]
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn sign_in_opens_the_valid_link_exactly_once_and_retains_no_link() {
     let home = Scratch::new("sign-in-link");
     let stub = waiting_sign_in(SIGN_IN_LINK);
@@ -334,15 +342,10 @@ fn sign_in_opens_the_valid_link_exactly_once_and_retains_no_link() {
             fs::write(stub.folder.0.join("go"), "").unwrap();
         });
         claude
-            .sign_in_with(
-                &home.0,
-                &AtomicBool::new(false),
-                voice_agent::claude::SignIn::Console,
-                &|link| {
-                    opened.lock().unwrap().push(link.to_owned());
-                    Ok(())
-                },
-            )
+            .sign_in_with(&home.0, &AtomicBool::new(false), test_sign_in(), &|link| {
+                opened.lock().unwrap().push(link.to_owned());
+                Ok(())
+            })
             .unwrap();
     });
     assert!(opened.lock().unwrap().as_slice() == [SIGN_IN_LINK]);
@@ -351,6 +354,7 @@ fn sign_in_opens_the_valid_link_exactly_once_and_retains_no_link() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn sign_in_never_opens_a_second_valid_link() {
     let home = Scratch::new("sign-in-second-link");
     let second = SIGN_IN_LINK.replace("state=y", "state=z");
@@ -358,16 +362,11 @@ fn sign_in_never_opens_a_second_valid_link() {
     let claude = found(&stub, &home.0);
     let opened = Mutex::new(Vec::<String>::new());
     claude
-        .sign_in_with(
-            &home.0,
-            &AtomicBool::new(false),
-            voice_agent::claude::SignIn::Console,
-            &|link| {
-                opened.lock().unwrap().push(link.to_owned());
-                fs::write(stub.folder.0.join("opened"), "").unwrap();
-                Ok(())
-            },
-        )
+        .sign_in_with(&home.0, &AtomicBool::new(false), test_sign_in(), &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            fs::write(stub.folder.0.join("opened"), "").unwrap();
+            Ok(())
+        })
         .unwrap();
     let opened = opened.lock().unwrap();
     assert_eq!(opened.len(), 1);
@@ -375,21 +374,17 @@ fn sign_in_never_opens_a_second_valid_link() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn sign_in_refuses_an_invalid_link_without_opening_it_and_kills_the_child() {
     let home = Scratch::new("sign-in-invalid-link");
     let stub = waiting_sign_in("https://example.com/x");
     let opened = Mutex::new(Vec::<String>::new());
     let started = Instant::now();
     let error = found(&stub, &home.0)
-        .sign_in_with(
-            &home.0,
-            &AtomicBool::new(false),
-            voice_agent::claude::SignIn::Console,
-            &|link| {
-                opened.lock().unwrap().push(link.to_owned());
-                Ok(())
-            },
-        )
+        .sign_in_with(&home.0, &AtomicBool::new(false), test_sign_in(), &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            Ok(())
+        })
         .unwrap_err();
     assert_eq!(error.to_string(), text::SIGN_IN_FAILED);
     assert!(started.elapsed() < Duration::from_secs(5));
@@ -398,21 +393,17 @@ fn sign_in_refuses_an_invalid_link_without_opening_it_and_kills_the_child() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn sign_in_opener_failure_kills_the_child() {
     let home = Scratch::new("sign-in-opener-failed");
     let stub = waiting_sign_in(SIGN_IN_LINK);
     let opened = Mutex::new(Vec::<String>::new());
     let started = Instant::now();
     let error = found(&stub, &home.0)
-        .sign_in_with(
-            &home.0,
-            &AtomicBool::new(false),
-            voice_agent::claude::SignIn::Console,
-            &|link| {
-                opened.lock().unwrap().push(link.to_owned());
-                Err(std::io::Error::other("invented opener failure"))
-            },
-        )
+        .sign_in_with(&home.0, &AtomicBool::new(false), test_sign_in(), &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            Err(std::io::Error::other("invented opener failure"))
+        })
         .unwrap_err();
     assert_eq!(error.to_string(), text::SIGN_IN_FAILED);
     assert!(started.elapsed() < Duration::from_secs(5));
@@ -421,6 +412,7 @@ fn sign_in_opener_failure_kills_the_child() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn sign_in_stops_while_waiting_after_the_browser_opens() {
     let home = Scratch::new("sign-in-wait-stop");
     let stub = waiting_sign_in(SIGN_IN_LINK);
@@ -428,19 +420,214 @@ fn sign_in_stops_while_waiting_after_the_browser_opens() {
     let opened = Mutex::new(Vec::<String>::new());
     let started = Instant::now();
     let error = found(&stub, &home.0)
-        .sign_in_with(
-            &home.0,
-            &stop,
-            voice_agent::claude::SignIn::Console,
-            &|link| {
-                opened.lock().unwrap().push(link.to_owned());
-                stop.store(true, Ordering::SeqCst);
-                Ok(())
-            },
-        )
+        .sign_in_with(&home.0, &stop, test_sign_in(), &|link| {
+            opened.lock().unwrap().push(link.to_owned());
+            stop.store(true, Ordering::SeqCst);
+            Ok(())
+        })
         .unwrap_err();
     assert_eq!(error.to_string(), text::SIGN_IN_STOPPED);
     assert!(started.elapsed() < Duration::from_secs(5));
     assert!(opened.lock().unwrap().as_slice() == [SIGN_IN_LINK]);
     assert_no_link_in_files(&stub.folder.0, SIGN_IN_LINK);
+}
+
+#[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
+fn test_sign_in() -> claude::SignIn {
+    #[cfg(target_os = "macos")]
+    {
+        claude::SignIn::Subscription
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        claude::SignIn::Console
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn console_sign_in_is_refused_before_any_child_starts() {
+    let home = Scratch::new("console-unavailable");
+    let stub = Stub::new("exit 0");
+    let error = found(&stub, &home.0)
+        .sign_in_with(
+            &home.0,
+            &AtomicBool::new(false),
+            claude::SignIn::Console,
+            &|_| panic!("no browser requested"),
+        )
+        .unwrap_err();
+    let expected =
+        "Signing in with a Console account doesn't work on a Mac yet. A later update adds it.";
+    #[cfg(feature = "claude-subscription")]
+    let expected = format!("{expected} Use Sign in with a Claude subscription instead.");
+    assert_eq!(error.to_string(), expected);
+    assert!(!stub.ran());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn sign_out_uses_claude_code_to_remove_its_login_file() {
+    let home = Scratch::new("sign-out-remove");
+    let stub = Stub::new(
+        r#"[ "$3" = auth ] && [ "$4" = logout ] || exit 1
+rm "$CLAUDE_CONFIG_DIR/.credentials.json"
+exit 0"#,
+    );
+    let claude = found(&stub, &home.0);
+    let file = claude.profile().join(".credentials.json");
+    fs::write(&file, "").unwrap();
+    claude.sign_out(&home.0).unwrap();
+    assert!(!file.exists());
+    assert_eq!(
+        stub.argv(0).unwrap(),
+        ["--setting-sources", "project,local", "auth", "logout"]
+    );
+    assert_eq!(stub.file("stdin"), "");
+    assert_launch_env(&stub, 0, claude.profile());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn sign_out_nonzero_exit_is_a_fixed_error_and_keeps_the_file() {
+    let home = Scratch::new("sign-out-failed");
+    let stub = Stub::new("exit 1");
+    let claude = found(&stub, &home.0);
+    let file = claude.profile().join(".credentials.json");
+    fs::write(&file, "").unwrap();
+    assert_eq!(
+        claude.sign_out(&home.0).unwrap_err().to_string(),
+        text::SIGN_OUT_FAILED
+    );
+    assert!(file.exists());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn sign_out_reports_a_leftover_login_file_without_touching_it() {
+    let home = Scratch::new("sign-out-leftover");
+    let stub = Stub::new("exit 0");
+    let claude = found(&stub, &home.0);
+    let file = claude.profile().join(".credentials.json");
+    fs::write(&file, "").unwrap();
+    assert_eq!(
+        claude.sign_out(&home.0).unwrap_err().to_string(),
+        text::SIGN_OUT_FILE_LEFT
+    );
+    assert!(file.exists());
+}
+
+#[cfg(target_os = "macos")]
+fn backup_exclusion_present(path: &Path) -> bool {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let path = CString::new(path.as_os_str().as_bytes()).unwrap();
+    // SAFETY: both C strings live for the call; null with size zero asks only for the size.
+    unsafe {
+        libc::getxattr(
+            path.as_ptr(),
+            c"com.apple.metadata:com_apple_backup_excludeItem".as_ptr(),
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+        ) >= 0
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn find_excludes_only_the_profile_from_time_machine() {
+    let home = Scratch::new("profile-backup");
+    let stub = Stub::new("exit 0");
+    let claude = found(&stub, &home.0);
+    assert!(backup_exclusion_present(claude.profile()));
+    assert!(!backup_exclusion_present(
+        claude.profile().parent().unwrap()
+    ));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn an_existing_backup_exclusion_does_not_run_tmutil() {
+    let home = Scratch::new("profile-backup-existing");
+    let stub = Stub::new("exit 0");
+    let claude = found(&stub, &home.0);
+    // Set a fixture attribute directly; the test must not rely on the missing production fix.
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let path = CString::new(claude.profile().as_os_str().as_bytes()).unwrap();
+    let value = b"fixture";
+    // SAFETY: the strings and value buffer are live and their lengths are correct.
+    assert_eq!(
+        unsafe {
+            libc::setxattr(
+                path.as_ptr(),
+                c"com.apple.metadata:com_apple_backup_excludeItem".as_ptr(),
+                value.as_ptr().cast(),
+                value.len(),
+                0,
+                0,
+            )
+        },
+        0
+    );
+    let tmutil = Stub::new("touch \"$here/ran\"; exit 1");
+    claude::find_in_with_tmutil(&home.0, None, &[stub.program()], &tmutil.program()).unwrap();
+    assert!(!tmutil.ran());
+    assert!(!tmutil.folder.0.join("ran").exists());
+    assert!(backup_exclusion_present(claude.profile()));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_failed_backup_exclusion_is_silent_and_retried_by_find() {
+    let home = Scratch::new("profile-backup-failed");
+    let stub = Stub::new("exit 0");
+    // RECORD consumes stdin, so reaching this stub also proves tmutil's stdin is closed.
+    let tmutil = Stub::new("exit 1");
+    for _ in 0..2 {
+        let claude =
+            claude::find_in_with_tmutil(&home.0, None, &[stub.program()], &tmutil.program())
+                .unwrap();
+        assert!(!backup_exclusion_present(claude.profile()));
+    }
+    assert_eq!(
+        tmutil.argv(0).unwrap(),
+        [
+            "addexclusion",
+            claude::profile_folder(&home.0).to_str().unwrap()
+        ]
+    );
+    assert!(tmutil.argv(1).is_some());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn missing_and_timed_out_tmutil_do_not_fail_find() {
+    let home = Scratch::new("profile-backup-missing");
+    let stub = Stub::new("exit 0");
+    let missing = home.0.join("missing-tmutil");
+    let claude = claude::find_in_with_tmutil(&home.0, None, &[stub.program()], &missing).unwrap();
+    assert!(!backup_exclusion_present(claude.profile()));
+    let tmutil = Stub::new("sleep 30");
+    let started = std::time::Instant::now();
+    let claude =
+        claude::find_in_with_tmutil(&home.0, None, &[stub.program()], &tmutil.program()).unwrap();
+    assert!(tmutil.ran());
+    assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    assert!(!backup_exclusion_present(claude.profile()));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn sign_out_reports_a_dangling_login_link_without_removing_it() {
+    let home = Scratch::new("sign-out-link");
+    let stub = Stub::new("exit 0");
+    let claude = found(&stub, &home.0);
+    let file = claude.profile().join(".credentials.json");
+    symlink(home.0.join("missing-login"), &file).unwrap();
+    assert_eq!(
+        claude.sign_out(&home.0).unwrap_err().to_string(),
+        text::SIGN_OUT_FILE_LEFT
+    );
+    assert!(fs::symlink_metadata(file).unwrap().file_type().is_symlink());
 }

@@ -4,9 +4,13 @@
 ; Claude Code checks certificates itself, so close the system certificate service, which can reach the network.
 (deny mach-lookup (global-name "com.apple.trustd") (global-name "com.apple.trustd.agent"))
 
-; The child may start only the program, plus the link helper and /bin/bash while signing in.
+; The child may start only the program and security, plus the link helper and /bin/bash while signing in.
 (allow process-fork)
 (allow process-exec (literal (param "PROGRAM")))
+; VF3 fact 2 (Claude Code 2.1.292, measured 2026-11-09): starting security lets Claude Code
+; fall back to its own login file. The Keychain stays closed: no Keychain services are
+; allowed and Library/Keychains is denied below.
+(allow process-exec (literal "/usr/bin/security"))
 (if (string=? (param "SIGN_IN") "yes")
     (allow process-exec
         (literal (string-append (param "RUN_DIR") "/open-sign-in"))
@@ -77,8 +81,8 @@
     (regex #"(^|/)\.[Dd][Oo][Cc][Kk][Ee][Rr]/[Cc][Oo][Nn][Ff][Ii][Gg]\.[Jj][Ss][Oo][Nn](/|$)")
     (regex #"(^|/)[Ll][Ii][Bb][Rr][Aa][Rr][Yy]/[Kk][Ee][Yy][Cc][Hh][Aa][Ii][Nn][Ss](/|$)"))
 
-; Keychain access is unavailable here. Let Claude Code keep its own login in
-; this one file, while .credentials.json stays denied everywhere else.
+; Claude Code's own fallback when the Keychain refuses the write (authentication docs,
+; read 2026-11-09; VF3 fact 3), while .credentials.json stays denied everywhere else.
 (allow file-read* file-write*
     (literal (string-append (param "PROFILE_DIR") "/.credentials.json")))
 

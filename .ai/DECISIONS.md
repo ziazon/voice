@@ -1,5 +1,18 @@
 # Decisions: voice
 
+## 2026-11-09: Claude Code keeps its own login file in Voice's profile (VF3)
+
+The owner chose option 1 of V-Q15, reconfirming the login file chosen by V-Q10 on 2026-10-31.
+The sandbox may start `/usr/bin/security`, but the Keychain stays closed: no Keychain services
+are allowed and `Library/Keychains` is denied. When the Keychain refuses the write, Claude Code
+keeps its own `.credentials.json` (0600) in Voice's profile. Voice never reads, copies or passes
+that login, excludes the profile folder from Time Machine, and signs out through Claude Code's
+own `auth logout`.
+
+The RAM-volume option was rejected for its memory cost; the Voice-held-login option was rejected
+because Voice would hold the login. Console sign-in on macOS waits for VF5: it creates an API key
+but cannot save it with the Keychain closed, so Voice refuses it before starting Claude Code.
+
 ## 2026-10-23: a public kit with no members
 
 - **The repo ships no member.** Only `crew/_template/` and the build. Builders keep their member in a

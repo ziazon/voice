@@ -111,6 +111,7 @@ export interface Backend {
   claudeCheck(): Promise<ClaudeStatus>
   claudeSignIn(request: ClaudeSignInRequest): Promise<ClaudeStatus>
   claudeSignInCancel(): Promise<void>
+  claudeSignOut(): Promise<ClaudeStatus>
   saveOptions(request: SlugRequest): Promise<SaveOptions>
   openLink(request: LinkRequest): Promise<void>
   githubSignInStart(): Promise<SignInCode>

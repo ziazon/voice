@@ -1,6 +1,7 @@
 //! The person's own Claude Code (PB-D9): finding it, checking it is signed in, and one tool-less
-//! call. Voice starts Claude Code's own `auth login --console`; `--claudeai` is only in
+//! call. Voice starts Claude Code's own `auth login --console` off macOS; `--claudeai` is only in
 //! testers' builds (VO-D10). Voice never reads, sets or passes a token.
+//! Claude Code keeps its own login file in Voice's private profile, excluded from Time Machine.
 //! Source, read 2026-11-08: Claude Code 2.1.292's own bundle and `claude auth login --help`
 //! (Console uses API billing; subscription authMethod is `claude.ai` or `oauth_token`).
 //!
@@ -47,6 +48,11 @@ pub enum SignIn {
 }
 
 pub const SUBSCRIPTION_OFFERED: bool = cfg!(feature = "claude-subscription");
+
+/// Whether the platform allows the requested sign-in to start.
+pub fn starts(sign_in: SignIn) -> bool {
+    !cfg!(target_os = "macos") || sign_in != SignIn::Console
+}
 
 fn login_args(sign_in: SignIn) -> Option<[&'static str; 3]> {
     match sign_in {
@@ -99,6 +105,32 @@ pub fn find(path: Option<&OsStr>, home: &Path) -> Result<Claude> {
 /// The first `claude` in the absolute folders of `path`, then in `fallbacks`. Relative and empty
 /// `PATH` entries are skipped, so a `.` in PATH never runs a `claude` from the current folder.
 pub fn find_in(home: &Path, path: Option<&OsStr>, fallbacks: &[PathBuf]) -> Result<Claude> {
+    find_in_impl(
+        home,
+        path,
+        fallbacks,
+        #[cfg(target_os = "macos")]
+        Path::new("/usr/bin/tmutil"),
+    )
+}
+
+/// Find with a backup-exclusion program supplied by a test; production always uses tmutil.
+#[cfg(all(target_os = "macos", feature = "test-stubs"))]
+pub fn find_in_with_tmutil(
+    home: &Path,
+    path: Option<&OsStr>,
+    fallbacks: &[PathBuf],
+    tmutil: &Path,
+) -> Result<Claude> {
+    find_in_impl(home, path, fallbacks, tmutil)
+}
+
+fn find_in_impl(
+    home: &Path,
+    path: Option<&OsStr>,
+    fallbacks: &[PathBuf],
+    #[cfg(target_os = "macos")] tmutil: &Path,
+) -> Result<Claude> {
     let on_path = path
         .into_iter()
         .flat_map(std::env::split_paths)
@@ -108,7 +140,11 @@ pub fn find_in(home: &Path, path: Option<&OsStr>, fallbacks: &[PathBuf]) -> Resu
         .chain(fallbacks.iter().cloned())
         .find(|candidate| runnable(candidate))
         .ok_or_else(|| Error::Invalid(text::NOT_INSTALLED.into()))?;
-    let profile = ensure_profile(home)?;
+    let profile = ensure_profile(
+        home,
+        #[cfg(target_os = "macos")]
+        tmutil,
+    )?;
     Ok(Claude::at(program, profile))
 }
 
@@ -308,7 +344,7 @@ pub fn profile_folder(home: &Path) -> PathBuf {
     home.join(folder)
 }
 
-fn ensure_profile(home: &Path) -> Result<PathBuf> {
+fn ensure_profile(home: &Path, #[cfg(target_os = "macos")] tmutil: &Path) -> Result<PathBuf> {
     let folder = profile_folder(home);
     let app = folder.parent().expect("profile has an app folder");
     let prepare = || -> std::io::Result<()> {
@@ -336,7 +372,67 @@ fn ensure_profile(home: &Path) -> Result<PathBuf> {
         Ok(())
     };
     prepare().map_err(|_| invalid(text::PROFILE_FAILED))?;
+    #[cfg(target_os = "macos")]
+    exclude_from_backup(&folder, tmutil);
     Ok(folder)
+}
+
+/// Best effort: a failed exclusion stays silent and is tried again at the next find.
+#[cfg(target_os = "macos")]
+fn exclude_from_backup(folder: &Path, tmutil: &Path) {
+    use std::{
+        ffi::CString,
+        os::unix::{ffi::OsStrExt, process::CommandExt},
+    };
+    let Ok(path) = CString::new(folder.as_os_str().as_bytes()) else {
+        return;
+    };
+    // SAFETY: both strings live throughout the call. Null with size zero asks for the
+    // attribute's size only: Voice never reads any attribute contents.
+    if unsafe {
+        libc::getxattr(
+            path.as_ptr(),
+            c"com.apple.metadata:com_apple_backup_excludeItem".as_ptr(),
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+        )
+    } >= 0
+    {
+        return;
+    }
+    // VF3 fact 5, measured 2026-11-09: addexclusion without -p sets this attribute
+    // without admin rights. Exclude only Claude Code's profile, never the whole app folder.
+    let Ok(mut child) = Command::new(tmutil)
+        .arg("addexclusion")
+        .arg(folder)
+        .env_clear()
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+    else {
+        return;
+    };
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return,
+            Ok(None) if started.elapsed() < Duration::from_secs(2) => {
+                thread::sleep(Duration::from_millis(20))
+            }
+            _ => {
+                // SAFETY: the unreaped child leads its own process group.
+                unsafe {
+                    libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+                }
+                let _ = child.wait();
+                return;
+            }
+        }
+    }
 }
 
 // Claude Code 2.1.292's bundle, read 2026-11-08: Console is api_key; both
@@ -393,6 +489,11 @@ impl Claude {
         sign_in: SignIn,
         open: &(dyn Fn(&str) -> std::io::Result<()> + Sync),
     ) -> Result<()> {
+        // VF3 fact 4, measured with Claude Code 2.1.292 on 2026-11-09: Console creates
+        // an API key, then fails to save it while the Keychain is closed. Wait for VF5.
+        if !starts(sign_in) {
+            return Err(invalid(text::CONSOLE_NOT_AVAILABLE));
+        }
         let args = login_args(sign_in).ok_or_else(|| invalid(text::SUBSCRIPTION_NOT_OFFERED))?;
         let (egress, launch) = self.launch(home, true)?;
         let mut command = launch.command(&args);
@@ -447,6 +548,16 @@ impl Claude {
             Ran::Stopped if refused.load(Ordering::SeqCst) => Err(invalid(text::SIGN_IN_FAILED)),
             Ran::Stopped => Err(invalid(text::SIGN_IN_STOPPED)),
             Ran::NotStarted => Err(invalid(text::DOES_NOT_RUN)),
+        }
+    }
+
+    /// Claude Code removes its own login; Voice never opens or deletes that file.
+    pub fn sign_out(&self, home: &Path) -> Result<()> {
+        self.ask(home, &["auth", "logout"])?
+            .ok_or_else(|| invalid(text::SIGN_OUT_FAILED))?;
+        match fs::symlink_metadata(self.profile.join(".credentials.json")) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            _ => Err(invalid(text::SIGN_OUT_FILE_LEFT)),
         }
     }
 

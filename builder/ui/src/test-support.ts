@@ -61,6 +61,7 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     claudeCheck: vi.fn().mockResolvedValue({ ready: true, message: 'Claude Code is ready.', note: null, canSignIn: false, canSignInWithSubscription: false }),
     claudeSignIn: vi.fn().mockResolvedValue({ ready: true, message: 'Claude Code is ready.', note: null, canSignIn: false, canSignInWithSubscription: false }),
     claudeSignInCancel: vi.fn().mockResolvedValue(undefined),
+    claudeSignOut: vi.fn().mockResolvedValue({ ready: false, message: 'Sign in for Voice.', note: null, canSignIn: true, canSignInWithSubscription: false }),
     saveOptions: vi.fn().mockResolvedValue(saveOptions),
     openLink: vi.fn().mockResolvedValue(undefined),
     githubSignInStart: vi.fn().mockResolvedValue({ userCode: 'ABCD-EFGH' }),

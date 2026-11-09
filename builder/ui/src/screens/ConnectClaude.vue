@@ -12,8 +12,13 @@ const backend = useBackend()
 const status = ref<ClaudeStatus>()
 const loading = ref(true)
 const signingIn = ref(false)
+const signingOut = ref(false)
+const signOutError = ref('')
+const signOutMessage = ref('')
 async function check() {
   loading.value = true
+  signOutError.value = ''
+  signOutMessage.value = ''
   status.value = undefined
   try {
     status.value = await backend.claudeCheck()
@@ -31,6 +36,8 @@ async function check() {
 }
 async function signIn(subscription: boolean) {
   signingIn.value = true
+  signOutError.value = ''
+  signOutMessage.value = ''
   try {
     status.value = await backend.claudeSignIn({ subscription })
   } catch (failure) {
@@ -43,6 +50,20 @@ async function signIn(subscription: boolean) {
     }
   } finally {
     signingIn.value = false
+  }
+}
+async function signOut() {
+  if (signingOut.value) return
+  signingOut.value = true
+  signOutError.value = ''
+  signOutMessage.value = ''
+  try {
+    status.value = await backend.claudeSignOut()
+    signOutMessage.value = status.value.note ?? ''
+  } catch (failure) {
+    signOutError.value = failureMessage(failure, "Voice couldn't sign out of Claude Code. Try again.")
+  } finally {
+    signingOut.value = false
   }
 }
 async function cancelSignIn() {
@@ -137,7 +158,12 @@ onMounted(loadLimit)
       <template v-else-if="status">
         <div class="alert" :class="status.ready ? 'alert-success' : 'alert-warning'" role="alert">{{ status.message }}</div>
         <p v-if="status.ready && status.note" class="text-secondary">{{ status.note }}</p>
-        <button v-if="status.ready" type="button" class="btn btn-primary" @click="emit('next')">Next: your history</button>
+        <div v-if="signOutError" class="alert alert-danger" role="alert">{{ signOutError }}</div>
+        <p v-if="signOutMessage" role="status">{{ signOutMessage }}</p>
+        <template v-if="status.ready">
+          <button type="button" class="btn btn-primary" :disabled="signingOut" @click="emit('next')">Next: your history</button>
+          <button type="button" class="btn btn-outline-secondary ms-2" :disabled="signingOut" @click="signOut">Sign out</button>
+        </template>
         <template v-if="!status.ready">
           <button v-if="status.canSignIn" type="button" class="btn btn-primary" @click="signIn(false)">Sign in with Anthropic Console</button>
           <button v-if="status.canSignInWithSubscription" type="button" class="btn btn-outline-secondary ms-2" @click="signIn(true)">Sign in with a Claude subscription (testers)</button>

@@ -41,14 +41,28 @@ fn provider_switches_and_base_urls_are_removed_and_proxy_is_private() {
     let home = Scratch::new("routing-env");
     let claude = stub.claude();
     claude.check(&home.0).unwrap();
+    #[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
     claude
         .sign_in_with(
             &home.0,
             &std::sync::atomic::AtomicBool::new(false),
-            voice_agent::claude::SignIn::Console,
+            {
+                #[cfg(target_os = "macos")]
+                {
+                    voice_agent::claude::SignIn::Subscription
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    voice_agent::claude::SignIn::Console
+                }
+            },
             &|_| panic!("no browser requested"),
         )
         .unwrap();
+    // Default Mac builds refuse sign-in before launching; logout exercises the same
+    // ordinary launch environment while feature builds still cover the sign-in launch.
+    #[cfg(all(target_os = "macos", not(feature = "claude-subscription")))]
+    claude.sign_out(&home.0).unwrap();
     let schema = schema();
     Guard::new(vec![&claude], Ceilings::defaults())
         .call(

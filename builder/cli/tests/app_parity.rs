@@ -79,3 +79,12 @@ fn ask_command_shares_the_terminal_ask() {
         .expect("Ask needs app parity");
     assert_eq!(row.cli, &[&["ask"][..]]);
 }
+
+#[test]
+fn claude_sign_out_shares_the_terminal_logout() {
+    let row = PARITY
+        .iter()
+        .find(|row| row.app == "claude_sign_out")
+        .unwrap();
+    assert_eq!(row.cli, &[&["claude", "sign-out"][..]]);
+}

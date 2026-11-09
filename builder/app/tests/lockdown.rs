@@ -53,6 +53,7 @@ fn lockdown_1_command_lists_agree_in_order() {
             "claude_check",
             "claude_sign_in",
             "claude_sign_in_cancel",
+            "claude_sign_out",
             "save_options",
             "open_link",
             "github_sign_in_start",

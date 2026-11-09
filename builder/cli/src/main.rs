@@ -806,6 +806,8 @@ enum ClaudeCommand {
         )]
         subscription: bool,
     },
+    /// Sign out of Claude Code in Voice.
+    SignOut,
 }
 
 #[derive(Subcommand)]
@@ -1628,6 +1630,14 @@ fn claude_check() -> Result<()> {
     println!("{}", text::ready(&ready.version));
     Ok(())
 }
+fn claude_sign_out() -> Result<()> {
+    let home = home()?;
+    let path = std::env::var_os("PATH");
+    voice_agent::claude::find(path.as_deref(), &home)?.sign_out(&home)?;
+    println!("{}", voice_agent::text::SIGN_OUT_SUCCESS);
+    Ok(())
+}
+
 fn claude_sign_in(sign_in: voice_agent::claude::SignIn) -> Result<()> {
     use voice_agent::{claude, text};
     let stop = claude::stop_on_interrupt();
@@ -1642,7 +1652,9 @@ fn claude_sign_in(sign_in: voice_agent::claude::SignIn) -> Result<()> {
         println!("{}", text::ready(&status.version));
         return Ok(());
     }
-    println!("{}", text::SIGN_IN_WAITING);
+    if claude::starts(sign_in) {
+        println!("{}", text::SIGN_IN_WAITING);
+    }
     let result = claude.sign_in(&home, stop, sign_in);
     if let Err(Error::Invalid(message)) = &result
         && message == text::SIGN_IN_STOPPED
@@ -2632,6 +2644,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         Some(Command::Agents) => agents(),
         Some(Command::Claude { command }) => match command {
             ClaudeCommand::Check => claude_check(),
+            ClaudeCommand::SignOut => claude_sign_out(),
             ClaudeCommand::SignIn {
                 #[cfg(feature = "claude-subscription")]
                 subscription,

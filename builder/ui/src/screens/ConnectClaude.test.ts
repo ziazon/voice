@@ -305,3 +305,66 @@ it('offers both sign-ins in a testers build and sends the subscription request',
   await flushPromises()
   expect(wrapper.get('.alert-success').text()).toBe('Ready.')
 })
+
+it('shows a secondary sign-out only while signed in, calls the backend and shows success', async () => {
+  const pending = deferred<ClaudeStatus>()
+  const backend = fakeBackend({ claudeSignOut: vi.fn().mockReturnValue(pending.promise) })
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  expect(wrapper.findAll('button').some(item => item.text() === 'Sign out')).toBe(false)
+  await flushPromises()
+  expect(button(wrapper, 'Sign out').classes()).toEqual(['btn', 'btn-outline-secondary', 'ms-2'])
+  await button(wrapper, 'Sign out').trigger('click')
+  expect(backend.claudeSignOut).toHaveBeenCalledExactlyOnceWith()
+  expect(button(wrapper, 'Sign out').attributes('disabled')).toBeDefined()
+  pending.resolve({ ...signedOut, note: 'Signed out of Claude Code in Voice.' })
+  await flushPromises()
+  expect(wrapper.text()).toContain('Signed out of Claude Code in Voice.')
+  expect(wrapper.get('.alert-warning').text()).toBe(signedOut.message)
+  expect(wrapper.findAll('button').some(item => item.text() === 'Sign out')).toBe(false)
+  expect(wrapper.findAll('button').some(item => item.text() === 'Next: your history')).toBe(false)
+})
+it('offers no sign-out when signed out or signing in', async () => {
+  const pending = deferred<ClaudeStatus>()
+  const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut), claudeSignIn: vi.fn().mockReturnValue(pending.promise) })
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  expect(wrapper.findAll('button').some(item => item.text() === 'Sign out')).toBe(false)
+  await button(wrapper, 'Sign in with Anthropic Console').trigger('click')
+  expect(wrapper.findAll('button').some(item => item.text() === 'Sign out')).toBe(false)
+  pending.resolve(signedOut)
+  await flushPromises()
+})
+it.each([
+  [{ message: "Claude Code signed out, but its sign-in file is still in Voice's folder. Try signing out again." }, "Claude Code signed out, but its sign-in file is still in Voice's folder. Try signing out again."],
+  [{ message: 'Wait for the sign-in to finish or cancel it, then sign out.' }, 'Wait for the sign-in to finish or cancel it, then sign out.'],
+  [new Error('private detail'), "Voice couldn't sign out of Claude Code. Try again."],
+])('shows a safe sign-out failure and allows another attempt', async (failure, message) => {
+  const backend = fakeBackend({ claudeSignOut: vi.fn().mockRejectedValue(failure) })
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  await button(wrapper, 'Sign out').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('.alert-danger').text()).toBe(message)
+  expect(wrapper.text()).not.toContain('Signed out of Claude Code in Voice.')
+  expect(button(wrapper, 'Sign out').attributes('disabled')).toBeUndefined()
+})
+it('keeps Console sign-in available and shows the Mac refusal from the backend', async () => {
+  const message = "Signing in with a Console account doesn't work on a Mac yet. A later update adds it."
+  const backend = fakeBackend({ claudeCheck: vi.fn().mockResolvedValue(signedOut), claudeSignIn: vi.fn().mockResolvedValue({ ...signedOut, message }) })
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  await button(wrapper, 'Sign in with Anthropic Console').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('.alert-warning').text()).toBe(message)
+  expect(button(wrapper, 'Sign in with Anthropic Console').text()).toBe('Sign in with Anthropic Console')
+})
+
+it('uses the backend sign-out confirmation instead of keeping its own sentence', async () => {
+  const message = 'Sign-out confirmation from the backend.'
+  const backend = fakeBackend({ claudeSignOut: vi.fn().mockResolvedValue({ ...signedOut, note: message }) })
+  const wrapper = screen(ConnectClaude, backend, { assistant })
+  await flushPromises()
+  await button(wrapper, 'Sign out').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('[role="status"]').text()).toBe(message)
+})

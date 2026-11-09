@@ -21,6 +21,7 @@ it.each([
   ['consentText', 'consent_text'],
   ['claudeCheck', 'claude_check'],
   ['claudeSignInCancel', 'claude_sign_in_cancel'],
+  ['claudeSignOut', 'claude_sign_out'],
   ['githubSignInStart', 'github_sign_in_start'],
   ['githubSignInFinish', 'github_sign_in_finish'],
   ['githubSignInCancel', 'github_sign_in_cancel'],

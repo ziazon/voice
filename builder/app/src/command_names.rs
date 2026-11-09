@@ -9,6 +9,7 @@ pub const COMMANDS: &[&str] = &[
     "claude_check",
     "claude_sign_in",
     "claude_sign_in_cancel",
+    "claude_sign_out",
     "save_options",
     "open_link",
     "github_sign_in_start",

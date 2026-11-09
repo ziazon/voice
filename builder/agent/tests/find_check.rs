@@ -24,6 +24,17 @@ fn path_of(folders: &[&Path]) -> OsString {
 }
 
 #[test]
+fn sign_in_starts_only_where_the_platform_allows_it() {
+    use voice_agent::claude::{SignIn, starts};
+
+    assert!(starts(SignIn::Subscription));
+    #[cfg(target_os = "macos")]
+    assert!(!starts(SignIn::Console));
+    #[cfg(not(target_os = "macos"))]
+    assert!(starts(SignIn::Console));
+}
+
+#[test]
 fn the_agent_list_has_claude_code_then_the_model_server() {
     assert_eq!(AGENTS.len(), 2);
     assert_eq!(AGENTS[1].id, "self-hosted");
@@ -220,7 +231,7 @@ esac"#
 }
 
 #[test]
-fn console_sign_in_uses_only_console_arguments() {
+fn console_sign_in_uses_only_console_arguments_or_is_refused_on_mac() {
     sign_in_with_kind(voice_agent::claude::SignIn::Console);
 }
 
@@ -239,7 +250,11 @@ fn sign_in_with_kind(kind: voice_agent::claude::SignIn) {
         .sign_in_with(&home.0, &AtomicBool::new(false), kind, &|_| {
             panic!("stub never opens a page")
         });
-    if kind == SignIn::Subscription && !SUBSCRIPTION_OFFERED {
+    if cfg!(target_os = "macos") && kind == SignIn::Console {
+        assert_eq!(result.unwrap_err().to_string(), text::CONSOLE_NOT_AVAILABLE);
+        assert!(!stub.ran(), "refused Console sign-in started the child");
+        assert!(!voice_agent::sandbox::runs_folder(&stub.profile()).exists());
+    } else if kind == SignIn::Subscription && !SUBSCRIPTION_OFFERED {
         assert_eq!(
             result.unwrap_err().to_string(),
             text::SUBSCRIPTION_NOT_OFFERED

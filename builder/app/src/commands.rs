@@ -47,6 +47,11 @@ pub fn claude_sign_in(
 }
 
 #[tauri::command(async)]
+pub fn claude_sign_out() -> Result<voice_api::dto::ClaudeStatus, voice_api::dto::Failure> {
+    voice_api::claude_sign_out()
+}
+
+#[tauri::command(async)]
 pub fn claude_sign_in_cancel() -> Result<(), voice_api::dto::Failure> {
     voice_api::claude_sign_in_cancel()
 }

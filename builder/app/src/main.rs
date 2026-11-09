@@ -20,6 +20,7 @@ fn main() {
             commands::claude_check,
             commands::claude_sign_in,
             commands::claude_sign_in_cancel,
+            commands::claude_sign_out,
             commands::save_options,
             commands::open_link,
             commands::github_sign_in_start,

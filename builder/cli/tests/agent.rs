@@ -12,6 +12,16 @@ use voice_core::crew::{NewMember, new_member};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
+#[test]
+fn claude_help_lists_check_then_sign_in_then_sign_out() {
+    let fixture = Fixture::new();
+    let out = fixture.run(&["claude", "--help"]);
+    assert!(out.status.success());
+    let help = text(&out.stdout);
+    assert!(help.find("  check ").unwrap() < help.find("  sign-in ").unwrap());
+    assert!(help.find("  sign-in ").unwrap() < help.find("  sign-out ").unwrap());
+}
+
 struct Fixture {
     home: PathBuf,
     member: PathBuf,
@@ -151,6 +161,7 @@ esac"#,
     assert!(!f.bin.join("login").exists());
 }
 
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn claude_sign_in_uses_its_profile_then_checks_the_result() {
     let f = Fixture::new();
@@ -210,7 +221,7 @@ esac"#);
     );
 }
 
-#[cfg(not(feature = "claude-subscription"))]
+#[cfg(all(not(target_os = "macos"), not(feature = "claude-subscription")))]
 #[test]
 fn claude_sign_in_reports_a_subscription_account_as_refused() {
     let f = Fixture::new();
@@ -233,6 +244,7 @@ esac"#);
     );
 }
 
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn claude_sign_in_fails_when_login_does_not_sign_in() {
     let f = Fixture::new();
@@ -245,6 +257,7 @@ fn claude_sign_in_fails_when_login_does_not_sign_in() {
     );
 }
 
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn claude_sign_in_stops_the_child_on_ctrl_c() {
     let f = Fixture::new();
@@ -668,4 +681,52 @@ fn testers_sign_in_help_offers_the_subscription_flag() {
     assert!(
         text(&out.stdout).contains("Sign in with a Claude subscription (testers' builds only).")
     );
+}
+
+#[test]
+fn claude_sign_out_prints_success_after_claude_logs_out() {
+    let f = Fixture::new();
+    f.stub(
+        r#"here="${0%/*}"
+case "$1 $2" in
+    '--version ') echo '2.1.292 (Claude Code)';;
+    'auth logout') touch "$here/logged-out";;
+esac"#,
+    );
+    let out = f.run(&["claude", "sign-out"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(text(&out.stdout), "Signed out of Claude Code in Voice.\n");
+    assert!(f.bin.join("logged-out").exists());
+}
+
+#[test]
+fn claude_sign_out_failure_has_no_success_line() {
+    let f = Fixture::new();
+    f.stub("exit 1");
+    let out = f.run(&["claude", "sign-out"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stdout).is_empty());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn console_sign_in_reports_the_mac_limitation_without_starting_login() {
+    let f = Fixture::new();
+    f.stub(
+        r#"here="${0%/*}"
+case "$1 $2" in
+    '--version ') echo '2.1.292 (Claude Code)';;
+    'auth status') echo '{"loggedIn":false}';;
+    'auth login') touch "$here/login"; exit 1;;
+esac"#,
+    );
+    let out = f.run(&["claude", "sign-in"]);
+    assert_eq!(out.status.code(), Some(1));
+    let expected =
+        "Signing in with a Console account doesn't work on a Mac yet. A later update adds it.";
+    #[cfg(feature = "claude-subscription")]
+    let expected = format!("{expected} Use Sign in with a Claude subscription instead.");
+    assert!(text(&out.stdout).is_empty());
+    assert_eq!(text(&out.stderr), format!("voice: {expected}\n"));
+    assert!(!f.bin.join("login").exists());
 }
