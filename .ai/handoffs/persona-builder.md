@@ -2,6 +2,29 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF1: the anonymizer's load test holds on a busy computer (2026-11-08, lane: V1)
+
+- **What:** `two_hundred_three_run_terms_load_within_five_seconds` asserted a 5-second wall-clock
+  bound and failed when the computer was busy (5.43 s inside `ci-local.sh`, 12.8 to 30.6 s alone, at
+  load about 14). It becomes `two_hundred_three_run_terms_load`, which only asserts the 200 terms
+  load. The guard moves to a new unit test in `builder/ingest/src/anonymize/terms.rs`,
+  `term_patterns_stay_small`: every pattern a three-run term and a 12-word term build must compile
+  under a fixed `size_limit` (`1 << 18` and `1 << 20`). Compiled size doesn't depend on load, and it
+  is what `1425860`'s fix shrank. Test-only: no behaviour changes. Brief:
+  `plans/briefs/VF1-load-test-under-load.md`.
+- **Who built it:** Codex, from the brief (her first pass stopped at a threshold the first brief got
+  wrong; the amended brief set one limit per term).
+- **Verified:** the new test passes, and fails with `CompiledTooBig(262144)` when `1425860`'s
+  counted separators are put back (mutation by `cp` and `cmp`, by Codex and again by V1); a second
+  mutation (the three-run limit at `1 << 16`) fails it too. `anonymize_rules` passes; clippy and fmt
+  pass. `bash scripts/ci-local.sh` all passed on `dff08da` (VF4 and VF2 below
+  VF1), the same tree as this landed head outside `.ai/`, at load about 14. Its first gate run
+  stopped on timing tests VF1 doesn't touch; those are VF4 and VF2.
+- **Reviews:** security review: no HIGH or MEDIUM; one LOW (nothing bounds how many patterns one
+  term builds), left as a coverage note for VF2. Verifier: not required (test-only).
+- **Not verified:** the limits under a `regex` version other than 1.13.1 (locked); a new version
+  could move the sizes, and the test would then say so.
+
 ## VF2: three anonymizer tests hold on a busy computer (2026-11-08, lane: V1)
 
 - **What:** three tests in `builder/ingest/tests/anonymize_file.rs` asserted wall time and failed
