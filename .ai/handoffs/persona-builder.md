@@ -2,6 +2,43 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF4: the gate's timing tests hold on a busy computer (2026-11-08, lane: V1)
+
+- **What:** four egress tests in `builder/agent/src/egress.rs`, one probe test in
+  `tests/claude_sandbox_probe_test.py` and one reader test in `builder/api/src/reader_client.rs`
+  checked a deadline with 150 to 500 ms of slack, and failed
+  `ci-local.sh` when the computer was busy (load 11 to 23) with no change to the code. Each now
+  leaves a wide gap between the deadline working and the fault it guards: the dial bounds get 1 s
+  of slack, under the client's 2 s read timeout; the test resolver `slow` waits 10 s, so the capped
+  test's first two resolvers are still in flight on the third request; the header test waits up to
+  four header windows for the close and allows three; the probe's idle test uses a 1 s window with
+  six 0.25 s gaps; the reader's `progress_resets_the_quiet_deadline` uses a 1 s quiet window with
+  eight 0.25 s gaps (added after the first gate run failed on it, as the brief's amendment). Every
+  lower bound and count stays. Test-only. Brief:
+  `plans/briefs/VF4-egress-tests-under-load.md`.
+- **Who built it:** Codex, from the brief. Her sandbox refuses TCP binds, so V1 ran the Rust
+  mutations and repeat runs herself.
+- **Verified:** red on `main`: `resolvers_in_flight_are_capped` failed 2 of 3 runs at load about
+  20, and the probe's idle test 3 of 4 at load about 11. Mutations, each by `cp` and `cmp`: the
+  header deadline restarted on each read fails `header_deadline_is_absolute`; the dial waiting for
+  its resolver fails the capped test and both resolution tests; no cap on resolvers in flight fails
+  the capped test; the idle deadline not reset by traffic fails the probe test (by Codex and again
+  by V1); the reader's quiet deadline set once for the whole read fails the reader test (by Codex
+  and again by V1). Red on `main` for the reader test too: 3 of 6 runs failed at load about 14.
+  Repeat runs: the reader tests 10 of 10 (by Codex, load 12 to 14); the probe tests 10 of 10 (by Codex, then by V1 at load 14 to 17); the egress
+  tests 44 of 45 at load 7 to 19. The egress suite takes as long as before (7.2 s, against 7.3 to
+  7.7 s). Clippy and fmt pass. `bash scripts/ci-local.sh` all passed on the stack's head `dff08da` (VF4,
+  then VF2 and VF1 on top) at load about 14.
+- **Reviews:** security review (Opus): no HIGH or MEDIUM. Two LOW, left as they are: the
+  upper bounds now let a deadline overshoot of 2 to 3 times pass (the faults themselves, a
+  trickling client and a slow resolver, are still caught); the probe test's final read has about
+  1 s of headroom before the child's 2 s timeout. Verifier: not required (test-only).
+- **Not verified:** `reader_client.rs`'s two kill tests (`< 400 ms` against a 50 ms deadline),
+  which never failed here and whose message and kill-count asserts catch their fault without the
+  time bound; which test failed the one red egress run of 45 (it wasn't captured, and 35
+  later runs didn't repeat it); the other timing tests in the crate, which this slice didn't
+  touch.
+
 ## VO1.1: the read-fence probe on a second Mac (2026-11-05, lane: V1)
 
 - **What:** the record of the attended run of `scripts/read_fence_probe.py run` on a second Mac
