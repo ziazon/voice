@@ -23,8 +23,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   15); mutation checks by `cp` and `cmp`: removing the post-sign-in refusal turns the new api and
   CLI tests red, a subscription login that runs `--console` turns both new feature tests red, and
   the probe's old link check fails 5 probe tests; the probe test passes on `e2ebd2e` (40 OK).
-  **Owed before the land:** `bash scripts/ci-local.sh` on the head. A run on `e6821fe` was cut off
-  by the job run's time limit, with no failure in the 170-odd test binaries it had finished.
+  `bash scripts/ci-local.sh` all passed on `e6821fe` and again on `0522663` (the code head
+  `e2ebd2e` plus this record), at load about 6.
 - **Reviews:** security review: no findings, on the first build and on the fix-ups. Verifier: Fable
   PASS on `e65e06e` with three should-fixes (all applied); a repeat pass (Opus) found the probe
   still accepted only subscription pages (fixed in `e2ebd2e`); a further repeat pass (Opus) PASS on
