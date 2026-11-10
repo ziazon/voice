@@ -2,6 +2,34 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## G3.1a: an approval or a rejection keeps the approver's words (2026-11-10, lane: V1)
+
+- **What:** the growth loop spec lets an approval carry a `note`, and the record had the field, but
+  nothing could set it: every answer was saved with no note. `voice refresh approve|reject` now take
+  `--note <NAME or FOLDER/NAME>`, a `{"note": "..."}` JSON file inside the assistant's private folder,
+  read the way `voice keep` reads its signal (`place`, `validate_json_name`, `read_private_at_max`,
+  16 KiB, under the state lock, then `refresh::answer_locked`). The note is trimmed and refused when
+  empty, when it holds a control character other than newline and tab, or when the file has any other
+  shape; a refused note leaves no answer on file and the change still open. Without `--note` nothing
+  changes. Nothing new is printed and the note is never echoed. `refresh::answer` and `answer_locked`
+  take `note: Option<&str>`; the app passes `None`. This is how G3.1b's weekly runner will keep the
+  subject's own words with an answer given elsewhere. Brief: `plans/briefs/G3.1a-approval-note.md`.
+- **Who built it:** Codex, from the brief. Her sandbox blocked the CLI test fixture's sockets, so V1
+  ran the CLI and full suites outside it.
+- **Verified:** red first on their assertions (Codex): the help test (no `--note`) and the library
+  note tests (`None` saved); the CLI behaviour tests couldn't reach their assertions in her sandbox,
+  so V1 proved them by mutation, each restored byte for byte (`mutate-check.sh`, after a green
+  baseline of the 14 note tests): the note not passed to the record (2 failed), the control-character
+  check removed (1 failed), the trim removed (3 failed). Outside the sandbox: voice-grow 23 passed,
+  the CLI refresh suite 35 passed. `bash scripts/ci-local.sh` on `c6eacb6` (load about 19): every step passed until `voice-agent`'s `sign_in_opener_failure_kills_the_child` (a 5 s timing check this slice doesn't touch; it passed 3 of 3 runs alone); the rerun with 2 workers was cut short by run `002721-r1`'s time limit. **A green `ci-local.sh` is owed before the land.**
+- **Reviews:** security review (sub-task): no HIGH or MEDIUM. Three LOWs kept as known limits: the
+  note file's own mode isn't checked (only its folders are; `voice keep` reads the same way, and the
+  runner writes its notes 0600 in a 0700 folder); format characters such as bidi marks pass (the note
+  is never shown or put in a prompt today: refuse or escape them the day it is); a missing state folder
+  gets `voice mine`'s wording (unreachable, a proposal must exist there). Verifier: not required (spec
+  says no; under 400 lines).
+- **Not verified:** nothing reads the note yet; G3.1b's runner is the first writer.
+
 ## G0.1: one kept and one undone refresh on a scratch member, and what it cost (2026-11-09, lane: V1)
 
 - **What:** the growth loop's first live run, on a scratch copy of an existing assistant (its
