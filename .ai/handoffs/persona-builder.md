@@ -2,6 +2,47 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## G3.2a: draft practice questions on kinds you name (2026-11-10, lane: V1)
+
+- **What:** `voice interview draft` chose its own kinds of decision: every kind for a full interview,
+  or the thin kinds an earlier build's report or labels show for a short one. A helper that already
+  knows where an assistant is weak (for example, the kinds its calibration table shows one miss short
+  of live) couldn't ask about those kinds, and couldn't keep that round apart from the person's own
+  interview. `voice interview draft <MEMBER_DIR> --kind <KIND> [--kind …] [--per-kind <N>]` now drafts
+  a practice round: 1 to 5 distinct kinds from the codebook (never `other`), N questions on each (1 to
+  4, default 4). It is a new `Form::Practice`, with its own file `interview-practice-questions.json` and
+  ledger step `interview-practice`, whatever the corpus holds. The kinds are checked before any lock,
+  ledger line or call. `--replace` touches only the practice file. It prints a `voice keep` next step,
+  because a practice round's answers are kept one at a time as growth signals, not through
+  `interview answer`, which never reaches the practice form. Without `--kind` nothing changes. This is
+  what G3.2b's weekly runner calls for a member that has no Voice build report.
+  Brief: `plans/briefs/G3.2a-practice-kinds.md`.
+- **Who built it:** Codex, in two runs: the tests first (dispatch A), then the code by a fresh run
+  that couldn't edit them (dispatch B; the spec's blob hash was unchanged). Her sandbox blocks the CLI
+  fixture's sockets, so V1 ran the suites outside it.
+- **Verified:** red first: the 5 new CLI tests failed on clap's unknown `--kind`, and the 12 existing
+  ones passed. Green: 17 passed. Eight mutations, each one restored byte for byte by `mutate-check.sh`
+  after a green baseline, and every one failed the tests (exit 101): `other` accepted, a repeated
+  kind accepted, a sixth kind accepted, the practice file swapped for the short one, the ledger step
+  swapped, kind coverage not checked for practice, the per-kind count ignored, and the prompt's
+  practice wording swapped. (The first pass of those checks exited 127 because zsh doesn't split an
+  unquoted command variable, so nothing had run; it was redone with the command spelled out.)
+- **Reviews:** security review (sub-task): no findings. A kind can't reach a path, prompts get only
+  codebook kinds, errors print kinds escaped, refusals spend and write nothing, and the caps, lock and
+  guard apply as for the other forms. Verifier (Fable; the spec says no, run because the diff with
+  its brief and record passes 400 lines): PASS on `64ddf46`, no must-fix. Four of five should-fixes
+  done in fix-up 1 (`plans/briefs/G3.2a-fixup-1.md`, Codex): one kinds-list helper, `--per-kind`'s
+  default shown once, a test that a refused kind prints escaped (its mutation failed the tests), and a
+  test that the validity check runs before the repeat check. Kept as it is: nothing shows that a
+  waiting full interview doesn't block a practice round (only the short one is tested), since an
+  implementation that checks the wrong file is unlikely.
+- **Gate:** `bash scripts/ci-local.sh` on `64ddf46` failed only `subscription_refresh_propose_closes_with_usage`
+  (`--features claude-subscription`), because the Verifier ran a feature-less `cargo test -p voice-cli` in the
+  same worktree mid-gate and rebuilt the shared binary; alone it passed 3 of 3. The re-run on `3fe09a5`
+  was still running when run `051137-r1` hit its time limit; the next run reruns it before the PR.
+- **Not verified:** a live practice draft through a real Claude Code. G3.2b's runner, and G3.1c's
+  attended walk after it, are the first live callers.
+
 ## VF11: the build stop test gives its stand-in 30 seconds to start (2026-11-10, lane: V1)
 
 - **What:** `voice-api`'s `stop_second_call_is_busy_then_reuses_first_kept_reply` stopped one
