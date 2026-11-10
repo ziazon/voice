@@ -20,12 +20,16 @@ pub fn repeated_practice_kind(kind: &str) -> String {
     format!("{kind:?} is named twice.")
 }
 
-pub fn drafted_practice(count: usize, kinds: &[(String, Option<usize>)]) -> String {
-    let kinds = kinds
+fn kinds_list(kinds: &[(String, Option<usize>)]) -> String {
+    kinds
         .iter()
         .map(|(kind, _)| kind.as_str())
         .collect::<Vec<_>>()
-        .join(", ");
+        .join(", ")
+}
+
+pub fn drafted_practice(count: usize, kinds: &[(String, Option<usize>)]) -> String {
+    let kinds = kinds_list(kinds);
     format!("Drafted {count} practice questions on: {kinds}.")
 }
 
@@ -207,11 +211,7 @@ pub fn report_strengthen(ways: &[&str]) -> String {
 
 /// A short interview focuses on the kinds with few examples.
 pub fn drafted_short(count: usize, kinds: &[(String, Option<usize>)]) -> String {
-    let kinds = kinds
-        .iter()
-        .map(|(kind, _)| kind.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let kinds = kinds_list(kinds);
     format!(
         "Drafted {count} questions on the kinds of decision your history holds the fewest examples of: {kinds}."
     )
