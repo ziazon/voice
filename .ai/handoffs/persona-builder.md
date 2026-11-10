@@ -2,6 +2,27 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## G0.1: one kept and one undone refresh on a scratch member, and what it cost (2026-11-09, lane: V1)
+
+- **What:** the growth loop's first live run, on a scratch copy of an existing assistant (its
+  filters, its 15 areas and its 97 KB `decisions.md`), in a testers' build from `cdb0ec8` signed in
+  with a Claude subscription. Ten corrections were kept (7 that differ from the assistant's pick, 3
+  that match; 2 more refused as personal and skipped). The first `refresh propose` was refused by the
+  copied-words guard (`check_words`) and passed on the retry; `apply` **kept** it, 9 of 9 tests. A
+  reversed correction then gave a change that `apply` **undid**: 2 earlier passing tests failed with
+  it, 10 of 11. Walked attended; the scratch member, its state and its logs are deleted.
+- **Cost:** 11 calls, all Sonnet, 105 s inside calls, about 342 thousand tokens (about 11.6 thousand
+  of them output). Each refresh or answer call carried about 35 thousand tokens, nearly all of it
+  read from cache, so a 97 KB `decisions.md` fits one call. Claude Code's own estimate for the day was
+  about $1.28. Wall time per step: `propose` 28 s (34 s for the refused first try, 10 s for the
+  second change), `apply` 18 s and 17 s. The plan's weekly share couldn't be isolated: the account's
+  usage page moved from 8% to 9% after the first `apply`, but other work was using the same account,
+  so that move is account-wide, and the later readings were dropped.
+- **Found on the way:** VF6 (`voice claude check` names a sign-in a Mac can't start) and VF7 (a
+  subscription sign-in still reported dollars; VF7a below, VF7b parked).
+- **Not verified:** the weekly share per `propose` and `apply` (needs an account nothing else uses
+  during the run).
+
 ## VF7a: a subscription sign-in reports calls and tokens, not dollars (2026-11-09, lane: V1)
 
 - **What:** under a Claude subscription there is no per-call bill, yet every report of today's use
@@ -26,9 +47,12 @@ One record per slice, newest first. Paraphrase only; no real person.
   failed one Build test, from `Refresh.vue` two Refresh tests; dropping cache reads from the sum and
   forcing `subscription: false` were each caught (Codex's report). `bash scripts/ci-local.sh`: pending.
 - **Reviews:** security review (sub-task): no HIGH or MEDIUM; one LOW kept as a
-  known limit: in testers' builds the app's spend read starts two sandboxed Claude Code lookups
-  (version and sign-in status), so it can take up to their time limit if Claude Code hangs.
-  Verifier (spec: not required; run because the diff adds over 400 lines): pending.
+  known limit: in testers' builds `voice spend` and the app's spend read find Claude Code (which
+  makes Voice's profile folders if missing) and start two sandboxed lookups (version and sign-in
+  status), so they can take up to their time limit if Claude Code hangs; public builds start nothing.
+  Verifier (spec: not required; run because the diff adds over 400 lines): Fable PASS, no
+  must- or should-fix; three nits kept as they are (the known limit above; a run whose every ledger
+  read fails ends on the dollar line; one report reads the ledger twice).
 - **Not verified (walk owed, attended):** a real subscription sign-in in a testers' build showing
   calls and tokens at the end of `voice refresh propose`, and on the app's Build and Refresh screens.
 
