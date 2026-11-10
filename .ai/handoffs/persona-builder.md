@@ -2,6 +2,26 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF10: the stdin refusal test accepts a command that stops reading early (2026-11-10, lane: V1)
+
+- **What:** `voice-cli`'s `invalid_stdin_is_a_usage_error_before_searching` failed now and then on a
+  busy computer with a `BrokenPipe`: the test's `run` helper writes all of its input before waiting,
+  and a command that refuses its arguments can exit before reading stdin, which closes the pipe. The
+  likely trigger is the test's last loop (clap refuses the arguments first), not the 64 KiB case the
+  spec guessed. `run` in `builder/cli/tests/similar_stdin.rs` now ignores a `BrokenPipe` on that write
+  and still asserts on the exit status and stderr; any other write error still fails. A new unix test,
+  `run_accepts_a_command_that_exits_without_reading_stdin`, sends 1 MiB to `sh -c 'exit 3'` and
+  checks exit 3. `record.rs`'s tests already handle the same case this way. Test only. Brief:
+  `plans/briefs/VF10-stdin-broken-pipe.md`.
+- **Who built it:** Codex, from the brief.
+- **Verified:** (run `095419-r1`) red first: the new test failed with the broken pipe; green 4 of 4,
+  fmt and clippy clean; one mutation caught (letting a 64 KiB + 1 input through fails the refusal
+  test).
+- **Reviews:** security review (sub-task): no findings; every caller of `run` still asserts the exit
+  status (and stderr where it did before), and only `BrokenPipe` is ignored. Verifier: not required
+  (spec says no; test only).
+- **Not verified:** the cause is likely, not confirmed: the flake never reproduced alone (5 of 5 passed).
+
 ## G3.1a: an approval or a rejection keeps the approver's words (2026-11-10, lane: V1)
 
 - **What:** the growth loop spec lets an approval carry a `note`, and the record had the field, but
