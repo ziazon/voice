@@ -2,6 +2,36 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF7a: a subscription sign-in reports calls and tokens, not dollars (2026-11-09, lane: V1)
+
+- **What:** under a Claude subscription there is no per-call bill, yet every report of today's use
+  ended in dollars. When Voice is signed in with a subscription in a testers' build, `voice spend`,
+  `voice build`, `voice interview draft`, `voice refresh propose` and `apply`, and the app's Build and
+  Refresh screens now close with today's calls and tokens from Voice's own ledger, for example
+  *Today, 11 calls to Claude and about 342 thousand tokens, on your Claude subscription.* Tokens
+  are all four counts Claude Code reports (input, output, cache writes, cache reads); a missing or
+  invalid count adds 0 and never stops spending. `claude::Status` and `Ready` gain `subscription`
+  (true only for `claude.ai` or `oauth_token` in a build that offers it); `dto::Spend` gains
+  `usage`. A Console sign-in and every public build keep the dollar words exactly. The daily limit
+  itself is unchanged, in dollars (VF7b, parked on V-Q16). Brief:
+  `plans/briefs/VF7a-subscription-usage.md`, plus one fix-up (`tokens_in` returns 0 for a line that
+  isn't JSON instead of panicking; unreachable today, since the ledger read validates every line).
+- **Who built it:** Codex, from the brief and the fix-up. Her sandbox blocked sockets and pnpm, so
+  V1 ran the integration and UI suites outside it.
+- **Verified:** red first for the ledger, words and sign-in tests (Codex) and the
+  fix-up's test (a panic before the change); V1 saw the integration and UI tests pass outside her
+  sandbox: the voice-agent, voice-api and voice-cli suites in the default and `claude-subscription`
+  builds (one flake in `tests/stop.rs` at load about 12, passed alone and on a full rerun), the UI
+  suite (569 passed) and its typecheck. Mutations: removing the usage paragraph from `BuildRun.vue`
+  failed one Build test, from `Refresh.vue` two Refresh tests; dropping cache reads from the sum and
+  forcing `subscription: false` were each caught (Codex's report). `bash scripts/ci-local.sh`: pending.
+- **Reviews:** security review (sub-task): no HIGH or MEDIUM; one LOW kept as a
+  known limit: in testers' builds the app's spend read starts two sandboxed Claude Code lookups
+  (version and sign-in status), so it can take up to their time limit if Claude Code hangs.
+  Verifier (spec: not required; run because the diff adds over 400 lines): pending.
+- **Not verified (walk owed, attended):** a real subscription sign-in in a testers' build showing
+  calls and tokens at the end of `voice refresh propose`, and on the app's Build and Refresh screens.
+
 ## VF3: Claude Code keeps its own login file inside Voice's sandbox (2026-11-09, attended)
 
 - **What:** the subscription sign-in failed inside the sandbox because Claude Code 2.1.292 saves
