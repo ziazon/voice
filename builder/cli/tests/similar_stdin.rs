@@ -66,7 +66,11 @@ fn run(command: &mut Command, input: &[u8]) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(input).unwrap();
+    // A usage error can exit before reading stdin, which closes the pipe.
+    match child.stdin.take().unwrap().write_all(input) {
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+        written => written.unwrap(),
+    }
     child.wait_with_output().unwrap()
 }
 fn success(output: &Output) {
@@ -75,6 +79,16 @@ fn success(output: &Output) {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_accepts_a_command_that_exits_without_reading_stdin() {
+    let output = run(
+        Command::new("/bin/sh").args(["-c", "exit 3"]),
+        &vec![b'x'; 1 << 20],
+    );
+    assert_eq!(output.status.code(), Some(3));
 }
 
 #[test]
