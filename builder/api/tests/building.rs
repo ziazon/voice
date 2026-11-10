@@ -212,13 +212,30 @@ fn forget_stub(h: &Home) {
 fn wait_for(path: &Path) {
     let start = Instant::now();
     while !path.exists() {
+        // Only proves the stub started; a busy computer can take seconds to start it.
         assert!(
-            start.elapsed() < Duration::from_secs(5),
+            start.elapsed() < Duration::from_secs(30),
             "stub never reached {}",
             path.display()
         );
         thread::sleep(Duration::from_millis(10));
     }
+}
+
+#[test]
+fn wait_for_allows_a_slow_stub_to_start() {
+    let _case = CASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let h = Home::new(false);
+    let started = h.path.join("started");
+    thread::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(Duration::from_secs(6));
+            fs::write(&started, b"").unwrap();
+        });
+        wait_for(&started);
+    });
 }
 
 #[test]
