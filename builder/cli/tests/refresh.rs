@@ -447,3 +447,22 @@ fn refresh_apply_honors_the_members_local_folder_ceiling() {
     assert_eq!(f.calls(), calls);
     assert_eq!(fs::read(f.state().join("runs.jsonl")).unwrap(), ledger);
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_refresh_propose_closes_with_usage() {
+    let python = python().expect("python3 is required for the stub");
+    let f = Fixture::new();
+    f.built(&python);
+    f.keep_answers();
+    f.write_state("runs.jsonl", "");
+    let script =
+        include_str!("../../grow/tests/fixtures/refresh_stub.py").replace("api_key", "claude.ai");
+    f.write_stub(&format!("#!{} -I\n{script}", python.display()));
+    let out = f.run(&["refresh", "propose", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout).lines().last(),
+        Some("Today, 1 call to Claude and about 1 thousand tokens, on your Claude subscription.")
+    );
+}

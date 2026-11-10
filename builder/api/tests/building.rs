@@ -238,7 +238,7 @@ fn every_command_requires_permission_and_valid_assistant_without_writing() {
             }),
             expected,
         );
-        safe(&h, spend_today_in(&h.path, request()), expected);
+        safe(&h, spend_today_in(&h.path, None, &[], request()), expected);
         safe(&h, interview_status_in(&h.path, request()), expected);
         safe(
             &h,
@@ -340,7 +340,7 @@ fn build_needs_history_and_refuses_the_state_lock() {
     h.stub(|s| s);
     let _lock = lock_state(&h.path, "wren").unwrap();
     safe(&h, h.build(&builds, &mut |_| {}), BUSY);
-    safe(&h, spend_today_in(&h.path, slug()), BUSY);
+    safe(&h, spend_today_in(&h.path, None, &[], slug()), BUSY);
 }
 #[test]
 fn successful_build_streams_cli_lines_counts_and_spend() {
@@ -366,11 +366,9 @@ fn successful_build_streams_cli_lines_counts_and_spend() {
             build_text::CHECKING
         ]
     );
-    assert!(
-        progress
-            .iter()
-            .all(|p| p.spend.daily_cap_usd == 50.0 && p.spend.spent_usd >= 0.0)
-    );
+    assert!(progress.iter().all(|p| p.spend.daily_cap_usd == 50.0
+        && p.spend.spent_usd >= 0.0
+        && p.spend.usage.is_none()));
     assert!(done.spend.spent_usd > 0.0);
     assert!(
         fs::read_to_string(h.member().join("decisions.md"))
@@ -560,8 +558,9 @@ fn cap_and_signed_out_errors_are_safe_sentences() {
     let today = local_day(SystemTime::now());
     h.write("runs.jsonl",format!("{}\n",json!({"at":format!("{today}T12:00:00Z"),"id":"seed","day":today,"agent":"claude","step":"label","model":"sonnet","outcome":"success","seconds":1,"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cost_usd":49.0,"cost_from":"reported"})).as_bytes());
     assert_eq!(
-        spend_today_in(&h.path, slug()).unwrap(),
+        spend_today_in(&h.path, None, &[], slug()).unwrap(),
         Spend {
+            usage: None,
             spent_usd: 49.0,
             daily_cap_usd: 50.0
         }
@@ -712,17 +711,19 @@ fn dtos_are_camel_case_and_all_requests_refuse_unknown_fields() {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     assert_eq!(
         serde_json::to_value(Spend {
+            usage: None,
             spent_usd: 1.25,
             daily_cap_usd: 50.0
         })
         .unwrap(),
-        json!({"spentUsd":1.25,"dailyCapUsd":50.0})
+        json!({"spentUsd":1.25,"dailyCapUsd":50.0,"usage":null})
     );
     let done = serde_json::to_value(BuildDone {
         answered: 1,
         held_out: 2,
         tested: false,
         spend: Spend {
+            usage: None,
             spent_usd: 0.0,
             daily_cap_usd: 50.0,
         },
@@ -811,7 +812,7 @@ fn unreadable_settings_and_ledger_return_fixed_safe_messages() {
     h.write("runs.jsonl", b"broken ledger\n");
     safe(
         &h,
-        spend_today_in(&h.path, slug()),
+        spend_today_in(&h.path, None, &[], slug()),
         "Voice's record of what this assistant has spent can't be read, so it won't spend anything more. Use the voice command to see what's wrong.",
     );
 }
@@ -1005,7 +1006,12 @@ fn spending_limit_defaults_and_saved_values_reach_todays_spend() {
         }
     );
     assert_eq!(spending_limit_in(&h.path, slug()).unwrap(), saved);
-    assert_eq!(spend_today_in(&h.path, slug()).unwrap().daily_cap_usd, 20.0);
+    assert_eq!(
+        spend_today_in(&h.path, None, &[], slug())
+            .unwrap()
+            .daily_cap_usd,
+        20.0
+    );
 }
 #[test]
 fn a_build_enforces_the_saved_daily_limit() {
@@ -1082,7 +1088,11 @@ fn spending_limits_require_permission_and_damaged_limits_can_be_repaired() {
     agree_consent_in(&h.path, slug()).unwrap();
     h.write("limit.json", b"not json");
     safe(&h, spending_limit_in(&h.path, slug()), LIMIT_DAMAGED);
-    safe(&h, spend_today_in(&h.path, slug()), LIMIT_DAMAGED);
+    safe(
+        &h,
+        spend_today_in(&h.path, None, &[], slug()),
+        LIMIT_DAMAGED,
+    );
     set_spending_limit_in(&h.path, limit_request(20.0, 2.5)).unwrap();
     assert_eq!(spending_limit_in(&h.path, slug()).unwrap().daily_usd, 20.0);
 }
@@ -1123,7 +1133,7 @@ fn zero_spending_limits_save_load_and_reach_todays_spend() {
         }
     );
     assert_eq!(spending_limit_in(&h.path, slug()).unwrap(), saved);
-    let spend = spend_today_in(&h.path, slug()).unwrap();
+    let spend = spend_today_in(&h.path, None, &[], slug()).unwrap();
     assert_eq!(spend.daily_cap_usd, 0.0);
     assert_eq!(spend.spent_usd, 0.0);
 }
@@ -1177,4 +1187,45 @@ fn draft_interview_honors_the_members_local_folder_ceiling() {
     safe(&h, h.draft(false), FOLDER_KEPT_HOME);
     assert_eq!(h.calls(), 0);
     assert!(!h.state("runs.jsonl").exists());
+}
+
+#[test]
+fn spend_today_reports_subscription_usage_only_when_offered() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    for method in ["claude.ai", "api_key"] {
+        let h = Home::new(true);
+        h.stub(|s| s.replace("api_key", method));
+        let today = local_day(SystemTime::now());
+        h.write("runs.jsonl", format!("{}\n{}\n{}\n",
+            json!({"day":today,"cost_usd":1,"input_tokens":100,"output_tokens":200,"cache_creation_input_tokens":300,"cache_read_input_tokens":250}),
+            json!({"day":today,"cost_usd":5,"outcome":"started"}),
+            json!({"day":"2000-01-01","cost_usd":1,"input_tokens":999})).as_bytes());
+        let spend = spend_today_in(&h.path, Some(h.bin.as_os_str()), &[], slug()).unwrap();
+        let expected =
+            (method == "claude.ai" && voice_agent::claude::SUBSCRIPTION_OFFERED).then(|| {
+                "Today, 2 calls to Claude and 850 tokens, on your Claude subscription.".to_owned()
+            });
+        assert_eq!(spend.usage, expected);
+        assert_eq!(spend.spent_usd, 6.0);
+    }
+}
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_build_reports_usage_in_progress_and_result() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s.replace("api_key", "claude.ai"));
+    let mut progress = vec![];
+    let done = h.build(&Builds::new(), &mut |p| progress.push(p)).unwrap();
+    assert_eq!(
+        progress[0].spend.usage.as_deref(),
+        Some("Today, no calls to Claude yet, on your Claude subscription.")
+    );
+    assert_eq!(
+        done.spend.usage.as_deref(),
+        Some("Today, 6 calls to Claude and about 7 thousand tokens, on your Claude subscription.")
+    );
+    assert_eq!(progress.last().unwrap().spend.usage, done.spend.usage);
 }

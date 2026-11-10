@@ -73,8 +73,8 @@ it('keeps Refresh lines and outcome across a status reload', async () => {
   const backend = fakeBackend({
     reviewStatus: vi.fn().mockResolvedValueOnce(approved).mockResolvedValue(status),
     applyRefresh: vi.fn().mockImplementation((_request, progress) => {
-      progress({ line: 'Testing the change.', spend: { spentUsd: 1, dailyCapUsd: 50 } })
-      return Promise.resolve({ kept: true, reason: 'Every test passed.', spend: { spentUsd: 2, dailyCapUsd: 50 } })
+      progress({ line: 'Testing the change.', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } })
+      return Promise.resolve({ kept: true, reason: 'Every test passed.', spend: { spentUsd: 2, dailyCapUsd: 50, usage: null } })
     }),
   })
   const wrapper = screen(Review, backend, { assistant, active: true }); await flushPromises()

@@ -1715,13 +1715,29 @@ fn limit_set(member_dir: PathBuf, daily_usd: f64, step_usd: f64) -> Result<()> {
     println!("{}", text::limit(cap));
     Ok(())
 }
+fn closing_spend(session: &voice_agent::ledger::Session, subscription: bool) -> Result<String> {
+    use voice_agent::text;
+    if subscription {
+        Ok(text::usage(session.used_today()?))
+    } else {
+        Ok(text::spend(
+            session.spent_today()?,
+            session.cap().daily_usd(),
+        ))
+    }
+}
+
 fn spend(member_dir: PathBuf, daily_cap_usd: Option<f64>) -> Result<()> {
-    use voice_agent::{ledger::Session, text};
+    use voice_agent::{claude, ledger::Session};
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
     let cap = cap_for(&home, &member.slug, daily_cap_usd, None)?;
     let session = Session::open(&home, &member.slug, cap)?;
-    println!("{}", text::spend(session.spent_today()?, cap.daily_usd()));
+    let subscription = claude::SUBSCRIPTION_OFFERED
+        && claude::find(std::env::var_os("PATH").as_deref(), &home)
+            .and_then(|claude| claude.status(&home))
+            .is_ok_and(|status| status.subscription);
+    println!("{}", closing_spend(&session, subscription)?);
     Ok(())
 }
 struct BuildArgs {
@@ -1731,14 +1747,14 @@ struct BuildArgs {
     call_cap_usd: Option<f64>,
 }
 fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
-    use voice_agent::{claude, ledger::Session, text as spend_text};
+    use voice_agent::{claude, ledger::Session};
     use voice_build::{build, interview, report, run, text};
     let (member, home) = member_and_home(&member_dir)?;
     run::prepare(&member, &member_dir, &home, &args.corpus)?;
     let cap = cap_for(&home, &member.slug, args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
-    claude.check(&home)?;
+    let ready = claude.check(&home)?;
     let server = SelfHosted::load(&home, &member.slug)?;
     let guard = Guard::new(
         guard::providers(&claude, server.as_ref()),
@@ -1769,10 +1785,7 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     for line in report::render(&report) {
         println!("{line}");
     }
-    println!(
-        "{}",
-        spend_text::spend(session.spent_today()?, cap.daily_usd())
-    );
+    println!("{}", closing_spend(&session, ready.subscription)?);
     Ok(())
 }
 fn report(member_dir: PathBuf) -> Result<()> {
@@ -1854,7 +1867,7 @@ fn draft_plan(
     })
 }
 fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
-    use voice_agent::{claude, ledger::Session, text as spend_text};
+    use voice_agent::{claude, ledger::Session};
     use voice_build::{interview, text};
     use voice_ingest::private::{read_private_optional, write_private};
     use voice_steps::{book::book, input::pretty};
@@ -1879,7 +1892,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     let cap = cap_for(&home, &member.slug, args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
-    claude.check(&home)?;
+    let ready = claude.check(&home)?;
     let server = SelfHosted::load(&home, &member.slug)?;
     let guard = Guard::new(
         guard::providers(&claude, server.as_ref()),
@@ -1931,10 +1944,7 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
         form.questions_file()
     );
     println!("{}", text::swap(&member_dir.display().to_string()));
-    println!(
-        "{}",
-        spend_text::spend(session.spent_today()?, cap.daily_usd())
-    );
+    println!("{}", closing_spend(&session, ready.subscription)?);
     Ok(())
 }
 fn interview_answer(
@@ -1984,7 +1994,7 @@ fn refresh_propose(
     daily_cap_usd: Option<f64>,
     call_cap_usd: Option<f64>,
 ) -> Result<()> {
-    use voice_agent::{claude, ledger::Session, text as spend_text};
+    use voice_agent::{claude, ledger::Session};
     use voice_grow::{
         refresh::{self, Proposed},
         store::{Store, utc_now},
@@ -1996,7 +2006,7 @@ fn refresh_propose(
     let cap = cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
-    claude.check(&home)?;
+    let ready = claude.check(&home)?;
     let server = SelfHosted::load(&home, &member.slug)?;
     let guard = Guard::new(
         guard::providers(&claude, server.as_ref()),
@@ -2022,10 +2032,7 @@ fn refresh_propose(
             }
         }
     }
-    println!(
-        "{}",
-        spend_text::spend(session.spent_today()?, cap.daily_usd())
-    );
+    println!("{}", closing_spend(&session, ready.subscription)?);
     Ok(())
 }
 fn refresh_apply(
@@ -2035,7 +2042,7 @@ fn refresh_apply(
     call_cap_usd: Option<f64>,
     id: String,
 ) -> Result<()> {
-    use voice_agent::{claude, ledger::Session, text as spend_text};
+    use voice_agent::{claude, ledger::Session};
     use voice_build::report;
     use voice_grow::{
         apply::{self, Measured},
@@ -2049,7 +2056,7 @@ fn refresh_apply(
     let cap = cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
-    claude.check(&home)?;
+    let ready = claude.check(&home)?;
     let server = SelfHosted::load(&home, &member.slug)?;
     let guard = Guard::new(
         guard::providers(&claude, server.as_ref()),
@@ -2112,10 +2119,7 @@ fn refresh_apply(
     if let Some(line) = apply::growth(&store, built.as_ref().map(|report| report.built.as_str()))? {
         println!("{line}");
     }
-    println!(
-        "{}",
-        spend_text::spend(session.spent_today()?, cap.daily_usd())
-    );
+    println!("{}", closing_spend(&session, ready.subscription)?);
     Ok(())
 }
 fn refresh_show(member_dir: PathBuf, proposal: Option<String>) -> Result<()> {

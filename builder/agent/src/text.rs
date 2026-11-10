@@ -34,6 +34,31 @@ pub fn spend(spent: f64, cap: f64) -> String {
         )
     }
 }
+pub fn usage(used: crate::ledger::Used) -> String {
+    if used.calls == 0 {
+        return "Today, no calls to Claude yet, on your Claude subscription.".into();
+    }
+    let calls = used.calls;
+    let call = if calls == 1 { "call" } else { "calls" };
+    let tokens = match used.tokens {
+        1 => "1 token".into(),
+        n @ 0..=999 => format!("{n} tokens"),
+        n @ 1_000..=999_499 => format!("about {} thousand tokens", (n + 500) / 1_000),
+        n => {
+            // Round half up in tenths of a million, without overflowing at u64::MAX.
+            let tenths = n / 100_000 + u64::from(n % 100_000 >= 50_000);
+            let whole = tenths / 10;
+            let decimal = tenths % 10;
+            if decimal == 0 {
+                format!("about {whole} million tokens")
+            } else {
+                format!("about {whole}.{decimal} million tokens")
+            }
+        }
+    };
+    format!("Today, {calls} {call} to Claude and {tokens}, on your Claude subscription.")
+}
+
 pub fn cut_off(minutes: u64) -> String {
     let unit = if minutes == 1 { "minute" } else { "minutes" };
     format!(
@@ -330,6 +355,80 @@ mod calendar_text_tests {
                 super::typed_name(&format!("Team{c}planning")),
                 "Team planning",
                 "{c:?}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    #[test]
+    fn usage_reports_calls_and_rounded_tokens_without_dollars() {
+        for (calls, tokens, expected) in [
+            (
+                0,
+                0,
+                "Today, no calls to Claude yet, on your Claude subscription.",
+            ),
+            (
+                1,
+                1,
+                "Today, 1 call to Claude and 1 token, on your Claude subscription.",
+            ),
+            (
+                2,
+                850,
+                "Today, 2 calls to Claude and 850 tokens, on your Claude subscription.",
+            ),
+            (
+                3,
+                1000,
+                "Today, 3 calls to Claude and about 1 thousand tokens, on your Claude subscription.",
+            ),
+            (
+                11,
+                342_310,
+                "Today, 11 calls to Claude and about 342 thousand tokens, on your Claude subscription.",
+            ),
+            (
+                4,
+                999_499,
+                "Today, 4 calls to Claude and about 999 thousand tokens, on your Claude subscription.",
+            ),
+            (
+                5,
+                999_600,
+                "Today, 5 calls to Claude and about 1 million tokens, on your Claude subscription.",
+            ),
+            (
+                40,
+                1_240_000,
+                "Today, 40 calls to Claude and about 1.2 million tokens, on your Claude subscription.",
+            ),
+            (
+                41,
+                1_250_000,
+                "Today, 41 calls to Claude and about 1.3 million tokens, on your Claude subscription.",
+            ),
+            (
+                60,
+                12_000_000,
+                "Today, 60 calls to Claude and about 12 million tokens, on your Claude subscription.",
+            ),
+            (
+                1,
+                0,
+                "Today, 1 call to Claude and 0 tokens, on your Claude subscription.",
+            ),
+            (
+                1,
+                999_500,
+                "Today, 1 call to Claude and about 1 million tokens, on your Claude subscription.",
+            ),
+        ] {
+            assert_eq!(
+                super::usage(crate::ledger::Used { calls, tokens }),
+                expected
             );
         }
     }

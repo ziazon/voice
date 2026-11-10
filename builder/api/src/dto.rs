@@ -343,6 +343,9 @@ pub struct ForgetRequest {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Spend {
+    /// Set when Voice is signed in with a Claude subscription: today's calls and tokens, in words.
+    /// The screens show it instead of the dollar estimate.
+    pub usage: Option<String>,
     pub spent_usd: f64,
     /// 0 means no daily limit.
     pub daily_cap_usd: f64,

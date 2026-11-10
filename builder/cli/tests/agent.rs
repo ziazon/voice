@@ -730,3 +730,24 @@ esac"#,
     assert_eq!(text(&out.stderr), format!("voice: {expected}\n"));
     assert!(!f.bin.join("login").exists());
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_spend_reports_todays_calls_and_tokens() {
+    let f = Fixture::new();
+    f.stub(r#"case "$1" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac"#);
+    {
+        let _session = Session::open(&f.home, "wren", Cap::default()).unwrap();
+    }
+    let today = voice_agent::ledger::local_day(SystemTime::now());
+    voice_ingest::private::write_private(&f.home, "wren", "runs.jsonl", format!("{}\n{}\n{}\n",
+        serde_json::json!({"day":today,"cost_usd":1,"input_tokens":100,"output_tokens":200,"cache_creation_input_tokens":300,"cache_read_input_tokens":250}),
+        serde_json::json!({"day":today,"cost_usd":5,"outcome":"started"}),
+        serde_json::json!({"day":"2000-01-01","cost_usd":1,"input_tokens":999})).as_bytes()).unwrap();
+    let out = f.run(&["spend", f.member.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "Today, 2 calls to Claude and 850 tokens, on your Claude subscription.\n"
+    );
+}

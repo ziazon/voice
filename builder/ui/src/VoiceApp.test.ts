@@ -160,7 +160,7 @@ it('enables Your assistants after forgetting during an unsettled build', async (
 })
 
 it('keeps build disabled until permission, opens from sources, and preserves running lines across steps', async () => {
-  let progress: ((value: { line: string, spend: { spentUsd: number, dailyCapUsd: number } }) => void) | undefined
+  let progress: ((value: { line: string, spend: { spentUsd: number, dailyCapUsd: number, usage: string | null } }) => void) | undefined
   const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]), buildAssistant: vi.fn().mockImplementation((_request, callback) => { progress = callback; return new Promise(() => {}) }) })
   const wrapper = screen(VoiceApp, backend); await flushPromises()
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
@@ -173,7 +173,7 @@ it('keeps build disabled until permission, opens from sources, and preserves run
   await button(wrapper, 'Next: build your assistant').trigger('click'); await flushPromises()
   expect(wrapper.get('main h2').text()).toBe(`Build ${assistant.name}`)
   await button(wrapper, 'Start the build').trigger('click')
-  progress!({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50 } }); await flushPromises()
+  progress!({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } }); await flushPromises()
   expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeDefined()
   expect(wrapper.text()).toContain('Stop the build first to choose another assistant.')
   await button(wrapper, 'Your history').trigger('click'); await flushPromises()
@@ -209,8 +209,8 @@ it('enables report and review only after permission and follows build to report 
   expect(backend.reviewStatus).toHaveBeenCalledExactlyOnceWith({ slug: 'example' })
 })
 it('keeps review test lines across steps and blocks choosing another assistant until finished', async () => {
-  let progress!: (value: { line: string, spend: { spentUsd: number, dailyCapUsd: number } }) => void
-  let finish!: (value: { kept: boolean, reason: string, spend: { spentUsd: number, dailyCapUsd: number } }) => void
+  let progress!: (value: { line: string, spend: { spentUsd: number, dailyCapUsd: number, usage: string | null } }) => void
+  let finish!: (value: { kept: boolean, reason: string, spend: { spentUsd: number, dailyCapUsd: number, usage: string | null } }) => void
   const status = { built: true, areas: ['Planning'], tests: { waiting: 1, inUse: 0, retired: 0 }, byArea: [], change: { id: 'prop-one', drafted: '2026-10-25', summary: 'Try one part.', points: [], learnedFrom: 1, approved: true } }
   const backend = fakeBackend({
     listAssistants: vi.fn().mockResolvedValue([{ ...assistant, consent: { agreed: true, agreedOn: '2026-10-25' } }]),
@@ -221,7 +221,7 @@ it('keeps review test lines across steps and blocks choosing another assistant u
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
   await button(wrapper, 'Review').trigger('click'); await flushPromises()
   await button(wrapper, 'Test it').trigger('click')
-  progress({ line: 'Testing it with the change on 1 test.', spend: { spentUsd: 1, dailyCapUsd: 50 } }); await flushPromises()
+  progress({ line: 'Testing it with the change on 1 test.', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } }); await flushPromises()
   expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeDefined()
   expect(wrapper.text()).toContain('Wait for the test to finish to choose another assistant.')
   await button(wrapper, 'Your permission').trigger('click'); await flushPromises()
@@ -229,7 +229,7 @@ it('keeps review test lines across steps and blocks choosing another assistant u
   expect(wrapper.get('ul[aria-live="polite"]').text()).toContain('Testing it with the change on 1 test.')
   expect(backend.reviewStatus).toHaveBeenCalledTimes(1)
   expect(backend.applyRefresh).toHaveBeenCalledTimes(1)
-  finish({ kept: true, reason: 'Every test passed.', spend: { spentUsd: 2, dailyCapUsd: 50 } }); await flushPromises()
+  finish({ kept: true, reason: 'Every test passed.', spend: { spentUsd: 2, dailyCapUsd: 50, usage: null } }); await flushPromises()
   expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeUndefined()
   expect(wrapper.text()).not.toContain('Wait for the test to finish to choose another assistant.')
 })

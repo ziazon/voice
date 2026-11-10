@@ -76,6 +76,7 @@ const CHECK_CAP: u64 = 64 * 1024;
 const STDOUT_CAP: u64 = 16 * 1024 * 1024;
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ready {
+    pub subscription: bool,
     pub version: String,
 }
 
@@ -437,19 +438,24 @@ fn exclude_from_backup(folder: &Path, tmutil: &Path) {
 
 // Claude Code 2.1.292's bundle, read 2026-11-08: Console is api_key; both
 // claude.ai and setup-token's oauth_token are subscriptions (VO-D10).
-fn sign_in_status(status: &Value) -> (bool, bool) {
+fn sign_in_status(status: &Value) -> (bool, bool, bool) {
     if status.get("loggedIn").and_then(Value::as_bool) != Some(true) {
-        return (false, false);
+        return (false, false, false);
     }
     match status.get("authMethod").and_then(Value::as_str) {
-        Some("api_key") => (true, false),
-        Some("claude.ai" | "oauth_token") => (SUBSCRIPTION_OFFERED, !SUBSCRIPTION_OFFERED),
-        _ => (false, false),
+        Some("api_key") => (true, false, false),
+        Some("claude.ai" | "oauth_token") => (
+            SUBSCRIPTION_OFFERED,
+            !SUBSCRIPTION_OFFERED,
+            SUBSCRIPTION_OFFERED,
+        ),
+        _ => (false, false, false),
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Status {
+    pub subscription: bool,
     pub version: String,
     pub signed_in: bool,
     pub subscription_refused: bool,
@@ -611,12 +617,13 @@ impl Claude {
             .filter(|version| valid_version(version))
             .map(str::to_owned)
             .ok_or_else(|| invalid(text::DOES_NOT_RUN))?;
-        let (signed_in, subscription_refused) = self
+        let (signed_in, subscription_refused, subscription) = self
             .ask(home, &["auth", "status", "--json"])?
             .and_then(|stdout| serde_json::from_slice::<Value>(&stdout).ok())
             .map(|status| sign_in_status(&status))
-            .unwrap_or((false, false));
+            .unwrap_or((false, false, false));
         Ok(Status {
+            subscription,
             version,
             signed_in,
             subscription_refused,
@@ -633,6 +640,7 @@ impl Claude {
             return Err(invalid(text::SIGNED_OUT));
         }
         Ok(Ready {
+            subscription: status.subscription,
             version: status.version,
         })
     }
@@ -880,6 +888,7 @@ mod sign_in_status_tests {
                 let expected = (
                     logged_in && (method == "api_key" || (subscription && SUBSCRIPTION_OFFERED)),
                     logged_in && subscription && !SUBSCRIPTION_OFFERED,
+                    logged_in && subscription && SUBSCRIPTION_OFFERED,
                 );
                 assert_eq!(
                     sign_in_status(&json!({"loggedIn": logged_in, "authMethod": method})),
@@ -900,7 +909,7 @@ mod sign_in_status_tests {
             json!({"authMethod": "api_key"}),
             json!({"loggedIn": "true", "authMethod": "api_key"}),
         ] {
-            assert_eq!(sign_in_status(&value), (false, false), "{value}");
+            assert_eq!(sign_in_status(&value), (false, false, false), "{value}");
         }
     }
 }

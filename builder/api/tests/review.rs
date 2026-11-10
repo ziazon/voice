@@ -675,3 +675,32 @@ fn apply_refresh_honors_the_members_local_folder_ceiling() {
     assert_eq!(h.calls(), calls);
     assert_eq!(fs::read(h.state("runs.jsonl")).unwrap(), ledger);
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_refresh_reports_usage_in_both_flows() {
+    let _serial = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.built();
+    h.keep();
+    h.stub(false, |s| s.replace("api_key", "claude.ai"));
+    let drafted = h.draft().unwrap();
+    assert_eq!(
+        drafted.spend.usage.as_deref(),
+        Some("Today, 1 call to Claude and about 1 thousand tokens, on your Claude subscription.")
+    );
+    let id = drafted.change.unwrap().id;
+    h.approve(&id, true).unwrap();
+    h.stub(true, |s| s.replace("api_key", "claude.ai"));
+    let mut progress = vec![];
+    let applied = h.apply(&id, &mut |p| progress.push(p)).unwrap();
+    assert_eq!(
+        applied.spend.usage.as_deref(),
+        Some("Today, 4 calls to Claude and about 4 thousand tokens, on your Claude subscription.")
+    );
+    assert_eq!(progress[0].spend.usage, drafted.spend.usage);
+    assert_eq!(
+        progress.last().unwrap().spend.usage.as_deref(),
+        Some("Today, 3 calls to Claude and about 3 thousand tokens, on your Claude subscription.")
+    );
+}

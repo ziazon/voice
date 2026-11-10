@@ -350,3 +350,65 @@ fn next_budget_obeys_each_optional_limit_and_rounds_down() {
         );
     }
 }
+
+#[test]
+fn used_today_counts_every_outcome_and_all_four_token_fields() {
+    let home = Scratch::new("used-today");
+    seed_ledger(&home.0, &[
+        json!({"day": today(), "cost_usd": 0.1, "outcome": "ok", "input_tokens": 10, "output_tokens": 20, "cache_creation_input_tokens": 30, "cache_read_input_tokens": 40}).to_string(),
+        json!({"day": today(), "cost_usd": 5, "outcome": "started"}).to_string(),
+        json!({"day": yesterday(), "cost_usd": 2, "input_tokens": 999}).to_string(),
+        json!({"day": today(), "cost_usd": 1, "outcome": "failed", "input_tokens": -1, "output_tokens": 1.5, "cache_creation_input_tokens": "7", "cache_read_input_tokens": null}).to_string(),
+    ]);
+    assert_eq!(
+        session(&home.0).used_today().unwrap(),
+        voice_agent::ledger::Used {
+            calls: 3,
+            tokens: 100
+        }
+    );
+}
+
+#[test]
+fn used_today_saturates_tokens_and_defaults_to_zero() {
+    let home = Scratch::new("used-overflow");
+    {
+        let session = session(&home.0);
+        assert_eq!(
+            session.used_today().unwrap(),
+            voice_agent::ledger::Used::default()
+        );
+    }
+    seed_ledger(
+        &home.0,
+        &[
+            json!({"day": today(), "cost_usd": 0, "input_tokens": u64::MAX, "output_tokens": 1})
+                .to_string(),
+            json!({"day": today(), "cost_usd": 0, "cache_read_input_tokens": 1}).to_string(),
+        ],
+    );
+    assert_eq!(
+        session(&home.0).used_today().unwrap(),
+        voice_agent::ledger::Used {
+            calls: 2,
+            tokens: u64::MAX
+        }
+    );
+}
+
+#[test]
+fn used_today_rejects_the_same_damaged_lines_as_spend() {
+    for raw in [
+        "not json".to_owned(),
+        json!({"day": today(), "cost_usd": -1}).to_string(),
+        json!({"day": yesterday(), "cost_usd": 0, "plan": "unknown"}).to_string(),
+    ] {
+        let home = Scratch::new("used-damaged");
+        seed_ledger(&home.0, &[raw]);
+        let session = session(&home.0);
+        assert_eq!(
+            session.used_today().unwrap_err().to_string(),
+            session.spent_today().unwrap_err().to_string()
+        );
+    }
+}

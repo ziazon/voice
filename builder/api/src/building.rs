@@ -112,8 +112,15 @@ pub(crate) fn open(home: &Path, slug: &str) -> Result<Session> {
         _ => failure(BUILD_SAVE),
     })
 }
-pub(crate) fn spend(session: &Session) -> Result<Spend> {
+pub(crate) fn spend(session: &Session, subscription: bool) -> Result<Spend> {
     Ok(Spend {
+        usage: if subscription {
+            Some(agent_text::usage(
+                session.used_today().map_err(|_| failure(LEDGER))?,
+            ))
+        } else {
+            None
+        },
         spent_usd: session.spent_today().map_err(|_| failure(LEDGER))?,
         daily_cap_usd: session.cap().daily_usd(),
     })
@@ -155,7 +162,7 @@ pub fn build_assistant_in(
     let claude = claude::find_in(home, path, fallbacks)
         .map_err(|e| failure(&claude_message(e)))?
         .with_stop(Arc::clone(&running.stop));
-    claude
+    let ready = claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
     let server = SelfHosted::load(home, &request.slug)
@@ -170,11 +177,12 @@ pub fn build_assistant_in(
         return Err(failure(PERMISSION));
     }
     let mut last_spend = Spend {
+        usage: None,
         spent_usd: 0.0,
         daily_cap_usd: session.cap().daily_usd(),
     };
     let mut send = |line: &str| {
-        if let Ok(now) = spend(&session) {
+        if let Ok(now) = spend(&session, ready.subscription) {
             last_spend = now;
         }
         progress(BuildProgress {
@@ -209,7 +217,7 @@ pub fn build_assistant_in(
         answered: count(prepared.answered),
         held_out: count(built.held),
         tested: built.backtest.is_some(),
-        spend: spend(&session).unwrap_or(last_spend),
+        spend: spend(&session, ready.subscription).unwrap_or(last_spend),
     })
 }
 pub fn stop_build_in(builds: &Builds, request: SlugRequest) -> Result<()> {
@@ -223,9 +231,18 @@ pub fn stop_build_in(builds: &Builds, request: SlugRequest) -> Result<()> {
     }
     Ok(())
 }
-pub fn spend_today_in(home: &Path, request: SlugRequest) -> Result<Spend> {
+pub fn spend_today_in(
+    home: &Path,
+    path: Option<&OsStr>,
+    fallbacks: &[PathBuf],
+    request: SlugRequest,
+) -> Result<Spend> {
     readable(home, &request.slug)?;
-    spend(&open(home, &request.slug)?)
+    let subscription = claude::SUBSCRIPTION_OFFERED
+        && claude::find_in(home, path, fallbacks)
+            .and_then(|claude| claude.status(home))
+            .is_ok_and(|status| status.subscription);
+    spend(&open(home, &request.slug)?, subscription)
 }
 fn object(home: &Path, slug: &str, name: &str) -> Option<Map<String, Value>> {
     let bytes = private::read_private_optional(home, slug, name).ok()??;
@@ -537,7 +554,13 @@ pub fn stop_build(request: SlugRequest) -> Result<()> {
     stop_build_in(builds(), request)
 }
 pub fn spend_today(request: SlugRequest) -> Result<Spend> {
-    spend_today_in(&home(FIND)?, request)
+    let home = home(FIND)?;
+    spend_today_in(
+        &home,
+        std::env::var_os("PATH").as_deref(),
+        &claude::fallbacks(&home),
+        request,
+    )
 }
 pub fn interview_status(request: SlugRequest) -> Result<InterviewStatus> {
     interview_status_in(&home(FIND)?, request)

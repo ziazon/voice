@@ -259,7 +259,7 @@ pub fn draft_refresh_in(
     let member = readable(home, &request.slug)?;
     let filters = Filters::compile(&member.filters).map_err(|_| failure(REVIEW_SETTINGS))?;
     let claude = claude::find_in(home, path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
-    claude
+    let ready = claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
     let server = SelfHosted::load(home, &request.slug).map_err(|_| failure(REVIEW_SETTINGS))?;
@@ -296,7 +296,7 @@ pub fn draft_refresh_in(
             refresh::Proposed::Nothing => None,
             refresh::Proposed::Drafted(p) => Some(change(p, false)),
         },
-        spend: spend(&session)?,
+        spend: spend(&session, ready.subscription)?,
     })
 }
 pub fn answer_refresh_in(home: &Path, request: RefreshAnswerRequest) -> Result<ReviewStatus> {
@@ -345,7 +345,7 @@ pub fn apply_refresh_in(
     let member = readable(home, &request.slug)?;
     let filters = Filters::compile(&member.filters).map_err(|_| failure(REVIEW_SETTINGS))?;
     let claude = claude::find_in(home, path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
-    claude
+    let ready = claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
     let server = SelfHosted::load(home, &request.slug).map_err(|_| failure(REVIEW_SETTINGS))?;
@@ -367,6 +367,7 @@ pub fn apply_refresh_in(
         return Err(failure(CHANGE_GONE));
     }
     let mut last_spend = Spend {
+        usage: None,
         spent_usd: 0.0,
         daily_cap_usd: session.cap().daily_usd(),
     };
@@ -382,7 +383,7 @@ pub fn apply_refresh_in(
         &request.id,
         &store::utc_now,
         &mut |line| {
-            if let Ok(now) = spend(&session) {
+            if let Ok(now) = spend(&session, ready.subscription) {
                 last_spend = now;
             }
             progress(BuildProgress {
@@ -410,7 +411,7 @@ pub fn apply_refresh_in(
     Ok(RefreshApplied {
         kept: finished.outcome == KeepOrRevert::Keep,
         reason: apply::reason(&measured.measurement),
-        spend: spend(&session).unwrap_or(last_spend),
+        spend: spend(&session, ready.subscription).unwrap_or(last_spend),
     })
 }
 pub fn show_report(request: SlugRequest) -> Result<ReportView> {

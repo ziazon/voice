@@ -1,9 +1,10 @@
+import type { Spend } from '../../types/generated/Spend'
 import { flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import { assistant, button, deferred, fakeBackend, screen } from '../../test-support'
 import BuildRun from './BuildRun.vue'
 
-const spend = { spentUsd: 3, dailyCapUsd: 50 }
+const spend: Spend = { spentUsd: 3, dailyCapUsd: 50, usage: null }
 const done = { answered: 1000, heldOut: 2, tested: false, spend }
 it('shows live lines and spend, finishes with counts and emits running', async () => {
   const call = deferred<typeof done>()
@@ -71,7 +72,7 @@ it.each(['resolve', 'reject'] as const)('ignores a stale initial spend %s after 
   const backend = fakeBackend({ spendToday: vi.fn().mockReturnValue(initial.promise), buildAssistant: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Reading your history', spend }); return call.promise }) })
   const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name })
   await button(wrapper, 'Start the build').trigger('click')
-  if (outcome === 'resolve') initial.resolve({ spentUsd: 0, dailyCapUsd: 50 })
+  if (outcome === 'resolve') initial.resolve({ spentUsd: 0, dailyCapUsd: 50, usage: null })
   else initial.reject({ message: 'Outdated failure' })
   await flushPromises()
   expect(wrapper.text()).toContain('Today, about $3.00')
@@ -114,7 +115,24 @@ it('explains what stopping keeps only while the build is running', async () => {
 })
 
 it('shows spending without a daily limit', async () => {
-  const wrapper = screen(BuildRun, fakeBackend({ spendToday: vi.fn().mockResolvedValue({ spentUsd: 3, dailyCapUsd: 0 }) }), { slug: 'example', name: assistant.name })
+  const wrapper = screen(BuildRun, fakeBackend({ spendToday: vi.fn().mockResolvedValue({ spentUsd: 3, dailyCapUsd: 0, usage: null }) }), { slug: 'example', name: assistant.name })
   await flushPromises()
   expect(wrapper.text()).toContain('Today, about $3.00, with no daily limit, as Claude Code estimates it.')
+})
+
+it('shows subscription usage without dollars initially, during progress and when done', async () => {
+  const usage = 'Today, 2 calls to Claude and 850 tokens, on your Claude subscription.'
+  const subscription = { ...spend, usage }
+  const call = deferred<typeof done>()
+  const backend = fakeBackend({ spendToday: vi.fn().mockResolvedValue(subscription), buildAssistant: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Reading your history', spend: subscription }); return call.promise }) })
+  const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name })
+  await flushPromises()
+  expect(wrapper.text()).toContain(usage)
+  expect(wrapper.text()).not.toContain('$')
+  await button(wrapper, 'Start the build').trigger('click')
+  expect(wrapper.text()).toContain(usage)
+  expect(wrapper.text()).not.toContain('$')
+  call.resolve({ ...done, spend: subscription }); await flushPromises()
+  expect(wrapper.text()).toContain(usage)
+  expect(wrapper.text()).not.toContain('$')
 })

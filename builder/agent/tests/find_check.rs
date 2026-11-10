@@ -141,6 +141,7 @@ fn check_reads_the_version_and_the_sign_in() {
     assert_eq!(
         ready,
         Ready {
+            subscription: false,
             version: "2.1.292".into(),
         }
     );
@@ -221,6 +222,7 @@ esac"#
             assert_eq!(
                 result.unwrap(),
                 Ready {
+                    subscription: true,
                     version: "2.1.292".into()
                 }
             );
@@ -278,5 +280,30 @@ fn sign_in_with_kind(kind: voice_agent::claude::SignIn) {
             ["--setting-sources", "project,local", "auth", "login", flag]
         );
         assert!(stub.argv(1).is_none());
+    }
+}
+
+#[test]
+fn status_subscription_tracks_auth_method_and_feature() {
+    let home = Scratch::new("status-subscription");
+    for method in ["api_key", "claude.ai", "oauth_token"] {
+        for logged_in in [true, false] {
+            let stub = Stub::new(&format!(
+                r#"case "$3" in
+--version) echo '2.1.292 (Claude Code)';;
+auth) echo '{{"loggedIn":{logged_in},"authMethod":"{method}"}}';;
+esac"#
+            ));
+            let status = stub.claude().status(&home.0).unwrap();
+            let expected =
+                logged_in && method != "api_key" && voice_agent::claude::SUBSCRIPTION_OFFERED;
+            assert_eq!(
+                status.subscription, expected,
+                "{method}, loggedIn={logged_in}"
+            );
+            if status.signed_in {
+                assert_eq!(stub.claude().check(&home.0).unwrap().subscription, expected);
+            }
+        }
     }
 }

@@ -137,7 +137,8 @@ async function test() {
       <div v-if="lines.length" class="overflow-auto" style="max-height: 16rem">
         <ul class="list-unstyled" aria-live="polite"><li v-for="(line, index) in lines" :key="index">{{ line }}</li></ul>
       </div>
-      <p v-if="spend" class="mt-2">Today, about ${{ spend.spentUsd.toFixed(2) }}<template v-if="spend.dailyCapUsd === 0">, with no daily limit</template><template v-else> of the ${{ spend.dailyCapUsd.toFixed(2) }} daily limit</template>, as Claude Code estimates it.</p>
+      <p v-if="spend?.usage" class="mt-2">{{ spend.usage }}</p>
+      <p v-else-if="spend" class="mt-2">Today, about ${{ spend.spentUsd.toFixed(2) }}<template v-if="spend.dailyCapUsd === 0">, with no daily limit</template><template v-else> of the ${{ spend.dailyCapUsd.toFixed(2) }} daily limit</template>, as Claude Code estimates it.</p>
     </div>
   </section>
 </template>

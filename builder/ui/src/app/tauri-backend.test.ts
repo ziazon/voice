@@ -105,8 +105,8 @@ it('buildAssistant passes a progress channel', async () => {
   expect(await tauriBackend.buildAssistant({ slug: 'example' }, onProgress)).toBe('answer')
   expect(invoke).toHaveBeenCalledExactlyOnceWith('build_assistant', { request: { slug: 'example' }, onProgress: expect.any(Channel) })
   const args = vi.mocked(invoke).mock.calls[0]![1] as { onProgress: Channel<unknown> }
-  args.onProgress.onmessage({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50 } })
-  expect(onProgress).toHaveBeenCalledExactlyOnceWith({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50 } })
+  args.onProgress.onmessage({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } })
+  expect(onProgress).toHaveBeenCalledExactlyOnceWith({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } })
 })
 
 it.each([
@@ -129,7 +129,7 @@ it('applyRefresh passes a progress channel whose messages reach the callback', a
   expect(await tauriBackend.applyRefresh(request, onProgress)).toBe('answer')
   expect(invoke).toHaveBeenCalledExactlyOnceWith('apply_refresh', { request, onProgress: expect.any(Channel) })
   const args = vi.mocked(invoke).mock.calls[0]![1] as { onProgress: Channel<unknown> }
-  const progress = { line: 'Testing it with the change on 2 tests.', spend: { spentUsd: 2, dailyCapUsd: 50 } }
+  const progress = { line: 'Testing it with the change on 2 tests.', spend: { spentUsd: 2, dailyCapUsd: 50, usage: null } }
   args.onProgress.onmessage(progress)
   expect(onProgress).toHaveBeenCalledExactlyOnceWith(progress)
 })

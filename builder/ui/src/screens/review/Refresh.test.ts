@@ -1,3 +1,4 @@
+import type { Spend } from '../../types/generated/Spend'
 import { flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import { button, deferred, fakeBackend, screen } from '../../test-support'
@@ -13,7 +14,7 @@ const change = { id: 'prop-one', drafted: '2026-10-25', summary: 'Offer a smalle
   { why: 'Remove a rule.', before: ['Always wait.'], after: [] },
 ] }
 const status: ReviewStatus = { built: true, areas: ['Planning'], tests: { waiting: 1, inUse: 2, retired: 0 }, byArea: [], change: null }
-const spend = { spentUsd: 3, dailyCapUsd: 50 }
+const spend: Spend = { spentUsd: 3, dailyCapUsd: 50, usage: null }
 const fallback = 'The test stopped before it finished, so your assistant is as it was. What was already finished is kept: test again to carry on.'
 it.each([
   [{ ...status, built: false }, 'Build your assistant first.'],
@@ -74,12 +75,12 @@ it.each([true, false])('tests an approved change with live lines and kept=%s', a
   await button(wrapper, 'Test it').trigger('click')
   expect(wrapper.emitted('running')).toEqual([[true]])
   expect(button(wrapper, 'Testing the change…').attributes('disabled')).toBeDefined()
-  progress({ line: 'Testing your assistant as it is now on 3 tests.', spend: { spentUsd: 1, dailyCapUsd: 50 } }); await flushPromises()
+  progress({ line: 'Testing your assistant as it is now on 3 tests.', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } }); await flushPromises()
   expect(wrapper.get('ul[aria-live="polite"]').text()).toContain('as it is now')
   progress({ line: 'Testing it with the change on 3 tests.', spend }); await flushPromises()
   expect(wrapper.get('ul[aria-live="polite"]').text()).toContain('with the change')
   expect(wrapper.text()).toContain('Today, about $3.00')
-  call.resolve({ kept, reason: 'All tests checked.', spend: { spentUsd: 4, dailyCapUsd: 50 } }); await flushPromises()
+  call.resolve({ kept, reason: 'All tests checked.', spend: { spentUsd: 4, dailyCapUsd: 50, usage: null } }); await flushPromises()
   expect(backend.applyRefresh).toHaveBeenCalledExactlyOnceWith({ slug: 'example', id: 'prop-one' }, expect.any(Function))
   expect(wrapper.emitted('running')).toEqual([[true], [false]])
   expect(wrapper.get(kept ? '.alert-success' : '.alert-info').text()).toBe(kept ? 'Kept. Your assistant now works this way. All tests checked.' : 'Undone. Your assistant is as it was, and your answers stay saved for the next refresh. All tests checked.')
@@ -156,8 +157,27 @@ it('explains approval and rejection only while awaiting a decision', async () =>
 })
 
 it('shows spending without a daily limit', async () => {
-  const wrapper = screen(Refresh, fakeBackend({ draftRefresh: vi.fn().mockResolvedValue({ change: null, spend: { spentUsd: 3, dailyCapUsd: 0 } }) }), { slug: 'example', status })
+  const wrapper = screen(Refresh, fakeBackend({ draftRefresh: vi.fn().mockResolvedValue({ change: null, spend: { spentUsd: 3, dailyCapUsd: 0, usage: null } }) }), { slug: 'example', status })
   await button(wrapper, 'Draft a change').trigger('click')
   await flushPromises()
   expect(wrapper.text()).toContain('Today, about $3.00, with no daily limit, as Claude Code estimates it.')
+})
+
+it.each(['draft', 'test'] as const)('shows subscription usage without dollars after %s', async action => {
+  const usage = 'Today, 2 calls to Claude and 850 tokens, on your Claude subscription.'
+  const subscription = { ...spend, usage }
+  const call = deferred<RefreshApplied>()
+  const backend = fakeBackend({
+    draftRefresh: vi.fn().mockResolvedValue({ change: null, spend: subscription }),
+    applyRefresh: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Testing.', spend: subscription }); return call.promise }),
+  })
+  const wrapper = screen(Refresh, backend, { slug: 'example', status: action === 'draft' ? status : { ...status, change: { ...change, approved: true } } })
+  await button(wrapper, action === 'draft' ? 'Draft a change' : 'Test it').trigger('click'); await flushPromises()
+  expect(wrapper.text()).toContain(usage)
+  expect(wrapper.text()).not.toContain('$')
+  if (action === 'test') {
+    call.resolve({ kept: true, reason: 'Passed.', spend: subscription }); await flushPromises()
+    expect(wrapper.text()).toContain(usage)
+    expect(wrapper.text()).not.toContain('$')
+  }
 })

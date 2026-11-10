@@ -20,6 +20,13 @@ use voice_ingest::private::{
     StateLock, lock_existing_state, lock_state, read_private_optional, write_private,
 };
 
+/// Today's calls and tokens, for a subscription sign-in's report: no dollars.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Used {
+    pub calls: u64,
+    pub tokens: u64,
+}
+
 pub const LIMIT: &str = "limit.json";
 
 const LEDGER: &str = "runs.jsonl";
@@ -227,6 +234,21 @@ impl Session {
         self.recorded_today()
     }
 
+    /// Today's calls and tokens, including calls still running.
+    pub fn used_today(&self) -> Result<Used> {
+        let _held = self.held();
+        let today = local_day((self.clock)());
+        let mut used = Used::default();
+        for raw in self.ledger_lines()? {
+            let (day, _, _) = parse_line(&raw).ok_or_else(|| self.damaged())?;
+            if day == today {
+                used.calls = used.calls.saturating_add(1);
+                used.tokens = used.tokens.saturating_add(tokens_in(&raw));
+            }
+        }
+        Ok(used)
+    }
+
     pub(crate) fn home(&self) -> &Path {
         &self.home
     }
@@ -407,6 +429,21 @@ fn parse_line(raw: &str) -> Option<(String, f64, bool)> {
         _ => return None,
     };
     Some((day, cost, stopped))
+}
+
+/// Tokens only feed a report: absent or invalid counts never stop spending.
+fn tokens_in(raw: &str) -> u64 {
+    let line: Value = serde_json::from_str(raw).expect("ledger_lines validated JSON");
+    [
+        "input_tokens",
+        "output_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+    ]
+    .into_iter()
+    .fold(0_u64, |total, key| {
+        total.saturating_add(line.get(key).and_then(Value::as_u64).unwrap_or(0))
+    })
 }
 
 fn line_id(raw: &str) -> Option<String> {
