@@ -35,6 +35,10 @@ pub const PER_THIN: usize = 4;
 pub enum Form {
     Full,
     Short,
+    /// A practice round's answers go to `voice keep`.
+    Practice {
+        per_kind: usize,
+    },
 }
 
 impl Form {
@@ -49,30 +53,35 @@ impl Form {
         match self {
             Self::Full => STEP,
             Self::Short => "interview-short",
+            Self::Practice { .. } => "interview-practice",
         }
     }
     pub fn questions_file(self) -> &'static str {
         match self {
             Self::Full => QUESTIONS_FILE,
             Self::Short => "interview-short-questions.json",
+            Self::Practice { .. } => "interview-practice-questions.json",
         }
     }
     pub fn answers_file(self) -> &'static str {
         match self {
             Self::Full => ANSWERS_FILE,
             Self::Short => "interview-short-answers.json",
+            Self::Practice { .. } => "interview-practice-answers.json",
         }
     }
     pub fn out(self) -> &'static str {
         match self {
             Self::Full => OUT,
             Self::Short => "decisions-interview-short.jsonl",
+            Self::Practice { .. } => "decisions-interview-practice.jsonl",
         }
     }
     pub fn count(self, weights: &[(String, Option<usize>)]) -> usize {
         match self {
             Self::Full => COUNT,
             Self::Short => PER_THIN * weights.len(),
+            Self::Practice { per_kind } => per_kind * weights.len(),
         }
     }
 }
@@ -226,7 +235,17 @@ pub fn prompt(form: Form, book: &Book, weights: &[(String, Option<usize>)]) -> S
             None => format!("- {kind}\n"),
         })
         .collect();
-    let (listed, spread) = if form == Form::Short {
+    let (listed, spread) = if let Form::Practice { per_kind } = form {
+        let noun = if per_kind == 1 {
+            "question"
+        } else {
+            "questions"
+        };
+        (
+            " (the ones to practise)",
+            format!("Exactly {per_kind} {noun} on each kind of decision listed above."),
+        )
+    } else if form == Form::Short {
         (
             " (the kinds of decision their history holds the fewest examples of)",
             format!("Exactly {PER_THIN} questions on each kind of decision listed above."),
@@ -330,7 +349,7 @@ pub fn check(
             "options": options,
         }));
     }
-    if form == Form::Short
+    if matches!(form, Form::Short | Form::Practice { .. })
         && weights
             .iter()
             .any(|(kind, _)| !clean.iter().any(|q| q["header"] == *kind))

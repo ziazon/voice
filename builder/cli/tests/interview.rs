@@ -516,3 +516,235 @@ fn interview_draft_honors_the_members_local_folder_ceiling() {
     assert_eq!(f.calls(), 0);
     assert!(!f.state().join("runs.jsonl").exists());
 }
+
+/// A practice question on each given header, with no recommended answer.
+fn practice_draft(headers: &[&str]) -> Value {
+    let questions: Vec<Value> = headers
+        .iter()
+        .enumerate()
+        .map(|(at, header)| {
+            let n = at + 1;
+            json!({"n": n, "header": header, "question": format!("Situation {n}: what first?"),
+                   "multiSelect": false, "recommended": null,
+                   "options": [{"label": "Cut it", "description": "Less work"},
+                               {"label": "Keep it", "description": "More work"}]})
+        })
+        .collect();
+    json!({"questions": questions})
+}
+
+#[test]
+fn practice_drafts_two_named_kinds_and_names_only_them_in_the_prompt() {
+    let f = Fixture::new();
+    f.signed_in(&ok_reply(&practice_draft(&["methods", "framing"])));
+    f.write_state("decisions.jsonl", &corpus(2));
+    let out = f.run(&[
+        "interview",
+        "draft",
+        &f.member(),
+        "--kind",
+        "methods",
+        "--kind",
+        "framing",
+        "--per-kind",
+        "1",
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(f.calls(), 1);
+    let saved: Value = serde_json::from_slice(
+        &fs::read(f.state().join("interview-practice-questions.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved["questions"].as_array().unwrap().len(), 2);
+    assert_eq!(saved["questions"][0]["header"], "methods");
+    assert_eq!(saved["questions"][1]["header"], "framing");
+    assert!(!f.state().join("interview-questions.json").exists());
+    assert!(!f.state().join("interview-short-questions.json").exists());
+    assert!(
+        text(&out.stdout).starts_with(&format!(
+            "Drafted 2 practice questions on: methods, framing.\nsaved to ~/.claude/state/wren/interview-practice-questions.json\nKeep each answer as a test for your assistant: voice keep {} --signal <a file in its private folder>\n",
+            f.member()
+        )),
+        "{}",
+        text(&out.stdout)
+    );
+    let ledger = fs::read_to_string(f.state().join("runs.jsonl")).unwrap();
+    assert!(!ledger.is_empty());
+    assert!(ledger.lines().all(|line| {
+        serde_json::from_str::<Value>(line).unwrap()["step"] == "interview-practice"
+    }));
+    let asked = fs::read_to_string(f.bin.join("stdin")).unwrap();
+    assert!(
+        asked.contains("The kinds of decision to ask about (the ones to practise):"),
+        "{asked}"
+    );
+    assert!(asked.contains("- methods\n"), "{asked}");
+    assert!(asked.contains("- framing\n"), "{asked}");
+    assert!(
+        asked.contains("Exactly 1 question on each kind of decision listed above."),
+        "{asked}"
+    );
+    assert!(!asked.contains("- scope\n"), "{asked}");
+    assert!(!asked.contains("- sequencing\n"), "{asked}");
+}
+
+#[test]
+fn practice_defaults_to_four_questions_per_kind() {
+    let f = Fixture::new();
+    f.signed_in(&ok_reply(&practice_draft(&["tooling"; 4])));
+    let out = f.run(&["interview", "draft", &f.member(), "--kind", "tooling"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let saved: Value = serde_json::from_slice(
+        &fs::read(f.state().join("interview-practice-questions.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved["questions"].as_array().unwrap().len(), 4);
+    let asked = fs::read_to_string(f.bin.join("stdin")).unwrap();
+    assert!(
+        asked.contains("Exactly 4 questions on each kind"),
+        "{asked}"
+    );
+}
+
+#[test]
+fn practice_refusals_make_no_call_and_write_nothing() {
+    let cases: &[(&[&str], i32, Option<&str>)] = &[
+        (
+            &["--kind", "other"],
+            1,
+            Some("\"other\" isn't one of the kinds of decision"),
+        ),
+        (
+            &["--kind", "nope"],
+            1,
+            Some("\"nope\" isn't one of the kinds of decision"),
+        ),
+        (
+            &["--kind", "scope", "--kind", "scope"],
+            1,
+            Some("\"scope\" is named twice."),
+        ),
+        (
+            &[
+                "--kind",
+                "scope",
+                "--kind",
+                "sequencing",
+                "--kind",
+                "methods",
+                "--kind",
+                "framing",
+                "--kind",
+                "writing-voice",
+                "--kind",
+                "communication",
+            ],
+            1,
+            Some("Name at most 5 kinds of decision."),
+        ),
+        (&["--kind", "scope", "--per-kind", "0"], 2, None),
+        (&["--kind", "scope", "--per-kind", "5"], 2, None),
+        (&["--per-kind", "2"], 2, None),
+    ];
+    for &(flags, code, message) in cases {
+        let f = Fixture::new();
+        f.signed_in(&ok_reply(&practice_draft(&["scope"])));
+        let member = f.member();
+        let args = [&["interview", "draft", member.as_str()][..], flags].concat();
+        let out = f.run(&args);
+        assert!(!out.status.success(), "{flags:?}");
+        assert_eq!(f.calls(), 0, "{flags:?}");
+        assert!(
+            !f.state().join("interview-practice-questions.json").exists(),
+            "{flags:?}"
+        );
+        assert!(!f.state().join("runs.jsonl").exists(), "{flags:?}");
+        assert_eq!(
+            out.status.code(),
+            Some(code),
+            "{flags:?}: {}",
+            text(&out.stderr)
+        );
+        if let Some(message) = message {
+            assert!(
+                text(&out.stderr).contains(message),
+                "{flags:?}: {}",
+                text(&out.stderr)
+            );
+        }
+    }
+}
+
+#[test]
+fn practice_retries_a_missing_kind_then_refuses_the_draft() {
+    let f = Fixture::new();
+    f.signed_in(&ok_reply(&practice_draft(&["methods", "methods"])));
+    let out = f.run(&[
+        "interview",
+        "draft",
+        &f.member(),
+        "--kind",
+        "methods",
+        "--kind",
+        "framing",
+        "--per-kind",
+        "1",
+    ]);
+    assert!(!out.status.success());
+    assert_eq!(f.calls(), 2, "{}", text(&out.stderr));
+    assert!(!f.state().join("interview-practice-questions.json").exists());
+}
+
+#[test]
+fn practice_stays_apart_from_waiting_interview_questions_and_replaces_only_itself() {
+    let f = Fixture::new();
+    f.signed_in(&ok_reply(&practice_draft(&["methods", "framing"])));
+    let short = short_draft().to_string();
+    f.write_state("interview-short-questions.json", &short);
+    let member = f.member();
+    let args = [
+        "interview",
+        "draft",
+        &member,
+        "--kind",
+        "methods",
+        "--kind",
+        "framing",
+        "--per-kind",
+        "1",
+    ];
+    let out = f.run(&args);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(f.calls(), 1);
+    let short_path = f.state().join("interview-short-questions.json");
+    assert_eq!(fs::read(&short_path).unwrap(), short.as_bytes());
+    assert!(!f.state().join("interview-questions.json").exists());
+    let practice_path = f.state().join("interview-practice-questions.json");
+    let original = fs::read(&practice_path).unwrap();
+
+    let out = f.run(&args);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains(voice_build::text::ALREADY_DRAFTED),
+        "{}",
+        text(&out.stderr)
+    );
+    assert_eq!(f.calls(), 1);
+    assert_eq!(fs::read(&practice_path).unwrap(), original);
+    assert_eq!(fs::read(&short_path).unwrap(), short.as_bytes());
+
+    let mut replacement = practice_draft(&["methods", "framing"]);
+    replacement["questions"][0]["question"] = json!("A task is blocked: what first?");
+    f.signed_in(&ok_reply(&replacement));
+    let out = f.run(&[&args[..], &["--replace"]].concat());
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(f.calls(), 2);
+    let replaced = fs::read(&practice_path).unwrap();
+    assert_ne!(replaced, original);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&replaced).unwrap(),
+        replacement
+    );
+    assert_eq!(fs::read(&short_path).unwrap(), short.as_bytes());
+    assert!(!f.state().join("interview-questions.json").exists());
+}

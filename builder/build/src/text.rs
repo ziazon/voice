@@ -8,6 +8,32 @@ pub const ALREADY_ANSWERED: &str =
 pub const ALL_LEFT_OUT: &str =
     "Every answer looked personal or secret, so none was kept and nothing was saved.";
 pub const NOTHING_TO_ASK: &str = "Your assistant's settings name no kinds of decision to ask about (codebook.categories holds only other).";
+pub const TOO_MANY_PRACTICE_KINDS: &str = "Name at most 5 kinds of decision.";
+
+pub fn invalid_practice_kind(kind: &str) -> String {
+    format!(
+        "{kind:?} isn't one of the kinds of decision in your assistant's settings (other doesn't count)."
+    )
+}
+
+pub fn repeated_practice_kind(kind: &str) -> String {
+    format!("{kind:?} is named twice.")
+}
+
+pub fn drafted_practice(count: usize, kinds: &[(String, Option<usize>)]) -> String {
+    let kinds = kinds
+        .iter()
+        .map(|(kind, _)| kind.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("Drafted {count} practice questions on: {kinds}.")
+}
+
+pub fn practice_next(folder: &str) -> String {
+    format!(
+        "Keep each answer as a test for your assistant: voice keep {folder} --signal <a file in its private folder>"
+    )
+}
 
 pub fn enough(answered: usize) -> String {
     format!(

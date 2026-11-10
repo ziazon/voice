@@ -762,6 +762,12 @@ enum InterviewCommand {
         /// Labels from an earlier build, to find the kinds of decision your history holds least of.
         #[arg(long)]
         labels: Option<String>,
+        /// Draft a practice round on this kind of decision only; repeat for up to 5 kinds. Keep each answer with voice keep.
+        #[arg(long, value_name = "KIND")]
+        kind: Vec<String>,
+        /// With --kind: how many questions on each kind, 1 to 4 (default 4).
+        #[arg(long, value_name = "N", default_value_t = 4, requires = "kind", value_parser = clap::value_parser!(u8).range(1..=4))]
+        per_kind: u8,
         #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
@@ -1817,6 +1823,8 @@ fn report(member_dir: PathBuf) -> Result<()> {
 struct DraftArgs {
     corpus: String,
     labels: Option<String>,
+    kind: Vec<String>,
+    per_kind: u8,
     model: String,
     daily_cap_usd: Option<f64>,
     call_cap_usd: Option<f64>,
@@ -1834,9 +1842,30 @@ fn draft_plan(
     book: &voice_steps::book::Book,
     args: &DraftArgs,
 ) -> Result<DraftPlan> {
-    use voice_build::{interview, report};
+    use voice_build::{interview, report, text};
     use voice_ingest::{corpus::read_records, private::read_private_optional};
     use voice_steps::{input::read_objects, labels::tally};
+    if !args.kind.is_empty() {
+        for (at, kind) in args.kind.iter().enumerate() {
+            if kind == "other" || !book.categories.contains(kind) {
+                return Err(Error::Invalid(text::invalid_practice_kind(kind)));
+            }
+            if args.kind[..at].contains(kind) {
+                return Err(Error::Invalid(text::repeated_practice_kind(kind)));
+            }
+        }
+        if args.kind.len() > interview::MOST_THIN_KINDS {
+            return Err(Error::Invalid(text::TOO_MANY_PRACTICE_KINDS.into()));
+        }
+        return Ok(DraftPlan {
+            answered: 0,
+            form: interview::Form::Practice {
+                per_kind: usize::from(args.per_kind),
+            },
+            weights: args.kind.iter().map(|kind| (kind.clone(), None)).collect(),
+            weighted: false,
+        });
+    }
     let records = match read_private_optional(home, &member.slug, &args.corpus)? {
         Some(bytes) => read_records(&args.corpus, &bytes)?,
         None => Vec::new(),
@@ -1938,10 +1967,12 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     )?;
     println!(
         "{}",
-        if form == interview::Form::Short {
-            text::drafted_short(form.count(&weights), &weights)
-        } else {
-            text::drafted(interview::COUNT, weighted)
+        match form {
+            interview::Form::Full => text::drafted(interview::COUNT, weighted),
+            interview::Form::Short => text::drafted_short(form.count(&weights), &weights),
+            interview::Form::Practice { .. } => {
+                text::drafted_practice(form.count(&weights), &weights)
+            }
         }
     );
     println!(
@@ -1949,7 +1980,14 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
         member.slug,
         form.questions_file()
     );
-    println!("{}", text::swap(&member_dir.display().to_string()));
+    let folder = member_dir.display().to_string();
+    println!(
+        "{}",
+        match form {
+            interview::Form::Practice { .. } => text::practice_next(&folder),
+            _ => text::swap(&folder),
+        }
+    );
     println!("{}", closing_spend(&session, ready.subscription)?);
     Ok(())
 }
@@ -2714,6 +2752,8 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 member_dir,
                 corpus,
                 labels,
+                kind,
+                per_kind,
                 model,
                 daily_cap_usd,
                 call_cap_usd,
@@ -2723,6 +2763,8 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 DraftArgs {
                     corpus,
                     labels,
+                    kind,
+                    per_kind,
                     model,
                     daily_cap_usd,
                     call_cap_usd,
