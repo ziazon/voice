@@ -45,7 +45,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   builds (one flake in `tests/stop.rs` at load about 12, passed alone and on a full rerun), the UI
   suite (569 passed) and its typecheck. Mutations: removing the usage paragraph from `BuildRun.vue`
   failed one Build test, from `Refresh.vue` two Refresh tests; dropping cache reads from the sum and
-  forcing `subscription: false` were each caught (Codex's report). `bash scripts/ci-local.sh`: pending.
+  forcing `subscription: false` were each caught (Codex's report). `bash scripts/ci-local.sh` on
+  `ce26213` (2026-11-10, run `211454-r1`, load about 8): the first run stopped on
+  `egress::tests::header_deadline_is_absolute` (a connection reset at its end-of-stream read; VF7a
+  doesn't touch `egress.rs`, and the test failed 1 of 5 runs alone, so it was filed as VF8); the
+  rerun passed in full (*ci-local: all passed*).
 - **Reviews:** security review (sub-task): no HIGH or MEDIUM; one LOW kept as a
   known limit: in testers' builds `voice spend` and the app's spend read find Claude Code (which
   makes Voice's profile folders if missing) and start two sandboxed lookups (version and sign-in
