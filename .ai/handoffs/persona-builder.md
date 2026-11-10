@@ -21,7 +21,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   so V1 proved them by mutation, each restored byte for byte (`mutate-check.sh`, after a green
   baseline of the 14 note tests): the note not passed to the record (2 failed), the control-character
   check removed (1 failed), the trim removed (3 failed). Outside the sandbox: voice-grow 23 passed,
-  the CLI refresh suite 35 passed. `bash scripts/ci-local.sh` on `c6eacb6` (load about 19): every step passed until `voice-agent`'s `sign_in_opener_failure_kills_the_child` (a 5 s timing check this slice doesn't touch; it passed 3 of 3 runs alone); the rerun with 2 workers was cut short by run `002721-r1`'s time limit. **A green `ci-local.sh` is owed before the land.**
+  the CLI refresh suite 35 passed. `bash scripts/ci-local.sh` on `c6eacb6` (load about 19): every step passed until `voice-agent`'s `sign_in_opener_failure_kills_the_child` (a 5 s timing check this slice doesn't touch; it passed 3 of 3 runs alone); the rerun with 2 workers was cut short by run `002721-r1`'s time limit. Run `022728-r1` reran it on `60b8762` (4 test threads, load about 10): `ci-local: all passed`.
 - **Reviews:** security review (sub-task): no HIGH or MEDIUM. Three LOWs kept as known limits: the
   note file's own mode isn't checked (only its folders are; `voice keep` reads the same way, and the
   runner writes its notes 0600 in a 0700 folder); format characters such as bidi marks pass (the note
