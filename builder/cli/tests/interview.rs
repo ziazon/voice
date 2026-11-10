@@ -620,6 +620,16 @@ fn practice_refusals_make_no_call_and_write_nothing() {
             Some("\"nope\" isn't one of the kinds of decision"),
         ),
         (
+            &["--kind", "no\"pe"],
+            1,
+            Some("\"no\\\"pe\" isn't one of the kinds of decision"),
+        ),
+        (
+            &["--kind", "nope", "--kind", "nope"],
+            1,
+            Some("\"nope\" isn't one of the kinds of decision"),
+        ),
+        (
             &["--kind", "scope", "--kind", "scope"],
             1,
             Some("\"scope\" is named twice."),
@@ -665,6 +675,13 @@ fn practice_refusals_make_no_call_and_write_nothing() {
             "{flags:?}: {}",
             text(&out.stderr)
         );
+        if flags == ["--kind", "nope", "--kind", "nope"] {
+            assert!(
+                !text(&out.stderr).contains("is named twice"),
+                "{flags:?}: {}",
+                text(&out.stderr)
+            );
+        }
         if let Some(message) = message {
             assert!(
                 text(&out.stderr).contains(message),

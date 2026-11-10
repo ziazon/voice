@@ -765,7 +765,7 @@ enum InterviewCommand {
         /// Draft a practice round on this kind of decision only; repeat for up to 5 kinds. Keep each answer with voice keep.
         #[arg(long, value_name = "KIND")]
         kind: Vec<String>,
-        /// With --kind: how many questions on each kind, 1 to 4 (default 4).
+        /// With --kind: how many questions on each kind, 1 to 4.
         #[arg(long, value_name = "N", default_value_t = 4, requires = "kind", value_parser = clap::value_parser!(u8).range(1..=4))]
         per_kind: u8,
         #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
