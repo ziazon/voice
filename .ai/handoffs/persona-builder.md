@@ -2,6 +2,26 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF11: the build stop test gives its stand-in 30 seconds to start (2026-11-10, lane: V1)
+
+- **What:** `voice-api`'s `stop_second_call_is_busy_then_reuses_first_kept_reply` stopped one
+  `ci-local.sh` run on `lane-v1/VF10` (load 20 to 25) and failed 1 of 3 runs alone at load 20:
+  `wait_for` gave the stub 5 s to write `stdin1` (`stub never reached …`), and a `SendError` panic
+  followed from the dropped receiver. `wait_for` only proves the stub started, so its bound in
+  `builder/api/tests/building.rs` is now 30 s (the stub call that writes `stdin1` then sleeps 30 s, so
+  the stop still lands while it runs). Every behaviour bound is unchanged (the stopped build answers
+  within 10 s). A new test, `wait_for_allows_a_slow_stub_to_start`, writes the file after 6 s. Test
+  only. Brief: `plans/briefs/VF11-build-stop-stub-start.md`. Likely cause, not confirmed: a loaded Mac
+  takes over 5 s to start the build and the Python stub.
+- **Who built it:** Codex, from the brief; her run hit its 30-minute limit after green, before her
+  report. Her sandbox blocks the fixtures' private connection, so 21 `building` tests failed there
+  with that message.
+- **Verified:** red first on its assertion: the new test failed with `stub never reached …/started`
+  (6.1 s), then passed with the 30 s bound (Codex's log).
+- **Not verified yet (owed before the land):** the whole `building` suite outside her sandbox, a
+  mutation check, fmt and clippy, the security review sub-task and `ci-local.sh` (the resource gate
+  held, load1 at 351% of effective cores, when V1 tried).
+
 ## VF10: the stdin refusal test accepts a command that stops reading early (2026-11-10, lane: V1)
 
 - **What:** `voice-cli`'s `invalid_stdin_is_a_usage_error_before_searching` failed now and then on a
