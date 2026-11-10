@@ -26,8 +26,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   note file's own mode isn't checked (only its folders are; `voice keep` reads the same way, and the
   runner writes its notes 0600 in a 0700 folder); format characters such as bidi marks pass (the note
   is never shown or put in a prompt today: refuse or escape them the day it is); a missing state folder
-  gets `voice mine`'s wording (unreachable, a proposal must exist there). Verifier: not required (spec
-  says no; under 400 lines).
+  gets `voice mine`'s wording (unreachable, a proposal must exist there). Verifier (Fable): PASS on
+  `8403e88`, run at the PR because the brief and records took the diff past 400 lines; three nits
+  kept as they are: format characters pass (the LOW above), a note with Windows line endings is
+  refused as holding a control character, and a byte-order mark before `{` is refused as the wrong
+  shape. All three refuse, or never reach a reader.
 - **Not verified:** nothing reads the note yet; G3.1b's runner is the first writer.
 
 ## G0.1: one kept and one undone refresh on a scratch member, and what it cost (2026-11-09, lane: V1)
