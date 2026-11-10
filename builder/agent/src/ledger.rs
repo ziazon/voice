@@ -433,7 +433,9 @@ fn parse_line(raw: &str) -> Option<(String, f64, bool)> {
 
 /// Tokens only feed a report: absent or invalid counts never stop spending.
 fn tokens_in(raw: &str) -> u64 {
-    let line: Value = serde_json::from_str(raw).expect("ledger_lines validated JSON");
+    let Ok(line) = serde_json::from_str::<Value>(raw) else {
+        return 0;
+    };
     [
         "input_tokens",
         "output_tokens",
@@ -503,4 +505,25 @@ pub fn utc_stamp(time: SystemTime) -> String {
         tm.tm_min,
         tm.tm_sec
     )
+}
+
+#[cfg(test)]
+mod tokens_in_tests {
+    #[test]
+    fn tokens_in_counts_whole_numbers_and_never_panics() {
+        for (raw, expected) in [
+            ("not json", 0),
+            ("{}", 0),
+            (
+                r#"{"input_tokens":-1,"output_tokens":2.5,"cache_read_input_tokens":3}"#,
+                3,
+            ),
+            (
+                r#"{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":4,"cache_read_input_tokens":8}"#,
+                15,
+            ),
+        ] {
+            assert_eq!(super::tokens_in(raw), expected, "{raw}");
+        }
+    }
 }
