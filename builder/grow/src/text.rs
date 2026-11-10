@@ -151,6 +151,9 @@ pub const DRAFTING: &str = "Drafting a change from your answers";
 pub const NOTHING_TO_REFRESH: &str =
     "There's nothing new to learn from yet. Keep answering your assistant, then try again.";
 pub const NO_OPEN: &str = "No change is waiting for your answer.";
+pub const NOTE_SHAPE: &str = "The note file must hold {\"note\": \"...\"} and nothing else.";
+pub const NOTE_EMPTY: &str = "The note is empty.";
+pub const NOTE_CONTROL: &str = "The note can't hold control characters.";
 pub const DAMAGED_PROPOSAL: &str = "That saved change looks damaged, so it wasn't shown. Draft a new one with `voice refresh propose`.";
 pub const DIFF_BUG: &str = "The drafted change couldn't be checked, so nothing was saved.";
 pub const REPLY_SHAPE: &str = "The drafted change didn't have the expected shape.";

@@ -211,7 +211,7 @@ fn waiting_and_approved_changes_block_calls_but_stale_changes_do_not() {
     let p = s.drafted();
     assert!(s.propose().err().unwrap().to_string().contains("waiting"));
     assert_eq!(s.calls(), 1);
-    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap();
+    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, None, NOW).unwrap();
     assert!(s.propose().err().unwrap().to_string().contains("approved"));
     assert_eq!(s.calls(), 1);
     s.unchanged();
@@ -273,16 +273,60 @@ fn answers_save_subject_role_and_second_answer_is_refused() {
     for decision in [Decision::Approved, Decision::Rejected] {
         let s = Setup::new(1);
         let p = s.drafted();
-        let a = refresh::answer(&s.store(), &s.dir, &p.id, decision, NOW).unwrap();
+        let a = refresh::answer(&s.store(), &s.dir, &p.id, decision, None, NOW).unwrap();
         assert_eq!(a.schema, APPROVAL_V1);
         assert_eq!(a.role, GivenBy::Subject);
         assert_eq!(a.decision, decision);
         assert_eq!(a.proposal, p.id);
         assert_eq!(a.note, None);
         assert_eq!(s.store().approval(&a.id).unwrap(), Some(a));
-        assert!(refresh::answer(&s.store(), &s.dir, &p.id, decision, NOW).is_err());
+        assert!(refresh::answer(&s.store(), &s.dir, &p.id, decision, None, NOW).is_err());
         s.unchanged();
     }
+}
+
+fn saved_answer_note(decision: Decision, note: Option<&str>) {
+    let s = Setup::new(1);
+    // This seam needs only a saved proposal, not a model call to draft one.
+    let p = Proposal {
+        schema: PROPOSAL_V1.into(),
+        id: "prop-2026-03-04-001".into(),
+        persona: s.f.member.slug.clone(),
+        persona_kind: PersonaKind::Person,
+        created: NOW.into(),
+        base: version(BASE.as_bytes()),
+        summary: "Keep the first lesson short.".into(),
+        changes: vec![Change {
+            file: "decisions.md".into(),
+            diff: diff::unified("decisions.md", BASE, &format!("{BASE}\n")).unwrap(),
+            why: "Leave room to adjust.".into(),
+        }],
+        cases: vec!["case-2026-03-04-001".into()],
+    };
+    let store = s.store();
+    store.save_proposal(&p).unwrap();
+    let a = refresh::answer(&store, &s.dir, &p.id, decision, note, NOW).unwrap();
+    assert_eq!(a.note.as_deref(), note);
+    assert_eq!(
+        store.approval(&a.id).unwrap().unwrap().note.as_deref(),
+        note
+    );
+    s.unchanged();
+}
+
+#[test]
+fn answer_saves_approval_note() {
+    saved_answer_note(Decision::Approved, Some("ok"));
+}
+
+#[test]
+fn answer_saves_rejection_note() {
+    saved_answer_note(Decision::Rejected, Some("ok"));
+}
+
+#[test]
+fn answer_without_note_saves_none() {
+    saved_answer_note(Decision::Approved, None);
 }
 #[test]
 fn answer_requires_lock_and_known_change() {
@@ -290,10 +334,20 @@ fn answer_requires_lock_and_known_change() {
     let p = s.drafted();
     {
         let _lock = lock_state(&s.f.home, &s.f.member.slug).unwrap();
-        assert!(refresh::answer(&s.store(), &s.dir, &p.id, Decision::Rejected, NOW).is_err());
+        assert!(refresh::answer(&s.store(), &s.dir, &p.id, Decision::Rejected, None, NOW).is_err());
     }
     assert!(s.store().approvals().unwrap().is_empty());
-    assert!(refresh::answer(&s.store(), &s.dir, "prop-missing", Decision::Rejected, NOW).is_err());
+    assert!(
+        refresh::answer(
+            &s.store(),
+            &s.dir,
+            "prop-missing",
+            Decision::Rejected,
+            None,
+            NOW
+        )
+        .is_err()
+    );
     s.unchanged();
 }
 #[test]
@@ -308,8 +362,8 @@ fn approve_requires_current_base_and_new_answers_reject_does_not() {
             case.status = Status::Active;
             s.store().append_case(&case).unwrap();
         }
-        assert!(refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).is_err());
-        assert!(refresh::answer(&s.store(), &s.dir, &p.id, Decision::Rejected, NOW).is_ok());
+        assert!(refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, None, NOW).is_err());
+        assert!(refresh::answer(&s.store(), &s.dir, &p.id, Decision::Rejected, None, NOW).is_ok());
     }
 }
 #[test]
@@ -463,7 +517,7 @@ fn six_word_runs_from_situation_expected_and_signal_answer_are_caught() {
 fn prompt_has_complete_records_and_rejected_drafts_but_no_approval() {
     let s = Setup::new(1);
     let p = s.drafted();
-    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Rejected, NOW).unwrap();
+    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Rejected, None, NOW).unwrap();
     let (cases, signals) = s.asked();
     let prompt = refresh::refresh_prompt(
         &s.f.member.codebook.as_ref().unwrap().categories,
@@ -566,7 +620,7 @@ fn only_new_cases_are_asked_in_oldest_order_with_a_limit_of_forty() {
 fn rejected_changes_are_available_to_later_calls_but_approvals_are_not() {
     let s = Setup::new(1);
     let p = s.drafted();
-    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Rejected, NOW).unwrap();
+    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Rejected, None, NOW).unwrap();
     s.drafted();
     let prompt = fs::read_to_string(s.stub.join("stdin1")).unwrap();
     assert!(prompt.contains(&p.summary));
@@ -707,7 +761,7 @@ fn prompt_uses_only_the_five_newest_related_rejections_and_added_lines() {
 fn an_undone_change_is_in_the_prompt_and_no_longer_blocks_refresh() {
     let s = Setup::new(1);
     let p = s.drafted();
-    let a = refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap();
+    let a = refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, None, NOW).unwrap();
     let measurement = Measurement {
         schema: MEASUREMENT_V1.into(),
         id: "meas-2026-03-04-001".into(),

@@ -736,6 +736,9 @@ enum RefreshCommand {
         /// The change's id, as `refresh show` prints it.
         #[arg(value_name = "CHANGE")]
         proposal: String,
+        /// Your words to keep with your answer: a JSON file in your assistant's private folder, NAME or FOLDER/NAME, holding {"note": "..."}
+        #[arg(long, value_name = "FILE")]
+        note: Option<String>,
     },
     /// Reject a change and keep your answers for the next refresh.
     Reject {
@@ -743,6 +746,9 @@ enum RefreshCommand {
         /// The change's id, as `refresh show` prints it.
         #[arg(value_name = "CHANGE")]
         proposal: String,
+        /// Your words to keep with your answer: a JSON file in your assistant's private folder, NAME or FOLDER/NAME, holding {"note": "..."}
+        #[arg(long, value_name = "FILE")]
+        note: Option<String>,
     },
 }
 
@@ -2139,6 +2145,7 @@ fn refresh_answer(
     member_dir: PathBuf,
     proposal: String,
     decision: voice_grow::record::Decision,
+    note: Option<String>,
 ) -> Result<()> {
     use voice_grow::{
         record::Decision,
@@ -2148,7 +2155,45 @@ fn refresh_answer(
     };
     let (member, home) = member_and_home(&member_dir)?;
     let store = Store::open(&home, &member)?;
-    refresh::answer(&store, &member_dir, &proposal, decision, &utc_now())?;
+    if let Some(note) = note {
+        use voice_ingest::private::{place, read_private_at_max, validate_json_name};
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Note {
+            note: String,
+        }
+        let (folder, name) = place(&note)?;
+        validate_json_name(name)?;
+        let _lock = history_lock_existing(&home, &member.slug, || nothing_yet(&member.slug))?;
+        let input = read_private_at_max(&home, &member.slug, folder, name, 16 * 1024)?;
+        let shape = || Error::Invalid(text::NOTE_SHAPE.into());
+        let input = std::str::from_utf8(&input).map_err(|_| shape())?;
+        // Serde also accepts structs from arrays; this file must hold an object.
+        if !input.trim_start().starts_with('{') {
+            return Err(shape());
+        }
+        let input: Note = serde_json::from_str(input).map_err(|_| shape())?;
+        let note = input.note.trim();
+        if note.is_empty() {
+            return Err(Error::Invalid(text::NOTE_EMPTY.into()));
+        }
+        if note
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\n' | '\t'))
+        {
+            return Err(Error::Invalid(text::NOTE_CONTROL.into()));
+        }
+        refresh::answer_locked(
+            &store,
+            &member_dir,
+            &proposal,
+            decision,
+            Some(note),
+            &utc_now(),
+        )?;
+    } else {
+        refresh::answer(&store, &member_dir, &proposal, decision, None, &utc_now())?;
+    }
     println!(
         "{}",
         match decision {
@@ -2713,11 +2758,23 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             RefreshCommand::Approve {
                 member_dir,
                 proposal,
-            } => refresh_answer(member_dir, proposal, voice_grow::record::Decision::Approved),
+                note,
+            } => refresh_answer(
+                member_dir,
+                proposal,
+                voice_grow::record::Decision::Approved,
+                note,
+            ),
             RefreshCommand::Reject {
                 member_dir,
                 proposal,
-            } => refresh_answer(member_dir, proposal, voice_grow::record::Decision::Rejected),
+                note,
+            } => refresh_answer(
+                member_dir,
+                proposal,
+                voice_grow::record::Decision::Rejected,
+                note,
+            ),
         },
         Some(Command::Keep { member_dir, signal }) => keep_answer(member_dir, signal),
         Some(Command::Cases { member_dir }) => cases(member_dir),

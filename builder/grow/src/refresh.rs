@@ -464,10 +464,11 @@ pub fn answer(
     member_dir: &Path,
     id: &str,
     decision: Decision,
+    note: Option<&str>,
     now: &str,
 ) -> Result<Approval> {
     let _lock = store.lock()?;
-    answer_locked(store, member_dir, id, decision, now)
+    answer_locked(store, member_dir, id, decision, note, now)
 }
 
 /// The caller holds the assistant's state lock.
@@ -476,6 +477,7 @@ pub fn answer_locked(
     member_dir: &Path,
     id: &str,
     decision: Decision,
+    note: Option<&str>,
     now: &str,
 ) -> Result<Approval> {
     let proposal = store
@@ -495,7 +497,7 @@ pub fn answer_locked(
         at: now.into(),
         role: GivenBy::Subject,
         decision,
-        note: None,
+        note: note.map(str::to_owned),
     };
     store.save_approval_unlocked(&approval)?;
     Ok(approval)

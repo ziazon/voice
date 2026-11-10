@@ -129,7 +129,15 @@ impl Setup {
     }
     fn approved(&self, candidate: &str) -> Proposal {
         let p = self.proposal(candidate);
-        refresh::answer(&self.store(), &self.dir, &p.id, Decision::Approved, NOW).unwrap();
+        refresh::answer(
+            &self.store(),
+            &self.dir,
+            &p.id,
+            Decision::Approved,
+            None,
+            NOW,
+        )
+        .unwrap();
         p
     }
     fn rewrite(&self, p: &Proposal) {
@@ -391,7 +399,7 @@ fn regression_reverts_even_when_every_new_test_passes() {
     p.base = version(base.as_bytes());
     p.changes[0].diff = diff::unified("decisions.md", &base, BASE).unwrap();
     s.rewrite(&p);
-    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap();
+    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, None, NOW).unwrap();
     let m = done(&s, &p);
     assert_eq!(m.outcome, KeepOrRevert::Revert);
     assert_eq!(
@@ -468,6 +476,7 @@ fn refusal(mode: &str) {
             } else {
                 Decision::Approved
             },
+            None,
             NOW,
         )
         .unwrap();
@@ -970,7 +979,7 @@ fn crlf_decisions_keep_their_line_endings() {
     let candidate = CANDIDATE.replace('\n', "\r\n");
     fs::write(s.dir.join("decisions.md"), &base).unwrap();
     let p = s.proposal_from(&base, &candidate);
-    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap();
+    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, None, NOW).unwrap();
     let m = s.measured(&p.id);
     assert_eq!(m.outcome, KeepOrRevert::Keep);
     s.finish(&p, &m).unwrap();
@@ -1043,7 +1052,7 @@ fn waiting_tracks_unanswered_approved_and_measured_changes() {
         refresh::waiting(&s.store(), &s.dir).unwrap(),
         Some((p.clone(), false))
     );
-    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap();
+    refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, None, NOW).unwrap();
     assert_eq!(
         refresh::waiting(&s.store(), &s.dir).unwrap(),
         Some((p.clone(), true))
@@ -1056,13 +1065,13 @@ fn locked_answer_matches_answer_without_taking_another_lock() {
     let expected = {
         let s = Setup::new();
         let p = s.proposal(CANDIDATE);
-        refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, NOW).unwrap()
+        refresh::answer(&s.store(), &s.dir, &p.id, Decision::Approved, None, NOW).unwrap()
     };
     let s = Setup::new();
     let p = s.proposal(CANDIDATE);
     let store = s.store();
     let _lock = voice_ingest::private::lock_state(&s.f.home, &s.f.member.slug).unwrap();
-    let actual = refresh::answer_locked(&store, &s.dir, &p.id, Decision::Approved, NOW);
+    let actual = refresh::answer_locked(&store, &s.dir, &p.id, Decision::Approved, None, NOW);
     assert!(
         actual.is_ok(),
         "locked answer must reuse the caller's lock: {actual:?}"

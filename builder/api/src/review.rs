@@ -319,6 +319,7 @@ pub fn answer_refresh_in(home: &Path, request: RefreshAnswerRequest) -> Result<R
         } else {
             Decision::Rejected
         },
+        None,
         &store::utc_now(),
     )
     .map_err(|_| {

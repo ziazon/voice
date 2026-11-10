@@ -234,6 +234,7 @@ fn propose_show_approve_and_wait_without_changing_the_member() {
     assert_eq!(approvals[0]["proposal"], id);
     assert_eq!(approvals[0]["decision"], "approved");
     assert_eq!(approvals[0]["role"], "subject");
+    assert!(approvals[0].get("note").is_none());
     let out = f.run(&["refresh", "propose", &f.member()]);
     assert!(!out.status.success());
     assert!(
@@ -269,6 +270,164 @@ fn reject_saves_the_answer_and_leaves_no_open_change() {
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert_eq!(text(&out.stdout), "No change is waiting for your answer.\n");
     assert_eq!(f.snapshot(), before);
+}
+
+#[test]
+fn approve_with_note_keeps_trimmed_words_and_newlines_privately() {
+    answer_with_note("approve", "approved", "notes/a.json");
+}
+
+#[test]
+fn note_help_explains_the_private_json_file() {
+    let f = Fixture::new();
+    for command in ["approve", "reject"] {
+        let out = f.run(&["refresh", command, "--help"]);
+        assert!(out.status.success());
+        let shown = text(&out.stdout);
+        assert!(shown.contains("--note <FILE>"), "{shown}");
+        assert!(shown.contains("Your words to keep with your answer: a JSON file in your assistant's private folder, NAME or FOLDER/NAME, holding {\"note\": \"...\"}"), "{shown}");
+    }
+}
+
+#[test]
+fn reject_with_note_keeps_trimmed_words_and_newlines_privately() {
+    answer_with_note("reject", "rejected", "a.json");
+}
+
+fn answer_with_note(command: &str, decision: &str, name: &str) {
+    let python = python().expect("python3 is required for the stub claude");
+    let f = Fixture::new();
+    f.built(&python);
+    f.keep_answers();
+    let out = f.run(&["refresh", "propose", &f.member()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let proposals = f.records("prop-");
+    let id = proposals[0]["id"].as_str().unwrap();
+    if let Some((folder, _)) = name.split_once('/') {
+        fs::create_dir(f.state().join(folder)).unwrap();
+        fs::set_permissions(f.state().join(folder), fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    f.write_state(
+        name,
+        r#"{"note": "  Yes, try it.\nKeep the old rule too.  "}"#,
+    );
+    let out = f.run(&["refresh", command, &f.member(), id, "--note", name]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let expected = match command {
+        "approve" => {
+            "Approved. Your assistant changes only after the change is tested on all your answers and nothing gets worse.\n"
+        }
+        "reject" => "Rejected. Nothing changed. Your answers stay saved for the next refresh.\n",
+        _ => unreachable!(),
+    };
+    assert_eq!(text(&out.stdout), expected);
+    assert!(out.stderr.is_empty());
+    let approvals = f.records("appr-");
+    assert_eq!(approvals.len(), 1);
+    assert_eq!(approvals[0]["decision"], decision);
+    assert_eq!(approvals[0]["note"], "Yes, try it.\nKeep the old rule too.");
+}
+
+fn refused_note(name: &str, contents: Option<&str>, sentence: &str) {
+    let python = python().expect("python3 is required for the stub claude");
+    // Both decisions must validate the note before saving any answer.
+    for command in ["approve", "reject"] {
+        let f = Fixture::new();
+        f.built(&python);
+        f.keep_answers();
+        let out = f.run(&["refresh", "propose", &f.member()]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        let proposals = f.records("prop-");
+        let id = proposals[0]["id"].as_str().unwrap();
+        if let Some(contents) = contents {
+            f.write_state(name, contents);
+        }
+        let out = f.run(&["refresh", command, &f.member(), id, "--note", name]);
+        let stderr = text(&out.stderr);
+        assert!(!out.status.success(), "{command}: expected a refusal");
+        assert!(stderr.contains(sentence), "{command}: {stderr}");
+        assert_eq!(out.status.code(), Some(1));
+        assert!(out.stdout.is_empty());
+        assert!(f.records("appr-").is_empty());
+        let out = f.run(&["refresh", "approve", &f.member(), id]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        assert_eq!(f.records("appr-").len(), 1);
+    }
+}
+
+macro_rules! note_refusal {
+    ($test:ident, $name:expr, $contents:expr, $sentence:expr) => {
+        #[test]
+        fn $test() {
+            refused_note($name, $contents, $sentence);
+        }
+    };
+}
+
+note_refusal!(
+    note_empty,
+    "a.json",
+    Some(r#"{"note":"   "}"#),
+    "The note is empty."
+);
+note_refusal!(
+    note_control,
+    "a.json",
+    Some(r#"{"note":"a\u0007b"}"#),
+    "The note can't hold control characters."
+);
+note_refusal!(
+    note_non_string,
+    "a.json",
+    Some(r#"{"note":1}"#),
+    "The note file must hold {\"note\": \"...\"} and nothing else."
+);
+note_refusal!(
+    note_extra_key,
+    "a.json",
+    Some(r#"{"note":"x","by":"y"}"#),
+    "The note file must hold {\"note\": \"...\"} and nothing else."
+);
+note_refusal!(
+    note_not_json,
+    "a.json",
+    Some("not json"),
+    "The note file must hold {\"note\": \"...\"} and nothing else."
+);
+note_refusal!(
+    note_missing_key,
+    "a.json",
+    Some("{}"),
+    "The note file must hold {\"note\": \"...\"} and nothing else."
+);
+note_refusal!(
+    note_array,
+    "a.json",
+    Some(r#"["x"]"#),
+    "The note file must hold {\"note\": \"...\"} and nothing else."
+);
+note_refusal!(
+    note_not_json_name,
+    "a.txt",
+    Some(r#"{"note":"x"}"#),
+    "the file name must be a plain name ending .json"
+);
+note_refusal!(
+    note_two_folders,
+    "a/b/c.json",
+    None,
+    "a file here is NAME or FOLDER/NAME inside the assistant's private folder"
+);
+note_refusal!(note_missing_file, "missing.json", None, "doesn't exist");
+
+#[test]
+fn note_over_16_kib_is_refused_before_saving() {
+    let contents = json!({"note": "x".repeat(16 * 1024)}).to_string();
+    refused_note(
+        "a.json",
+        Some(&contents),
+        "a.json is too big to read (over 16 KiB)",
+    );
 }
 
 #[test]
