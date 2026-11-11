@@ -4519,7 +4519,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "voice-agent"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "serde",
@@ -4532,7 +4532,7 @@ dependencies = [
 
 [[package]]
 name = "voice-api"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "serde",
@@ -4551,7 +4551,7 @@ dependencies = [
 
 [[package]]
 name = "voice-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rfd",
  "serde_json",
@@ -4562,7 +4562,7 @@ dependencies = [
 
 [[package]]
 name = "voice-build"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "serde",
@@ -4576,7 +4576,7 @@ dependencies = [
 
 [[package]]
 name = "voice-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "serde",
@@ -4593,7 +4593,7 @@ dependencies = [
 
 [[package]]
 name = "voice-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "serde",
@@ -4603,7 +4603,7 @@ dependencies = [
 
 [[package]]
 name = "voice-grow"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "regex",
  "serde",
@@ -4618,7 +4618,7 @@ dependencies = [
 
 [[package]]
 name = "voice-ingest"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flate2",
  "libc",
@@ -4633,7 +4633,7 @@ dependencies = [
 
 [[package]]
 name = "voice-keystore"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "keyring-core",
  "windows-native-keyring-store",
@@ -4642,7 +4642,7 @@ dependencies = [
 
 [[package]]
 name = "voice-panel-runner"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "regex",
@@ -4657,7 +4657,7 @@ dependencies = [
 
 [[package]]
 name = "voice-panels"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "regex",
  "serde",
@@ -4666,7 +4666,7 @@ dependencies = [
 
 [[package]]
 name = "voice-save"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.23.1",
  "libc",
@@ -4680,7 +4680,7 @@ dependencies = [
 
 [[package]]
 name = "voice-steps"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "regex",
  "serde_json",

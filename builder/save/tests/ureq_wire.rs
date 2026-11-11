@@ -137,7 +137,10 @@ fn bearer_only_in_authorization_header_and_user_agent() {
         Some("Bearer invented-wire-token")
     );
     assert_eq!(raw.matches("invented-wire-token").count(), 1);
-    assert_eq!(header(&raw, "User-Agent"), Some("voice/0.1.0"));
+    assert_eq!(
+        header(&raw, "User-Agent"),
+        Some(concat!("voice/", env!("CARGO_PKG_VERSION")))
+    );
     assert!(raw.starts_with("GET / HTTP/1.1\r\n"));
     assert!(raw.ends_with("\r\n\r\n"));
 }
