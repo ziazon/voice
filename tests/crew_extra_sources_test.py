@@ -8,6 +8,7 @@ folder.
 """
 import json
 import os
+import resource
 import stat
 import sys
 import time
@@ -392,10 +393,13 @@ class Mail(Sources):
         self.assertGreater(signal.getitimer(signal.ITIMER_REAL)[0], 25)
 
     def test_an_over_long_mail_is_skipped_before_the_filters_run(self):
-        started = time.monotonic()
+        before = resource.getrusage(resource.RUSAGE_CHILDREN)
         stdout, records = self.mine([mail(ROBIN, SAM, "Mon, 02 Mar 2026 10:00:00 +0000",
                                           "Keep the quiz on Friday.\n\n" + "a" * 120000)])
-        self.assertLess(time.monotonic() - started, 5)
+        after = resource.getrusage(resource.RUSAGE_CHILDREN)
+        used = (after.ru_utime - before.ru_utime) + (after.ru_stime - before.ru_stime)
+        # Processor time, not the clock: a slow pattern costs it, a busy computer doesn't.
+        self.assertLess(used, 3, f"the mining run used {used:.1f} s of processor time")
         self.assertEqual(records, [])
         self.assertIn("1 too long", stdout)
 
