@@ -40,6 +40,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   (`--features claude-subscription`), because the Verifier ran a feature-less `cargo test -p voice-cli` in the
   same worktree mid-gate and rebuilt the shared binary; alone it passed 3 of 3. The re-run on `3fe09a5`
   was still running when run `051137-r1` hit its time limit; the next run reruns it before the PR.
+  (Run `194044-r1`) gated with VF10 and VF11 as one stacked head, `144a4f6`: `ci-local.sh` all
+  passed (VF11's record has the details).
 - **Not verified:** a live practice draft through a real Claude Code. G3.2b's runner, and G3.1c's
   attended walk after it, are the first live callers.
 
@@ -58,10 +60,17 @@ One record per slice, newest first. Paraphrase only; no real person.
   report. Her sandbox blocks the fixtures' private connection, so 21 `building` tests failed there
   with that message.
 - **Verified:** red first on its assertion: the new test failed with `stub never reached …/started`
-  (6.1 s), then passed with the 30 s bound (Codex's log).
-- **Not verified yet (owed before the land):** the whole `building` suite outside her sandbox, a
-  mutation check, fmt and clippy, the security review sub-task and `ci-local.sh` (the resource gate
-  held, load1 at 351% of effective cores, when V1 tried).
+  (6.1 s), then passed with the 30 s bound (Codex's log). (Run `194044-r1`) one mutation caught:
+  the bound put back to 5 s fails the new test (`stub never reached …/started`), restored byte for
+  byte (`cmp`).
+- **Reviews:** security review (sub-task): no findings. `wait_for` is called only to prove the stub
+  started; the stop is sent after it returns and timed on its own (10 s), so the longer bound can
+  hide only a slow start. The new test writes only inside its own temporary home. Verifier: not
+  required (test only).
+- **Gate:** VF10, VF11 and G3.2a gated as one stacked head, `144a4f6` on `lane-v1/stack-1110`:
+  `bash scripts/ci-local.sh` all passed (4 test threads, load about 100% of effective cores), the
+  whole `building` suite outside the sandbox included. They land as one PR so `main`'s tree is the
+  gated one.
 
 ## VF10: the stdin refusal test accepts a command that stops reading early (2026-11-10, lane: V1)
 
