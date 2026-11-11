@@ -2,6 +2,25 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF9: the sign-in stop test waits for its files (2026-11-11, lane: V1)
+
+- **What:** `voice-agent`'s `stopped_sign_in_kills_the_process_group_within_a_second` set the stop
+  after a fixed 200 ms, then read the `parent` and `pid` files its stand-in writes when it starts. On a
+  busy computer the stop could come first, so a file never existed and `Stub::file` panicked with
+  `NotFound`. Now the stand-in writes `pid` through a temporary file and `mv`, the stop waits for `pid`
+  (polled every 10 ms, at most 10 s), and the one-second bound is timed from the stop, not the start.
+  Test only. Brief: `plans/briefs/VF9-sign-in-stop-test.md`.
+- **Who built it:** Codex, from the brief. Her sandbox can't open the loopback connection the sign-in
+  uses, so none of her test runs reached the test; V1 ran every proof below outside it.
+- **Verified:** (run `045310-r1`, load about 160 to 280% of cores) the cause is confirmed: with the
+  stand-in slowed by `sleep 0.5`, the old test fails with the same `NotFound` at
+  `tests/common/mod.rs:96`, and the new one passes. Mutation (`cp`, restored, `cmp`): `kill_group`
+  killing only the parent fails the new test with `pid <n> survived`. 10 of 10 runs in a row passed.
+  fmt and clippy clean.
+- **Reviews:** security review (sub-task): no findings; it traced that `SIGN_IN_STOPPED` comes only
+  after the stop is set, so the bound can't pass by saturating to zero. Verifier: not required (spec
+  says no; test only).
+
 ## G3.2a: draft practice questions on kinds you name (2026-11-10, lane: V1)
 
 - **What:** `voice interview draft` chose its own kinds of decision: every kind for a full interview,
