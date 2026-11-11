@@ -2,6 +2,25 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF12: the over-long mail test measures processor time (2026-11-11, lane: V1)
+
+- **What:** `tests/crew_extra_sources_test.py`'s `test_an_over_long_mail_is_skipped_before_the_filters_run`
+  gave a whole `crew sources mine` run 5 s on the clock. At load 21 to 32 on an 8-core Mac it took
+  7.0 s inside `ci-local.sh` on `lane-v1/VF9` and 8.5 s alone, so VF9's gate could not go green. Now it
+  bounds the processor time the mining run used (`resource.getrusage(RUSAGE_CHILDREN)`, user plus
+  system) at 3 s. A slow pattern costs processor time; a busy computer costs only clock time. Test
+  only. Brief: `plans/briefs/VF12-over-long-mail-processor-time.md`.
+- **Who built it:** Codex, from the brief, then a one-line fix-up from V1's review (the bound from 5 s
+  to 3 s).
+- **Verified:** red as found: the old test failed alone at 8.5 s (load about 280 to 390% of cores).
+  Green: the new one uses about 0.5 s of processor time. Mutation (`cp`, restored, `cmp`): with the
+  `MAX_MESSAGE_CHARS` skip removed, the run used 4.4 to 4.5 s of processor time (49 s on the clock),
+  so at a 5 s bound only the `1 too long` check caught it; at 3 s the processor bound fails first
+  (`4.4 not less than 3`). The whole file passed (34 tests).
+- **Reviews:** security review (sub-task, on VF9 and VF12 together): no findings; `self.mine` waits for
+  the CLI, so `RUSAGE_CHILDREN` counts it, and a full hang still hits its 60 s timeout. Verifier: not
+  required (spec says no; test only).
+
 ## VF9: the sign-in stop test waits for its files (2026-11-11, lane: V1)
 
 - **What:** `voice-agent`'s `stopped_sign_in_kills_the_process_group_within_a_second` set the stop
