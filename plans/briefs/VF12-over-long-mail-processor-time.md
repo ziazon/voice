@@ -29,12 +29,12 @@ def test_an_over_long_mail_is_skipped_before_the_filters_run(self):
     after = resource.getrusage(resource.RUSAGE_CHILDREN)
     used = (after.ru_utime - before.ru_utime) + (after.ru_stime - before.ru_stime)
     # Processor time, not the clock: a slow pattern costs it, a busy computer doesn't.
-    self.assertLess(used, 5, f"the mining run used {used:.1f} s of processor time")
+    self.assertLess(used, 3, f"the mining run used {used:.1f} s of processor time")
     ...the two existing assertions, unchanged...
 ```
 
 `RUSAGE_CHILDREN` counts only children the test process has waited for; `self.mine` waits for the
-CLI before it returns. Keep the same 5-second bound. Remove the now-unused `time` import only if
+CLI before it returns. Bound it at 3 seconds: green uses about 0.5 s, and with the skip removed the run uses about 4.5 s. Remove the now-unused `time` import only if
 nothing else in the file uses it (it is used elsewhere today: keep it). Change no other test, no
 assertion text other than this one, and no file under `scripts/`.
 
