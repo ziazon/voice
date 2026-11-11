@@ -230,23 +230,32 @@ fn sign_in_timeout_and_failed_spawn_are_fixed_messages() {
 #[cfg(any(not(target_os = "macos"), feature = "claude-subscription"))]
 fn stopped_sign_in_kills_the_process_group_within_a_second() {
     let home = Scratch::new("sign-in-stop");
-    let stub = Stub::new("echo $$ > \"$here/parent\"\nsleep 30 &\necho $! > \"$here/pid\"\nwait");
+    let stub = Stub::new(
+        "echo $$ > \"$here/parent\"\nsleep 30 &\necho $! > \"$here/pid.tmp\"\nmv \"$here/pid.tmp\" \"$here/pid\"\nwait",
+    );
     let claude = found(&stub, &home.0);
     let stop = AtomicBool::new(false);
-    let begun = Instant::now();
-    let error = thread::scope(|scope| {
-        scope.spawn(|| {
-            thread::sleep(Duration::from_millis(200));
+    let (error, stopped_at, returned) = thread::scope(|scope| {
+        let stopping = scope.spawn(|| {
+            let pid = stub.folder.0.join("pid");
+            let started = Instant::now();
+            while !pid.exists() && started.elapsed() < Duration::from_secs(10) {
+                thread::sleep(Duration::from_millis(10));
+            }
+            let stopped_at = Instant::now();
             stop.store(true, Ordering::SeqCst);
+            stopped_at
         });
-        claude
-            .sign_in_with(&home.0, &stop, test_sign_in(), &|_| {
-                panic!("no browser requested")
-            })
-            .unwrap_err()
+        let result = claude.sign_in_with(&home.0, &stop, test_sign_in(), &|_| {
+            panic!("no browser requested")
+        });
+        let returned = Instant::now();
+        let stopped_at = stopping.join().unwrap();
+        (result.unwrap_err(), stopped_at, returned)
     });
     assert_eq!(error.to_string(), text::SIGN_IN_STOPPED);
-    assert!(begun.elapsed() < Duration::from_secs(1));
+    let elapsed = returned.duration_since(stopped_at);
+    assert!(elapsed < Duration::from_secs(1), "stop took {elapsed:?}");
     for name in ["parent", "pid"] {
         let pid: i32 = stub.file(name).trim().parse().unwrap();
         let started = Instant::now();
