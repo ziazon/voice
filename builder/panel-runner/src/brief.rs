@@ -4,9 +4,9 @@ use crate::{
     run::Convened,
     text,
 };
+use radio_panels::{DeliberationState, RoundReport, clean, fence};
 use std::collections::BTreeMap;
 use voice_core::member::Member;
-use voice_panels::{DeliberationState, RoundReport, clean, fence};
 
 fn section(parts: &mut Vec<String>, label: &str, value: &str) {
     let fenced = fence(label, value).or_else(|_| fence(text::POST, &format!("{label}\n{value}")));

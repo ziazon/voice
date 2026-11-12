@@ -135,9 +135,9 @@ fn withheld(prose: &str, category: &str, forbidden: &str) {
     let first = post(prose);
     // The leak must be the only reason to withhold this otherwise valid post.
     assert!(
-        voice_panels::parse_block(
+        radio_panels::parse_block(
             &first,
-            voice_panels::Kind::List,
+            radio_panels::Kind::List,
             Some(1),
             1,
             "pebble",
@@ -325,9 +325,9 @@ fn text_guard_checks_forwarded_controls() {
 
 #[test]
 fn decoded_block_values_check_forwarded_forms() {
+    use radio_panels::{Block, Position};
     use voice_ingest::filters::Filters;
     use voice_panel_runner::guard::{post_findings, post_findings_refs};
-    use voice_panels::{Block, Position};
 
     let member = voice_core::member::read_member(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crew/_template/member.json"),

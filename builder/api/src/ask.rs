@@ -5,6 +5,7 @@ use crate::{
     building,
     history::{self, failure},
 };
+use radio_panels::{clean, fence};
 use serde_json::{Value, json};
 use std::time::SystemTime;
 use std::{
@@ -25,7 +26,6 @@ use voice_core::{
     error::Error,
 };
 use voice_ingest::filters::{Filters, Kind};
-use voice_panels::{clean, fence};
 
 pub mod text;
 type Result<T> = std::result::Result<T, Failure>;

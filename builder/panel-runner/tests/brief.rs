@@ -1,8 +1,8 @@
 //! The public brief boundary keeps instructions apart from every untrusted section.
+use radio_panels::{DeliberationState, Kind, fence, parse_block, step_round};
 use std::{collections::BTreeMap, path::Path};
 use voice_core::member::{Member, read_member};
 use voice_panel_runner::{Convene, Convened, brief::make_brief};
-use voice_panels::{DeliberationState, Kind, fence, parse_block, step_round};
 
 fn member() -> Member {
     let mut member = read_member(

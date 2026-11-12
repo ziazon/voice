@@ -1,4 +1,5 @@
 //! Public model-call and leak-guard contracts, using only invented assistants and details.
+use radio_panels::{Block, Position};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -18,7 +19,6 @@ use voice_panel_runner::{
     guard,
     turns::{ClaudeTurns, Turns},
 };
-use voice_panels::{Block, Position};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 

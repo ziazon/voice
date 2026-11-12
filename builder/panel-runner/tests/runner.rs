@@ -1,6 +1,9 @@
 //! Final public-API specifications for running panels on an invented person's Mac.
 #![cfg(unix)]
 
+use radio_panels::{
+    Block, DeliberationState, Kind, Position, build_result, fence, render_markdown, step_round,
+};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -17,9 +20,6 @@ use voice_core::crew::{Decisions, NewMember, new_member_embedded};
 use voice_panel_runner::{
     Clock, Convene, Convened, Progress, Ran, Resume, TimedRound, Turn, TurnUsage, Turns, convene,
     detail, list, resume, status,
-};
-use voice_panels::{
-    Block, DeliberationState, Kind, Position, build_result, fence, render_markdown, step_round,
 };
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -416,7 +416,7 @@ fn previous_post_cannot_close_its_labelled_fence() {
     ok(home.start(&turns, &AtomicBool::new(false), &mut |_| {}));
     let expected = fence(
         "round 1 post from pebble",
-        &voice_panels::clean(&injected, 8000),
+        &radio_panels::clean(&injected, 8000),
     )
     .unwrap();
     let calls = turns.calls();
@@ -1067,6 +1067,38 @@ fn reopening_a_closed_panel_fences_the_old_result_and_the_new_steer() {
         && e["author"] == "convener"
         && e["text"] == steer
         && e["round"] == old_round + 1));
+}
+
+#[test]
+fn reopening_a_closed_panel_reads_dissent_saved_before_the_rename() {
+    let home = Home::new();
+    let turns = Script::new(Mode::Agree);
+    let first = ok(home.start(&turns, &AtomicBool::new(false), &mut |_| {}));
+    assert_eq!(first.status, "closed");
+    let path = home.room(&first.id).join("result.json");
+    let mut saved = read(&path);
+    let dissent = saved["dissent"].as_array_mut().unwrap();
+    if dissent.is_empty() {
+        dissent.push(json!({
+            "crewmate": "Moss",
+            "holdout": true,
+            "objections": "Too slow for a first try."
+        }));
+    } else {
+        for entry in dissent {
+            let entry = entry.as_object_mut().unwrap();
+            let member = entry.remove("member").unwrap();
+            entry.insert("crewmate".into(), member);
+        }
+    }
+    fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    let next = Script::new(Mode::Agree);
+    let mut request = request_resume(&first.id);
+    request.steer = Some("Try a smaller trial.".into());
+    let ran = ok(home.continue_with(request, &next, &AtomicBool::new(false)));
+    assert_eq!(ran.status, "closed");
+    assert_eq!(ran.id, first.id);
+    assert!(!next.calls().is_empty());
 }
 
 #[test]

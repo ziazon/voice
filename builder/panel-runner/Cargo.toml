@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-voice-panels = { path = "../panels" }
+radio-panels = { git = "https://github.com/awna-ai/radio", tag = "v0.1.0" }
 voice-core = { path = "../core" }
 voice-ingest = { path = "../ingest" }
 voice-agent = { path = "../agent" }

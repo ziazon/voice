@@ -96,6 +96,42 @@ fn list_and_detail_return_the_closed_panels_dtos() {
 }
 
 #[test]
+fn a_saved_dissent_reads_back_under_its_member_name() {
+    assert_saved_dissent_reads("member");
+}
+
+#[test]
+fn a_dissent_saved_before_the_rename_still_reads() {
+    assert_saved_dissent_reads("crewmate");
+}
+
+fn assert_saved_dissent_reads(key: &str) {
+    let h = Home::new(true);
+    let (ran, _) = convene_with_progress(&h);
+    let path = h
+        .path
+        .join(".claude/voice/panels")
+        .join(&ran.id)
+        .join("result.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    saved["dissent"] = serde_json::json!([{
+        "holdout": true,
+        "objections": "Too slow for a first try."
+    }]);
+    saved["dissent"][0][key] = serde_json::json!("Moss");
+    fs::write(path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    let detail = panel_in(&h.path, PanelIdRequest { id: ran.id }).unwrap();
+    assert_eq!(
+        detail.result.unwrap().dissent,
+        [PanelDissent {
+            seat: "Moss".into(),
+            holdout: true,
+            objections: "Too slow for a first try.".into(),
+        }]
+    );
+}
+
+#[test]
 fn a_panel_requires_each_assistants_permission_before_writing() {
     let h = Home::new(true);
     fs::remove_file(h.path.join(".claude/state/quill/consent.json")).unwrap();

@@ -1,8 +1,8 @@
 //! Check posts for private details before sharing them.
+use radio_panels::Block;
 use regex::Regex;
 use std::{collections::BTreeSet, sync::LazyLock};
 use voice_ingest::filters::{Filters, Kind};
-use voice_panels::Block;
 
 static PATHS: LazyLock<[Result<Regex, regex::Error>; 5]> = LazyLock::new(|| {
     [
@@ -26,7 +26,7 @@ pub use voice_ingest::anonymize::scrub;
 
 /// The exact text shared as a previous post in the next round's brief.
 pub fn forwarded(text: &str) -> String {
-    voice_panels::clean(&scrub(text), 8000)
+    radio_panels::clean(&scrub(text), 8000)
 }
 
 /// Sorted categories of private details found in text.
@@ -35,7 +35,7 @@ pub fn text_findings(text: &str) -> Vec<&'static str> {
     let forwarded = forwarded(text);
     let mut found = BTreeSet::new();
     for value in [text, scrubbed.as_str(), forwarded.as_str()] {
-        found.extend(voice_panels::leak_findings(value, &[]));
+        found.extend(radio_panels::leak_findings(value, &[]));
         for (category, patterns) in [("path", PATHS.as_slice()), ("email", EMAILS.as_slice())] {
             if patterns.iter().any(|pattern| {
                 pattern
@@ -93,7 +93,7 @@ pub fn post_findings_refs(
 /// Refuse private details in a question, background or steer.
 pub fn guard_input(text: &str) -> Result<(), String> {
     let mut found = text_findings(text);
-    found.extend(text_findings(&voice_panels::clean(text, usize::MAX)));
+    found.extend(text_findings(&radio_panels::clean(text, usize::MAX)));
     found.sort_unstable();
     found.dedup();
     if found.is_empty() {

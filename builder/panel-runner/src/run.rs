@@ -4,10 +4,10 @@ use crate::{
     seats::Seat,
     turns::{TurnUsage, Turns},
 };
+use radio_panels::{DeliberationState, RoundReport};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path, sync::atomic::AtomicBool};
 use voice_core::member::Member;
-use voice_panels::{DeliberationState, RoundReport};
 
 /// The question and the assistants invited to discuss it.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -162,7 +162,7 @@ enum Entry {
         round: u32,
         seat: String,
         text: String,
-        block: Option<Box<voice_panels::Block>>,
+        block: Option<Box<radio_panels::Block>>,
         malformed: bool,
         error: Option<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -212,10 +212,29 @@ struct SavedResult {
     label: String,
     outcome: String,
     kind: String,
-    answer: Option<voice_panels::Answer>,
-    groups: Vec<voice_panels::Group>,
-    dissent: Vec<voice_panels::Dissent>,
+    answer: Option<radio_panels::Answer>,
+    groups: Vec<radio_panels::Group>,
+    dissent: Vec<SavedDissent>,
     trajectory: SavedTrajectory,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SavedDissent {
+    // Panels closed before the protocol moved to radio-panels saved this as `crewmate`.
+    #[serde(alias = "crewmate")]
+    member: String,
+    holdout: bool,
+    objections: String,
+}
+
+impl From<radio_panels::Dissent> for SavedDissent {
+    fn from(dissent: radio_panels::Dissent) -> Self {
+        Self {
+            member: dissent.member,
+            holdout: dissent.holdout,
+            objections: dissent.objections,
+        }
+    }
 }
 
 /// Validate and start a panel with the supplied model and clock.
@@ -259,7 +278,7 @@ pub fn convene_named(
     let (kind, n) = validate(request)?;
     let seats = crate::seats::load_for(home, &request.seats, consented, turns)?;
     let mut input = request.clone();
-    input.question = voice_panels::clean(&crate::guard::scrub(&input.question), 200);
+    input.question = radio_panels::clean(&crate::guard::scrub(&input.question), 200);
     input.background = crate::guard::scrub(&input.background);
     let metadata = Convened {
         input,
@@ -290,9 +309,9 @@ pub fn convene_named(
 }
 
 /// Check the question, answer format and time limit before starting model calls.
-pub fn validate(request: &Convene) -> Result<(voice_panels::Kind, Option<i64>), String> {
+pub fn validate(request: &Convene) -> Result<(radio_panels::Kind, Option<i64>), String> {
     let kind = if request.kind == "text" {
-        (voice_panels::Kind::Text, None)
+        (radio_panels::Kind::Text, None)
     } else {
         let n = request
             .kind
@@ -301,9 +320,9 @@ pub fn validate(request: &Convene) -> Result<(voice_panels::Kind, Option<i64>), 
             .and_then(|s| s.parse::<i64>().ok())
             .filter(|n| (1..=12).contains(n))
             .ok_or(crate::text::BAD_KIND)?;
-        (voice_panels::Kind::List, Some(n))
+        (radio_panels::Kind::List, Some(n))
     };
-    let question = voice_panels::clean(&request.question, usize::MAX);
+    let question = radio_panels::clean(&request.question, usize::MAX);
     if question.is_empty() || question.chars().count() > 200 {
         return Err(crate::text::BAD_QUESTION.into());
     }
@@ -315,8 +334,8 @@ pub fn validate(request: &Convene) -> Result<(voice_panels::Kind, Option<i64>), 
     parse_time(request.time_box.as_deref())?;
     Ok(kind)
 }
-fn parse_time(word: Option<&str>) -> Result<Option<voice_panels::TimeBox>, String> {
-    word.map(voice_panels::TimeBox::parse)
+fn parse_time(word: Option<&str>) -> Result<Option<radio_panels::TimeBox>, String> {
+    word.map(radio_panels::TimeBox::parse)
         .transpose()
         .map_err(|_| crate::text::BAD_TIME.into())
 }
@@ -361,7 +380,7 @@ pub fn resume(
         .as_deref()
         .map(|s| {
             crate::guard::guard_input(s)?;
-            Ok::<_, String>(voice_panels::clean(&crate::guard::scrub(s), 8000))
+            Ok::<_, String>(radio_panels::clean(&crate::guard::scrub(s), 8000))
         })
         .transpose()?;
     let waiting = asked(&room)? && answer(&room)?.is_none();
@@ -396,7 +415,7 @@ pub fn resume(
         && let Some(last) = reports.last()
     {
         let effective = answer(&room)?.or_else(|| metadata.input.time_box.clone());
-        let decision = voice_panels::timebox_decision(
+        let decision = radio_panels::timebox_decision(
             last.elapsed_s - metadata.box_offset_s,
             &reports.iter().map(|r| r.duration_s).collect::<Vec<_>>(),
             &state.d_history,
@@ -491,7 +510,7 @@ fn reopen_room(
     metadata.where_left_off =
         Some(String::from_utf8(room.read("result.md")?).map_err(|_| crate::text::READ_STATE)?);
     metadata.box_offset_s = result.trajectory.elapsed_s;
-    voice_panels::reopen(state);
+    radio_panels::reopen(state);
     if answer(room)?.is_none() {
         room.delete("ask.json")?;
     }
@@ -580,7 +599,7 @@ fn run_rounds(
             return save_status(room, state, "failed", None, clock);
         }
         let report =
-            voice_panels::step_round(state, &kept.fresh).map_err(|_| crate::text::READ_STATE)?;
+            radio_panels::step_round(state, &kept.fresh).map_err(|_| crate::text::READ_STATE)?;
         let elapsed = clock.seconds() - start;
         reports.push(TimedRound {
             report: report.clone(),
@@ -616,7 +635,7 @@ fn timebox(
 ) -> Result<Option<Ran>, String> {
     let answer = answer(room)?;
     let effective = answer.as_deref().or(convene.input.time_box.as_deref());
-    let decision = voice_panels::timebox_decision(
+    let decision = radio_panels::timebox_decision(
         elapsed - convene.box_offset_s,
         &reports.iter().map(|r| r.duration_s).collect::<Vec<_>>(),
         &state.d_history,
@@ -646,7 +665,7 @@ fn timebox(
 #[derive(Default)]
 struct KeptPosts {
     entries: Vec<Entry>,
-    fresh: BTreeMap<String, voice_panels::Block>,
+    fresh: BTreeMap<String, radio_panels::Block>,
     flagged: Vec<String>,
     failed: Vec<String>,
 }
@@ -663,7 +682,7 @@ fn keep_posts(
     for (seat, turn) in seats.iter().zip(posts) {
         let name = &seat.member.slug;
         let text = turn.post.unwrap_or_default();
-        let block = voice_panels::parse_block(
+        let block = radio_panels::parse_block(
             &text,
             state.kind,
             state.n,
@@ -796,11 +815,11 @@ fn close(
     clock: &dyn Clock,
 ) -> Result<Ran, String> {
     let mut result =
-        voice_panels::build_result(state, report).map_err(|_| crate::text::READ_STATE)?;
+        radio_panels::build_result(state, report).map_err(|_| crate::text::READ_STATE)?;
     if expired {
         result.outcome = "time_box".into();
     }
-    let markdown = voice_panels::render_markdown(&result).map_err(|_| crate::text::READ_STATE)?;
+    let markdown = radio_panels::render_markdown(&result).map_err(|_| crate::text::READ_STATE)?;
     let mut usage: Usage = state
         .crew
         .iter()
@@ -832,7 +851,7 @@ fn close(
         kind: result.kind,
         answer: result.answer,
         groups: result.groups,
-        dissent: result.dissent,
+        dissent: result.dissent.into_iter().map(Into::into).collect(),
         trajectory: SavedTrajectory {
             d: result.trajectory.d,
             rounds: result.trajectory.rounds,

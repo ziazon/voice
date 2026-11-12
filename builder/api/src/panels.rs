@@ -251,7 +251,7 @@ fn result(value: serde_json::Value, markdown: String) -> Result<PanelResultView>
         .iter()
         .map(|entry| {
             Ok(PanelDissent {
-                seat: entry["crewmate"]
+                seat: entry["member"]
                     .as_str()
                     .ok_or_else(|| failure(text::READ_FAILED))?
                     .into(),
