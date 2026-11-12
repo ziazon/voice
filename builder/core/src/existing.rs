@@ -7,6 +7,7 @@ use crate::{
     member::Member,
 };
 use std::{
+    collections::HashMap,
     fs::{self, OpenOptions},
     io::Read,
     os::unix::fs::{MetadataExt, OpenOptionsExt},
@@ -146,6 +147,16 @@ fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
     let needle = format!("/{slug}");
     let text = String::from_utf8_lossy(&bytes);
     let lines: Vec<_> = text.lines().collect();
+    let mut ends: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (index, line) in lines.iter().enumerate() {
+        if let Some(id) = line
+            .trim()
+            .strip_prefix("<!-- voice:end ")
+            .and_then(|marker| marker.strip_suffix(" -->"))
+        {
+            ends.entry(id).or_default().push(index);
+        }
+    }
     let mut block_end = None;
     let mut found = Vec::new();
     for (index, line) in lines.iter().enumerate() {
@@ -155,11 +166,10 @@ fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
         let trimmed = line.trim();
         if let Some(marker) = trimmed.strip_prefix("<!-- voice:begin ") {
             if let Some(id) = marker.strip_suffix(" -->") {
-                let end = format!("<!-- voice:end {id} -->");
-                block_end = lines[index + 1..]
-                    .iter()
-                    .position(|line| line.trim() == end)
-                    .map(|offset| index + 1 + offset);
+                block_end = ends
+                    .get(id)
+                    .and_then(|indices| indices.get(indices.partition_point(|&end| end <= index)))
+                    .copied();
             }
             continue;
         }
@@ -564,6 +574,41 @@ mod tests {
         assert_eq!(f.find().lines, [2]);
     }
     #[test]
+    fn many_unclosed_voice_begins_are_read_in_one_pass() {
+        let f = Fixture::new();
+        let mut text = String::new();
+        for n in 0..120000 {
+            text.push_str(&format!("<!-- voice:begin a{n} -->\n"));
+        }
+        text.push_str("- Ask Ari (/ari)\n");
+        assert!(text.len() < 4 * 1024 * 1024);
+        fs::write(f.claude.join("CLAUDE.md"), text).unwrap();
+        let start = std::time::Instant::now();
+        let found = f.find();
+        let elapsed = start.elapsed();
+        assert_eq!(found.lines, [120001]);
+        assert!(elapsed.as_secs_f64() < 10.0, "find took {elapsed:?}");
+    }
+    #[test]
+    fn a_reused_block_id_pairs_each_begin_with_its_next_end() {
+        let f = Fixture::new();
+        fs::write(
+            f.claude.join("CLAUDE.md"),
+            concat!(
+                "<!-- voice:begin x -->\n",
+                "- Ask Ari (/ari)\n",
+                "<!-- voice:end x -->\n",
+                "- Ask Ari (/ari)\n",
+                "<!-- voice:begin x -->\n",
+                "- Ask Ari (/ari)\n",
+                "<!-- voice:end x -->\n",
+                "- Ask Ari (/ari)\n",
+            ),
+        )
+        .unwrap();
+        assert_eq!(f.find().lines, [4, 8]);
+    }
+    #[test]
     fn only_voice_block_lines_do_not_set_claude_md() {
         let f = Fixture::new();
         fs::write(
@@ -662,6 +707,24 @@ mod tests {
         )
         .unwrap();
         f.skill("--member ~/real/claude/state/ari/member.json");
+        assert!(f.find().old_folder.is_none());
+        let old = f.old();
+        f.skill("--member ~/old/crew/ari/member.json");
+        assert_eq!(f.find().old_folder, Some(old));
+    }
+    #[test]
+    fn private_state_through_a_linked_state_folder_is_never_an_old_folder() {
+        let f = Fixture::new();
+        let real = f.home.join("real/state");
+        fs::create_dir_all(&real).unwrap();
+        symlink(&real, f.claude.join("state")).unwrap();
+        fs::create_dir_all(real.join("ari")).unwrap();
+        fs::write(
+            real.join("ari/member.json"),
+            serde_json::to_vec(&config()).unwrap(),
+        )
+        .unwrap();
+        f.skill("--member ~/real/state/ari/member.json");
         assert!(f.find().old_folder.is_none());
         let old = f.old();
         f.skill("--member ~/old/crew/ari/member.json");

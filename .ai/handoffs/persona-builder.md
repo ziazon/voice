@@ -13,9 +13,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   outside Voice's markers, and the member folder its old `SKILL.md` names. A name whose Voice crew folder
   exists has nothing older. `new_assistant` and `voice new` refuse while anything is found, making and
   changing nothing; `find_existing` and `voice existing` report it, and *Make a new assistant* checks first
-  and lists it in plain words. Briefs: `plans/briefs/PB8.7a-look-before-making.md`, `-fixup-1.md`,
-  `-fixup-2.md`.
-- **Who wrote it:** Codex, from the brief and two fix-ups; Claude reviewed it. Fix-up 1 (review): Codex had
+  and lists it in plain words. Briefs: `plans/briefs/PB8.7a-look-before-making.md`, `-fixup-1.md` to
+  `-fixup-4.md`.
+- **Who wrote it:** Codex, from the brief and four fix-ups; Claude reviewed it. Fix-up 1 (review): Codex had
   added refusals of a linked Claude, `state` or `skills` folder, which turning on supports, so any such
   person could make no assistant; a Voice assistant's own state read as "older"; `CLAUDE.md` was read
   whole before its cap. Fix-up 2 (security review MEDIUM and two LOW, Verifier should-fixes): one capped,
@@ -27,18 +27,29 @@ One record per slice, newest first. Paraphrase only; no real person.
   spelled-out paths, so other letter case (APFS ignores it) or a linked `~/.claude` still reached a
   `member.json` inside it; it now compares device and inode up the candidate's ancestors. A Voice block is
   a begin and the end with its own id.
+  Fix-up 4 (repeat Verifier, Opus, on `0ba9a77`: 5 of 5, two should-fixes): pairing each begin with its
+  end searched every later line, so a `CLAUDE.md` of unclosed begins near the 4 MiB cap took over ten
+  minutes; one pass now maps each end id to its lines. A test for a linked `~/.claude/state`.
 - **Verified:** red first for each test (Codex's runs); touched crates' tests 884 passed and screens 579
   passed at 2 workers after fix-up 2; fmt and clippy clean. Mutations caught and restored (`cmp`):
   the screen's found branch and its name-change reset. Security review (Opus): no HIGH; MEDIUM and two
   LOW fixed in fix-up 2. Verifier (Fable, `6c7e738`): 7 of 8 verified, claim 2 refuted in one corner (fixed
   in fix-up 2), probes on scratch homes showed a refused `voice new` leaves the tree byte-identical.
   After fix-up 3: touched crates 886 passed, screens 579 (Codex's run, 2 workers).
-- **Owed before the land (V1, run `060151-r1` ran out of time):** a repeat Verifier (Opus) on fix-up 3,
-  Rust mutation checks for the finder's refusals, then the full `bash scripts/ci-local.sh`.
+  Repeat Verifier (Opus, `0ba9a77`, run `073815-r1`): all 5 claims verified, including probes on APFS that
+  letter case, a linked `~/.claude` or `~/.claude/state`, the `/System/Volumes/Data` spelling and `..` all
+  reach the private folder's device and inode. Fix-up 4's new test was red first (617 s against its
+  10-second bound), then 0.05 s; `voice-core` 205 passed, fmt and clippy clean (Codex, 2 workers).
+  Rust mutations caught and restored (`cmp`), each by a named test: the inode guard off, the block skip
+  off, an end of any id closing a block, the next end replaced by the id's first, `O_NOFOLLOW` off, the
+  plain-file check off, the install record never claiming, a linked state folder not counted, the
+  refusal in `voice new` off, the refusal in `new_assistant` off. One survived and is equivalent: skipping
+  an unreadable ancestor in the inode walk, since the component walk after it refuses the same folder.
 - **Not verified:** a light and dark look at the warning (owed under `## Walks owed`); the old guided
-  build's `SKILL.md` on a real machine (the `--member` rule follows `bootstrap/PROMPT.md`'s template). A
-  person whose `~/.claude/state` is a link may have one `member.json` in the real state folder parsed (for
-  its slug only) when a planted `SKILL.md` names that real path.
+  build's `SKILL.md` on a real machine (the `--member` rule follows `bootstrap/PROMPT.md`'s template); a
+  FUSE or bind mirror of the private folder (another device number); a folder swapped between the check
+  and the open (a local attacker with write access, as before this slice). A line starting with a Voice
+  marker is skipped even outside a block, as before.
 - **Left for PB8.7b:** bringing an older assistant in after a backup. Until then a found name is refused,
   including a Voice assistant whose crew folder was deleted by hand while its state stayed.
 
