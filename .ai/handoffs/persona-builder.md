@@ -50,6 +50,11 @@ One record per slice, newest first. Paraphrase only; no real person.
   FUSE or bind mirror of the private folder (another device number); a folder swapped between the check
   and the open (a local attacker with write access, as before this slice). A line starting with a Voice
   marker is skipped even outside a block, as before.
+- **Known limit (security review, Opus, `6c7e738..d98bc77`: no HIGH or MEDIUM, this LOW kept):** `CLAUDE.md`
+  is read through a link, as Claude Code reads it (it is often a dotfiles link), so a `CLAUDE.md` planted
+  as a link into the private folder is read, capped, and only the numbers of lines naming `/<slug>` come
+  out; nothing of it reaches a screen. Delta Verifier (Opus, `d98bc77`): 4 of 5 verified, the run figures
+  left to the land's gate; no findings.
 - **Left for PB8.7b:** bringing an older assistant in after a backup. Until then a found name is refused,
   including a Voice assistant whose crew folder was deleted by hand while its state stayed.
 
