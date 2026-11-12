@@ -4,11 +4,12 @@ use crate::{
     forget,
     install_fs::{exists, io},
     install_record::{self, Added},
-    member::read_member,
+    member::Member,
 };
 use std::{
-    fs,
+    fs::{self, OpenOptions},
     io::Read,
+    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
 
@@ -107,27 +108,54 @@ fn find_state(path: PathBuf) -> Result<Option<State>> {
     Ok(Some(state))
 }
 
-fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
-    const LIMIT: u64 = 4 * 1024 * 1024;
-    let file = match fs::File::open(path) {
+/// Reads a regular file of at most `cap` bytes through one open: never blocks on a FIFO or device,
+/// never follows a final link unless `follow`. `Ok(None)` when it is missing, `Err` names why not.
+fn read_capped(path: &Path, cap: u64, follow: bool) -> Result<Option<Vec<u8>>> {
+    let file = match OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | if follow { 0 } else { libc::O_NOFOLLOW })
+        .open(path)
+    {
         Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         file => io(path, file)?,
     };
-    let mut bytes = Vec::new();
-    io(path, file.take(LIMIT + 1).read_to_end(&mut bytes))?;
-    if bytes.len() as u64 > LIMIT {
-        return Err(Error::Invalid(
-            "CLAUDE.md is too big for Voice to read".into(),
-        ));
+    let name = path
+        .file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy();
+    if !io(path, file.metadata())?.is_file() {
+        return Err(Error::Invalid(format!(
+            "{name} isn't a plain file, so Voice can't read it"
+        )));
     }
+    let mut bytes = Vec::new();
+    io(path, file.take(cap + 1).read_to_end(&mut bytes))?;
+    if bytes.len() as u64 > cap {
+        return Err(Error::Invalid(format!(
+            "{name} is too big for Voice to read"
+        )));
+    }
+    Ok(Some(bytes))
+}
+
+fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
+    let Some(bytes) = read_capped(path, 4 * 1024 * 1024, true)? else {
+        return Ok(Vec::new());
+    };
     let needle = format!("/{slug}");
+    let text = String::from_utf8_lossy(&bytes);
+    let last_end = text
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| line.trim().starts_with("<!-- voice:end ").then_some(index))
+        .last();
     let mut in_block = false;
     let mut found = Vec::new();
-    for (index, line) in String::from_utf8_lossy(&bytes).lines().enumerate() {
+    for (index, line) in text.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.starts_with("<!-- voice:begin ") {
-            in_block = true;
+            in_block = last_end.is_some_and(|end| end > index);
             continue;
         }
         if trimmed.starts_with("<!-- voice:end ") {
@@ -158,14 +186,7 @@ fn find_old_folder(home: &Path, skill: &Path, slug: &str) -> Option<PathBuf> {
         return None;
     }
     let skill_md = skill.join("SKILL.md");
-    let metadata = fs::symlink_metadata(&skill_md).ok()?;
-    if !metadata.is_file() || metadata.len() > 1024 * 1024 {
-        return None;
-    }
-    let bytes = fs::read(&skill_md).ok()?;
-    if bytes.len() > 1024 * 1024 {
-        return None;
-    }
+    let bytes = read_capped(&skill_md, 1024 * 1024, false).ok()??;
     let text = String::from_utf8_lossy(&bytes);
     let (_, member_option) = text.split_once("--member ")?;
     let token = member_option.split_whitespace().next()?;
@@ -184,6 +205,9 @@ fn find_old_folder(home: &Path, skill: &Path, slug: &str) -> Option<PathBuf> {
         return None;
     }
     let folder = path.parent()?;
+    if folder.starts_with(home.join(".claude/state")) {
+        return None;
+    }
     // The supplied home is a trusted root. Check each component below it, or every
     // component of an outside candidate, before opening its member file.
     let root = if folder.starts_with(home) {
@@ -204,7 +228,9 @@ fn find_old_folder(home: &Path, skill: &Path, slug: &str) -> Option<PathBuf> {
     if !fs::symlink_metadata(folder).ok()?.is_dir() {
         return None;
     }
-    let member = read_member(&path).ok()?;
+    let bytes = read_capped(&path, 1024 * 1024, false).ok()??;
+    let value = serde_json::from_slice(&bytes).ok()?;
+    let member = Member::from_value(value, &path.display().to_string()).ok()?;
     (member.slug == slug).then(|| folder.to_owned())
 }
 
@@ -482,33 +508,30 @@ mod tests {
         ));
     }
     #[test]
-    fn claude_read_stops_at_the_cap_without_waiting_for_eof() {
-        use std::{io::Write, process::Command, sync::mpsc, thread, time::Duration};
+    fn claude_fifo_without_a_writer_is_refused_at_once() {
         let f = Fixture::new();
         let path = f.claude.join("CLAUDE.md");
         assert!(
-            Command::new("mkfifo")
+            std::process::Command::new("mkfifo")
                 .arg(&path)
                 .status()
                 .unwrap()
                 .success()
         );
-        let (done, received) = mpsc::channel();
-        let writer = thread::spawn(move || {
-            let mut file = fs::File::create(path).unwrap();
-            file.write_all(&vec![b' '; 4 * 1024 * 1024 + 1]).unwrap();
-            // Keep the stream open: the reader must stop at the cap, not at EOF.
-            let stopped_before_eof = received.recv_timeout(Duration::from_secs(5)).is_ok();
-            drop(file);
-            stopped_before_eof
-        });
-        let result = find(&f.home, &f.claude, "ari");
-        let _ = done.send(());
-        assert!(writer.join().unwrap(), "reader waited for EOF past the cap");
         assert!(matches!(
-            result,
-            Err(Error::Invalid(message)) if message == "CLAUDE.md is too big for Voice to read"
+            find(&f.home, &f.claude, "ari"),
+            Err(Error::Invalid(message)) if message == "CLAUDE.md isn't a plain file, so Voice can't read it"
         ));
+    }
+    #[test]
+    fn unclosed_voice_marker_does_not_hide_matching_lines() {
+        let f = Fixture::new();
+        fs::write(
+            f.claude.join("CLAUDE.md"),
+            "<!-- voice:begin x --> /ari\n- Ask Ari (/ari)\n",
+        )
+        .unwrap();
+        assert_eq!(f.find().lines, [2]);
     }
     #[test]
     fn only_voice_block_lines_do_not_set_claude_md() {
@@ -538,6 +561,60 @@ mod tests {
             old.display()
         ));
         assert_eq!(f.find().old_folder, Some(old));
+    }
+    #[test]
+    fn old_member_fifo_is_ignored_without_a_writer() {
+        let f = Fixture::new();
+        let old = f.old();
+        let path = old.join("member.json");
+        fs::remove_file(&path).unwrap();
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        f.skill("--member ~/old/crew/ari/member.json");
+        assert!(f.find().old_folder.is_none());
+    }
+    #[test]
+    fn old_member_over_one_mib_is_ignored() {
+        let f = Fixture::new();
+        let old = f.old();
+        let mut bytes = serde_json::to_vec(&config()).unwrap();
+        bytes.resize(1024 * 1024 + 1, b' ');
+        fs::write(old.join("member.json"), bytes).unwrap();
+        f.skill("--member ~/old/crew/ari/member.json");
+        assert!(f.find().old_folder.is_none());
+    }
+    #[test]
+    fn old_member_private_json_is_never_opened() {
+        use std::os::unix::fs::PermissionsExt;
+        let f = Fixture::new();
+        let old = f.old();
+        let private = old.join("private.json");
+        fs::write(&private, "not JSON: this file must never be read").unwrap();
+        fs::set_permissions(&private, fs::Permissions::from_mode(0o000)).unwrap();
+        f.skill("--member ~/old/crew/ari/member.json");
+        let found = f.find().old_folder;
+        fs::set_permissions(&private, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(found, Some(old));
+    }
+    #[test]
+    fn private_state_is_never_an_old_folder_even_with_unreadable_member() {
+        use std::os::unix::fs::PermissionsExt;
+        let f = Fixture::new();
+        fs::create_dir_all(f.state()).unwrap();
+        let path = f.state().join("member.json");
+        fs::write(&path, serde_json::to_vec(&config()).unwrap()).unwrap();
+        f.skill("--member ~/.claude/state/ari/member.json");
+        let readable = f.find().old_folder;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let unreadable = f.find().old_folder;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(readable.is_none());
+        assert_eq!(readable, unreadable);
     }
     #[test]
     fn invalid_old_folder_candidates_are_ignored() {

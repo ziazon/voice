@@ -207,7 +207,7 @@ pub fn new_assistant_in(
         check_field(what, value, field)?;
     }
     let slug = checked_name(&request.name)?;
-    let found = existing::find(home, claude_home, &slug).map_err(|_| failure(MAKE))?;
+    let found = existing::find(home, claude_home, &slug).map_err(|_| failure(LOOK_BEFORE))?;
     if found.any() {
         return Err(failure(&format!(
             "Voice found an older {} on this computer, so it made nothing and changed nothing. Voice can't bring an older assistant in yet: pick another name for now.",

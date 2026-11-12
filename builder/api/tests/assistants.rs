@@ -195,7 +195,7 @@ fn fixed_failure_messages_hide_core_details() {
         new_assistant_in(broken.path(), &broken.path().join(".claude"), request())
             .unwrap_err()
             .message,
-        "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
+        "Voice couldn't look for an older assistant with that name. Close it and open it again."
     );
     fs::create_dir_all(h.join(".claude/state")).unwrap();
     fs::write(h.join(".claude/state/ari"), "file").unwrap();
@@ -277,6 +277,14 @@ fn claude_status_uses_only_safe_messages() {
     );
     assert!(!claude_check_in(h, None, &[program]).unwrap().can_sign_in);
 }
+#[test]
+fn find_existing_request_refuses_unknown_fields() {
+    assert!(
+        serde_json::from_value::<FindExistingRequest>(serde_json::json!({"name":"Ari","extra":1}))
+            .is_err()
+    );
+}
+
 #[test]
 fn dto_json_and_wording_match_contract() {
     let req = request();
@@ -526,8 +534,9 @@ fn find_existing_name_validation_and_errors_are_fixed() {
         new_assistant_in(h, &h.join(".claude"), request())
             .unwrap_err()
             .message,
-        "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
+        "Voice couldn't look for an older assistant with that name. Close it and open it again."
     );
+    assert!(!h.join(".claude/crew").exists());
 }
 
 #[test]
