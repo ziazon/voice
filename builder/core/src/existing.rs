@@ -111,7 +111,7 @@ fn find_state(path: PathBuf) -> Result<Option<State>> {
 
 /// Reads a regular file of at most `cap` bytes through one open: never blocks on a FIFO or device,
 /// never follows a final link unless `follow`. `Ok(None)` when it is missing, `Err` names why not.
-fn read_capped(path: &Path, cap: u64, follow: bool) -> Result<Option<Vec<u8>>> {
+pub(crate) fn read_capped(path: &Path, cap: u64, follow: bool) -> Result<Option<Vec<u8>>> {
     let file = match OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NONBLOCK | if follow { 0 } else { libc::O_NOFOLLOW })

@@ -188,6 +188,8 @@ enum Command {
         principal_pronouns: String,
         #[arg(long)]
         bring_in: bool,
+        #[arg(long = "leave", requires = "bring_in")]
+        leave: Vec<String>,
         #[arg(long)]
         claude_home: Option<PathBuf>,
     },
@@ -2560,6 +2562,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             pronouns,
             principal_pronouns,
             bring_in,
+            leave,
             claude_home,
         }) => assistants::make(
             &name,
@@ -2567,6 +2570,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             &principal,
             &principal_pronouns,
             bring_in,
+            &leave,
             claude_home,
         ),
         Some(Command::Existing { name, claude_home }) => assistants::existing(&name, claude_home),

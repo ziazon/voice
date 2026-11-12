@@ -4,7 +4,7 @@ use voice_core::{
     cli_command::shipped_cli_word,
     consent, crew,
     error::{Error, Result},
-    existing,
+    existing, old_files,
 };
 
 fn today() -> String {
@@ -22,6 +22,7 @@ pub fn make(
     principal: &str,
     principal_pronouns: &str,
     bring_in: bool,
+    leave: &[String],
     claude_home: Option<PathBuf>,
 ) -> Result<()> {
     let places = super::places(claude_home)?;
@@ -48,6 +49,23 @@ pub fn make(
         principal_pronouns,
     };
     let result = if bring_in {
+        let found = existing::find(&home, &places.claude_home, &slug)?;
+        let offered = match found.old_folder {
+            Some(folder) => old_files::offer(&folder)?,
+            None => Vec::new(),
+        };
+        for file in leave {
+            if !offered.iter().any(|offered| offered.name == file) {
+                return Err(Error::Invalid(format!(
+                    "Voice found no {file} to leave out. See what it found: voice existing {name}"
+                )));
+            }
+        }
+        let files: Vec<String> = offered
+            .into_iter()
+            .filter(|file| file.problem.is_none() && !leave.iter().any(|name| name == file.name))
+            .map(|file| file.name.to_owned())
+            .collect();
         voice_api::assistants::bring_in(
             &home,
             &places.claude_home,
@@ -55,6 +73,7 @@ pub fn make(
             &today(),
             &voice_agent::ledger::local_stamp(SystemTime::now()),
             &cli,
+            &files,
         )
     } else {
         assistants::make(&home, &new, &today(), &cli).and_then(|listed| {
@@ -64,10 +83,10 @@ pub fn make(
                     "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.".into(),
                 ));
             }
-            Ok((listed, None))
+            Ok((listed, None, Vec::new()))
         })
     };
-    let (listed, backup) = result.map_err(|error| match error {
+    let (listed, backup, files) = result.map_err(|error| match error {
         Error::Exists(slug) => Error::Invalid(format!(
             "You already have an assistant in ~/.claude/crew/{slug}/."
         )),
@@ -84,6 +103,12 @@ pub fn make(
         println!(
             "Voice backed up the older {name} first, in ~/{}.",
             relative.display()
+        );
+    }
+    if !files.is_empty() {
+        println!(
+            "It brought in the older {name}'s own files: {}.",
+            files.join(", ")
         );
     }
     println!(
@@ -179,13 +204,26 @@ pub fn existing(name: &str, claude_home: Option<PathBuf>) -> Result<()> {
             path.display()
         );
     }
-    if let Some(folder) = found.old_folder {
+    let offered = if let Some(folder) = found.old_folder {
         println!("Folder it was made in: {}", folder.display());
+        old_files::offer(&folder)?
+    } else {
+        Vec::new()
+    };
+    for file in &offered {
+        match file.problem {
+            Some(problem) => println!("Leaves out {}: {problem}", file.name),
+            None => println!("Can bring in {}", file.name),
+        }
     }
     if let Some(reason) = refusal {
         println!("{reason}");
-    } else {
+    } else if offered.is_empty() {
         println!("Voice can back it up and bring it in: voice new {name} --bring-in");
+    } else {
+        println!(
+            "Voice can back it up and bring it in: voice new {name} --bring-in (add --leave <file> to leave a file out)"
+        );
     }
     Ok(())
 }

@@ -88,6 +88,7 @@ pub struct FindExistingRequest {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ExistingAssistant {
+    pub files: Vec<OldFile>,
     pub found: bool,
     pub can_bring_in: bool,
     pub lines: Vec<String>,
@@ -961,6 +962,23 @@ pub struct AskAnswer {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct BroughtIn {
+    pub files: Vec<String>,
     pub assistant: Assistant,
     pub backup: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OldFile {
+    pub name: String,
+    pub problem: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct BringInRequest {
+    pub assistant: NewAssistantRequest,
+    pub files: Vec<String>,
 }

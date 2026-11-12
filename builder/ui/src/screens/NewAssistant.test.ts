@@ -62,7 +62,7 @@ it('warns about every older-assistant finding and makes nothing', async () => {
     "Your CLAUDE.md mentions /ari on 2 lines that Voice didn't add.",
     'That skill points to the folder the assistant was made in, with its own files.',
   ]
-  const backend = fakeBackend({ findExisting: vi.fn().mockResolvedValue({ found: true, lines, canBringIn: false }) })
+  const backend = fakeBackend({ findExisting: vi.fn().mockResolvedValue({ found: true, lines, canBringIn: false, files: [] }) })
   const wrapper = screen(NewAssistant, backend)
   await wrapper.get('#assistant-name').setValue(' Ari ')
   await wrapper.get('#principal-name').setValue('Robin')
@@ -82,7 +82,7 @@ it('warns about every older-assistant finding and makes nothing', async () => {
 })
 
 it('checks first and then makes the same trimmed request when nothing is found', async () => {
-  const pending = deferred<{ found: boolean; lines: string[] }>()
+  const pending = deferred<{ found: boolean; lines: string[]; canBringIn: boolean; files: [] }>()
   const backend = fakeBackend({ findExisting: vi.fn().mockReturnValue(pending.promise) })
   const wrapper = screen(NewAssistant, backend)
   await wrapper.get('#assistant-name').setValue(' Ari ')
@@ -93,7 +93,7 @@ it('checks first and then makes the same trimmed request when nothing is found',
   expect(backend.newAssistant).not.toHaveBeenCalled()
   await wrapper.get('form').trigger('submit')
   expect(backend.findExisting).toHaveBeenCalledTimes(1)
-  pending.resolve({ found: false, lines: [] })
+  pending.resolve({ found: false, lines: [], canBringIn: false, files: [] })
   await flushPromises()
   expect(backend.newAssistant).toHaveBeenCalledExactlyOnceWith({ name: 'Ari', pronouns: 'they/them', principal: 'Robin', principalPronouns: 'they/them' })
   expect(wrapper.emitted('made')).toEqual([[assistant]])
@@ -118,9 +118,9 @@ it.each([
 it('backs up the checked request, announces progress and opens the brought-in assistant', async () => {
   const brought = { ...assistant, slug: 'ari', name: 'Ari' }
   const backup = '~/.claude/voice-backups/ari/2026-11-12-093000'
-  const pending = deferred<{ assistant: typeof assistant; backup: string | null }>()
+  const pending = deferred<{ assistant: typeof assistant; backup: string | null; files: string[] }>()
   const backend = fakeBackend({
-    findExisting: vi.fn().mockResolvedValue({ found: true, lines: ['An older private folder.'], canBringIn: true }),
+    findExisting: vi.fn().mockResolvedValue({ found: true, lines: ['An older private folder.'], canBringIn: true, files: [] }),
     bringInAssistant: vi.fn().mockReturnValue(pending.promise),
   })
   const wrapper = screen(NewAssistant, backend)
@@ -133,11 +133,11 @@ it('backs up the checked request, announces progress and opens the brought-in as
   // Changes to other fields must not change the request whose name was checked.
   await wrapper.get('#principal-name').setValue('Mo Lee')
   await button(wrapper, 'Back it up and bring it in').trigger('click')
-  expect(backend.bringInAssistant).toHaveBeenCalledExactlyOnceWith({ name: 'Ari', pronouns: 'they/them', principal: 'Robin', principalPronouns: 'they/them' })
+  expect(backend.bringInAssistant).toHaveBeenCalledExactlyOnceWith({ assistant: { name: 'Ari', pronouns: 'they/them', principal: 'Robin', principalPronouns: 'they/them' }, files: [] })
   expect(button(wrapper, 'Backing it up…').attributes('disabled')).toBeDefined()
   expect(wrapper.findAll('button').some(button => button.text() === 'Making it…')).toBe(false)
   expect(button(wrapper, 'Make it').attributes('disabled')).toBeDefined()
-  pending.resolve({ assistant: brought, backup })
+  pending.resolve({ assistant: brought, backup, files: [] })
   await flushPromises()
   const success = wrapper.get('.alert-success[role="status"]')
   expect(success.get('h3').text()).toBe('Ari is ready')
@@ -150,8 +150,8 @@ it('backs up the checked request, announces progress and opens the brought-in as
 
 it('leaves the backup sentence out when bring-in returns no backup', async () => {
   const backend = fakeBackend({
-    findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true }),
-    bringInAssistant: vi.fn().mockResolvedValue({ assistant: { ...assistant, name: 'Ari' }, backup: null }),
+    findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true, files: [] }),
+    bringInAssistant: vi.fn().mockResolvedValue({ assistant: { ...assistant, name: 'Ari' }, backup: null, files: [] }),
   })
   const wrapper = screen(NewAssistant, backend)
   await wrapper.get('#assistant-name').setValue('Ari')
@@ -169,7 +169,7 @@ it.each([
   [{ message: 'Pick another name.' }, 'Pick another name.'],
 ])('shows a safe bring-in failure and keeps the warning', async (failure, message) => {
   const backend = fakeBackend({
-    findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true }),
+    findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true, files: [] }),
     bringInAssistant: vi.fn().mockRejectedValue(failure),
   })
   const wrapper = screen(NewAssistant, backend)
@@ -185,4 +185,69 @@ it.each([
   await wrapper.get('#assistant-name').setValue('Mo Lee')
   expect(wrapper.find('.alert-warning').exists()).toBe(false)
   expect(wrapper.find('button.btn-warning').exists()).toBe(false)
+})
+
+it.each([false, true])('shows its own files only when bringing in is allowed (%s)', async canBringIn => {
+  const backend = fakeBackend({
+    findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn, files: [{ name: 'IDENTITY.md', problem: null }] }),
+  })
+  const wrapper = screen(NewAssistant, backend)
+  await wrapper.get('#assistant-name').setValue('Ari')
+  await wrapper.get('#principal-name').setValue('Robin')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(wrapper.find('fieldset').exists()).toBe(canBringIn)
+})
+
+it('ticks the files it can bring, explains files it leaves and sends the chosen names in shown order', async () => {
+  const problem = "It's a link, so Voice leaves it."
+  const backend = fakeBackend({
+    findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true, files: [
+      { name: 'IDENTITY.md', problem: null },
+      { name: 'autonomy.md', problem: null },
+      { name: 'lens.md', problem },
+      { name: 'briefs', problem: null },
+    ] }),
+    bringInAssistant: vi.fn().mockResolvedValue({ assistant: { ...assistant, name: 'Ari' }, backup: 'a backup folder', files: ['IDENTITY.md', 'briefs'] }),
+  })
+  const wrapper = screen(NewAssistant, backend)
+  await wrapper.get('#assistant-name').setValue('Ari')
+  await wrapper.get('#principal-name').setValue('Robin')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  const fieldset = wrapper.get('fieldset')
+  expect(fieldset.get('legend.form-label').text()).toBe('Its own files')
+  expect(fieldset.get('.form-hint').text()).toBe('Voice keeps its own SKILL.md and member.json. Untick a file to leave it out.')
+  const checkboxes = fieldset.findAll('input[type="checkbox"]')
+  expect(checkboxes).toHaveLength(4)
+  for (const [index, checkbox] of checkboxes.entries()) {
+    expect(checkbox.attributes('id')).toBe(`old-file-${index}`)
+    expect(checkbox.classes()).toContain('form-check-input')
+    expect((checkbox.element as HTMLInputElement).checked).toBe(index !== 2)
+    expect((checkbox.element as HTMLInputElement).disabled).toBe(index === 2)
+    const label = fieldset.get(`label.form-check-label[for="old-file-${index}"]`)
+    expect(label.get('code').text()).toBe(['IDENTITY.md', 'autonomy.md', 'lens.md', 'briefs'][index])
+  }
+  expect(fieldset.get('label[for="old-file-2"] .text-secondary').text()).toBe(problem)
+  await checkboxes[1]!.setValue(false)
+  // Toggling a file back on must keep the original shown order.
+  await checkboxes[0]!.setValue(false)
+  await checkboxes[0]!.setValue(true)
+  await button(wrapper, 'Back it up and bring it in').trigger('click')
+  await flushPromises()
+  expect(backend.bringInAssistant).toHaveBeenCalledExactlyOnceWith({
+    assistant: { name: 'Ari', pronouns: 'they/them', principal: 'Robin', principalPronouns: 'they/them' },
+    files: ['IDENTITY.md', 'briefs'],
+  })
+  expect(wrapper.get('.alert-success p').text()).toBe("Voice brought in the older Ari's history and its own files: IDENTITY.md, briefs. A copy of everything it found is in a backup folder.")
+})
+
+it('shows no file choices when the older assistant has none', async () => {
+  const backend = fakeBackend({ findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true, files: [] }) })
+  const wrapper = screen(NewAssistant, backend)
+  await wrapper.get('#assistant-name').setValue('Ari')
+  await wrapper.get('#principal-name').setValue('Robin')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(wrapper.find('fieldset').exists()).toBe(false)
 })

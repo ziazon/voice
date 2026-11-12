@@ -452,6 +452,7 @@ fn find_existing_reports_fixed_sentences_without_private_paths() {
         ExistingAssistant {
             found: false,
             can_bring_in: false,
+            files: vec![],
             lines: vec![]
         }
     );
@@ -554,6 +555,7 @@ fn voice_assistant_is_not_older_and_cannot_be_made_twice() {
         ExistingAssistant {
             found: false,
             can_bring_in: false,
+            files: vec![],
             lines: vec![]
         }
     );
@@ -641,7 +643,7 @@ fn bring_in_backs_up_all_four_and_keeps_older_files() {
     let before_state = snapshot(&state);
     let before_skill = snapshot(&skill);
     let before_member = snapshot(&old.dir);
-    let result = bring_in_assistant_in(h, &claude, request()).unwrap();
+    let result = bring_in_assistant_in(h, &claude, bringing(&[])).unwrap();
     let shown = result.backup.unwrap();
     assert!(shown.starts_with("~/.claude/voice-backups/ari/"));
     assert!(!shown.contains(h.to_str().unwrap()));
@@ -692,7 +694,7 @@ fn bring_in_preserves_all_questions_when_histories_are_put_together() {
         records(&["q3", "q4"]),
     )
     .unwrap();
-    bring_in_assistant_in(h, &h.join(".claude"), request()).unwrap();
+    bring_in_assistant_in(h, &h.join(".claude"), bringing(&[])).unwrap();
     agree_consent_in(h, slug("ari")).unwrap();
     assert_eq!(merge_histories_in(h, slug("ari")).unwrap().questions, 4);
     let bytes = fs::read(state.join("decisions.jsonl")).unwrap();
@@ -725,7 +727,7 @@ fn refused_tree(kind: &str, sentence: &str) {
         _ => unreachable!(),
     }
     let before = snapshot(h);
-    let err = bring_in_assistant_in(h, &h.join(".claude"), request()).unwrap_err();
+    let err = bring_in_assistant_in(h, &h.join(".claude"), bringing(&[])).unwrap_err();
     assert_eq!(err.message, sentence);
     assert_eq!(snapshot(h), before);
     assert!(!h.join(".claude/voice-backups").exists());
@@ -765,7 +767,7 @@ fn bring_in_rolls_back_history_and_backup_when_make_fails() {
     fs::write(h.join(".claude/crew"), "plain file").unwrap();
     let before = snapshot(h);
     assert_eq!(
-        bring_in_assistant_in(h, &h.join(".claude"), request())
+        bring_in_assistant_in(h, &h.join(".claude"), bringing(&[]))
             .unwrap_err()
             .message,
         "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
@@ -783,7 +785,7 @@ fn bring_in_rolls_back_history_and_backup_when_make_fails() {
 fn bring_in_without_older_files_makes_an_assistant_without_backup() {
     let home = Home::new();
     let h = home.path();
-    let result = bring_in_assistant_in(h, &h.join(".claude"), request()).unwrap();
+    let result = bring_in_assistant_in(h, &h.join(".claude"), bringing(&[])).unwrap();
     assert_eq!(result.backup, None);
     assert_eq!(result.assistant.name, "Ari");
     assert!(!result.assistant.consent.agreed);
@@ -817,7 +819,7 @@ fn bring_in_refuses_empty_corpus_folder_with_an_older_skill() {
     assert!(found.found);
     assert!(!found.can_bring_in);
     assert_eq!(
-        bring_in_assistant_in(h, &claude, request())
+        bring_in_assistant_in(h, &claude, bringing(&[]))
             .unwrap_err()
             .message,
         CORPUS_REFUSAL
@@ -845,7 +847,7 @@ fn bring_in_reports_fifo_refusal_without_changing_old_files() {
         .can_bring_in
     );
     let before = snapshot(h);
-    let error = bring_in_assistant_in(h, &h.join(".claude"), request()).unwrap_err();
+    let error = bring_in_assistant_in(h, &h.join(".claude"), bringing(&[])).unwrap_err();
     assert_eq!(
         error.message,
         "pipe isn't a plain file, so Voice backed nothing up."
@@ -863,3 +865,228 @@ fn bring_in_reports_fifo_refusal_without_changing_old_files() {
 }
 
 const CORPUS_REFUSAL: &str = "Voice can't bring this one in: the decisions.jsonl in its private folder is a link or a folder, not a file. Pick another name for now.";
+
+fn old_member_files(home: &Path) -> PathBuf {
+    let old = voice_core::assistants::make(
+        &home.join("old-kit"),
+        &voice_core::assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Robin",
+            principal_pronouns: "they/them",
+        },
+        "2026-11-12",
+        "voice",
+    )
+    .unwrap();
+    for name in [
+        "IDENTITY.md",
+        "interview.md",
+        "lens.md",
+        "decisions.md",
+        "measurements.md",
+    ] {
+        fs::write(old.dir.join(name), format!("Older {name}\n")).unwrap();
+    }
+    fs::write(old.dir.join("autonomy.md"), "- [x] `release`: Ask first.\n").unwrap();
+    fs::remove_dir_all(old.dir.join("briefs")).unwrap();
+    fs::create_dir(old.dir.join("briefs")).unwrap();
+    fs::write(old.dir.join("briefs/old.md"), "Older brief\n").unwrap();
+    fs::write(
+        old.dir.join("private.json"),
+        r#"{"filters":{"personal":"invented-private-pattern"}}"#,
+    )
+    .unwrap();
+    let skill = home.join(".claude/skills/ari");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        format!("--member {}", old.dir.join("member.json").display()),
+    )
+    .unwrap();
+    old.dir
+}
+fn fresh_template(home: &Path) -> PathBuf {
+    voice_core::assistants::make(
+        &home.join("baseline"),
+        &voice_core::assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Robin",
+            principal_pronouns: "they/them",
+        },
+        &local_day(SystemTime::now()),
+        &voice_core::cli_command::cli_word(&voice_core::cli_command::shipped_cli().unwrap(), home)
+            .unwrap(),
+    )
+    .unwrap()
+    .dir
+}
+
+fn bringing(files: &[&str]) -> BringInRequest {
+    BringInRequest {
+        assistant: request(),
+        files: files.iter().map(|name| (*name).into()).collect(),
+    }
+}
+#[test]
+fn pb87c_brings_all_own_files_over_template_with_private_modes() {
+    let home = Home::new();
+    let h = home.path();
+    let old = old_member_files(h);
+    let result = bring_in_assistant_in(
+        h,
+        &h.join(".claude"),
+        bringing(&voice_core::old_files::NAMES),
+    )
+    .unwrap();
+    assert_eq!(result.files, voice_core::old_files::NAMES);
+    let dir = h.join(".claude/crew/ari");
+    for name in voice_core::old_files::NAMES {
+        let file = if name == "briefs" {
+            "briefs/old.md"
+        } else {
+            name
+        };
+        assert_eq!(
+            fs::read(dir.join(file)).unwrap(),
+            fs::read(old.join(file)).unwrap(),
+            "{file}"
+        );
+        assert_eq!(
+            fs::metadata(dir.join(file)).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    assert!(dir.join("briefs/codebook.md").exists());
+    let baseline = fresh_template(h);
+    let mut expected_briefs = snapshot(&baseline.join("briefs"));
+    expected_briefs.insert(
+        PathBuf::from("old.md"),
+        ("file".into(), b"Older brief\n".to_vec()),
+    );
+    assert_eq!(snapshot(&dir.join("briefs")), expected_briefs);
+    for name in ["SKILL.md", "member.json"] {
+        assert_eq!(
+            fs::read(dir.join(name)).unwrap(),
+            fs::read(baseline.join(name)).unwrap()
+        );
+    }
+    let member = voice_core::member::read_member(&dir.join("member.json")).unwrap();
+    assert!(member.filters.personal.contains("invented-private-pattern"));
+}
+#[test]
+fn pb87c_only_selected_file_replaces_template_and_empty_keeps_template() {
+    for selected in [vec!["IDENTITY.md"], vec![]] {
+        let home = Home::new();
+        let h = home.path();
+        let old = old_member_files(h);
+        let result = bring_in_assistant_in(h, &h.join(".claude"), bringing(&selected)).unwrap();
+        assert_eq!(result.files, selected);
+        let dir = h.join(".claude/crew/ari");
+        let baseline = fresh_template(h);
+        if selected.is_empty() {
+            assert_eq!(snapshot(&dir), snapshot(&baseline));
+        } else {
+            assert_eq!(
+                fs::read(dir.join("IDENTITY.md")).unwrap(),
+                fs::read(old.join("IDENTITY.md")).unwrap()
+            );
+        }
+        assert_eq!(
+            fs::read(dir.join("autonomy.md")).unwrap(),
+            fs::read(baseline.join("autonomy.md")).unwrap()
+        );
+    }
+}
+#[test]
+fn pb87c_bad_ticks_refuse_before_any_writes() {
+    for (kind, file) in [
+        ("unknown", "nope.md"),
+        ("absent", "lens.md"),
+        ("private", "private.json"),
+        ("no-folder", "IDENTITY.md"),
+        ("duplicate", "IDENTITY.md"),
+    ] {
+        let home = Home::new();
+        let h = home.path();
+        if kind != "no-folder" {
+            let old = old_member_files(h);
+            if kind == "absent" {
+                fs::remove_file(old.join("lens.md")).unwrap();
+            }
+            if kind == "private" {
+                fs::write(old.join("private.json"), r#"{"state_dir":"elsewhere"}"#).unwrap();
+            }
+        }
+        let before = snapshot(h);
+        let ticks = if kind == "duplicate" {
+            vec![file, file]
+        } else {
+            vec![file]
+        };
+        let error = bring_in_assistant_in(h, &h.join(".claude"), bringing(&ticks)).unwrap_err();
+        assert_eq!(
+            error.message,
+            format!("Voice can't bring in {file}, so it changed nothing. Untick it and try again.")
+        );
+        assert_eq!(snapshot(h), before, "{kind}");
+        assert!(!h.join(".claude/voice-backups").exists());
+    }
+}
+#[test]
+fn pb87c_bad_merged_private_file_undoes_copy_history_and_backup() {
+    let home = Home::new();
+    let h = home.path();
+    let old = old_member_files(h);
+    fs::write(old.join("private.json"), r#"{"filters":{"personal":7}}"#).unwrap();
+    let state = old_state(h);
+    fs::write(state.join("consent.json"), "older permission bytes").unwrap();
+    let before = snapshot(h);
+    let error = bring_in_assistant_in(
+        h,
+        &h.join(".claude"),
+        bringing(&voice_core::old_files::NAMES),
+    )
+    .unwrap_err();
+    assert_eq!(error.message, voice_core::old_files::CANT_BRING);
+    let mut after = snapshot(h);
+    after.remove(Path::new(".claude/voice-backups"));
+    after.remove(Path::new(".claude/voice-backups/ari"));
+    assert_eq!(after, before);
+    assert_eq!(
+        fs::read(state.join("decisions.jsonl")).unwrap(),
+        b"older history\n"
+    );
+    assert!(!h.join(".claude/crew/ari").exists());
+}
+#[test]
+fn pb87c_existing_lists_files_and_problem_sentences() {
+    let home = Home::new();
+    let h = home.path();
+    let old = old_member_files(h);
+    fs::write(old.join("private.json"), r#"{"name":"Other"}"#).unwrap();
+    let found = find_existing_in(
+        h,
+        &h.join(".claude"),
+        FindExistingRequest { name: "Ari".into() },
+    )
+    .unwrap();
+    assert_eq!(
+        found
+            .files
+            .iter()
+            .map(|file| file.name.as_str())
+            .collect::<Vec<_>>(),
+        voice_core::old_files::NAMES
+    );
+    assert_eq!(
+        found.files[7].problem.as_deref(),
+        Some("It changes more than the privacy settings, so Voice leaves it.")
+    );
+}
+#[test]
+fn pb87c_bring_request_refuses_unknown_fields() {
+    let value = serde_json::json!({"assistant": request(), "files": [], "extra": true});
+    assert!(serde_json::from_value::<BringInRequest>(value).is_err());
+}

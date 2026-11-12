@@ -5,6 +5,7 @@ import { failureMessage } from '../failure'
 import type { Assistant } from '../types/generated/Assistant'
 import type { BroughtIn } from '../types/generated/BroughtIn'
 import type { NewAssistantRequest } from '../types/generated/NewAssistantRequest'
+import type { OldFile } from '../types/generated/OldFile'
 
 const emit = defineEmits<{ made: [assistant: Assistant]; cancel: [] }>()
 const backend = useBackend()
@@ -16,7 +17,7 @@ const otherPronouns = ref('')
 const otherPrincipalPronouns = ref('')
 const saving = ref(false)
 const checking = ref(false)
-const older = ref<{ name: string; lines: string[]; canBringIn: boolean; request: NewAssistantRequest } | null>(null)
+const older = ref<{ name: string; lines: string[]; canBringIn: boolean; files: OldFile[]; ticked: Set<string>; request: NewAssistantRequest } | null>(null)
 const broughtIn = ref<BroughtIn | null>(null)
 const bringingIn = ref(false)
 watch(name, () => { older.value = null })
@@ -38,7 +39,14 @@ async function make() {
   try {
     const existing = await backend.findExisting({ name: submitted.name })
     if (existing.found) {
-      if (name.value.trim() === submitted.name) older.value = { name: submitted.name, lines: existing.lines, canBringIn: existing.canBringIn, request: submitted }
+      if (name.value.trim() === submitted.name) older.value = {
+        name: submitted.name,
+        lines: existing.lines,
+        canBringIn: existing.canBringIn,
+        files: existing.files,
+        ticked: new Set(existing.files.filter(file => file.problem === null).map(file => file.name)),
+        request: submitted,
+      }
       return
     }
     checking.value = false
@@ -54,7 +62,11 @@ async function make() {
 }
 async function bringIn() {
   if (saving.value || !older.value?.canBringIn) return
-  const submitted = older.value.request
+  const found = older.value
+  const submitted = {
+    assistant: found.request,
+    files: found.files.filter(file => found.ticked.has(file.name)).map(file => file.name),
+  }
   saving.value = true
   bringingIn.value = true
   error.value = ''
@@ -110,6 +122,14 @@ async function bringIn() {
           <div>
             <h3 class="alert-title">Voice found an older {{ older.name }}</h3>
             <ul><li v-for="line in older.lines" :key="line">{{ line }}</li></ul>
+            <fieldset v-if="older.canBringIn && older.files.length" class="mb-3">
+              <legend class="form-label">Its own files</legend>
+              <div class="form-hint mb-2">Voice keeps its own SKILL.md and member.json. Untick a file to leave it out.</div>
+              <div v-for="(file, index) in older.files" :key="file.name" class="form-check">
+                <input :id="`old-file-${index}`" v-model="older.ticked" type="checkbox" class="form-check-input" :value="file.name" :disabled="!!file.problem">
+                <label :for="`old-file-${index}`" class="form-check-label"><code>{{ file.name }}</code><span v-if="file.problem" class="text-secondary"> {{ file.problem }}</span></label>
+              </div>
+            </fieldset>
             <p v-if="older.canBringIn">Voice made nothing and changed nothing. It can copy everything listed here into a backup folder first, then bring this {{ older.name }}'s history in, or you can pick another name.</p>
             <p v-else class="mb-0">Voice made nothing and changed nothing. Voice can't bring this one in, so pick another name.</p>
             <button v-if="older.canBringIn" type="button" class="btn btn-warning" :disabled="saving" @click="bringIn">{{ bringingIn ? 'Backing it up…' : 'Back it up and bring it in' }}</button>
@@ -118,7 +138,7 @@ async function bringIn() {
         <div v-if="broughtIn" class="alert alert-success" role="status">
           <div>
             <h3 class="alert-title">{{ broughtIn.assistant.name }} is ready</h3>
-            <p>Voice brought in the older {{ broughtIn.assistant.name }}'s history.<template v-if="broughtIn.backup"> A copy of everything it found is in {{ broughtIn.backup }}.</template></p>
+            <p>Voice brought in the older {{ broughtIn.assistant.name }}'s history<template v-if="broughtIn.files.length"> and its own files: {{ broughtIn.files.join(', ') }}</template>.<template v-if="broughtIn.backup"> A copy of everything it found is in {{ broughtIn.backup }}.</template></p>
             <button type="button" class="btn btn-primary" @click="emit('made', broughtIn.assistant)">Open {{ broughtIn.assistant.name }}</button>
           </div>
         </div>

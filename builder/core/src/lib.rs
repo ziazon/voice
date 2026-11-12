@@ -23,6 +23,7 @@ mod install_fs;
 mod install_record;
 pub mod json;
 pub mod member;
+pub mod old_files;
 pub mod pack;
 pub mod template;
 

@@ -480,3 +480,207 @@ fn existing_explains_why_a_link_or_saved_history_cannot_be_brought_in() {
         assert!(!text.contains("Voice can't bring this one in. "), "{text}");
     }
 }
+
+fn older_files(home: &Home) -> PathBuf {
+    let old = voice_core::assistants::make(
+        &home.0.join("old-kit"),
+        &voice_core::assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Robin",
+            principal_pronouns: "they/them",
+        },
+        "2026-11-12",
+        "voice",
+    )
+    .unwrap();
+    let skill = home.0.join(".claude/skills/ari");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        format!(
+            "run --member {} similar",
+            old.dir.join("member.json").display()
+        ),
+    )
+    .unwrap();
+    for name in [
+        "IDENTITY.md",
+        "interview.md",
+        "lens.md",
+        "decisions.md",
+        "measurements.md",
+    ] {
+        fs::write(old.dir.join(name), format!("Older Ari's {name}.\n")).unwrap();
+    }
+    let autonomy = fs::read_to_string(old.dir.join("autonomy.md")).unwrap();
+    fs::write(
+        old.dir.join("autonomy.md"),
+        autonomy.replace("- [ ] `scope`", "- [x] `scope`"),
+    )
+    .unwrap();
+    fs::write(
+        old.dir.join("private.json"),
+        r#"{"filters":{"personal":"garden journal"}}"#,
+    )
+    .unwrap();
+    fs::write(old.dir.join("briefs/older.md"), "Older garden notes.\n").unwrap();
+    old.dir
+}
+
+#[test]
+fn pb87c_bring_in_brings_every_offered_file_and_prints_the_files_line() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = Home::new();
+    let old = older_files(&home);
+    let text = home.success(&["new", "Ari", "--principal", "Robin", "--bring-in"]);
+    let lines: Vec<_> = text.lines().collect();
+    assert!(lines[1].starts_with("Voice backed up the older Ari first, in "));
+    assert_eq!(
+        lines[2],
+        "It brought in the older Ari's own files: IDENTITY.md, autonomy.md, interview.md, lens.md, decisions.md, measurements.md, briefs, private.json."
+    );
+    let made = home.0.join(".claude/crew/ari");
+    for name in [
+        "IDENTITY.md",
+        "autonomy.md",
+        "interview.md",
+        "lens.md",
+        "decisions.md",
+        "measurements.md",
+        "briefs/older.md",
+        "private.json",
+    ] {
+        assert_eq!(
+            fs::read(made.join(name)).unwrap(),
+            fs::read(old.join(name)).unwrap(),
+            "{name}"
+        );
+        assert_eq!(
+            fs::metadata(made.join(name)).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn pb87c_leave_autonomy_keeps_the_template_file() {
+    let home = Home::new();
+    let old = older_files(&home);
+    let text = home.success(&[
+        "new",
+        "Ari",
+        "--principal",
+        "Robin",
+        "--bring-in",
+        "--leave",
+        "autonomy.md",
+    ]);
+    assert!(text.contains("It brought in the older Ari's own files: IDENTITY.md, interview.md, lens.md, decisions.md, measurements.md, briefs, private.json.\n"));
+    let made = home.0.join(".claude/crew/ari");
+    let expected = voice_core::assistants::make(
+        &home.0.join("template-home"),
+        &voice_core::assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Robin",
+            principal_pronouns: "they/them",
+        },
+        &voice_agent::ledger::local_day(SystemTime::now()),
+        "voice",
+    )
+    .unwrap();
+    assert_eq!(
+        fs::read(made.join("autonomy.md")).unwrap(),
+        fs::read(expected.dir.join("autonomy.md")).unwrap()
+    );
+    assert_ne!(
+        fs::read(made.join("autonomy.md")).unwrap(),
+        fs::read(old.join("autonomy.md")).unwrap()
+    );
+    assert_eq!(
+        fs::read(made.join("IDENTITY.md")).unwrap(),
+        fs::read(old.join("IDENTITY.md")).unwrap()
+    );
+}
+
+#[test]
+fn pb87c_unknown_leave_refuses_before_making_or_backing_up() {
+    let home = Home::new();
+    older_files(&home);
+    let output = home.run(&[
+        "new",
+        "Ari",
+        "--principal",
+        "Robin",
+        "--bring-in",
+        "--leave",
+        "nope.md",
+    ]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "voice: Voice found no nope.md to leave out. See what it found: voice existing Ari\n"
+    );
+    assert!(!home.0.join(".claude/crew/ari").exists());
+    assert!(!home.0.join(".claude/voice-backups").exists());
+}
+
+#[test]
+fn pb87c_leave_requires_bring_in() {
+    let home = Home::new();
+    let output = home.run(&[
+        "new",
+        "Ari",
+        "--principal",
+        "Robin",
+        "--leave",
+        "autonomy.md",
+    ]);
+    assert_eq!(output.status.code(), Some(2));
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("--bring-in"), "{error}");
+    assert!(error.contains("required"), "{error}");
+    assert!(!home.0.join(".claude").exists());
+}
+
+#[test]
+fn pb87c_existing_prints_each_offer_and_problem_then_leave_hint() {
+    let home = Home::new();
+    let old = older_files(&home);
+    fs::remove_file(old.join("lens.md")).unwrap();
+    std::os::unix::fs::symlink(old.join("missing"), old.join("lens.md")).unwrap();
+    let text = home.success(&["existing", "Ari"]);
+    let after_folder = text.split("Folder it was made in: ").nth(1).unwrap();
+    let lines: Vec<_> = after_folder.lines().skip(1).collect();
+    assert_eq!(
+        lines,
+        [
+            "Can bring in IDENTITY.md",
+            "Can bring in autonomy.md",
+            "Can bring in interview.md",
+            "Leaves out lens.md: It's a link, so Voice leaves it.",
+            "Can bring in decisions.md",
+            "Can bring in measurements.md",
+            "Can bring in briefs",
+            "Can bring in private.json",
+            "Voice can back it up and bring it in: voice new Ari --bring-in (add --leave <file> to leave a file out)",
+        ]
+    );
+}
+
+#[test]
+fn pb87c_bring_in_leaves_problem_files_out_by_default() {
+    let home = Home::new();
+    let old = older_files(&home);
+    fs::remove_file(old.join("lens.md")).unwrap();
+    std::os::unix::fs::symlink(old.join("missing"), old.join("lens.md")).unwrap();
+    let text = home.success(&["new", "Ari", "--principal", "Robin", "--bring-in"]);
+    assert!(text.contains("It brought in the older Ari's own files: IDENTITY.md, autonomy.md, interview.md, decisions.md, measurements.md, briefs, private.json.\n"));
+    assert!(!home.0.join(".claude/crew/ari/lens.md").exists());
+    assert_eq!(
+        fs::read(home.0.join(".claude/crew/ari/IDENTITY.md")).unwrap(),
+        fs::read(old.join("IDENTITY.md")).unwrap()
+    );
+}

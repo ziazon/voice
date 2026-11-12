@@ -18,7 +18,7 @@ use voice_core::{
     cli_command::{CLI_FOLDER, CLI_PLACE, shipped_cli_word},
     consent, crew,
     error::Error,
-    existing,
+    existing, old_files,
 };
 use voice_ingest::private::{read_private_optional, remove_private, write_private};
 
@@ -206,6 +206,19 @@ pub fn find_existing_in(
         );
     }
     Ok(dto::ExistingAssistant {
+        files: found
+            .old_folder
+            .as_deref()
+            .map(old_files::offer)
+            .transpose()
+            .map_err(|_| failure(LOOK_BEFORE))?
+            .unwrap_or_default()
+            .into_iter()
+            .map(|file| dto::OldFile {
+                name: file.name.into(),
+                problem: file.problem.map(str::to_owned),
+            })
+            .collect(),
         found: found.any(),
         can_bring_in: found.any()
             && bring_in_refusal(home, &found)
@@ -337,12 +350,32 @@ pub fn bring_in(
     date: &str,
     stamp: &str,
     cli: &str,
-) -> voice_core::error::Result<(assistants::Listed, Option<PathBuf>)> {
+    files: &[String],
+) -> voice_core::error::Result<(assistants::Listed, Option<PathBuf>, Vec<String>)> {
     let slug = crew::slugify(new.name)
         .ok_or_else(|| Error::Invalid("name must contain a letter or digit".into()))?;
     let found = existing::find(home, claude_home, &slug)?;
+    if !files.is_empty() {
+        let offered = found
+            .old_folder
+            .as_deref()
+            .map(old_files::offer)
+            .transpose()?;
+        let mut seen = std::collections::HashSet::new();
+        for name in files {
+            if !seen.insert(name)
+                || !offered.as_ref().is_some_and(|offered| {
+                    offered
+                        .iter()
+                        .any(|file| file.name == name && file.problem.is_none())
+                })
+            {
+                return Err(old_files::refusal(name));
+            }
+        }
+    }
     if !found.any() {
-        return make_and_clear(home, new, date, cli).map(|made| (made, None));
+        return make_and_clear(home, new, date, cli).map(|made| (made, None, Vec::new()));
     }
     if let Some(sentence) = bring_in_refusal(home, &found)? {
         return Err(Error::Invalid(sentence));
@@ -381,6 +414,9 @@ pub fn bring_in(
     let corpus = state.join("decisions.jsonl");
     let before = state.join("decisions-before-voice.jsonl");
     let mut moved = false;
+    let mut cleared = false;
+    let crew = assistants::crew_dir(home);
+    let crew_existed = fs::symlink_metadata(&crew).is_ok();
     let result = (|| {
         if fs::symlink_metadata(&corpus).is_ok() {
             fs::hard_link(&corpus, &before).map_err(|source| Error::Io {
@@ -396,13 +432,37 @@ pub fn bring_in(
             }
             moved = true;
         }
-        make_and_clear(home, new, date, cli)
+        let made = make_and_clear(home, new, date, cli)?;
+        cleared = true;
+        if !files.is_empty()
+            && let Err(error) = old_files::bring(&backup.join("member"), &made.dir, files)
+        {
+            let _ = fs::remove_dir_all(&made.dir);
+            return Err(error);
+        }
+        Ok(made)
     })();
     match result {
-        Ok(made) => Ok((made, Some(backup))),
+        Ok(made) => Ok((
+            made,
+            Some(backup),
+            old_files::NAMES
+                .into_iter()
+                .filter(|name| files.iter().any(|file| file == name))
+                .map(str::to_owned)
+                .collect(),
+        )),
         Err(error) => {
+            if !crew_existed {
+                // Only remove a parent this call created, and only while it is empty.
+                let _ = fs::remove_dir(&crew);
+            }
+            let consent = backup.join("state/consent.json");
+            let consent_restored = !cleared
+                || fs::symlink_metadata(&consent).is_err()
+                || fs::rename(&consent, state.join("consent.json")).is_ok();
             let restored = !moved || fs::hard_link(&before, &corpus).is_ok();
-            if restored {
+            if restored && consent_restored {
                 if moved {
                     let _ = fs::remove_file(&before);
                 }
@@ -416,8 +476,10 @@ pub fn bring_in(
 pub fn bring_in_assistant_in(
     home: &Path,
     claude_home: &Path,
-    request: dto::NewAssistantRequest,
+    request: dto::BringInRequest,
 ) -> Result<dto::BroughtIn> {
+    let files = request.files;
+    let request = request.assistant;
     let slug = checked_request(&request)?;
     let cli = cli_word(home)?;
     let new = assistants::New {
@@ -427,20 +489,22 @@ pub fn bring_in_assistant_in(
         principal_pronouns: &request.principal_pronouns,
     };
     let now = SystemTime::now();
-    let (made, backup) = bring_in(
+    let (made, backup, files) = bring_in(
         home,
         claude_home,
         &new,
         &local_day(now),
         &voice_agent::ledger::local_stamp(now),
         &cli,
+        &files,
     )
     .map_err(|error| match error {
         Error::Invalid(sentence)
             if sentence == HISTORY_BEFORE
                 || sentence == CORPUS_NOT_PLAIN
                 || sentence == state_refusal(&slug)
-                || voice_core::backup::says(&sentence) =>
+                || voice_core::backup::says(&sentence)
+                || old_files::says(&sentence) =>
         {
             failure(&sentence)
         }
@@ -448,6 +512,7 @@ pub fn bring_in_assistant_in(
         _ => failure(MAKE),
     })?;
     Ok(dto::BroughtIn {
+        files,
         assistant: assistant(home, made),
         backup: backup.map(|path| {
             // back_up always makes this folder beneath the supplied home.
@@ -461,7 +526,7 @@ pub fn bring_in_assistant_in(
     })
 }
 
-pub fn bring_in_assistant(request: dto::NewAssistantRequest) -> Result<dto::BroughtIn> {
+pub fn bring_in_assistant(request: dto::BringInRequest) -> Result<dto::BroughtIn> {
     let home = home(MAKE)?;
     bring_in_assistant_in(
         &home,
