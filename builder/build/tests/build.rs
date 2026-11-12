@@ -1995,13 +1995,14 @@ fn distil_keeps_good_points_in_order_and_reuses_the_raw_repaired_reply() {
         "my therapist",
         "Please always",
         "Seventh choice",
+        "Sixth choice",
         "No date",
         "unasked",
         "hidden",
     ] {
         assert!(!methods.contains(bad), "{methods}");
     }
-    assert!(methods.contains("- Good first choice.\n- Second choice.\n- Third choice.\n- Fourth choice.\n- Fifth choice.\n- Sixth choice."), "{methods}");
+    assert!(methods.contains("- Good first choice.\n- Second choice.\n- Third choice.\n- Fourth choice.\n- Fifth choice.\n"), "{methods}");
     let calls = stub.calls();
     let reused = run(
         &stub,
@@ -2017,7 +2018,7 @@ fn distil_keeps_good_points_in_order_and_reuses_the_raw_repaired_reply() {
 }
 
 #[test]
-fn distil_keeps_runs_that_only_cross_point_boundaries() {
+fn distil_repairs_runs_that_cross_point_boundaries() {
     let python = python().expect("python3 for the stub");
     let stub = Stub::new(&python);
     stub.plan(json!({"1": sections(&|r| {
@@ -2031,11 +2032,8 @@ fn distil_keeps_runs_that_only_cross_point_boundaries() {
         &mut Vec::new(),
     )
     .unwrap();
-    assert!(
-        built
-            .sections
-            .contains("- Please always keep\n- the weekly planning\n")
-    );
+    assert!(built.sections.contains("- Please always keep\n"));
+    assert!(!built.sections.contains("- the weekly planning\n"));
     assert_eq!(stub.calls(), 3);
 }
 
@@ -2103,7 +2101,7 @@ fn distil_retries_when_repair_removes_the_only_lean() {
 }
 
 #[test]
-fn distil_checks_points_individually_and_repairs_without_rewriting() {
+fn distil_rejects_runs_across_point_boundaries() {
     let categories = vec![("methods".to_owned(), 12), ("scope".to_owned(), 12)];
     let records = records(&corpus(12, 0));
     let reply = sections(&|r| {
@@ -2111,7 +2109,7 @@ fn distil_checks_points_individually_and_repairs_without_rewriting() {
     });
     assert!(
         build::check_distil_reply(&categories, "decisions.jsonl", &records, &filters(), &reply)
-            .is_ok()
+            .is_err()
     );
 }
 
@@ -2152,7 +2150,7 @@ fn repaired_distil_drops_only_bad_points_and_keeps_extra_fields() {
     assert_eq!(repaired["sections"].as_array().unwrap().len(), 2);
     assert_eq!(
         repaired["sections"][0]["lean"],
-        json!(["First.", "Second.", "Third.", "Fourth.", "Fifth.", "Sixth."])
+        json!(["First.", "Second.", "Third.", "Fourth.", "Fifth."])
     );
     assert_eq!(
         repaired["sections"][0]["precedents"],
@@ -2263,5 +2261,50 @@ fn repaired_distil_obeys_word_budget_drop_order() {
             &repaired
         )
         .is_ok()
+    );
+}
+
+#[test]
+fn repaired_distil_checks_quotes_in_render_order_across_points_lists_and_sections() {
+    let categories = vec![("methods".to_owned(), 12), ("scope".to_owned(), 12)];
+    let records = records(&json!({"kind":"message", "text":
+        "inside quoted words must go away. alpha beta gamma delta epsilon zeta. one two three four five six. red green blue gold pink white. north south east west up down"}).to_string());
+    let reply = sections(&|r| {
+        r["sections"][0]["lean"] = json!([
+            "A safe preference.",
+            "inside quoted words must go away",
+            "alpha beta gamma",
+            "delta epsilon zeta",
+            "one"
+        ]);
+        r["sections"][0]["flips"] = json!(["two three four", "five six", "red green blue"]);
+        r["sections"][0]["own_answer"] = json!(["gold pink white", "north south east"]);
+        r["sections"][0]["rules"] = json!([]);
+        r["sections"][0]["precedents"] = json!([]);
+        r["sections"][1]["lean"] = json!(["west up down", "Another safe preference."]);
+        // Reply order differs from the check's category order.
+        r["sections"].as_array_mut().unwrap().reverse();
+    });
+    let repaired = build::repair_distil_reply(&categories, "fixture", &records, &filters(), &reply);
+    let methods = &repaired["sections"][1];
+    assert_eq!(
+        methods["lean"],
+        json!(["A safe preference.", "alpha beta gamma", "one"])
+    );
+    assert_eq!(
+        methods["flips"],
+        json!(["two three four", "red green blue"])
+    );
+    assert_eq!(methods["own_answer"], json!(["north south east"]));
+    assert_eq!(
+        repaired["sections"][0]["lean"],
+        json!(["Another safe preference."])
+    );
+    assert!(
+        build::check_distil_reply(&categories, "fixture", &records, &filters(), &repaired).is_ok()
+    );
+    assert_eq!(
+        build::repair_distil_reply(&categories, "fixture", &records, &filters(), &repaired),
+        repaired
     );
 }

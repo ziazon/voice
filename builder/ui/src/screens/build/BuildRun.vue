@@ -101,6 +101,7 @@ async function build(mergeFirst = false) {
     let best = 0
     let stops = 0
     while (!unmounted) {
+      lines.value = []
       let reached = 0
       try {
         done.value = await backend.buildAssistant({ slug: props.slug, noLimit: keepGoing.value }, progress => {
@@ -121,7 +122,7 @@ async function build(mergeFirst = false) {
           : 'The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.')
         if (!keepGoing.value || stopping.value) {
           info.value = stopping.value
-          error.value = message
+          error.value = stopping.value ? STOPPED : message
           return
         }
         if (unmounted) return
@@ -131,7 +132,7 @@ async function build(mergeFirst = false) {
           const at = new Date(Date.now() + delay).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           error.value = `Your Claude plan's limit is reached, so Voice is waiting. It tries again at ${at}.`
         } else {
-          stops = reached > best ? 0 : stops + 1
+          stops = reached > best ? 1 : stops + 1
           if (stops >= MAX_STOPS) {
             info.value = false
             error.value = `The build stopped ${MAX_STOPS} times in a row without getting further, so Voice stopped trying. The last problem: ${message}`

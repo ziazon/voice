@@ -263,9 +263,9 @@ it('waits thirty minutes for the plan limit without counting plan stops', async 
   wrapper.unmount()
 })
 
-it('gives up after three failures without progress', async () => {
+it('counts the first stop after finished label steps toward three failures', async () => {
   vi.useFakeTimers()
-  const backend = fakeBackend({ buildAssistant: vi.fn().mockRejectedValue({ message: 'A problem.' }) })
+  const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Labels finished.', spend, steps: { done: 2, total: 25 } }); return Promise.reject({ message: 'A problem.' }) }) })
   const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name })
   await wrapper.get('input').setValue(true)
   await button(wrapper, 'Start the build').trigger('click'); await flushPromises()
@@ -345,4 +345,42 @@ it('clears a pending retry when the screen unmounts', async () => {
   wrapper.unmount()
   await vi.advanceTimersByTimeAsync(1_800_000)
   expect(backend.buildAssistant).toHaveBeenCalledTimes(1)
+})
+
+it('clears the lines at the start of every automatic attempt', async () => {
+  vi.useFakeTimers()
+  const call = deferred<typeof done>()
+  const backend = fakeBackend({ buildAssistant: vi.fn()
+    .mockImplementationOnce((_request, progress) => {
+      progress({ line: 'Previous attempt.', spend, steps: null })
+      return Promise.reject({ message: 'A problem.' })
+    }).mockImplementationOnce((_request, progress) => {
+      progress({ line: 'Current attempt.', spend, steps: null })
+      return call.promise
+    }) })
+  const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name })
+  await wrapper.get('input').setValue(true)
+  await button(wrapper, 'Start the build').trigger('click'); await flushPromises()
+  expect(wrapper.text()).toContain('Previous attempt.')
+  await vi.advanceTimersByTimeAsync(15_000)
+  expect(wrapper.text()).not.toContain('Previous attempt.')
+  expect(wrapper.text()).toContain('Current attempt.')
+  call.resolve(done); await flushPromises()
+  wrapper.unmount()
+})
+
+it('stops during a running attempt with keep going on', async () => {
+  vi.useFakeTimers()
+  const call = deferred<typeof done>()
+  const backend = fakeBackend({ buildAssistant: vi.fn().mockReturnValue(call.promise) })
+  const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name })
+  await wrapper.get('input').setValue(true)
+  await button(wrapper, 'Start the build').trigger('click'); await flushPromises()
+  await button(wrapper, 'Stop for now').trigger('click'); await flushPromises()
+  call.reject({ message: 'A running call failed.' }); await flushPromises()
+  expect(wrapper.get('.alert-info').text()).toBe('Stopped. Your assistant is as it was before this build. What was already finished is kept, so running the build again carries on from there.')
+  await vi.advanceTimersByTimeAsync(15_000)
+  expect(backend.buildAssistant).toHaveBeenCalledTimes(1)
+  expect(backend.stopBuild).toHaveBeenCalledWith({ slug: 'example' })
+  wrapper.unmount()
 })

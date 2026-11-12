@@ -28,7 +28,7 @@ use voice_steps::{
     input::{RecordList, Records, read_json},
     labels::{Mode, Row, label_problems, tally},
     score::{Score, TIERS, score},
-    shingle::{overlaps, runs},
+    shingle::{corpus_runs, overlaps, runs, tokens},
     similar::{similar, similar_text},
     text_check::hidden,
 };
@@ -577,11 +577,6 @@ pub fn check_distil_reply(
                 "Voice couldn't check it for your own words",
             )
         })?;
-    let point_runs: HashSet<String> = text.iter().flat_map(|point| runs(point, SHINGLE)).collect();
-    let quoted: Vec<_> = quoted
-        .into_iter()
-        .filter(|run| point_runs.contains(run))
-        .collect();
     if !quoted.is_empty() {
         let runs: Vec<String> = quoted
             .iter()
@@ -616,7 +611,6 @@ pub fn repair_distil_reply(
     };
     let mut seen = HashSet::new();
     let mut kept = Vec::new();
-    let mut candidates = Vec::new();
     for section in sections {
         let Some(category) = section.get("category").and_then(Value::as_str) else {
             continue;
@@ -659,17 +653,15 @@ pub fn repair_distil_reply(
                 })
                 .collect();
             for ((key, _, _), points) in LISTS.into_iter().zip(clean) {
-                candidates.extend(points.iter().filter_map(Value::as_str).map(str::to_owned));
                 section[key] = Value::Array(points);
             }
         }
         kept.push(section);
     }
     // A malformed corpus must still fail the normal check; do not hide its error.
-    let Ok(quoted) = overlaps(&candidates.join("\n"), &[(corpus_name, records)], SHINGLE) else {
+    let Ok(quoted) = corpus_runs(&[(corpus_name, records)], SHINGLE) else {
         return reply.clone();
     };
-    let quoted: std::collections::BTreeSet<_> = quoted.into_iter().collect();
     for section in &mut kept {
         if !LISTS.iter().all(|(key, _, _)| {
             section
@@ -681,11 +673,6 @@ pub fn repair_distil_reply(
         }
         for (key, _, most) in LISTS {
             if let Some(list) = section.get_mut(key).and_then(Value::as_array_mut) {
-                list.retain(|point| {
-                    point
-                        .as_str()
-                        .is_some_and(|point| runs(point, SHINGLE).is_disjoint(&quoted))
-                });
                 list.truncate(most);
             }
         }
@@ -712,6 +699,32 @@ pub fn repair_distil_reply(
             }
             if !dropped {
                 break;
+            }
+        }
+    }
+    // Match the strict check's render order, carrying enough tokens to catch a
+    // quoted run across any number of points, lists, or sections.
+    let mut tail = Vec::new();
+    for (category, _) in categories {
+        let Some(section) = kept.iter_mut().find(|section| {
+            section.get("category").and_then(Value::as_str) == Some(category.as_str())
+        }) else {
+            continue;
+        };
+        for (key, _, _) in LISTS {
+            if let Some(list) = section.get_mut(key).and_then(Value::as_array_mut) {
+                list.retain(|point| {
+                    let Some(point) = point.as_str() else {
+                        return true; // Leave malformed output for the strict check.
+                    };
+                    if !runs(&format!("{}\n{point}", tail.join(" ")), SHINGLE).is_disjoint(&quoted)
+                    {
+                        return false;
+                    }
+                    tail.extend(tokens(point));
+                    tail = tail.split_off(tail.len().saturating_sub(SHINGLE - 1));
+                    true
+                });
             }
         }
     }

@@ -19,7 +19,7 @@ it('names the assistant and explains the build, daily limit and resuming', () =>
   const wrapper = screen(Build, fakeBackend(), { assistant })
   expect(wrapper.get('h2').text()).toBe(`Build ${assistant.name}`)
   expect(wrapper.text()).toContain('Voice sends your history to Claude through your own Claude Code, a part at a time, and learns how you decide.')
-  expect(wrapper.text()).toContain('It uses your own Claude plan, up to the daily limit you set on Connect Claude.')
+  expect(wrapper.text()).toContain('It uses your own Claude plan, up to the daily limit you set on Connect Claude, unless you turn on Keep going below.')
   expect(wrapper.text()).toContain('You can leave it running, or stop and carry on later from where it got to.')
   expect(wrapper.getComponent(BuildRun).props('name')).toBe(assistant.name)
 })

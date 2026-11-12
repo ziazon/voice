@@ -1352,7 +1352,10 @@ fn the_retry_screen_pins_the_agents_plan_limit_message() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui/src/screens/build/keepGoing.ts"),
     )
     .unwrap();
-    assert!(source.contains(agent_text::PLAN_STOPPED));
+    assert!(source.contains(&format!(
+        "export const PLAN_STOPPED = '{}'",
+        agent_text::PLAN_STOPPED
+    )));
 }
 
 #[test]
