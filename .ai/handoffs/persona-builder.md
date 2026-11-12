@@ -2,6 +2,48 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VO16.2b: Voice pins radio-panels v0.1.0 and deletes builder/panels (2026-11-12, lane: V1)
+
+- **Why:** the deliberation protocol moved out of voice into the shared public repo `awna-ai/radio` (VO16.2, the
+  Radio's half). Voice now uses that copy instead of keeping its own.
+- **What:** `builder/api` and `builder/panel-runner` depend on
+  `radio-panels = { git = "https://github.com/awna-ai/radio", tag = "v0.1.0" }`; `Cargo.lock` pins commit
+  `03ee956`. `builder/panels` leaves the workspace and is deleted (its 66 reference fixtures and tests live in the
+  Radio repo). The moved crate's one code change is `Dissent.crewmate` → `member`: a closed panel's `result.json`
+  now saves `member`, one saved before still reads through a private `SavedDissent` with a `crewmate` alias (never
+  rewritten), and the api reads `member`. `Cargo.lock`: serde_json 1.0.154 → 1.0.151 (radio-panels pins it exactly,
+  same features); the re-resolve also flipped `cssparser-macros`' syn pick (it accepts `>=2,<4`), restored by hand
+  to `syn 3.0.9` so nothing else moves (`cargo metadata --locked` accepts it). Briefs:
+  `plans/briefs/VO16.2b-pin-radio-panels.md`, `-fixup-1.md`.
+- **Who wrote it:** Codex, from the brief (she stopped correctly on the syn flip; resumed after the fix) and one
+  fix-up; Claude reviewed it.
+- **Dependency intake:** `awna-ai/radio` is public, MIT, our own org; the tag resolves to the locked commit locally
+  and on GitHub; no `build.rs`, proc-macro or `.cargo` config in it; no package new to voice's lock; its source
+  diff against voice's old `builder/panels` is the one rename plus two generator comments (security review and
+  Verifier each checked with `diff`). serde_json 1.0.152 to 1.0.154 carry no security fix (release notes and a
+  source diff: a `-0` fix under `arbitrary_precision`, which voice doesn't enable, `as_f32` finiteness, the
+  position reported for invalid UTF-8, a no_std hasher).
+- **Security review (Opus):** no HIGH or MEDIUM. LOW, recorded, not fixed here: radio-panels' exact `=` pins mean
+  voice can't move serde, serde_json or regex without a new Radio tag (a Radio-side choice); the tag is unsigned,
+  so a later `cargo update` should check the commit it moves to (`--locked` builds can't follow a moved tag); a
+  saved dissent entry still accepts unknown keys, as before (dropped on re-serialize).
+- **Verifier (Fable, `a215985`, now `6265f12`): PASS**, one should-fix: no test checked the name a real close saves (blanking
+  `member` in the `From` impl survived). Fix-up 1 (`2887aa8`, now `1498193`) asserts it in the 15-minute time-box test; the
+  mutation now fails. Nits left: a `result.json` written now can't be read by an older Voice; the reported column
+  of an invalid-UTF-8 error in a growth record can differ by serde_json version; no `.ai/DECISIONS.md` entry for the
+  first git dependency.
+- **Rebased (run `193704-r1`):** the first land passed `ci-local.sh` but lost the push race to PB8.8, and the
+  rebase conflicted only in `Cargo.lock` (PB8.8's 0.1.1 → 0.1.2 bump next to the deleted `voice-panels` entry);
+  resolved by keeping the deletion, `cargo metadata --locked` accepts it. `git range-diff`: every commit `=` except
+  the build commit, whose change is those version lines. Nothing on `main` names `voice_panels` or `builder/panels`.
+- **Verified:** red first (the new-key api test failed on unchanged code; the old-key api test and the reopen test
+  failed after the switch, before the alias); mutations killed: the alias removed, the api reading `crewmate`, the
+  `From` impl blanking `member`; Verifier's scratch probe: a real time-box close with dissent, its key renamed to
+  `crewmate`, read by status, list and detail and resumed, file unchanged; `cargo test -p voice-panel-runner
+  -p voice-api` 533 passed; workspace clippy clean; `bash scripts/ci-local.sh` at the land.
+- **Not verified:** a clean-machine build fetching the git dependency with an empty cargo cache (the cache here was
+  warm); radio-panels' own tests (they run in the Radio repo).
+
 ## PB8.7c: choose which of the older assistant's own files come in (2026-11-12, lane: V1)
 
 - **Why:** PB8.7b brought an older assistant's history in, but its own files (identity, autonomy, interview,
