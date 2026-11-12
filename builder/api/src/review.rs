@@ -390,6 +390,7 @@ pub fn apply_refresh_in(
             progress(BuildProgress {
                 line: line.into(),
                 spend: last_spend.clone(),
+                steps: None,
             });
         },
     )

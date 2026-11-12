@@ -204,7 +204,7 @@ pub fn refresh_commands(member: &std::path::Path, id: &str) -> [String; 2] {
 
 pub const DECISIONS_HIDDEN: &str = "Your assistant's decisions.md has a hidden character near the change, so nothing was saved. Remove it, then try again.";
 
-pub fn refresh_misfit(what: &str, problem: &str) -> String {
+pub fn refresh_misfit(what: &str, problem: &str, _times: usize) -> String {
     format!(
         "{what}: Claude's draft didn't fit twice, so nothing was saved ({problem}). Run `voice refresh propose` again."
     )
@@ -243,7 +243,7 @@ pub fn was_rejected(id: &str) -> String {
 pub fn cases_moved(_id: &str) -> String {
     "Some of the tests this change was meant to pass have changed since you approved it. Draft a new one with `voice refresh propose`.".into()
 }
-pub fn apply_misfit(what: &str, problem: &str) -> String {
+pub fn apply_misfit(what: &str, problem: &str, _times: usize) -> String {
     format!(
         "{what}: Claude's answers didn't fit twice, so nothing was saved ({problem}). Run `voice refresh apply` again."
     )

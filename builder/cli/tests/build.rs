@@ -375,7 +375,7 @@ fn shared_build_path_writes_exactly_the_cli_outputs() {
         &session,
         &shared.home,
         &prepared.inputs(&member, "decisions.jsonl", "sonnet"),
-        &mut |line| progress.push(line.to_owned()),
+        &mut |p| progress.push(p.line.to_owned()),
     )
     .unwrap();
     let checked = run::check(&member, &prepared, &built, "sonnet").unwrap();

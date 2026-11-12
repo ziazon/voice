@@ -215,7 +215,7 @@ fn run(
             filters: &filters,
             model: "sonnet",
         },
-        &mut |line| lines.push(line.to_owned()),
+        &mut |p| lines.push(p.line.to_owned()),
     )
 }
 
@@ -1725,4 +1725,220 @@ fn two_misfits_keep_both_rejected_replies() {
             assert_eq!(label["id"], record["id"]);
         }
     }
+}
+
+#[test]
+fn the_build_counts_its_steps() {
+    let Some(python) = python() else { return };
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    let text = corpus(12, 32);
+    let member = member();
+    let book = the_book();
+    let filters = filters();
+    let session = session(&home.0, Cap::default());
+    let heldout = voice_ingest::corpus::split(&member, "decisions.jsonl", text.as_bytes()).unwrap();
+    let expected = build::parts("decisions.jsonl", &records(&text))
+        .unwrap()
+        .len()
+        + book.groups.len()
+        + build::batches(&heldout.questions).len();
+    let mut sequences = Vec::new();
+    for rerun in [false, true] {
+        let mut progress = Vec::new();
+        build::build(
+            &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
+            &session,
+            &home.0,
+            &Inputs {
+                member: &member,
+                book: &book,
+                codebook: CODEBOOK,
+                corpus_name: "decisions.jsonl",
+                corpus: text.as_bytes(),
+                filters: &filters,
+                model: "sonnet",
+            },
+            &mut |p| progress.push((p.line.to_owned(), p.done, p.total)),
+        )
+        .unwrap();
+        assert_eq!(
+            progress[0],
+            (voice_build::text::reading(44, 32), 0, expected)
+        );
+        for (at, pair) in progress.windows(2).enumerate() {
+            assert_eq!(pair[1].1, pair[0].1 + 1);
+            assert!(pair[1].2 <= pair[0].2);
+            assert!(
+                pair[1]
+                    .0
+                    .ends_with(if rerun { ": already done." } else { ": done." }),
+                "step {at}: {:?}",
+                pair[1]
+            );
+        }
+        let last = progress.last().unwrap();
+        assert_eq!(last.1, last.2);
+        sequences.push(progress.iter().map(|p| (p.1, p.2)).collect::<Vec<_>>());
+    }
+    assert_eq!(sequences[0], sequences[1]);
+}
+
+#[test]
+fn the_total_drops_to_the_groups_that_have_decisions() {
+    let Some(python) = python() else { return };
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    let mut lines = Vec::new();
+    for (split, count) in [("train", 12), ("heldout", 32)] {
+        for n in 0..count {
+            let mut record = question(&format!("question:{split}{n:03}"), n, split);
+            record["header"] = json!(["Scope", "Methods"][n % 2]);
+            lines.push(record);
+        }
+    }
+    let text: String = lines.iter().map(|line| format!("{line}\n")).collect();
+    let member = member();
+    let book = the_book();
+    let filters = filters();
+    let session = session(&home.0, Cap::default());
+    let heldout = voice_ingest::corpus::split(&member, "decisions.jsonl", text.as_bytes()).unwrap();
+    let parts = build::parts("decisions.jsonl", &records(&text))
+        .unwrap()
+        .len();
+    let batches = build::batches(&heldout.questions).len();
+    let groups = book.groups.len();
+    assert_eq!(groups, 2);
+    let mut progress = Vec::new();
+    build::build(
+        &Guard::new(vec![&stub.claude()], Ceilings::defaults()),
+        &session,
+        &home.0,
+        &Inputs {
+            member: &member,
+            book: &book,
+            codebook: CODEBOOK,
+            corpus_name: "decisions.jsonl",
+            corpus: text.as_bytes(),
+            filters: &filters,
+            model: "sonnet",
+        },
+        &mut |p| progress.push((p.line.to_owned(), p.done, p.total)),
+    )
+    .unwrap();
+    assert_eq!(
+        progress[0],
+        (
+            voice_build::text::reading(44, 32),
+            0,
+            parts + groups + batches
+        )
+    );
+    for (at, line) in progress[1..=parts].iter().enumerate() {
+        assert_eq!(
+            line.0,
+            voice_build::text::step_line(&voice_build::text::labelling(at + 1, parts), false)
+        );
+        assert_eq!(line.2, parts + groups + batches);
+    }
+    let distil = voice_build::text::step_line(&voice_build::text::distilling(1, 1), false);
+    assert_eq!(progress[parts + 1].0, distil);
+    assert_eq!(
+        progress
+            .iter()
+            .filter(|p| p.0.starts_with("Learning how you decide, group "))
+            .count(),
+        1
+    );
+    for line in &progress[parts + 1..] {
+        assert_eq!(line.2, parts + 1 + batches);
+    }
+    let last = progress.last().unwrap();
+    assert_eq!((last.1, last.2), (parts + 1 + batches, parts + 1 + batches));
+}
+
+#[test]
+fn a_part_that_stops_the_build_again_says_running_again_is_unlikely_to_help() {
+    let Some(python) = python() else { return };
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    stub.plan(json!({"0":"bad", "1":"bad", "2":"bad", "3":"bad", "4":"bad", "5":"bad"}));
+    for times in 1..=3 {
+        let error = run(
+            &stub,
+            &home.0,
+            &corpus(12, 0),
+            Cap::default(),
+            &mut Vec::new(),
+        )
+        .err()
+        .unwrap()
+        .to_string();
+        assert_eq!(
+            error,
+            voice_build::text::misfit(
+                &voice_build::text::labelling(1, 1),
+                "1 label didn't fit the codebook",
+                times
+            )
+        );
+        if times > 1 {
+            assert!(error.contains(&format!("stopped the build {times} times")));
+        }
+    }
+    let rejected = fs::read_dir(home.0.join(".claude/state/ada/build"))
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("rejected-")
+        })
+        .count();
+    assert_eq!(rejected, 6);
+}
+
+#[test]
+fn only_this_parts_second_tries_count() {
+    let Some(python) = python() else { return };
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    let text = corpus(12, 0);
+    let part = build::parts("decisions.jsonl", &records(&text))
+        .unwrap()
+        .remove(0);
+    let name = build::cache_name(
+        "label",
+        "sonnet",
+        build::LABEL_SYSTEM,
+        &build::label_schema(),
+        &build::label_prompt(&the_book(), CODEBOOK, &part),
+    );
+    let stem = name.trim_end_matches(".json");
+    let folder = voice_ingest::private::private_folder(&home.0, "ada", build::CACHE).unwrap();
+    for name in [
+        format!("rejected-{stem}-5-2.json"),
+        format!("rejected-{stem}-5-1.json"),
+        format!("rejected-{stem}-x-2.json"),
+        format!("rejected-label-{}-5-2.json", "a".repeat(40)),
+        format!(".rejected-{stem}-6-2.json.tmp"),
+    ] {
+        let path = folder.join(name);
+        fs::write(&path, "{}").unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    stub.plan(json!({"0":"bad", "1":"bad"}));
+    let error = run(&stub, &home.0, &text, Cap::default(), &mut Vec::new())
+        .err()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        error,
+        voice_build::text::misfit(
+            &voice_build::text::labelling(1, 1),
+            "1 label didn't fit the codebook",
+            2
+        )
+    );
 }

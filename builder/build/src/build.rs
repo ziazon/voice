@@ -916,7 +916,7 @@ fn merge_by_id(last: &Value, reply: &Value, list: &str, asked: &HashSet<&str>) -
 }
 
 pub struct Asker<'a> {
-    misfit: fn(&str, &str) -> String,
+    misfit: fn(&str, &str, usize) -> String,
     guard: &'a Guard<'a>,
     sources: &'a [Source],
     session: &'a Session,
@@ -950,7 +950,7 @@ impl<'a> Asker<'a> {
             misfit: crate::text::misfit,
         }
     }
-    pub fn with_misfit(mut self, misfit: fn(&str, &str) -> String) -> Self {
+    pub fn with_misfit(mut self, misfit: fn(&str, &str, usize) -> String) -> Self {
         self.misfit = misfit;
         self
     }
@@ -978,6 +978,30 @@ impl<'a> Asker<'a> {
                 Ok(read_json(name, &bytes).ok())
             }
         }
+    }
+
+    /// How many builds this part has stopped: its second tries' rejected replies, at least 1.
+    fn stopped_times(&self, name: &str) -> usize {
+        let Ok(folder) = private_folder(self.home, self.slug, CACHE) else {
+            return 1;
+        };
+        let Ok(entries) = std::fs::read_dir(folder) else {
+            return 1;
+        };
+        let prefix = format!("rejected-{}-", name.trim_end_matches(".json"));
+        entries
+            .filter_map(std::result::Result::ok)
+            .filter(|entry| {
+                let name = entry.file_name();
+                name.to_str()
+                    .and_then(|name| name.strip_prefix(&prefix))
+                    .and_then(|rest| rest.strip_suffix("-2.json"))
+                    .is_some_and(|seconds| {
+                        !seconds.is_empty() && seconds.bytes().all(|b| b.is_ascii_digit())
+                    })
+            })
+            .count()
+            .max(1)
     }
 
     /// One step's call, reused from the cache when an earlier run paid for it, else asked once
@@ -1081,14 +1105,21 @@ impl<'a> Asker<'a> {
                     return Ok((checked, false));
                 }
                 Err(misfit) => {
-                    let seconds = SystemTime::now()
+                    let mut seconds = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs();
-                    let rejected = format!(
-                        "rejected-{}-{seconds}-{attempt}.json",
-                        name.trim_end_matches(".json")
-                    );
+                    let folder = private_folder(self.home, self.slug, CACHE)?;
+                    let rejected = loop {
+                        let rejected = format!(
+                            "rejected-{}-{seconds}-{attempt}.json",
+                            name.trim_end_matches(".json")
+                        );
+                        if std::fs::symlink_metadata(folder.join(&rejected)).is_err() {
+                            break rejected;
+                        }
+                        seconds += 1;
+                    };
                     write_private_at(
                         self.home,
                         self.slug,
@@ -1114,18 +1145,28 @@ impl<'a> Asker<'a> {
                 }
             }
         }
-        Err(Error::Invalid((self.misfit)(what, &last.shown)))
+        let times = self.stopped_times(&name);
+        Err(Error::Invalid((self.misfit)(what, &last.shown, times)))
     }
 }
 
+/// One line the build shows, and how far it has got: the steps finished (reused ones too) of the
+/// steps it holds in all.
+pub struct Progress<'a> {
+    pub line: &'a str,
+    pub done: usize,
+    pub total: usize,
+}
+
 /// Label, distil and backtest. Writes nothing in the member's folder: checked replies and private
-/// rejected replies go in the state folder's `build/`. `progress` gets each plain line the app shows.
+/// rejected replies go in the state folder's `build/`. `progress` gets each plain line the app shows,
+/// with the steps done and in all.
 pub fn build(
     guard: &Guard,
     session: &Session,
     home: &Path,
     inputs: &Inputs,
-    progress: &mut dyn FnMut(&str),
+    progress: &mut dyn FnMut(Progress<'_>),
 ) -> Result<Built> {
     let member = inputs.member;
     if let Some(category) = inputs.book.categories.iter().find(|c| {
@@ -1150,10 +1191,21 @@ pub fn build(
     if !trained {
         return Err(Error::Invalid(text::NOTHING_TO_BUILD.into()));
     }
-    progress(&text::reading(
-        crate::interview::answered(&records),
-        heldout.questions.len(),
-    ));
+    let batches = if tested {
+        batches(&heldout.questions)
+    } else {
+        Vec::new()
+    };
+    let mut done = 0;
+    let mut total = parts.len() + inputs.book.groups.len() + batches.len();
+    progress(Progress {
+        line: &text::reading(
+            crate::interview::answered(&records),
+            heldout.questions.len(),
+        ),
+        done,
+        total,
+    });
     let sources = sources(home, member)?;
     let mut asker = Asker::new(guard, &sources, session, home, &member.slug, inputs.model);
 
@@ -1177,12 +1229,18 @@ pub fn build(
             |reply| check_label_reply(inputs.book, part, reply),
         )?;
         labels.extend(found);
-        progress(&text::step_line(&what, reused));
+        done += 1;
+        progress(Progress {
+            line: &text::step_line(&what, reused),
+            done,
+            total,
+        });
     }
     let rows = tally(inputs.corpus_name, &records, "labels", &labels)?;
 
     let groups = distil_in(inputs.book, inputs.corpus_name, &records, "labels", &labels)?;
     let groups: Vec<_> = groups.iter().filter(|g| !g.rows.is_empty()).collect();
+    total = parts.len() + groups.len() + batches.len();
     let schema = distil_schema();
     let mut rendered: HashMap<String, String> = HashMap::new();
     for (at, group) in groups.iter().enumerate() {
@@ -1203,7 +1261,12 @@ pub fn build(
                 )
             })?;
         rendered.extend(written);
-        progress(&text::step_line(&what, reused));
+        done += 1;
+        progress(Progress {
+            line: &text::step_line(&what, reused),
+            done,
+            total,
+        });
     }
     let sections: String = inputs
         .book
@@ -1214,13 +1277,16 @@ pub fn build(
 
     let held = heldout.questions.len();
     let backtest = if !tested {
-        progress(&text::too_few(held));
+        progress(Progress {
+            line: &text::too_few(held),
+            done,
+            total,
+        });
         None
     } else {
         let model = format!("{sections}{}", voice_steps::labels::tally_markdown(&rows));
         let schema = backtest_schema();
         let mut predictions = Map::new();
-        let batches = batches(&heldout.questions);
         for (at, batch) in batches.iter().enumerate() {
             let what = text::testing(at + 1, batches.len(), held);
             let prompt = backtest_prompt(member, inputs.corpus_name, &records, &model, batch)?;
@@ -1239,7 +1305,12 @@ pub fn build(
                 |reply| check_backtest_reply(batch, reply),
             )?;
             predictions.extend(found);
-            progress(&text::step_line(&what, reused));
+            done += 1;
+            progress(Progress {
+                line: &text::step_line(&what, reused),
+                done,
+                total,
+            });
         }
         let answers: RecordList = heldout
             .answers

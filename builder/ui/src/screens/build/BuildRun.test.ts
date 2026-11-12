@@ -1,3 +1,4 @@
+import type { BuildProgress } from '../../types/generated/BuildProgress'
 import type { Spend } from '../../types/generated/Spend'
 import { flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
@@ -8,7 +9,7 @@ const spend: Spend = { spentUsd: 3, dailyCapUsd: 50, usage: null }
 const done = { answered: 1000, heldOut: 2, tested: false, spend }
 it('shows live lines and spend, finishes with counts and emits running', async () => {
   const call = deferred<typeof done>()
-  const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Reading your history', spend }); return call.promise }) })
+  const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Reading your history', spend, steps: null }); return call.promise }) })
   const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name })
   await flushPromises()
   expect(wrapper.text()).toContain('Today, about $0.00 of the $50.00 daily limit, as Claude Code estimates it.')
@@ -69,7 +70,7 @@ it('locks navigation and prevents duplicate builds while rebuilding merges histo
 it.each(['resolve', 'reject'] as const)('ignores a stale initial spend %s after build progress', async outcome => {
   const initial = deferred<typeof spend>()
   const call = deferred<typeof done>()
-  const backend = fakeBackend({ spendToday: vi.fn().mockReturnValue(initial.promise), buildAssistant: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Reading your history', spend }); return call.promise }) })
+  const backend = fakeBackend({ spendToday: vi.fn().mockReturnValue(initial.promise), buildAssistant: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Reading your history', spend, steps: null }); return call.promise }) })
   const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name })
   await button(wrapper, 'Start the build').trigger('click')
   if (outcome === 'resolve') initial.resolve({ spentUsd: 0, dailyCapUsd: 50, usage: null })
@@ -124,7 +125,7 @@ it('shows subscription usage without dollars initially, during progress and when
   const usage = 'Today, 2 calls to Claude and 850 tokens, on your Claude subscription.'
   const subscription = { ...spend, usage }
   const call = deferred<typeof done>()
-  const backend = fakeBackend({ spendToday: vi.fn().mockResolvedValue(subscription), buildAssistant: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Reading your history', spend: subscription }); return call.promise }) })
+  const backend = fakeBackend({ spendToday: vi.fn().mockResolvedValue(subscription), buildAssistant: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Reading your history', spend: subscription, steps: null }); return call.promise }) })
   const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name })
   await flushPromises()
   expect(wrapper.text()).toContain(usage)
@@ -135,4 +136,59 @@ it('shows subscription usage without dollars initially, during progress and when
   call.resolve({ ...done, spend: subscription }); await flushPromises()
   expect(wrapper.text()).toContain(usage)
   expect(wrapper.text()).not.toContain('$')
+})
+
+it('shows counted progress while running, keeps it after failure, and resets it for another run', async () => {
+  const call = deferred<typeof done>()
+  const again = deferred<typeof done>()
+  const backend = fakeBackend({ buildAssistant: vi.fn()
+    .mockImplementationOnce((_request, progress) => { progress({ line: 'Labelling.', spend, steps: { done: 3, total: 25 } }); return call.promise })
+    .mockReturnValueOnce(again.promise) })
+  const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name }); await flushPromises()
+  await button(wrapper, 'Start the build').trigger('click')
+  expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('12')
+  expect(wrapper.get('p[aria-live="polite"]').text()).toBe('3 of 25 steps done, 22 left.')
+  call.reject({ message: 'The build could not finish.' }); await flushPromises()
+  expect(wrapper.get('.alert-danger').text()).toBe('The build could not finish.')
+  expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('12')
+  expect(wrapper.get('p[aria-live="polite"]').text()).toBe('Stopped after 3 of 25 steps, 22 left.')
+  await button(wrapper, 'Run the build again').trigger('click')
+  expect(wrapper.find('.progress-bar-indeterminate').exists()).toBe(true)
+  expect(wrapper.find('p[aria-live="polite"]').exists()).toBe(false)
+  again.resolve(done); await flushPromises()
+})
+
+it('removes the bar and steps text after a finished build', async () => {
+  const call = deferred<typeof done>()
+  const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Testing.', spend, steps: { done: 25, total: 25 } }); return call.promise }) })
+  const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name }); await flushPromises()
+  await button(wrapper, 'Start the build').trigger('click')
+  expect(wrapper.get('p[aria-live="polite"]').text()).toBe('All 25 steps done.')
+  call.resolve(done); await flushPromises()
+  expect(wrapper.find('[role="progressbar"]').exists()).toBe(false)
+  expect(wrapper.find('p[aria-live="polite"]').exists()).toBe(false)
+})
+
+it('keeps progress indeterminate when the lines have no steps', async () => {
+  const call = deferred<typeof done>()
+  const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Reading.', spend, steps: null }); return call.promise }) })
+  const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name }); await flushPromises()
+  await button(wrapper, 'Start the build').trigger('click')
+  expect(wrapper.find('.progress-bar-indeterminate').exists()).toBe(true)
+  expect(wrapper.find('p[aria-live="polite"]').exists()).toBe(false)
+  call.resolve(done); await flushPromises()
+})
+
+it('uses the singular for one step and keeps full progress after a failure', async () => {
+  const call = deferred<typeof done>()
+  let progress!: (value: BuildProgress) => void
+  const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_request, callback) => { progress = callback; return call.promise }) })
+  const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name }); await flushPromises()
+  await button(wrapper, 'Start the build').trigger('click')
+  progress({ line: 'Reading.', spend, steps: { done: 0, total: 1 } }); await flushPromises()
+  expect(wrapper.get('p[aria-live="polite"]').text()).toBe('0 of 1 step done, 1 left.')
+  progress({ line: 'Checking.', spend, steps: { done: 25, total: 25 } }); await flushPromises()
+  expect(wrapper.get('p[aria-live="polite"]').text()).toBe('All 25 steps done.')
+  call.reject({ message: 'Checking stopped.' }); await flushPromises()
+  expect(wrapper.get('p[aria-live="polite"]').text()).toBe('All 25 steps done.')
 })

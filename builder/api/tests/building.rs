@@ -452,17 +452,24 @@ fn a_misfit_build_shows_its_reason() {
     let h = Home::new(true);
     h.corpus(12, 32);
     h.stub(|s| s);
-    fs::write(h.bin.join("plan.json"), br#"{"0":"bad","1":"bad"}"#).unwrap();
+    fs::write(
+        h.bin.join("plan.json"),
+        br#"{"0":"bad","1":"bad","2":"bad","3":"bad"}"#,
+    )
+    .unwrap();
     let before = h.snapshots();
     // Twelve training records and 32 held-out records each fit in one label part.
-    safe(
-        &h,
-        h.build(&Builds::new(), &mut |_| {}),
-        &build_text::misfit(
-            "Sorting your decisions by kind, part 1 of 2",
-            "1 label didn't fit the codebook",
-        ),
-    );
+    for times in 1..=2 {
+        safe(
+            &h,
+            h.build(&Builds::new(), &mut |_| {}),
+            &build_text::misfit(
+                "Sorting your decisions by kind, part 1 of 2",
+                "1 label didn't fit the codebook",
+                times,
+            ),
+        );
+    }
     assert_eq!(h.snapshots(), before);
     assert!(!h.state("report.json").exists());
 }
@@ -1266,4 +1273,21 @@ fn subscription_build_reports_usage_in_progress_and_result() {
         Some("Today, 6 calls to Claude and about 7 thousand tokens, on your Claude subscription.")
     );
     assert_eq!(progress.last().unwrap().spend.usage, done.spend.usage);
+}
+
+#[test]
+fn build_progress_carries_the_steps() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s);
+    let mut progress = Vec::new();
+    h.build(&Builds::new(), &mut |p| progress.push(p)).unwrap();
+    assert!(progress.iter().all(|p| p.steps.is_some()));
+    assert_eq!(progress.first().unwrap().steps.as_ref().unwrap().done, 0);
+    let last = progress.last().unwrap();
+    assert_eq!(last.line, build_text::CHECKING);
+    let steps = last.steps.as_ref().unwrap();
+    assert!(steps.total > 0);
+    assert_eq!(steps.done, steps.total);
 }

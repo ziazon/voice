@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useBackend } from '../../backend'
 import { failureMessage } from '../../failure'
 import type { Spend } from '../../types/generated/Spend'
 import type { BuildDone } from '../../types/generated/BuildDone'
+import type { ReadProgress as ReadProgressValue } from '../../types/generated/ReadProgress'
 import ReadProgress from '../sources/ReadProgress.vue'
 
 const props = defineProps<{ slug: string, name: string }>()
@@ -14,9 +15,20 @@ const running = ref(false)
 const stopping = ref(false)
 const attempted = ref(false)
 const lines = ref<string[]>([])
+const steps = ref<ReadProgressValue | null>(null)
 const done = ref<BuildDone | null>(null)
 const error = ref('')
 const info = ref(false)
+const stepsLine = computed(() => {
+  if (!steps.value) return ''
+  const { done, total } = steps.value
+  const left = total - done
+  const noun = total === 1 ? 'step' : 'steps'
+  if (left === 0) return `All ${total} ${noun} done.`
+  return running.value
+    ? `${done} of ${total} ${noun} done, ${left} left.`
+    : `Stopped after ${done} of ${total} ${noun}, ${left} left.`
+})
 const STOPPED = 'Stopped. Your assistant is as it was before this build. What was already finished is kept, so running the build again carries on from there.'
 onMounted(async () => {
   try {
@@ -35,6 +47,7 @@ async function build(mergeFirst = false) {
   info.value = false
   done.value = null
   lines.value = []
+  steps.value = null
   emit('running', true)
   try {
     if (mergeFirst) {
@@ -53,6 +66,7 @@ async function build(mergeFirst = false) {
     done.value = await backend.buildAssistant({ slug: props.slug }, progress => {
       lines.value.push(progress.line)
       spend.value = progress.spend
+      if (progress.steps) steps.value = progress.steps
     })
     spend.value = done.value.spend
     emit('finished')
@@ -89,7 +103,8 @@ defineExpose({ rebuild })
       <p v-if="spend?.usage">{{ spend.usage }}</p>
       <p v-else-if="spend">Today, about ${{ spend.spentUsd.toFixed(2) }}<template v-if="spend.dailyCapUsd === 0">, with no daily limit</template><template v-else> of the ${{ spend.dailyCapUsd.toFixed(2) }} daily limit</template>, as Claude Code estimates it.</p>
       <div v-if="error" class="alert" :class="info ? 'alert-info' : 'alert-danger'" role="alert">{{ error }}</div>
-      <ReadProgress v-if="running" :progress="null" label="Building" />
+      <ReadProgress v-if="running || (steps && !done)" :progress="steps" label="Building" />
+      <p v-if="steps && !done" class="text-secondary" aria-live="polite">{{ stepsLine }}</p>
       <div v-if="lines.length" class="overflow-auto" style="max-height: 16rem">
         <ul class="list-unstyled" aria-live="polite">
           <li v-for="(line, index) in lines" :key="index">{{ line }}</li>

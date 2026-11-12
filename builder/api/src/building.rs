@@ -186,22 +186,30 @@ pub fn build_assistant_in(
         spent_usd: 0.0,
         daily_cap_usd: session.cap().daily_usd(),
     };
-    let mut send = |line: &str| {
-        if let Ok(now) = spend(&session, ready.subscription) {
-            last_spend = now;
-        }
-        progress(BuildProgress {
-            line: line.into(),
-            spend: last_spend.clone(),
-        });
-    };
-    let built = build::build(
-        &guard,
-        &session,
-        home,
-        &prepared.inputs(&member, CORPUS, claude::DEFAULT_MODEL),
-        &mut send,
-    )
+    let mut last_steps = ReadProgress { done: 0, total: 0 };
+    let built = {
+        let mut send = |p: build::Progress<'_>| {
+            last_steps = ReadProgress {
+                done: count(p.done),
+                total: count(p.total),
+            };
+            if let Ok(now) = spend(&session, ready.subscription) {
+                last_spend = now;
+            }
+            progress(BuildProgress {
+                line: p.line.into(),
+                spend: last_spend.clone(),
+                steps: Some(last_steps.clone()),
+            });
+        };
+        build::build(
+            &guard,
+            &session,
+            home,
+            &prepared.inputs(&member, CORPUS, claude::DEFAULT_MODEL),
+            &mut send,
+        )
+    }
     .map_err(|error| {
         if running.stop.load(Ordering::SeqCst) {
             failure(STOPPED)
@@ -211,7 +219,11 @@ pub fn build_assistant_in(
             call_failure(error, &session, BUILD_FAILED)
         }
     })?;
-    send(text::CHECKING);
+    progress(BuildProgress {
+        line: text::CHECKING.into(),
+        spend: last_spend.clone(),
+        steps: Some(last_steps),
+    });
     let checked = run::check(&member, &prepared, &built, claude::DEFAULT_MODEL)
         .map_err(|_| failure(PRIVATE))?;
     if running.stop.load(Ordering::SeqCst) {
@@ -639,13 +651,13 @@ mod limit_tests {
         let home = std::env::temp_dir().join(format!("pb-misfit-failure-{}", std::process::id()));
         fs::create_dir(&home).unwrap();
         let session = Session::open(&home, "wren", Cap::default()).unwrap();
-        let message = text::misfit(&text::labelling(1, 2), "1 label didn't fit the codebook");
+        let message = text::misfit(&text::labelling(1, 2), "1 label didn't fit the codebook", 1);
         assert_eq!(
             call_failure(Error::Invalid(message.clone()), &session, BUILD_FAILED).message,
             message
         );
         for message in [
-            text::misfit(&text::labelling(1, 2), "bad\nproblem"),
+            text::misfit(&text::labelling(1, 2), "bad\nproblem", 1),
             "untrusted failure".into(),
         ] {
             assert_eq!(
@@ -699,7 +711,7 @@ mod limit_tests {
                     "daily={daily}, step={step}, spent={spent}: {message:?} instead of {expected:?}"
                 ));
             }
-            let misfit = text::misfit(&text::labelling(1, 2), "1 label didn't fit the codebook");
+            let misfit = text::misfit(&text::labelling(1, 2), "1 label didn't fit the codebook", 1);
             let message =
                 call_failure(Error::Invalid(misfit.clone()), &session, BUILD_FAILED).message;
             let expected = if reached {

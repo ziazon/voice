@@ -378,6 +378,8 @@ pub struct SpendingLimitRequest {
 pub struct BuildProgress {
     pub line: String,
     pub spend: Spend,
+    /// The build's steps done and in all; `None` for a refresh's test, which counts no steps.
+    pub steps: Option<ReadProgress>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

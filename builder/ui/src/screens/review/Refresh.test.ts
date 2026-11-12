@@ -75,9 +75,9 @@ it.each([true, false])('tests an approved change with live lines and kept=%s', a
   await button(wrapper, 'Test it').trigger('click')
   expect(wrapper.emitted('running')).toEqual([[true]])
   expect(button(wrapper, 'Testing the change…').attributes('disabled')).toBeDefined()
-  progress({ line: 'Testing your assistant as it is now on 3 tests.', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } }); await flushPromises()
+  progress({ line: 'Testing your assistant as it is now on 3 tests.', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null }, steps: null }); await flushPromises()
   expect(wrapper.get('ul[aria-live="polite"]').text()).toContain('as it is now')
-  progress({ line: 'Testing it with the change on 3 tests.', spend }); await flushPromises()
+  progress({ line: 'Testing it with the change on 3 tests.', spend, steps: null }); await flushPromises()
   expect(wrapper.get('ul[aria-live="polite"]').text()).toContain('with the change')
   expect(wrapper.text()).toContain('Today, about $3.00')
   call.resolve({ kept, reason: 'All tests checked.', spend: { spentUsd: 4, dailyCapUsd: 50, usage: null } }); await flushPromises()
@@ -91,7 +91,7 @@ it.each([true, false])('tests an approved change with live lines and kept=%s', a
   expect(wrapper.find(kept ? '.alert-success' : '.alert-info').exists()).toBe(true)
 })
 it('keeps progress on failure, uses fallback and always releases running', async () => {
-  const backend = fakeBackend({ applyRefresh: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Checking the written answers against what you wanted.', spend }); return Promise.reject(new Error('private path')) }) })
+  const backend = fakeBackend({ applyRefresh: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Checking the written answers against what you wanted.', spend, steps: null }); return Promise.reject(new Error('private path')) }) })
   const wrapper = screen(Refresh, backend, { slug: 'example', status: { ...status, change: { ...change, approved: true } } })
   await button(wrapper, 'Test it').trigger('click'); await flushPromises()
   expect(wrapper.get('.alert-danger').text()).toBe(fallback)
@@ -136,7 +136,7 @@ it.each(['draft', 'test'] as const)('keeps a successful %s distinct from a faile
 })
 
 it('clears previous test progress as soon as a new draft starts', async () => {
-  const backend = fakeBackend({ applyRefresh: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Old test progress.', spend }); return Promise.resolve({ kept: true, reason: 'Passed.', spend }) }), draftRefresh: vi.fn().mockReturnValue(deferred<RefreshDrafted>().promise) })
+  const backend = fakeBackend({ applyRefresh: vi.fn().mockImplementation((_request, progress) => { progress({ line: 'Old test progress.', spend, steps: null }); return Promise.resolve({ kept: true, reason: 'Passed.', spend }) }), draftRefresh: vi.fn().mockReturnValue(deferred<RefreshDrafted>().promise) })
   const wrapper = screen(Refresh, backend, { slug: 'example', status: { ...status, change: { ...change, approved: true } } })
   await button(wrapper, 'Test it').trigger('click'); await flushPromises()
   expect(wrapper.get('ul[aria-live="polite"]').text()).toBe('Old test progress.')
@@ -169,7 +169,7 @@ it.each(['draft', 'test'] as const)('shows subscription usage without dollars af
   const call = deferred<RefreshApplied>()
   const backend = fakeBackend({
     draftRefresh: vi.fn().mockResolvedValue({ change: null, spend: subscription }),
-    applyRefresh: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Testing.', spend: subscription }); return call.promise }),
+    applyRefresh: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Testing.', spend: subscription, steps: null }); return call.promise }),
   })
   const wrapper = screen(Refresh, backend, { slug: 'example', status: action === 'draft' ? status : { ...status, change: { ...change, approved: true } } })
   await button(wrapper, action === 'draft' ? 'Draft a change' : 'Test it').trigger('click'); await flushPromises()

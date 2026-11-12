@@ -117,14 +117,27 @@ const MISFIT_PROBLEM: &str =
     ": Claude's answer didn't fit twice, so the build stopped (the last problem: ";
 const MISFIT_END: &str = "). What it already finished is kept: run the build again to carry on.";
 
-pub fn misfit(what: &str, problem: &str) -> String {
-    format!("{what}{MISFIT_PROBLEM}{problem}{MISFIT_END}")
+const MISFIT_AGAIN: &str = "). This part has now stopped the build ";
+const MISFIT_AGAIN_END: &str = " times, so running the build again is unlikely to help. What it already finished is kept, and Claude's answers that didn't fit are saved privately on this computer.";
+
+pub fn misfit(what: &str, problem: &str, times: usize) -> String {
+    if times <= 1 {
+        format!("{what}{MISFIT_PROBLEM}{problem}{MISFIT_END}")
+    } else {
+        format!("{what}{MISFIT_PROBLEM}{problem}{MISFIT_AGAIN}{times}{MISFIT_AGAIN_END}")
+    }
 }
 
 /// Only the build's fixed failure sentences, safe to show at the app boundary.
 pub fn is_misfit(message: &str) -> bool {
     !message.chars().any(char::is_control)
-        && message.ends_with(MISFIT_END)
+        && (message.ends_with(MISFIT_END)
+            || message
+                .strip_suffix(MISFIT_AGAIN_END)
+                .and_then(|rest| rest.rsplit_once(MISFIT_AGAIN))
+                .is_some_and(|(_, times)| {
+                    !times.is_empty() && times.bytes().all(|b| b.is_ascii_digit())
+                }))
         && message.split_once(MISFIT_PROBLEM).is_some_and(|(what, _)| {
             [LABELLING, DISTILLING, TESTING]
                 .iter()
@@ -242,16 +255,26 @@ mod tests {
     #[test]
     fn is_misfit_accepts_only_safe_build_messages() {
         for what in [labelling(1, 2), distilling(1, 2), testing(1, 2, 32)] {
-            assert!(
-                is_misfit(&misfit(&what, "1 label didn't fit the codebook")),
-                "{what}"
-            );
+            for times in [1, 2, 12] {
+                assert!(
+                    is_misfit(&misfit(&what, "1 label didn't fit the codebook", times)),
+                    "{what}: {times}"
+                );
+            }
+        }
+        let again = misfit(&labelling(1, 2), "1 label didn't fit the codebook", 2);
+        for message in [
+            again.replace("build 2 times", "build two times"),
+            again.replace("build 2 times", "build  times"),
+            misfit(&labelling(1, 2), "bad\nproblem", 2),
+        ] {
+            assert!(!is_misfit(&message), "{message}");
         }
         for message in [
             draft_failed("a question didn't fit"),
             "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.".into(),
-            misfit(&labelling(1, 2), "bad\nproblem"),
-            misfit("anything else", "bad"),
+            misfit(&labelling(1, 2), "bad\nproblem", 1),
+            misfit("anything else", "bad", 1),
             "Refreshing your assistant: Claude's draft didn't fit twice, so nothing was saved (bad). Run `voice refresh propose` again.".into(),
             "Testing your assistant: Claude's answers didn't fit twice, so nothing was saved (bad). Run `voice refresh apply` again.".into(),
         ] {

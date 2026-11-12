@@ -1788,7 +1788,7 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
         &session,
         &home,
         &prepared.inputs(&member, &args.corpus, &args.model),
-        &mut |line| println!("{line}"),
+        &mut |p| println!("{}", p.line),
     )?;
     println!("{}", text::CHECKING);
     let checked = run::check(&member, &prepared, &built, &args.model)?;
