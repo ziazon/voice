@@ -29,7 +29,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   existing parents were never tightened (now 0700 from the start, owner checked); two 64 KiB buffers per
   folder level overflowed the app's 2 MiB thread at about 15 levels (now one heap pair; the 60-level red test
   aborted before); the backup is kept when the old history can't be put back; the Make button read "Making
-  it…" while backing up.
+  it…" while backing up. Fix-up 3 (repeat Verifier, claim 3): a source inside `voice-backups` (an old
+  `SKILL.md` naming `~/.claude/voice-backups/<slug>/member.json`) still copied itself; the check now refuses
+  either direction, and `<stamp>` is set 0700 again whatever the umask.
 - **Verified:** red first for every new test (Codex's runs: six core tests against a stub, ten API tests, three
   CLI, six screen, the lockdown list; fix-up 2's reds included the deep-folder abort). Green at 2 workers:
   core backup 12, API bring-in 11, CLI assistants 12, screen 12, app lockdown 8, fmt and clippy clean.
@@ -37,11 +39,15 @@ One record per slice, newest first. Paraphrase only; no real person.
   Verifier (Fable, `079b8c0`): no data-loss path; the hazard verified (skipping the rename leaves 2 of 4
   questions after a merge); 6 of 9 mutations caught, the 3 survivors (open flags, verify pass, linked
   `<slug>`) now have tests or are noted below; races judged accepted limits for a single-user app.
+  Repeat Verifier (Opus, `35c7b02`): 7 of 8 verified, claim 3 refuted in part (fixed in fix-up 3, red then
+  13 core backup tests green); her mutation putting the buffers back on the stack aborted the deep-folder
+  test (restored, `cmp` clean). Probes on APFS: other letter case and a linked `~/.claude` are refused.
 - **Known limits:** `decisions-before-voice.jsonl` is a History input (the plan's PB8.7 decision), and merge
   lets History win a duplicate id (tested in `corpus_rules.rs`, mirrored in the Python merge). So an
   interview record an older merged `decisions.jsonl` also holds is re-split rather than always trained. No
   record is lost; changing that rule is out of this slice. The `O_NOFOLLOW` and `O_NONBLOCK` open flags only
-  matter in a race and have no test. The state lock is held but not tested. Light and dark screens were not
+  matter in a race and have no test. The state lock, the refusal of a backup folder another user owns, and
+  keeping the backup when `decisions.jsonl` can't be put back are read, not tested. Light and dark screens were not
   looked at (owed to an attended pass).
 
 ## PB8.7a: look before making, never reuse an older assistant's folders silently (2026-11-12, lane: V1)
