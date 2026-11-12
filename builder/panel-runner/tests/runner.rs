@@ -720,6 +720,10 @@ fn fifteen_minute_time_box_closes_after_nine_hundred_seconds() {
     let room = home.room(&ran.id);
     let result = read(&room.join("result.json"));
     assert_eq!(result["outcome"], "time_box");
+    assert_eq!(
+        result["dissent"],
+        json!([{"member": "quill", "holdout": false, "objections": ""}])
+    );
     assert!(
         result["trajectory"]["elapsed_s"]
             .as_f64()
