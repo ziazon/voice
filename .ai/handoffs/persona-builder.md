@@ -2,7 +2,7 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
-## PB8.5: a label answer that doesn't fit no longer stops the build silently (2026-11-12, lane: V1; built, not landed: fix-up 2 owed)
+## PB8.5: a label answer that doesn't fit no longer stops the build silently (2026-11-12, lane: V1)
 
 - **What:** a real build (11 label parts) kept part 1 only on its 8th call, and part 2 failed both tries
   of the next run, behind the generic "The build stopped before it finished" line. Three faults, all
@@ -39,7 +39,18 @@ One record per slice, newest first. Paraphrase only; no real person.
   are kept on purpose for walks, and forgetting the assistant removes them. Verifier (Fable, on
   `3b290d6`): all six claims verified; should-fixes (two unpinned behaviours, distil's plural and
   "their" wording, the repeated-id refusal, the stray `sed`) fixed in fix-up 1. Repeat Verifier
-  (Opus, on `9314bce`): all seven claims verified, one should-fix: a record id that repeats inside a part is listed missing twice and `label_problems`' count line then reads as a wrong label (no model words leak; only a corpus with repeated ids). Fix-up 2 brief written (`plans/briefs/PB8.5-fixup2-repeated-record-ids.md`), not yet built.
+  (Opus, on `9314bce`): all seven claims verified, one should-fix: a record id that repeats inside a part is listed missing twice and `label_problems`' count line then reads as a wrong label (no model words leak; only a corpus with repeated ids). Fix-up 2 brief written (`plans/briefs/PB8.5-fixup2-repeated-record-ids.md`).
+- **Fix-up 2 (`2a2ceac`, Codex from the brief):** `check_label_reply` and `check_backtest_reply` list
+  each missing id once, in first-appearance order, as `ById` does, so the count line matches
+  `label_problems`' and is filtered out. Two new tests pin the exact told and shown text. V1 on Mimi:
+  green; mutations (`cp`, restored, `cmp`), each dedupe made a no-op in turn, fail only their own
+  test, the label one with the Verifier's exact probe text. Security review (Opus sub-task): no
+  findings (`missing` is built from the app's own records only). Delta Verifier (Opus, `2a2ceac`):
+  PASS, no must-fix or should-fix. Two nits on older behaviour, not taken here: the backtest prompt
+  shows a repeated question twice, so answering both copies reads as "predicted twice"; a record
+  with an id but no `kind` counts its label as extra, then `label_problems` stops the build with
+  "Voice couldn't check its labels". Whether a real corpus can
+  produce either was not checked.
 - **Not verified:** the cause on the real history. The replies from that build were not kept (that is
   this slice's fix), so the merge answers the lead (retries that hold only corrections) but not
   whatever made the first tries fail. A walk after the next tester build should read the
