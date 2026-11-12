@@ -529,3 +529,25 @@ fn find_existing_name_validation_and_errors_are_fixed() {
         "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
     );
 }
+
+#[test]
+fn voice_assistant_is_not_older_and_cannot_be_made_twice() {
+    let home = Home::new();
+    let h = home.path();
+    let claude = h.join(".claude");
+    new_assistant_in(h, &claude, request()).unwrap();
+    fs::create_dir_all(claude.join("state/ari")).unwrap();
+    fs::write(claude.join("state/ari/decisions.jsonl"), "invented history").unwrap();
+    fs::create_dir_all(claude.join("skills/ari")).unwrap();
+    assert_eq!(
+        find_existing_in(h, &claude, FindExistingRequest { name: "Ari".into() }).unwrap(),
+        ExistingAssistant {
+            found: false,
+            lines: vec![]
+        }
+    );
+    assert_eq!(
+        new_assistant_in(h, &claude, request()).unwrap_err().message,
+        "You already have an assistant called Ari. Pick another name, or open that one."
+    );
+}

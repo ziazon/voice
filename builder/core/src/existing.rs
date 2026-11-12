@@ -4,10 +4,11 @@ use crate::{
     forget,
     install_fs::{exists, io},
     install_record::{self, Added},
-    member::{read_member, refuse_symlink},
+    member::read_member,
 };
 use std::{
     fs,
+    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -39,11 +40,13 @@ impl Found {
 }
 
 pub fn find(home: &Path, claude_home: &Path, slug: &str) -> Result<Found> {
-    assistants::assistant_dir(home, slug)?;
-    refuse_symlink(claude_home)?;
-    refuse_symlink(&home.join(".claude"))?;
-    refuse_symlink(&home.join(".claude/state"))?;
-    refuse_symlink(&claude_home.join("skills"))?;
+    let dir = assistants::assistant_dir(home, slug)?;
+    if fs::symlink_metadata(&dir).is_ok() {
+        return Ok(Found {
+            slug: slug.into(),
+            ..Found::default()
+        });
+    }
     let state = find_state(home.join(".claude/state").join(slug))?;
     let skill_path = claude_home.join("skills").join(slug);
     let claimed = || {
@@ -105,12 +108,15 @@ fn find_state(path: PathBuf) -> Result<Option<State>> {
 }
 
 fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
+    const LIMIT: u64 = 4 * 1024 * 1024;
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        bytes => io(path, bytes)?,
+        file => io(path, file)?,
     };
-    if bytes.len() > 4 * 1024 * 1024 {
+    let mut bytes = Vec::new();
+    io(path, file.take(LIMIT + 1).read_to_end(&mut bytes))?;
+    if bytes.len() as u64 > LIMIT {
         return Err(Error::Invalid(
             "CLAUDE.md is too big for Voice to read".into(),
         ));
@@ -349,6 +355,54 @@ mod tests {
         assert_eq!(f.find().skill, Some(skill));
     }
     #[test]
+    fn voice_assistant_is_never_reported_as_older() {
+        let f = Fixture::new();
+        assistants::make(
+            &f.home,
+            &assistants::New {
+                name: "Ari",
+                pronouns: "they/them",
+                principal: "Robin",
+                principal_pronouns: "they/them",
+            },
+            "2026-11-12",
+            "voice",
+        )
+        .unwrap();
+        fs::create_dir_all(f.state()).unwrap();
+        fs::write(f.state().join("decisions.jsonl"), "invented history").unwrap();
+        f.skill("unclaimed skill");
+        fs::write(f.claude.join("CLAUDE.md"), "/ari").unwrap();
+        assert_eq!(
+            f.find(),
+            Found {
+                slug: "ari".into(),
+                ..Found::default()
+            }
+        );
+    }
+    #[test]
+    fn every_existing_crew_entry_belongs_to_voice() {
+        for kind in ["folder", "file", "link"] {
+            let f = Fixture::new();
+            let dir = assistants::assistant_dir(&f.home, "ari").unwrap();
+            fs::create_dir_all(dir.parent().unwrap()).unwrap();
+            match kind {
+                "folder" => fs::create_dir(&dir).unwrap(),
+                "file" => fs::write(&dir, "invented").unwrap(),
+                _ => symlink("missing", &dir).unwrap(),
+            }
+            f.skill("unclaimed skill");
+            assert_eq!(
+                f.find(),
+                Found {
+                    slug: "ari".into(),
+                    ..Found::default()
+                }
+            );
+        }
+    }
+    #[test]
     fn voice_claimed_skill_is_not_found_and_unreadable_record_cannot_claim() {
         let f = Fixture::new();
         let made = crate::assistants::make(
@@ -371,6 +425,7 @@ mod tests {
             },
         )
         .unwrap();
+        fs::remove_dir_all(&made.dir).unwrap();
         assert!(!f.find().any());
         fs::write(f.claude.join("voice/installed.json"), "not JSON").unwrap();
         assert_eq!(f.find().skill, Some(f.claude.join("skills/ari")));
@@ -410,6 +465,50 @@ mod tests {
         assert!(
             matches!(find(&f.home, &f.claude, "ari"), Err(Error::Invalid(message)) if message == "CLAUDE.md is too big for Voice to read")
         );
+    }
+    #[test]
+    fn claude_file_at_four_mib_is_read_and_one_more_byte_is_refused() {
+        let f = Fixture::new();
+        let path = f.claude.join("CLAUDE.md");
+        let mut bytes = vec![b' '; 4 * 1024 * 1024];
+        bytes[..5].copy_from_slice(b"/ari\n");
+        fs::write(&path, &bytes).unwrap();
+        assert_eq!(f.find().lines, [1]);
+        bytes.push(b' ');
+        fs::write(&path, &bytes).unwrap();
+        assert!(matches!(
+            find(&f.home, &f.claude, "ari"),
+            Err(Error::Invalid(message)) if message == "CLAUDE.md is too big for Voice to read"
+        ));
+    }
+    #[test]
+    fn claude_read_stops_at_the_cap_without_waiting_for_eof() {
+        use std::{io::Write, process::Command, sync::mpsc, thread, time::Duration};
+        let f = Fixture::new();
+        let path = f.claude.join("CLAUDE.md");
+        assert!(
+            Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let (done, received) = mpsc::channel();
+        let writer = thread::spawn(move || {
+            let mut file = fs::File::create(path).unwrap();
+            file.write_all(&vec![b' '; 4 * 1024 * 1024 + 1]).unwrap();
+            // Keep the stream open: the reader must stop at the cap, not at EOF.
+            let stopped_before_eof = received.recv_timeout(Duration::from_secs(5)).is_ok();
+            drop(file);
+            stopped_before_eof
+        });
+        let result = find(&f.home, &f.claude, "ari");
+        let _ = done.send(());
+        assert!(writer.join().unwrap(), "reader waited for EOF past the cap");
+        assert!(matches!(
+            result,
+            Err(Error::Invalid(message)) if message == "CLAUDE.md is too big for Voice to read"
+        ));
     }
     #[test]
     fn only_voice_block_lines_do_not_set_claude_md() {
@@ -489,15 +588,20 @@ mod tests {
         assert!(f.find().old_folder.is_none());
     }
     #[test]
-    fn linked_state_and_skills_parents_are_refused() {
+    fn linked_state_and_skills_parents_are_supported() {
         for folder in ["state", "skills"] {
             let f = Fixture::new();
             let target = f.scratch.path().join("outside");
             fs::create_dir(&target).unwrap();
             symlink(&target, f.claude.join(folder)).unwrap();
-            assert!(
-                matches!(find(&f.home, &f.claude, "ari"), Err(Error::Invalid(message)) if message.contains("symlink refused"))
-            );
+            fs::create_dir(target.join("ari")).unwrap();
+            fs::write(target.join("ari/notes"), "invented").unwrap();
+            let found = f.find();
+            if folder == "skills" {
+                assert_eq!(found.skill, Some(f.claude.join("skills/ari")));
+            } else {
+                assert_eq!(found.state.unwrap().files, 1);
+            }
         }
     }
     #[test]
@@ -518,15 +622,16 @@ mod tests {
         assert!(f.find().old_folder.is_none());
     }
     #[test]
-    fn linked_custom_claude_root_is_refused() {
+    fn linked_custom_claude_root_is_supported() {
         let f = Fixture::new();
         let target = f.scratch.path().join("custom-real");
         fs::create_dir_all(target.join("skills/ari")).unwrap();
         fs::write(target.join("skills/ari/SKILL.md"), "invented skill").unwrap();
         let custom = f.scratch.path().join("custom-link");
         symlink(&target, &custom).unwrap();
-        assert!(
-            matches!(find(&f.home, &custom, "ari"), Err(Error::Invalid(message)) if message.contains("symlink refused"))
+        assert_eq!(
+            find(&f.home, &custom, "ari").unwrap().skill,
+            Some(custom.join("skills/ari"))
         );
     }
 

@@ -34,12 +34,6 @@ pub fn make(
         crew::check_name(what, value)?;
     }
     let slug = checked_name(name)?;
-    let dir = assistants::assistant_dir(&home, &slug)?;
-    if std::fs::symlink_metadata(&dir).is_ok() {
-        return Err(Error::Invalid(format!(
-            "You already have an assistant in ~/.claude/crew/{slug}/."
-        )));
-    }
     if existing::find(&home, &places.claude_home, &slug)?.any() {
         return Err(Error::Invalid(format!(
             "Voice found an older {name} on this computer, so it made nothing. See what it found: voice existing {name}"
@@ -122,6 +116,11 @@ pub fn agree(member_dir: PathBuf) -> Result<()> {
 pub fn existing(name: &str, claude_home: Option<PathBuf>) -> Result<()> {
     let places = super::places(claude_home)?;
     let slug = checked_name(name)?;
+    let dir = assistants::assistant_dir(&places.home, &slug)?;
+    if std::fs::symlink_metadata(&dir).is_ok() {
+        println!("You already have an assistant in ~/.claude/crew/{slug}/.");
+        return Ok(());
+    }
     let found = existing::find(&places.home, &places.claude_home, &slug)?;
     if !found.any() {
         println!("Nothing from before is called {name} on this computer.");

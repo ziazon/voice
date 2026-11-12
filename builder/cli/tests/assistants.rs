@@ -411,3 +411,20 @@ fn existing_reports_each_source_alone_and_rejects_bad_names_like_new() {
         assert_eq!(older.stderr, make.stderr);
     }
 }
+
+#[test]
+fn existing_reports_voice_assistant_before_looking_for_older_files() {
+    let home = Home::new();
+    home.success(&["new", "Ari", "--principal", "Robin"]);
+    fs::create_dir_all(home.0.join(".claude/state/ari")).unwrap();
+    fs::write(
+        home.0.join(".claude/state/ari/decisions.jsonl"),
+        "invented history",
+    )
+    .unwrap();
+    fs::create_dir_all(home.0.join(".claude/skills/ari")).unwrap();
+    assert_eq!(
+        home.success(&["existing", "Ari"]),
+        "You already have an assistant in ~/.claude/crew/ari/.\n"
+    );
+}
