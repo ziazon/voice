@@ -122,12 +122,13 @@ async function build(mergeFirst = false) {
           : 'The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.')
         if (!keepGoing.value || stopping.value) {
           info.value = stopping.value
-          error.value = stopping.value ? STOPPED : message
+          error.value = message
           return
         }
         if (unmounted) return
         let delay = RETRY_DELAY_MS
         if (message === PLAN_STOPPED) {
+          if (reached > best) stops = 0
           delay = PLAN_WAIT_MS
           const at = new Date(Date.now() + delay).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           error.value = `Your Claude plan's limit is reached, so Voice is waiting. It tries again at ${at}.`
