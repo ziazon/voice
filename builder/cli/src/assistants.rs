@@ -21,6 +21,7 @@ pub fn make(
     pronouns: &str,
     principal: &str,
     principal_pronouns: &str,
+    bring_in: bool,
     claude_home: Option<PathBuf>,
 ) -> Result<()> {
     let places = super::places(claude_home)?;
@@ -34,39 +35,57 @@ pub fn make(
         crew::check_name(what, value)?;
     }
     let slug = checked_name(name)?;
-    if existing::find(&home, &places.claude_home, &slug)?.any() {
+    if !bring_in && existing::find(&home, &places.claude_home, &slug)?.any() {
         return Err(Error::Invalid(format!(
-            "Voice found an older {name} on this computer, so it made nothing. See what it found: voice existing {name}"
+            "Voice found an older {name} on this computer, so it made nothing. See what it found: voice existing {name}. To back it up and bring it in: voice new {name} --bring-in (with the same options)."
         )));
     }
     let cli = shipped_cli_word(&home)?;
-    let listed = assistants::make(
-        &home,
-        &New {
-            name,
-            pronouns,
-            principal,
-            principal_pronouns,
-        },
-        &today(),
-        &cli,
-    )
-    .map_err(|error| match error {
+    let new = New {
+        name,
+        pronouns,
+        principal,
+        principal_pronouns,
+    };
+    let result = if bring_in {
+        voice_api::assistants::bring_in(
+            &home,
+            &places.claude_home,
+            &new,
+            &today(),
+            &voice_api::assistants::local_stamp(SystemTime::now()),
+            &cli,
+        )
+    } else {
+        assistants::make(&home, &new, &today(), &cli).and_then(|listed| {
+            if voice_api::clear_consent(&home, &listed.member.slug).is_err() {
+                let _ = std::fs::remove_dir_all(&listed.dir);
+                return Err(Error::Invalid(
+                    "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.".into(),
+                ));
+            }
+            Ok((listed, None))
+        })
+    };
+    let (listed, backup) = result.map_err(|error| match error {
         Error::Exists(slug) => Error::Invalid(format!(
             "You already have an assistant in ~/.claude/crew/{slug}/."
         )),
         other => other,
     })?;
-    if voice_api::clear_consent(&home, &listed.member.slug).is_err() {
-        let _ = std::fs::remove_dir_all(&listed.dir);
-        return Err(Error::Invalid(
-            "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.".into(),
-        ));
-    }
     println!(
         "Made {} in ~/.claude/crew/{}/.",
         listed.member.name, listed.member.slug
     );
+    if let Some(backup) = backup {
+        let relative = backup
+            .strip_prefix(&home)
+            .map_err(|_| Error::Invalid("Voice couldn't show the backup folder.".into()))?;
+        println!(
+            "Voice backed up the older {name} first, in ~/{}.",
+            relative.display()
+        );
+    }
     println!(
         "Next: voice consent show, then voice consent agree ~/.claude/crew/{}",
         listed.member.slug
@@ -126,6 +145,7 @@ pub fn existing(name: &str, claude_home: Option<PathBuf>) -> Result<()> {
         println!("Nothing from before is called {name} on this computer.");
         return Ok(());
     }
+    let refusal = voice_api::assistants::bring_in_refusal(&places.home, &found)?;
     if let Some(state) = found.state {
         let detail = if state.link {
             "a link to somewhere else".into()
@@ -162,6 +182,10 @@ pub fn existing(name: &str, claude_home: Option<PathBuf>) -> Result<()> {
     if let Some(folder) = found.old_folder {
         println!("Folder it was made in: {}", folder.display());
     }
-    println!("Voice won't make {name} over these. Pick another name for now.");
+    if let Some(reason) = refusal {
+        println!("Voice can't bring this one in. {reason}");
+    } else {
+        println!("Voice can back it up and bring it in: voice new {name} --bring-in");
+    }
     Ok(())
 }

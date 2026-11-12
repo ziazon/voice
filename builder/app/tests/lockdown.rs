@@ -48,6 +48,7 @@ fn lockdown_1_command_lists_agree_in_order() {
             "list_assistants",
             "new_assistant",
             "find_existing",
+            "bring_in_assistant",
             "show_assistant_folder",
             "consent_text",
             "agree_consent",

@@ -309,12 +309,12 @@ fn existing_reports_nothing_and_new_refuses_older_state_untouched() {
         "Private folder: {} (1 file, a put-together history (decisions.jsonl))",
         state.display()
     )));
-    assert!(found.contains("Voice won't make Ari over these. Pick another name for now."));
+    assert!(found.ends_with("Voice can back it up and bring it in: voice new Ari --bring-in\n"));
     let output = home.run(&["new", "Ari", "--principal", "Robin"]);
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
-        "voice: Voice found an older Ari on this computer, so it made nothing. See what it found: voice existing Ari\n"
+        "voice: Voice found an older Ari on this computer, so it made nothing. See what it found: voice existing Ari. To back it up and bring it in: voice new Ari --bring-in (with the same options).\n"
     );
     assert_eq!(
         fs::read(state.join("decisions.jsonl")).unwrap(),
@@ -427,4 +427,58 @@ fn existing_reports_voice_assistant_before_looking_for_older_files() {
         home.success(&["existing", "Ari"]),
         "You already have an assistant in ~/.claude/crew/ari/.\n"
     );
+}
+
+#[test]
+fn new_bring_in_backs_up_the_older_history_before_making_the_assistant() {
+    let home = Home::new();
+    let state = home.0.join(".claude/state/ari");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("decisions.jsonl"), b"older history\n").unwrap();
+    let text = home.success(&["new", "Ari", "--principal", "Robin", "--bring-in"]);
+    let lines: Vec<_> = text.lines().collect();
+    assert_eq!(lines.len(), 3);
+    assert_eq!(lines[0], "Made Ari in ~/.claude/crew/ari/.");
+    let backup = lines[1]
+        .strip_prefix("Voice backed up the older Ari first, in ")
+        .and_then(|line| line.strip_suffix('.'))
+        .expect("backup line between Made and Next");
+    assert!(backup.starts_with("~/.claude/voice-backups/ari/"));
+    let backup = home.0.join(backup.strip_prefix("~/").unwrap());
+    assert_eq!(
+        fs::read(backup.join("state/decisions.jsonl")).unwrap(),
+        b"older history\n"
+    );
+    assert_eq!(
+        fs::read(state.join("decisions-before-voice.jsonl")).unwrap(),
+        b"older history\n"
+    );
+    assert!(!state.join("decisions.jsonl").exists());
+    assert!(home.0.join(".claude/crew/ari/member.json").is_file());
+    assert_eq!(
+        lines[2],
+        "Next: voice consent show, then voice consent agree ~/.claude/crew/ari"
+    );
+}
+
+#[test]
+fn existing_explains_why_a_link_or_saved_history_cannot_be_brought_in() {
+    for linked in [true, false] {
+        let home = Home::new();
+        let state = home.0.join(".claude/state/ari");
+        fs::create_dir_all(state.parent().unwrap()).unwrap();
+        let reason = if linked {
+            std::os::unix::fs::symlink(home.0.join("missing"), &state).unwrap();
+            "Voice can't bring in ~/.claude/state/ari because it's a link or a file, not a folder. Move it somewhere else, or pick another name."
+        } else {
+            fs::create_dir(&state).unwrap();
+            fs::write(state.join("decisions-before-voice.jsonl"), "keep").unwrap();
+            "Voice can't bring this one in: its private folder already holds a history from before Voice. Pick another name for now."
+        };
+        let text = home.success(&["existing", "Ari"]);
+        assert!(
+            text.ends_with(&format!("Voice can't bring this one in. {reason}\n")),
+            "{text}"
+        );
+    }
 }

@@ -21,6 +21,10 @@ pub const PARITY: &[Parity] = &[
         cli: &[&["existing"]],
     },
     Parity {
+        app: "bring_in_assistant",
+        cli: &[&["new", "--bring-in"]],
+    },
+    Parity {
         app: "show_assistant_folder",
         cli: &[&["assistants"]],
     },

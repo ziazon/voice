@@ -325,7 +325,7 @@ fn new_refuses_orphaned_state_without_changing_it() {
         new_assistant_in(h, &h.join(".claude"), request())
             .unwrap_err()
             .message,
-        "Voice found an older Ari on this computer, so it made nothing and changed nothing. Voice can't bring an older assistant in yet: pick another name for now."
+        "Voice found an older Ari on this computer, so it made nothing and changed nothing. Choose Back it up and bring it in, or pick another name."
     );
     assert_eq!(fs::read(path).unwrap(), b"older history\n");
     assert!(!h.join(".claude/crew/ari").exists());
@@ -451,6 +451,7 @@ fn find_existing_reports_fixed_sentences_without_private_paths() {
         find_existing_in(h, &claude, request()).unwrap(),
         ExistingAssistant {
             found: false,
+            can_bring_in: false,
             lines: vec![]
         }
     );
@@ -552,6 +553,7 @@ fn voice_assistant_is_not_older_and_cannot_be_made_twice() {
         find_existing_in(h, &claude, FindExistingRequest { name: "Ari".into() }).unwrap(),
         ExistingAssistant {
             found: false,
+            can_bring_in: false,
             lines: vec![]
         }
     );
@@ -559,4 +561,265 @@ fn voice_assistant_is_not_older_and_cannot_be_made_twice() {
         new_assistant_in(h, &claude, request()).unwrap_err().message,
         "You already have an assistant called Ari. Pick another name, or open that one."
     );
+}
+
+fn old_state(h: &Path) -> PathBuf {
+    let state = h.join(".claude/state/ari");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("decisions.jsonl"), b"older history\n").unwrap();
+    state
+}
+fn snapshot(root: &Path) -> std::collections::BTreeMap<PathBuf, (String, Vec<u8>)> {
+    fn walk(
+        root: &Path,
+        at: &Path,
+        out: &mut std::collections::BTreeMap<PathBuf, (String, Vec<u8>)>,
+    ) {
+        let meta = fs::symlink_metadata(at).unwrap();
+        let (kind, bytes) = if meta.is_symlink() {
+            (
+                "link",
+                fs::read_link(at)
+                    .unwrap()
+                    .as_os_str()
+                    .as_encoded_bytes()
+                    .to_vec(),
+            )
+        } else if meta.is_dir() {
+            ("folder", vec![])
+        } else {
+            ("file", fs::read(at).unwrap())
+        };
+        out.insert(
+            at.strip_prefix(root).unwrap().to_owned(),
+            (kind.into(), bytes),
+        );
+        if meta.is_dir() {
+            for entry in fs::read_dir(at).unwrap() {
+                walk(root, &entry.unwrap().path(), out);
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    walk(root, root, &mut out);
+    out
+}
+#[test]
+fn bring_in_backs_up_all_four_and_keeps_older_files() {
+    let home = Home::new();
+    let h = home.path();
+    let claude = h.join("custom-claude");
+    let state = old_state(h);
+    fs::write(state.join("live.jsonl"), "older answers\n").unwrap();
+    fs::write(state.join("other"), "other bytes").unwrap();
+    fs::write(state.join("consent.json"), "old agreement").unwrap();
+    let skill = claude.join("skills/ari");
+    fs::create_dir_all(&skill).unwrap();
+    let old = voice_core::assistants::make(
+        &h.join("old-kit"),
+        &voice_core::assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Robin",
+            principal_pronouns: "they/them",
+        },
+        "2026-11-12",
+        "voice",
+    )
+    .unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        format!(
+            "run --member {} similar",
+            old.dir.join("member.json").display()
+        ),
+    )
+    .unwrap();
+    fs::write(claude.join("CLAUDE.md"), "Ask /ari.\n").unwrap();
+    let before_state = snapshot(&state);
+    let before_skill = snapshot(&skill);
+    let before_member = snapshot(&old.dir);
+    let result = bring_in_assistant_in(h, &claude, request()).unwrap();
+    let shown = result.backup.unwrap();
+    assert!(shown.starts_with("~/.claude/voice-backups/ari/"));
+    assert!(!shown.contains(h.to_str().unwrap()));
+    let backup = h.join(shown.strip_prefix("~/").unwrap());
+    assert_eq!(snapshot(&backup.join("state")), before_state);
+    assert_eq!(snapshot(&backup.join("skill")), before_skill);
+    assert_eq!(snapshot(&backup.join("member")), before_member);
+    assert_eq!(fs::read(backup.join("CLAUDE.md")).unwrap(), b"Ask /ari.\n");
+    assert_eq!(
+        fs::read(state.join("decisions-before-voice.jsonl")).unwrap(),
+        b"older history\n"
+    );
+    assert!(!state.join("decisions.jsonl").exists());
+    assert!(!state.join("consent.json").exists());
+    assert!(h.join(".claude/crew/ari/member.json").exists());
+    assert!(!result.assistant.consent.agreed);
+    assert_eq!(snapshot(&skill), before_skill);
+    assert_eq!(snapshot(&old.dir), before_member);
+    assert_eq!(fs::read(claude.join("CLAUDE.md")).unwrap(), b"Ask /ari.\n");
+    assert!(
+        !find_existing_in(h, &claude, FindExistingRequest { name: "Ari".into() })
+            .unwrap()
+            .found
+    );
+}
+#[test]
+fn bring_in_preserves_all_questions_when_histories_are_put_together() {
+    let home = Home::new();
+    let h = home.path();
+    let state = old_state(h);
+    let records = |ids: &[&str]| {
+        ids.iter()
+            .map(|id| {
+                serde_json::json!({
+                    "id": id, "kind": "question", "timestamp": "2026-01-01T10:00:00Z",
+                    "question": "Which approach should we use?", "header": "Approach",
+                "options": [{"label": "Small", "description": "Start small"}],
+                "picks": ["Small"], "own_words": "", "notes": ""
+                })
+                .to_string()
+                    + "\n"
+            })
+            .collect::<String>()
+    };
+    fs::write(state.join("decisions.jsonl"), records(&["q1", "q2"])).unwrap();
+    fs::write(
+        state.join("decisions-prev-2026-01-01.jsonl"),
+        records(&["q3", "q4"]),
+    )
+    .unwrap();
+    bring_in_assistant_in(h, &h.join(".claude"), request()).unwrap();
+    agree_consent_in(h, slug("ari")).unwrap();
+    assert_eq!(merge_histories_in(h, slug("ari")).unwrap().questions, 4);
+    let bytes = fs::read(state.join("decisions.jsonl")).unwrap();
+    let mut ids: Vec<_> = voice_ingest::corpus::read_records("decisions.jsonl", &bytes)
+        .unwrap()
+        .into_iter()
+        .map(|(_, r)| r["id"].as_str().unwrap().to_owned())
+        .collect();
+    ids.sort();
+    assert_eq!(ids, ["q1", "q2", "q3", "q4"]);
+}
+fn refused_tree(kind: &str, sentence: &str) {
+    let home = Home::new();
+    let h = home.path();
+    fs::create_dir_all(h.join(".claude/state")).unwrap();
+    match kind {
+        "link" => {
+            std::os::unix::fs::symlink(h.join("missing"), h.join(".claude/state/ari")).unwrap()
+        }
+        "file" => fs::write(h.join(".claude/state/ari"), "plain file").unwrap(),
+        "before" => {
+            let state = old_state(h);
+            fs::write(state.join("decisions-before-voice.jsonl"), "keep").unwrap();
+        }
+        "corpus-link" => {
+            let state = old_state(h);
+            fs::remove_file(state.join("decisions.jsonl")).unwrap();
+            std::os::unix::fs::symlink(h.join("missing"), state.join("decisions.jsonl")).unwrap();
+        }
+        _ => unreachable!(),
+    }
+    let before = snapshot(h);
+    let err = bring_in_assistant_in(h, &h.join(".claude"), request()).unwrap_err();
+    assert_eq!(err.message, sentence);
+    assert_eq!(snapshot(h), before);
+    assert!(!h.join(".claude/voice-backups").exists());
+    assert!(
+        !find_existing_in(
+            h,
+            &h.join(".claude"),
+            FindExistingRequest { name: "Ari".into() }
+        )
+        .unwrap()
+        .can_bring_in
+    );
+}
+const STATE_REFUSAL: &str = "Voice can't bring in ~/.claude/state/ari because it's a link or a file, not a folder. Move it somewhere else, or pick another name.";
+const HISTORY_REFUSAL: &str = "Voice can't bring this one in: its private folder already holds a history from before Voice. Pick another name for now.";
+#[test]
+fn bring_in_refuses_linked_state_without_writing() {
+    refused_tree("link", STATE_REFUSAL);
+}
+#[test]
+fn bring_in_refuses_file_state_without_writing() {
+    refused_tree("file", STATE_REFUSAL);
+}
+#[test]
+fn bring_in_refuses_existing_before_history_without_writing() {
+    refused_tree("before", HISTORY_REFUSAL);
+}
+#[test]
+fn bring_in_refuses_linked_corpus_without_writing() {
+    refused_tree("corpus-link", HISTORY_REFUSAL);
+}
+#[test]
+fn bring_in_rolls_back_history_and_backup_when_make_fails() {
+    let home = Home::new();
+    let h = home.path();
+    let state = old_state(h);
+    fs::write(h.join(".claude/crew"), "plain file").unwrap();
+    let before = snapshot(h);
+    assert_eq!(
+        bring_in_assistant_in(h, &h.join(".claude"), request())
+            .unwrap_err()
+            .message,
+        "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
+    );
+    let mut after = snapshot(h);
+    after.remove(Path::new(".claude/voice-backups"));
+    after.remove(Path::new(".claude/voice-backups/ari"));
+    assert_eq!(after, before);
+    assert_eq!(
+        fs::read(state.join("decisions.jsonl")).unwrap(),
+        b"older history\n"
+    );
+}
+#[test]
+fn bring_in_without_older_files_makes_an_assistant_without_backup() {
+    let home = Home::new();
+    let h = home.path();
+    let result = bring_in_assistant_in(h, &h.join(".claude"), request()).unwrap();
+    assert_eq!(result.backup, None);
+    assert_eq!(result.assistant.name, "Ari");
+    assert!(!result.assistant.consent.agreed);
+    assert!(h.join(".claude/crew/ari/member.json").exists());
+    assert!(!h.join(".claude/voice-backups").exists());
+}
+#[test]
+fn bring_in_reports_a_plain_old_state_as_available() {
+    let home = Home::new();
+    let h = home.path();
+    old_state(h);
+    let result = find_existing_in(
+        h,
+        &h.join(".claude"),
+        FindExistingRequest { name: "Ari".into() },
+    )
+    .unwrap();
+    assert!(result.can_bring_in);
+    assert_eq!(serde_json::to_value(result).unwrap()["canBringIn"], true);
+}
+
+#[test]
+fn bring_in_refuses_empty_corpus_folder_with_an_older_skill() {
+    let home = Home::new();
+    let h = home.path();
+    let claude = h.join(".claude");
+    fs::create_dir_all(claude.join("skills/ari")).unwrap();
+    fs::create_dir_all(claude.join("state/ari/decisions.jsonl")).unwrap();
+    let before = snapshot(h);
+    let found = find_existing_in(h, &claude, FindExistingRequest { name: "Ari".into() }).unwrap();
+    assert!(found.found);
+    assert!(!found.can_bring_in);
+    assert_eq!(
+        bring_in_assistant_in(h, &claude, request())
+            .unwrap_err()
+            .message,
+        HISTORY_REFUSAL
+    );
+    assert_eq!(snapshot(h), before);
+    assert!(!claude.join("voice-backups").exists());
 }

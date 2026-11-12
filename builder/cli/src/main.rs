@@ -187,6 +187,8 @@ enum Command {
         #[arg(long, default_value = "they/them")]
         principal_pronouns: String,
         #[arg(long)]
+        bring_in: bool,
+        #[arg(long)]
         claude_home: Option<PathBuf>,
     },
     /// Look for an older assistant before making one
@@ -2557,12 +2559,14 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             principal,
             pronouns,
             principal_pronouns,
+            bring_in,
             claude_home,
         }) => assistants::make(
             &name,
             &pronouns,
             &principal,
             &principal_pronouns,
+            bring_in,
             claude_home,
         ),
         Some(Command::Existing { name, claude_home }) => assistants::existing(&name, claude_home),

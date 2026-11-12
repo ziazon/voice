@@ -15,6 +15,7 @@ fn main() {
             commands::list_assistants,
             commands::new_assistant,
             commands::find_existing,
+            commands::bring_in_assistant,
             commands::show_assistant_folder,
             commands::consent_text,
             commands::agree_consent,

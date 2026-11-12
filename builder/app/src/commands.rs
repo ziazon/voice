@@ -16,6 +16,13 @@ pub fn new_assistant(
 }
 
 #[tauri::command(async)]
+pub fn bring_in_assistant(
+    request: voice_api::dto::NewAssistantRequest,
+) -> Result<voice_api::dto::BroughtIn, voice_api::dto::Failure> {
+    voice_api::bring_in_assistant(request)
+}
+
+#[tauri::command(async)]
 pub fn find_existing(
     request: voice_api::dto::FindExistingRequest,
 ) -> Result<voice_api::dto::ExistingAssistant, voice_api::dto::Failure> {

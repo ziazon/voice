@@ -89,6 +89,7 @@ pub struct FindExistingRequest {
 #[ts(export)]
 pub struct ExistingAssistant {
     pub found: bool,
+    pub can_bring_in: bool,
     pub lines: Vec<String>,
 }
 
@@ -954,4 +955,12 @@ pub struct AskRequest {
 pub struct AskAnswer {
     pub answer: String,
     pub said: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BroughtIn {
+    pub assistant: Assistant,
+    pub backup: Option<String>,
 }

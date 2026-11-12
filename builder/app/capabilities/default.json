@@ -8,6 +8,7 @@
     "allow-list-assistants",
     "allow-new-assistant",
     "allow-find-existing",
+    "allow-bring-in-assistant",
     "allow-show-assistant-folder",
     "allow-consent-text",
     "allow-agree-consent",
