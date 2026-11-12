@@ -447,6 +447,27 @@ fn failed_build_explains_how_to_run_again_without_changing_the_assistant() {
 }
 
 #[test]
+fn a_misfit_build_shows_its_reason() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s);
+    fs::write(h.bin.join("plan.json"), br#"{"0":"bad","1":"bad"}"#).unwrap();
+    let before = h.snapshots();
+    // Twelve training records and 32 held-out records each fit in one label part.
+    safe(
+        &h,
+        h.build(&Builds::new(), &mut |_| {}),
+        &build_text::misfit(
+            "Sorting your decisions by kind, part 1 of 2",
+            "1 label didn't fit the codebook",
+        ),
+    );
+    assert_eq!(h.snapshots(), before);
+    assert!(!h.state("report.json").exists());
+}
+
+#[test]
 fn private_build_explains_how_to_retry_without_saving() {
     let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
     let h = Home::new(true);

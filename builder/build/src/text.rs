@@ -83,16 +83,20 @@ pub fn reading(answered: usize, held: usize) -> String {
     )
 }
 
+const LABELLING: &str = "Sorting your decisions by kind, part ";
+const DISTILLING: &str = "Learning how you decide, group ";
+const TESTING: &str = "Testing your assistant on ";
+
 pub fn labelling(at: usize, of: usize) -> String {
-    format!("Sorting your decisions by kind, part {at} of {of}")
+    format!("{LABELLING}{at} of {of}")
 }
 
 pub fn distilling(at: usize, of: usize) -> String {
-    format!("Learning how you decide, group {at} of {of}")
+    format!("{DISTILLING}{at} of {of}")
 }
 
 pub fn testing(at: usize, of: usize, held: usize) -> String {
-    format!("Testing your assistant on {held} questions it hasn't seen, batch {at} of {of}")
+    format!("{TESTING}{held} questions it hasn't seen, batch {at} of {of}")
 }
 
 pub fn step_line(what: &str, reused: bool) -> String {
@@ -109,10 +113,23 @@ pub fn too_few(held: usize) -> String {
     )
 }
 
+const MISFIT_PROBLEM: &str =
+    ": Claude's answer didn't fit twice, so the build stopped (the last problem: ";
+const MISFIT_END: &str = "). What it already finished is kept: run the build again to carry on.";
+
 pub fn misfit(what: &str, problem: &str) -> String {
-    format!(
-        "{what}: Claude's answer didn't fit twice, so the build stopped (the last problem: {problem}). What it already finished is kept: run the build again to carry on."
-    )
+    format!("{what}{MISFIT_PROBLEM}{problem}{MISFIT_END}")
+}
+
+/// Only the build's fixed failure sentences, safe to show at the app boundary.
+pub fn is_misfit(message: &str) -> bool {
+    !message.chars().any(char::is_control)
+        && message.ends_with(MISFIT_END)
+        && message.split_once(MISFIT_PROBLEM).is_some_and(|(what, _)| {
+            [LABELLING, DISTILLING, TESTING]
+                .iter()
+                .any(|opening| what.starts_with(opening))
+        })
 }
 
 pub fn private_hits(places: &[String]) -> String {
@@ -217,3 +234,28 @@ pub fn drafted_short(count: usize, kinds: &[(String, Option<usize>)]) -> String 
     )
 }
 pub const REPORT_STRENGTHEN_SHORT: &str = "answer a few questions about it (voice interview draft)";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_misfit_accepts_only_safe_build_messages() {
+        for what in [labelling(1, 2), distilling(1, 2), testing(1, 2, 32)] {
+            assert!(
+                is_misfit(&misfit(&what, "1 label didn't fit the codebook")),
+                "{what}"
+            );
+        }
+        for message in [
+            draft_failed("a question didn't fit"),
+            "The build stopped before it finished, so your assistant is as it was. What it already finished is kept: run the build again to carry on.".into(),
+            misfit(&labelling(1, 2), "bad\nproblem"),
+            misfit("anything else", "bad"),
+            "Refreshing your assistant: Claude's draft didn't fit twice, so nothing was saved (bad). Run `voice refresh propose` again.".into(),
+            "Testing your assistant: Claude's answers didn't fit twice, so nothing was saved (bad). Run `voice refresh apply` again.".into(),
+        ] {
+            assert!(!is_misfit(&message), "{message}");
+        }
+    }
+}

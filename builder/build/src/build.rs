@@ -6,6 +6,7 @@ use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use voice_agent::{claude, guard::Guard, ledger::Session, provider::Brief};
 use voice_core::{
@@ -217,6 +218,10 @@ fn present(value: Option<&Value>) -> Option<&Value> {
     value.filter(|v| !v.is_null())
 }
 
+fn counted(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
 /// A labelling reply rebuilt as `check-labels` reads labels (each kind and mode's own keys, never a
 /// held-out reason), then checked by `check-labels`' own rules.
 pub fn check_label_reply(
@@ -234,7 +239,8 @@ pub fn check_label_reply(
         .filter_map(|(_, r)| Some((r.get("id")?.as_str()?, r.get("kind")?.as_str()?)))
         .collect();
     let mut labels = Map::new();
-    let mut repeated = 0;
+    let mut repeated = Vec::new();
+    let mut repeated_extra = 0;
     for item in items {
         let (Some(item), Some(id)) = (item.as_object(), item.get("id").and_then(Value::as_str))
         else {
@@ -269,25 +275,96 @@ pub fn check_label_reply(
             label.insert("reason".to_owned(), reason.clone());
         }
         if labels.insert(id.to_owned(), Value::Object(label)).is_some() {
-            repeated += 1;
+            if kinds.contains_key(id) {
+                if !repeated.contains(&id) {
+                    repeated.push(id);
+                }
+            } else {
+                repeated_extra += 1;
+            }
         }
     }
-    if repeated > 0 {
-        return Err(Misfit::plain(format!(
-            "{repeated} records are labelled more than once"
-        )));
+    if !repeated.is_empty() || repeated_extra > 0 {
+        let mut told = Vec::new();
+        if !repeated.is_empty() {
+            told.push(format!(
+                "these records are labelled more than once: {}",
+                repeated.join(", ")
+            ));
+        }
+        if repeated_extra > 0 {
+            told.push(format!(
+                "and {repeated_extra} labels for ids that are not records here are repeated"
+            ));
+        }
+        let n = repeated.len() + repeated_extra;
+        return Err(Misfit::new(
+            told.join("; "),
+            format!(
+                "{} labelled more than once",
+                counted(n, "record was", "records were")
+            ),
+        ));
     }
     let problems = label_problems(book, &part.name, &part.records, &labels, part.mode)
-        .map_err(|error| Misfit::plain(error.to_string()))?;
-    if !problems.is_empty() {
-        let told: Vec<_> = problems.iter().take(SHOWN_PROBLEMS).cloned().collect();
-        return Err(Misfit::new(
-            format!(
-                "these labels are wrong (the record id, then the field): {}",
-                told.join("; ")
-            ),
-            format!("{} of its labels didn't fit the codebook", problems.len()),
+        .map_err(|error| Misfit::new(error.to_string(), "Voice couldn't check its labels"))?;
+    let problems: Vec<_> = problems
+        .into_iter()
+        .filter(|p| !p.starts_with("ids differ: "))
+        .collect();
+    let missing: Vec<_> = part
+        .records
+        .iter()
+        .filter_map(|(_, r)| r.get("id").and_then(Value::as_str))
+        .filter(|id| !labels.contains_key(*id))
+        .collect();
+    let extra = labels
+        .keys()
+        .filter(|id| !kinds.contains_key(id.as_str()))
+        .count();
+    let mut told = Vec::new();
+    let mut shown = Vec::new();
+    if !missing.is_empty() {
+        told.push(format!(
+            "these records have no label: {}",
+            missing.join(", ")
         ));
+        shown.push(format!(
+            "{} had no label",
+            counted(missing.len(), "record", "records")
+        ));
+    }
+    if extra > 0 {
+        told.push(format!(
+            "leave out the {extra} labels whose id is not a record here"
+        ));
+        shown.push(counted(
+            extra,
+            "label was for a record that isn't there",
+            "labels were for records that aren't there",
+        ));
+    }
+    if !problems.is_empty() {
+        told.push(format!(
+            "these labels are wrong (the record id, then the field): {}",
+            problems.join("; ")
+        ));
+        // Field problems end in the field name, except the held-out "has reason" refusal.
+        let wrong: HashSet<_> = problems
+            .iter()
+            .filter_map(|problem| {
+                problem
+                    .strip_suffix(" has reason")
+                    .or_else(|| problem.rsplit_once(' ').map(|(id, _)| id))
+            })
+            .collect();
+        shown.push(format!(
+            "{} didn't fit the codebook",
+            counted(wrong.len(), "label", "labels")
+        ));
+    }
+    if !told.is_empty() {
+        return Err(Misfit::new(told.join("; "), shown.join(", ")));
     }
     Ok(labels)
 }
@@ -484,8 +561,13 @@ pub fn check_distil_reply(
         .iter()
         .map(|(_, _, _, point)| point.as_str())
         .collect();
-    let quoted = overlaps(&text.join("\n"), &[(corpus_name, records)], SHINGLE)
-        .map_err(|error| Misfit::plain(error.to_string()))?;
+    let quoted =
+        overlaps(&text.join("\n"), &[(corpus_name, records)], SHINGLE).map_err(|error| {
+            Misfit::new(
+                error.to_string(),
+                "Voice couldn't check it for your own words",
+            )
+        })?;
     if !quoted.is_empty() {
         let runs: Vec<String> = quoted
             .iter()
@@ -592,6 +674,7 @@ pub fn check_backtest_reply(
         .collect();
     let mut problems = Vec::new();
     let mut predictions = Map::new();
+    let mut wrong = HashSet::new();
     let mut extra = 0;
     for item in items {
         let Some(id) = item.get("id").and_then(Value::as_str) else {
@@ -603,6 +686,7 @@ pub fn check_backtest_reply(
         };
         if predictions.contains_key(id) {
             problems.push(format!("{id} predicted twice"));
+            wrong.insert(id);
             continue;
         }
         let labels = option_labels(question);
@@ -624,32 +708,57 @@ pub fn check_backtest_reply(
         };
         if !fits {
             problems.push(format!("{id} pick"));
+            wrong.insert(id);
         }
         let confidence = item.get("confidence").cloned().unwrap_or(Value::Null);
         if !confidence.as_str().is_some_and(|c| TIERS.contains(&c)) {
             problems.push(format!("{id} confidence"));
+            wrong.insert(id);
         }
         predictions.insert(
             id.to_owned(),
             json!({"pick": pick, "confidence": confidence}),
         );
     }
-    let missing = asked
-        .keys()
-        .filter(|id| !predictions.contains_key(**id))
-        .count();
-    if missing > 0 || extra > 0 {
-        problems.insert(0, format!("ids differ: missing {missing}, extra {extra}"));
+    let missing: Vec<_> = batch
+        .iter()
+        .filter_map(|q| q.get("id").and_then(Value::as_str))
+        .filter(|id| !predictions.contains_key(*id))
+        .collect();
+    let mut told = Vec::new();
+    let mut shown = Vec::new();
+    if !missing.is_empty() {
+        told.push(format!(
+            "these questions have no prediction: {}",
+            missing.join(", ")
+        ));
+        shown.push(format!(
+            "{} had no prediction",
+            counted(missing.len(), "question", "questions")
+        ));
+    }
+    if extra > 0 {
+        told.push(format!(
+            "leave out the {extra} predictions whose id is not a question here"
+        ));
+        shown.push(counted(
+            extra,
+            "prediction was for a question that wasn't asked",
+            "predictions were for questions that weren't asked",
+        ));
     }
     if !problems.is_empty() {
-        let told: Vec<_> = problems.iter().take(SHOWN_PROBLEMS).cloned().collect();
-        return Err(Misfit::new(
-            format!(
-                "these predictions are wrong (the question id, then the field): {}",
-                told.join("; ")
-            ),
-            format!("{} of its predictions didn't fit", problems.len()),
+        told.push(format!(
+            "these predictions are wrong (the question id, then the field): {}",
+            problems.join("; ")
         ));
+        shown.push(format!(
+            "{} didn't fit",
+            counted(wrong.len(), "prediction", "predictions")
+        ));
+    }
+    if !told.is_empty() {
+        return Err(Misfit::new(told.join("; "), shown.join(", ")));
     }
     Ok(predictions)
 }
@@ -772,6 +881,29 @@ pub fn sources(home: &Path, member: &Member) -> Result<Vec<Source>> {
     Ok(sources)
 }
 
+/// Keep only asked-for entries from the prior reply, then replace by id with the retry.
+fn merge_by_id(last: &Value, reply: &Value, list: &str, asked: &HashSet<&str>) -> Value {
+    let (Some(previous), Some(entries)) = (
+        last.get(list).and_then(Value::as_array),
+        reply.get(list).and_then(Value::as_array),
+    ) else {
+        return reply.clone();
+    };
+    let replaced: HashSet<_> = entries
+        .iter()
+        .filter_map(|entry| entry.get("id").and_then(Value::as_str))
+        .collect();
+    let kept = previous.iter().filter(|entry| {
+        entry
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| asked.contains(id) && !replaced.contains(id))
+    });
+    let mut merged = reply.clone();
+    merged[list] = Value::Array(kept.chain(entries).cloned().collect());
+    merged
+}
+
 pub struct Asker<'a> {
     misfit: fn(&str, &str) -> String,
     guard: &'a Guard<'a>,
@@ -848,6 +980,46 @@ impl<'a> Asker<'a> {
         what: &str,
         check: impl Fn(&Value) -> std::result::Result<T, Misfit>,
     ) -> Result<(T, bool)> {
+        self.ask_inner(step, system, schema, prompt, what, None, check)
+    }
+
+    /// As `ask`, for a step whose reply is a list of entries keyed by `id` (`list`): a retry is merged
+    /// over the last reply that didn't fit, so the model may answer with only the entries it was told
+    /// about. Only ids in `asked` are kept from the last reply.
+    #[allow(clippy::too_many_arguments)]
+    pub fn ask_by_id<T>(
+        &mut self,
+        step: &str,
+        system: &str,
+        schema: &Value,
+        prompt: &str,
+        what: &str,
+        list: &str,
+        asked: &HashSet<&str>,
+        check: impl Fn(&Value) -> std::result::Result<T, Misfit>,
+    ) -> Result<(T, bool)> {
+        self.ask_inner(
+            step,
+            system,
+            schema,
+            prompt,
+            what,
+            Some((list, asked)),
+            check,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn ask_inner<T>(
+        &mut self,
+        step: &str,
+        system: &str,
+        schema: &Value,
+        prompt: &str,
+        what: &str,
+        merge: Option<(&str, &HashSet<&str>)>,
+        check: impl Fn(&Value) -> std::result::Result<T, Misfit>,
+    ) -> Result<(T, bool)> {
         let provider = self.guard.route(self.sources)?;
         let model = provider.model(self.model);
         let keyed = if provider.id() == claude::AGENT_ID {
@@ -868,7 +1040,8 @@ impl<'a> Asker<'a> {
         }
         let mut asked = prompt.to_owned();
         let mut last = Misfit::plain("");
-        for _ in 0..2 {
+        let mut last_reply = Value::Null;
+        for attempt in 1..=2 {
             let reply = self.guard.call(
                 self.session,
                 &Brief {
@@ -881,22 +1054,51 @@ impl<'a> Asker<'a> {
                 },
             )?;
             self.calls += 1;
-            match check(&reply.output) {
+            let output = match merge {
+                Some((list, asked)) => merge_by_id(&last_reply, &reply.output, list, asked),
+                None => reply.output.clone(),
+            };
+            match check(&output) {
                 Ok(checked) => {
                     write_private_at(
                         self.home,
                         self.slug,
                         Some(CACHE),
                         &name,
-                        reply.output.to_string().as_bytes(),
+                        output.to_string().as_bytes(),
                     )?;
                     return Ok((checked, false));
                 }
                 Err(misfit) => {
-                    asked = format!(
-                        "{prompt}\nYour last answer didn't fit: {}. Answer again in full, following every rule above.\n",
-                        misfit.told
+                    let seconds = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let rejected = format!(
+                        "rejected-{}-{seconds}-{attempt}.json",
+                        name.trim_end_matches(".json")
                     );
+                    write_private_at(
+                        self.home,
+                        self.slug,
+                        Some(CACHE),
+                        &rejected,
+                        json!({"problem": misfit.told, "reply": reply.output})
+                            .to_string()
+                            .as_bytes(),
+                    )?;
+                    asked = if merge.is_some() {
+                        format!(
+                            "{prompt}\nYour last answer didn't fit: {}. Answer again, following every rule above. You may give only the entries for the ids named above: every entry of your last answer that you leave out is kept as it was.\n",
+                            misfit.told
+                        )
+                    } else {
+                        format!(
+                            "{prompt}\nYour last answer didn't fit: {}. Answer again in full, following every rule above.\n",
+                            misfit.told
+                        )
+                    };
+                    last_reply = output;
                     last = misfit;
                 }
             }
@@ -905,8 +1107,8 @@ impl<'a> Asker<'a> {
     }
 }
 
-/// Label, distil and backtest. Writes nothing in the member's folder: only checked replies in
-/// the state folder's `build/`. `progress` gets each plain line the app shows.
+/// Label, distil and backtest. Writes nothing in the member's folder: checked replies and private
+/// rejected replies go in the state folder's `build/`. `progress` gets each plain line the app shows.
 pub fn build(
     guard: &Guard,
     session: &Session,
@@ -948,12 +1150,19 @@ pub fn build(
     let mut labels = Map::new();
     for (at, part) in parts.iter().enumerate() {
         let what = text::labelling(at + 1, parts.len());
-        let (found, reused) = asker.ask(
+        let asked = part
+            .records
+            .iter()
+            .filter_map(|(_, r)| r.get("id").and_then(Value::as_str))
+            .collect();
+        let (found, reused) = asker.ask_by_id(
             "label",
             LABEL_SYSTEM,
             &schema,
             &label_prompt(inputs.book, inputs.codebook, part),
             &what,
+            "labels",
+            &asked,
             |reply| check_label_reply(inputs.book, part, reply),
         )?;
         labels.extend(found);
@@ -1004,12 +1213,18 @@ pub fn build(
         for (at, batch) in batches.iter().enumerate() {
             let what = text::testing(at + 1, batches.len(), held);
             let prompt = backtest_prompt(member, inputs.corpus_name, &records, &model, batch)?;
-            let (found, reused) = asker.ask(
+            let asked = batch
+                .iter()
+                .filter_map(|q| q.get("id").and_then(Value::as_str))
+                .collect();
+            let (found, reused) = asker.ask_by_id(
                 "backtest",
                 BACKTEST_SYSTEM,
                 &schema,
                 &prompt,
                 &what,
+                "predictions",
+                &asked,
                 |reply| check_backtest_reply(batch, reply),
             )?;
             predictions.extend(found);

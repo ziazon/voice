@@ -295,12 +295,24 @@ fn label_replies_that_do_not_fit_are_refused_without_the_models_words() {
     let wrong = good(&|r| r["labels"][0]["category"] = Value::from(SENTINEL)).unwrap_err();
     assert!(wrong.told.contains("question:t000 category"), "{wrong:?}");
     assert!(!wrong.shown.contains(SENTINEL) && !wrong.told.contains(SENTINEL));
-    assert_eq!(wrong.shown, "1 of its labels didn't fit the codebook");
+    assert_eq!(wrong.shown, "1 label didn't fit the codebook");
+    let fields = good(&|r| {
+        r["labels"][0]["category"] = Value::from(SENTINEL);
+        r["labels"][0]["domain"] = Value::from(SENTINEL);
+    })
+    .unwrap_err();
+    assert_eq!(fields.shown, "1 label didn't fit the codebook");
+    assert!(
+        fields
+            .told
+            .contains("question:t000 category; question:t000 domain")
+    );
     let missing = good(&|r| {
         r["labels"].as_array_mut().unwrap().pop();
     })
     .unwrap_err();
-    assert!(missing.told.contains("missing 1, extra 0"), "{missing:?}");
+    assert_eq!(missing.told, "these records have no label: message:m1");
+    assert_eq!(missing.shown, "1 record had no label");
     let twice = good(&|r| {
         let first = r["labels"][0].clone();
         r["labels"].as_array_mut().unwrap().push(first);
@@ -309,10 +321,22 @@ fn label_replies_that_do_not_fit_are_refused_without_the_models_words() {
     assert_eq!(
         twice,
         Misfit {
-            told: "1 records are labelled more than once".into(),
-            shown: "1 records are labelled more than once".into()
+            told: "these records are labelled more than once: question:t000".into(),
+            shown: "1 record was labelled more than once".into()
         }
     );
+    let extra = good(&|r| {
+        let mut label = r["labels"][0].clone();
+        label["id"] = Value::from(SENTINEL);
+        r["labels"].as_array_mut().unwrap().push(label);
+    })
+    .unwrap_err();
+    assert_eq!(
+        extra.told,
+        "leave out the 1 labels whose id is not a record here"
+    );
+    assert_eq!(extra.shown, "1 label was for a record that isn't there");
+    assert!(!extra.told.contains(SENTINEL) && !extra.shown.contains(SENTINEL));
     let no_reason = good(&|r| r["labels"][1]["reason"] = Value::Null).unwrap_err();
     assert!(
         no_reason.told.contains("question:t001 reason"),
@@ -512,6 +536,17 @@ fn backtest_replies_need_one_fitting_pick_per_question() {
         ]))
         .is_ok()
     );
+    let fields = check(json!([
+        {"id": "question:h000", "pick": SENTINEL, "confidence": SENTINEL},
+        {"id": "question:h001", "pick": "own", "confidence": "high"}
+    ]))
+    .unwrap_err();
+    assert_eq!(fields.shown, "1 prediction didn't fit");
+    assert!(
+        fields
+            .told
+            .contains("question:h000 pick; question:h000 confidence")
+    );
     for (predictions, told) in [
         (
             json!([{"id": "question:h000", "pick": SENTINEL, "confidence": "high"},
@@ -541,12 +576,20 @@ fn backtest_replies_need_one_fitting_pick_per_question() {
         (
             json!([{"id": "question:h000", "pick": "Keep it short", "confidence": "high"},
                 {"id": SENTINEL, "pick": "own", "confidence": "high"}]),
-            "ids differ: missing 1, extra 1",
+            "these questions have no prediction: question:h001; leave out the 1 predictions whose id is not a question here",
         ),
     ] {
         let misfit = check(predictions).unwrap_err();
         assert!(misfit.told.contains(told), "{misfit:?}");
         assert!(!misfit.told.contains(SENTINEL) && !misfit.shown.contains(SENTINEL));
+        if told.starts_with("these questions have no prediction:") {
+            assert_eq!(
+                misfit.shown,
+                "1 question had no prediction, 1 prediction was for a question that wasn't asked"
+            );
+        } else {
+            assert_eq!(misfit.shown, "1 prediction didn't fit");
+        }
     }
 }
 
@@ -666,7 +709,7 @@ fn a_reply_that_does_not_fit_is_asked_for_once_more() {
         retry.contains("\nYour last answer didn't fit: these labels are wrong"),
         "{retry}"
     );
-    assert!(retry.ends_with("Answer again in full, following every rule above.\n"));
+    assert!(retry.ends_with(PARTIAL_RETRY_END));
 }
 
 #[test]
@@ -1318,7 +1361,7 @@ fn mail_sources() -> Vec<voice_core::ceilings::Source> {
 
 #[test]
 fn mined_mail_at_its_default_is_refused_before_a_call_or_ledger_line() {
-    let python = python().expect("python3 for the stub");
+    let Some(python) = python() else { return };
     let home = Scratch::new();
     let stub = Stub::new(&python);
     mined_mail(&home.0);
@@ -1337,7 +1380,7 @@ fn mined_mail_at_its_default_is_refused_before_a_call_or_ledger_line() {
 
 #[test]
 fn mined_mail_allowed_to_anthropic_is_named_in_every_build_brief() {
-    let python = python().expect("python3 for the stub");
+    let Some(python) = python() else { return };
     let home = Scratch::new();
     let stub = Stub::new(&python);
     mined_mail(&home.0);
@@ -1357,7 +1400,7 @@ fn mined_mail_allowed_to_anthropic_is_named_in_every_build_brief() {
 
 #[test]
 fn merged_mbox_config_names_mail_without_a_mined_file_and_other_sources_do_not() {
-    let python = python().expect("python3 for the stub");
+    let Some(python) = python() else { return };
     for kind in [None, Some("project"), Some("mbox")] {
         let home = Scratch::new();
         let stub = Stub::new(&python);
@@ -1402,4 +1445,164 @@ fn backtest_method_names_each_answering_provider_in_order() {
     built.by.push(("future".into(), "local".into()));
     let entry = draft::entries(&the_book(), &built, "ignored", "2026-10-31");
     assert!(entry.contains("predicted each one blind through the person's own Claude Code (model sonnet) and a model server on the person's own machines (model qwen3:8b) and future (model local), from decisions.md"), "{entry}");
+}
+
+const PARTIAL_RETRY_END: &str = "Answer again, following every rule above. You may give only the entries for the ids named above: every entry of your last answer that you leave out is kept as it was.\n";
+
+fn partial_retry_builds(step: &str, first: &str) {
+    let Some(python) = python() else { return };
+    let text = corpus(12, 32);
+    let baseline_home = Scratch::new();
+    let baseline = Stub::new(&python);
+    let good = run(
+        &baseline,
+        &baseline_home.0,
+        &text,
+        Cap::default(),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    let index = baseline
+        .steps()
+        .iter()
+        .position(|s| s.starts_with(step))
+        .unwrap();
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    stub.plan(json!({index.to_string(): first, (index + 1).to_string(): "first"}));
+    let built = run(&stub, &home.0, &text, Cap::default(), &mut Vec::new()).unwrap();
+    assert_eq!(built.calls, good.calls + 1);
+    assert_eq!(stub.calls(), baseline.calls() + 1);
+    let retry = stub.stdin(index + 1);
+    let id = if step == "Label" {
+        "question:t000"
+    } else {
+        "question:h000"
+    };
+    let problem = if first == "missing" {
+        if step == "Label" {
+            "these records have no label"
+        } else {
+            "these questions have no prediction"
+        }
+    } else {
+        "these labels are wrong (the record id, then the field)"
+    };
+    assert!(
+        retry.contains(&format!("Your last answer didn't fit: {problem}: {id}")),
+        "{retry}"
+    );
+    assert!(retry.ends_with(PARTIAL_RETRY_END), "{retry}");
+    let (key, list, system, schema) = if step == "Label" {
+        (
+            "label",
+            "labels",
+            build::LABEL_SYSTEM,
+            build::label_schema(),
+        )
+    } else {
+        (
+            "backtest",
+            "predictions",
+            build::BACKTEST_SYSTEM,
+            build::backtest_schema(),
+        )
+    };
+    let name = build::cache_name(key, "sonnet", system, &schema, &stub.stdin(index));
+    let cached: Value = serde_json::from_slice(
+        &fs::read(home.0.join(".claude/state/ada/build").join(&name)).unwrap(),
+    )
+    .unwrap();
+    let expected: Value = serde_json::from_slice(
+        &fs::read(baseline_home.0.join(".claude/state/ada/build").join(name)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        cached[list].as_array().unwrap().len(),
+        expected[list].as_array().unwrap().len()
+    );
+    for entry in expected[list].as_array().unwrap() {
+        assert!(cached[list].as_array().unwrap().contains(entry));
+    }
+    let rerun = run(&stub, &home.0, &text, Cap::default(), &mut Vec::new()).unwrap();
+    assert_eq!(rerun.calls, 0);
+    assert_eq!(rerun.reused, good.calls);
+}
+
+#[test]
+fn a_reply_missing_records_then_a_partial_retry_builds() {
+    partial_retry_builds("Label", "missing");
+}
+
+#[test]
+fn a_wrong_label_then_a_retry_with_only_the_fix_builds() {
+    partial_retry_builds("Label", "bad");
+}
+
+#[test]
+fn a_backtest_batch_missing_a_prediction_then_a_partial_retry_builds() {
+    partial_retry_builds("Predict", "missing");
+}
+
+#[test]
+fn two_misfits_keep_both_rejected_replies() {
+    let Some(python) = python() else { return };
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    stub.plan(json!({"0": "bad", "1": "bad"}));
+    assert!(
+        run(
+            &stub,
+            &home.0,
+            &corpus(12, 0),
+            Cap::default(),
+            &mut Vec::new()
+        )
+        .is_err()
+    );
+    assert_eq!(stub.calls(), 2);
+    let folder = home.0.join(".claude/state/ada/build");
+    let mut rejected: Vec<_> = fs::read_dir(&folder)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| {
+            p.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("rejected-")
+        })
+        .collect();
+    rejected.sort();
+    assert_eq!(rejected.len(), 2);
+    assert_eq!(
+        fs::metadata(&folder).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    let part = build::parts("decisions.jsonl", &records(&corpus(12, 0)))
+        .unwrap()
+        .remove(0);
+    for (at, path) in rejected.iter().enumerate() {
+        let name = path.file_name().unwrap().to_str().unwrap();
+        assert!(
+            name.starts_with("rejected-label-") && name.ends_with(&format!("-{}.json", at + 1)),
+            "{name}"
+        );
+        assert_eq!(
+            fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let saved: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(saved.as_object().unwrap().len(), 2);
+        assert_eq!(
+            saved["problem"],
+            "these labels are wrong (the record id, then the field): question:t000 category"
+        );
+        let labels = saved["reply"]["labels"].as_array().unwrap();
+        assert_eq!(labels.len(), part.records.len());
+        assert_eq!(labels[0]["category"], SENTINEL);
+        for (label, (_, record)) in labels.iter().zip(&part.records) {
+            assert_eq!(label["id"], record["id"]);
+        }
+    }
 }

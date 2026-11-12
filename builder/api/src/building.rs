@@ -132,6 +132,11 @@ pub(crate) fn call_failure(error: Error, session: &Session, fallback: &str) -> F
         }
         Err(_) => failure(LEDGER),
         _ => {
+            if let Error::Invalid(message) = &error
+                && text::is_misfit(message)
+            {
+                return failure(message);
+            }
             let message = claude_message(error);
             if message == agent_text::FAILED {
                 failure(fallback)
@@ -628,6 +633,28 @@ pub fn set_spending_limit(request: SpendingLimitRequest) -> Result<SpendingLimit
 mod limit_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn call_failure_shows_only_recognized_build_misfits() {
+        let home = std::env::temp_dir().join(format!("pb-misfit-failure-{}", std::process::id()));
+        fs::create_dir(&home).unwrap();
+        let session = Session::open(&home, "wren", Cap::default()).unwrap();
+        let message = text::misfit(&text::labelling(1, 2), "1 label didn't fit the codebook");
+        assert_eq!(
+            call_failure(Error::Invalid(message.clone()), &session, BUILD_FAILED).message,
+            message
+        );
+        for message in [
+            text::misfit(&text::labelling(1, 2), "bad\nproblem"),
+            "untrusted failure".into(),
+        ] {
+            assert_eq!(
+                call_failure(Error::Invalid(message), &session, BUILD_FAILED).message,
+                BUILD_FAILED
+            );
+        }
+        fs::remove_dir_all(home).unwrap();
+    }
 
     #[test]
     fn call_failure_checks_the_next_budget_before_reporting_the_daily_limit() {

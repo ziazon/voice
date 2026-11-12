@@ -3,7 +3,8 @@
 The test copies it into a folder of its own, with a `#!` line naming the Python to run. Each call
 keeps its argv (a JSON list) and stdin there (`argv<N>`, `stdin<N>`); `plan.json` there can make call N answer
 `bad` (a reply that fails the build's check), `quote` (a distilled point that repeats the record's
-own words) or `error` (a failed run).
+own words) or `error` (a failed run). For label and backtest, `missing` drops the first
+entry and `first` answers with only the first entry, correct.
 """
 import json
 import os
@@ -69,6 +70,10 @@ def label(prompt, how):
         })
     if how == "bad":
         labels[0]["category"] = "zebracorn"
+    if how == "missing":
+        labels = labels[1:]
+    if how == "first":
+        labels = labels[:1]
     return {"labels": labels}
 
 
@@ -95,8 +100,10 @@ def backtest(prompt, how):
     questions = [json.loads(line) for line in prompt.splitlines() if line.startswith("{")]
     predictions = [{"id": q["id"], "pick": q["options"][0]["label"], "confidence": "high"}
                    for q in questions]
-    if how == "bad":
+    if how in ("bad", "missing"):
         predictions = predictions[1:]
+    if how == "first":
+        predictions = predictions[:1]
     return {"predictions": predictions}
 
 
