@@ -476,9 +476,7 @@ fn existing_explains_why_a_link_or_saved_history_cannot_be_brought_in() {
             "Voice can't bring this one in: its private folder already holds a history from before Voice. Pick another name for now."
         };
         let text = home.success(&["existing", "Ari"]);
-        assert!(
-            text.ends_with(&format!("Voice can't bring this one in. {reason}\n")),
-            "{text}"
-        );
+        assert!(text.ends_with(&format!("{reason}\n")), "{text}");
+        assert!(!text.contains("Voice can't bring this one in. "), "{text}");
     }
 }

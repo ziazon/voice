@@ -120,6 +120,34 @@ fn check_field(what: &str, value: &str, field: &str) -> Result<()> {
         ))
     })
 }
+fn checked_request(request: &dto::NewAssistantRequest) -> Result<String> {
+    check_field("name", &request.name, "Your assistant's name")?;
+    for (what, value, field) in [
+        ("pronouns", &request.pronouns, "Its pronouns"),
+        ("your name", &request.principal, "Your name"),
+        (
+            "your pronouns",
+            &request.principal_pronouns,
+            "Your pronouns",
+        ),
+    ] {
+        check_field(what, value, field)?;
+    }
+    checked_name(&request.name)
+}
+fn cli_word(home: &Path) -> Result<String> {
+    shipped_cli_word(home).map_err(|error| match error {
+        Error::Invalid(message) if message == CLI_FOLDER || message == CLI_PLACE => {
+            failure(&message)
+        }
+        _ => failure(MAKE),
+    })
+}
+fn already_have(name: &str) -> dto::Failure {
+    failure(&format!(
+        "You already have an assistant called {name}. Pick another name, or open that one."
+    ))
+}
 fn checked_name(name: &str) -> Result<String> {
     check_field("name", name, "Your assistant's name")?;
     crew::slugify(name)
@@ -199,19 +227,7 @@ pub fn new_assistant_in(
     claude_home: &Path,
     request: dto::NewAssistantRequest,
 ) -> Result<dto::Assistant> {
-    check_field("name", &request.name, "Your assistant's name")?;
-    for (what, value, field) in [
-        ("pronouns", &request.pronouns, "Its pronouns"),
-        ("your name", &request.principal, "Your name"),
-        (
-            "your pronouns",
-            &request.principal_pronouns,
-            "Your pronouns",
-        ),
-    ] {
-        check_field(what, value, field)?;
-    }
-    let slug = checked_name(&request.name)?;
+    let slug = checked_request(&request)?;
     let found = existing::find(home, claude_home, &slug).map_err(|_| failure(LOOK_BEFORE))?;
     if found.any() {
         return Err(failure(&format!(
@@ -225,19 +241,11 @@ pub fn new_assistant_in(
         principal: &request.principal,
         principal_pronouns: &request.principal_pronouns,
     };
-    let cli = shipped_cli_word(home).map_err(|error| match error {
-        Error::Invalid(message) if message == CLI_FOLDER || message == CLI_PLACE => {
-            failure(&message)
-        }
-        _ => failure(MAKE),
-    })?;
+    let cli = cli_word(home)?;
     let listed =
         assistants::make(home, &new, &local_day(SystemTime::now()), &cli).map_err(|error| {
             match error {
-                Error::Exists(_) => failure(&format!(
-                    "You already have an assistant called {}. Pick another name, or open that one.",
-                    request.name
-                )),
+                Error::Exists(_) => already_have(&request.name),
                 _ => failure(MAKE),
             }
         })?;
@@ -255,6 +263,199 @@ pub fn new_assistant(request: dto::NewAssistantRequest) -> Result<dto::Assistant
         request,
     )
 }
+const HISTORY_BEFORE: &str = "Voice can't bring this one in: its private folder already holds a history from before Voice. Pick another name for now.";
+
+fn state_refusal(slug: &str) -> String {
+    format!(
+        "Voice can't bring in ~/.claude/state/{slug} because it's a link or a file, not a folder. Move it somewhere else, or pick another name."
+    )
+}
+
+/// The same preflight decides whether the screen and CLI offer to bring an older assistant in.
+pub fn bring_in_refusal(
+    home: &Path,
+    found: &existing::Found,
+) -> voice_core::error::Result<Option<String>> {
+    let state = home.join(".claude/state").join(&found.slug);
+    match fs::symlink_metadata(&state) {
+        Ok(metadata) if !metadata.is_dir() => {
+            return Ok(Some(state_refusal(&found.slug)));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            return Err(Error::Io {
+                path: state,
+                source,
+            });
+        }
+    }
+    for (name, must_be_regular) in [
+        ("decisions-before-voice.jsonl", false),
+        ("decisions.jsonl", true),
+    ] {
+        let path = state.join(name);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if !must_be_regular || !metadata.is_file() => {
+                return Ok(Some(HISTORY_BEFORE.into()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(source) => return Err(Error::Io { path, source }),
+        }
+    }
+    Ok(None)
+}
+
+fn make_and_clear(
+    home: &Path,
+    new: &assistants::New<'_>,
+    date: &str,
+    cli: &str,
+) -> voice_core::error::Result<assistants::Listed> {
+    let made = assistants::make(home, new, date, cli)?;
+    if let Err(error) = clear_consent(home, &made.member.slug) {
+        let _ = fs::remove_dir_all(&made.dir);
+        return Err(error);
+    }
+    Ok(made)
+}
+
+/// Back up an older assistant before making a Voice assistant with its history as an input.
+pub fn bring_in(
+    home: &Path,
+    claude_home: &Path,
+    new: &assistants::New<'_>,
+    date: &str,
+    stamp: &str,
+    cli: &str,
+) -> voice_core::error::Result<(assistants::Listed, Option<PathBuf>)> {
+    let slug = crew::slugify(new.name)
+        .ok_or_else(|| Error::Invalid("name must contain a letter or digit".into()))?;
+    let found = existing::find(home, claude_home, &slug)?;
+    if !found.any() {
+        return make_and_clear(home, new, date, cli).map(|made| (made, None));
+    }
+    if let Some(sentence) = bring_in_refusal(home, &found)? {
+        return Err(Error::Invalid(sentence));
+    }
+    let state = home.join(".claude/state").join(&slug);
+    let _lock = match fs::symlink_metadata(&state) {
+        Ok(_) => Some(voice_ingest::private::lock_existing_state(home, &slug)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(source) => {
+            return Err(Error::Io {
+                path: state,
+                source,
+            });
+        }
+    };
+    let mut items = Vec::new();
+    for (name, source, follow) in [
+        (
+            "state",
+            found.state.as_ref().map(|state| state.path.as_path()),
+            false,
+        ),
+        ("skill", found.skill.as_deref(), false),
+        ("CLAUDE.md", found.claude_md.as_deref(), true),
+        ("member", found.old_folder.as_deref(), false),
+    ] {
+        if let Some(source) = source {
+            items.push(voice_core::backup::Item {
+                name,
+                source,
+                follow,
+            });
+        }
+    }
+    let backup = voice_core::backup::back_up(home, &slug, stamp, &items)?;
+    let corpus = state.join("decisions.jsonl");
+    let before = state.join("decisions-before-voice.jsonl");
+    let mut moved = false;
+    let result = (|| {
+        if fs::symlink_metadata(&corpus).is_ok() {
+            fs::hard_link(&corpus, &before).map_err(|source| Error::Io {
+                path: before.clone(),
+                source,
+            })?;
+            if let Err(source) = fs::remove_file(&corpus) {
+                let _ = fs::remove_file(&before);
+                return Err(Error::Io {
+                    path: corpus.clone(),
+                    source,
+                });
+            }
+            moved = true;
+        }
+        make_and_clear(home, new, date, cli)
+    })();
+    match result {
+        Ok(made) => Ok((made, Some(backup))),
+        Err(error) => {
+            if moved && fs::hard_link(&before, &corpus).is_ok() {
+                let _ = fs::remove_file(&before);
+            }
+            let _ = fs::remove_dir_all(&backup);
+            Err(error)
+        }
+    }
+}
+
+pub fn bring_in_assistant_in(
+    home: &Path,
+    claude_home: &Path,
+    request: dto::NewAssistantRequest,
+) -> Result<dto::BroughtIn> {
+    let slug = checked_request(&request)?;
+    let cli = cli_word(home)?;
+    let new = assistants::New {
+        name: &request.name,
+        pronouns: &request.pronouns,
+        principal: &request.principal,
+        principal_pronouns: &request.principal_pronouns,
+    };
+    let now = SystemTime::now();
+    let (made, backup) = bring_in(
+        home,
+        claude_home,
+        &new,
+        &local_day(now),
+        &voice_agent::ledger::local_stamp(now),
+        &cli,
+    )
+    .map_err(|error| match error {
+        Error::Invalid(sentence)
+            if sentence == HISTORY_BEFORE || sentence == state_refusal(&slug) =>
+        {
+            failure(&sentence)
+        }
+        Error::Exists(_) => already_have(&request.name),
+        _ => failure(MAKE),
+    })?;
+    Ok(dto::BroughtIn {
+        assistant: assistant(home, made),
+        backup: backup.map(|path| {
+            // back_up always makes this folder beneath the supplied home.
+            format!(
+                "~/{}",
+                path.strip_prefix(home)
+                    .expect("backup beneath home")
+                    .display()
+            )
+        }),
+    })
+}
+
+pub fn bring_in_assistant(request: dto::NewAssistantRequest) -> Result<dto::BroughtIn> {
+    let home = home(MAKE)?;
+    bring_in_assistant_in(
+        &home,
+        &crate::use_it::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref()),
+        request,
+    )
+}
+
 pub fn consent_text() -> Result<dto::ConsentText> {
     Ok(dto::ConsentText {
         version: consent::VERSION,
@@ -616,254 +817,4 @@ mod server_message_tests {
             assert_eq!(claude_message(Error::Invalid(message.clone())), message);
         }
     }
-}
-
-const HISTORY_BEFORE: &str = "Voice can't bring this one in: its private folder already holds a history from before Voice. Pick another name for now.";
-
-fn state_refusal(slug: &str) -> String {
-    format!(
-        "Voice can't bring in ~/.claude/state/{slug} because it's a link or a file, not a folder. Move it somewhere else, or pick another name."
-    )
-}
-
-/// The same preflight decides whether the screen and CLI offer to bring an older assistant in.
-pub fn bring_in_refusal(
-    home: &Path,
-    found: &existing::Found,
-) -> voice_core::error::Result<Option<String>> {
-    let state = home.join(".claude/state").join(&found.slug);
-    match fs::symlink_metadata(&state) {
-        Ok(metadata) if !metadata.is_dir() => {
-            return Ok(Some(state_refusal(&found.slug)));
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(source) => {
-            return Err(Error::Io {
-                path: state,
-                source,
-            });
-        }
-    }
-    for (name, must_be_regular) in [
-        ("decisions-before-voice.jsonl", false),
-        ("decisions.jsonl", true),
-    ] {
-        let path = state.join(name);
-        match fs::symlink_metadata(&path) {
-            Ok(metadata) if !must_be_regular || !metadata.is_file() => {
-                return Ok(Some(HISTORY_BEFORE.into()));
-            }
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(source) => return Err(Error::Io { path, source }),
-        }
-    }
-    Ok(None)
-}
-
-fn make_and_clear(
-    home: &Path,
-    new: &assistants::New<'_>,
-    date: &str,
-    cli: &str,
-) -> voice_core::error::Result<assistants::Listed> {
-    let made = assistants::make(home, new, date, cli)?;
-    if let Err(error) = clear_consent(home, &made.member.slug) {
-        let _ = fs::remove_dir_all(&made.dir);
-        return Err(error);
-    }
-    Ok(made)
-}
-
-/// Back up an older assistant before making a Voice assistant with its history as an input.
-pub fn bring_in(
-    home: &Path,
-    claude_home: &Path,
-    new: &assistants::New<'_>,
-    date: &str,
-    stamp: &str,
-    cli: &str,
-) -> voice_core::error::Result<(assistants::Listed, Option<PathBuf>)> {
-    let slug = crew::slugify(new.name)
-        .ok_or_else(|| Error::Invalid("name must contain a letter or digit".into()))?;
-    let found = existing::find(home, claude_home, &slug)?;
-    if !found.any() {
-        return make_and_clear(home, new, date, cli).map(|made| (made, None));
-    }
-    if let Some(sentence) = bring_in_refusal(home, &found)? {
-        return Err(Error::Invalid(sentence));
-    }
-    let state = home.join(".claude/state").join(&slug);
-    let _lock = match fs::symlink_metadata(&state) {
-        Ok(_) => Some(voice_ingest::private::lock_existing_state(home, &slug)?),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(source) => {
-            return Err(Error::Io {
-                path: state,
-                source,
-            });
-        }
-    };
-    let mut items = Vec::new();
-    for (name, source, follow) in [
-        (
-            "state",
-            found.state.as_ref().map(|state| state.path.as_path()),
-            false,
-        ),
-        ("skill", found.skill.as_deref(), false),
-        ("CLAUDE.md", found.claude_md.as_deref(), true),
-        ("member", found.old_folder.as_deref(), false),
-    ] {
-        if let Some(source) = source {
-            items.push(voice_core::backup::Item {
-                name,
-                source,
-                follow,
-            });
-        }
-    }
-    let backup = voice_core::backup::back_up(home, &slug, stamp, &items)?;
-    let corpus = state.join("decisions.jsonl");
-    let before = state.join("decisions-before-voice.jsonl");
-    let mut moved = false;
-    let result = (|| {
-        if fs::symlink_metadata(&corpus).is_ok() {
-            fs::hard_link(&corpus, &before).map_err(|source| Error::Io {
-                path: before.clone(),
-                source,
-            })?;
-            if let Err(source) = fs::remove_file(&corpus) {
-                let _ = fs::remove_file(&before);
-                return Err(Error::Io {
-                    path: corpus.clone(),
-                    source,
-                });
-            }
-            moved = true;
-        }
-        make_and_clear(home, new, date, cli)
-    })();
-    match result {
-        Ok(made) => Ok((made, Some(backup))),
-        Err(error) => {
-            if moved && fs::hard_link(&before, &corpus).is_ok() {
-                let _ = fs::remove_file(&before);
-            }
-            let _ = fs::remove_dir_all(&backup);
-            Err(error)
-        }
-    }
-}
-
-/// The person's local time, in the backup folder's `YYYY-MM-DD-HHMMSS` form.
-pub fn local_stamp(time: SystemTime) -> String {
-    let seconds = time
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs())
-        .unwrap_or(0);
-    let when = libc::time_t::try_from(seconds).unwrap_or(libc::time_t::MAX);
-    // SAFETY: tm is plain data, and both pointers refer to live values.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    let filled = unsafe {
-        tzset();
-        !libc::localtime_r(&when, &mut tm).is_null()
-    };
-    if !filled {
-        let utc = voice_agent::ledger::utc_stamp(time);
-        return format!(
-            "{}-{}{}{}",
-            &utc[..10],
-            &utc[11..13],
-            &utc[14..16],
-            &utc[17..19]
-        );
-    }
-    format!(
-        "{:04}-{:02}-{:02}-{:02}{:02}{:02}",
-        tm.tm_year + 1900,
-        tm.tm_mon + 1,
-        tm.tm_mday,
-        tm.tm_hour,
-        tm.tm_min,
-        tm.tm_sec
-    )
-}
-unsafe extern "C" {
-    fn tzset();
-}
-
-pub fn bring_in_assistant_in(
-    home: &Path,
-    claude_home: &Path,
-    request: dto::NewAssistantRequest,
-) -> Result<dto::BroughtIn> {
-    check_field("name", &request.name, "Your assistant's name")?;
-    for (what, value, field) in [
-        ("pronouns", &request.pronouns, "Its pronouns"),
-        ("your name", &request.principal, "Your name"),
-        (
-            "your pronouns",
-            &request.principal_pronouns,
-            "Your pronouns",
-        ),
-    ] {
-        check_field(what, value, field)?;
-    }
-    let slug = checked_name(&request.name)?;
-    let cli = shipped_cli_word(home).map_err(|error| match error {
-        Error::Invalid(message) if message == CLI_FOLDER || message == CLI_PLACE => {
-            failure(&message)
-        }
-        _ => failure(MAKE),
-    })?;
-    let new = assistants::New {
-        name: &request.name,
-        pronouns: &request.pronouns,
-        principal: &request.principal,
-        principal_pronouns: &request.principal_pronouns,
-    };
-    let now = SystemTime::now();
-    let (made, backup) = bring_in(
-        home,
-        claude_home,
-        &new,
-        &local_day(now),
-        &local_stamp(now),
-        &cli,
-    )
-    .map_err(|error| match error {
-        Error::Invalid(sentence)
-            if sentence == HISTORY_BEFORE || sentence == state_refusal(&slug) =>
-        {
-            failure(&sentence)
-        }
-        Error::Exists(_) => failure(&format!(
-            "You already have an assistant called {}. Pick another name, or open that one.",
-            request.name
-        )),
-        _ => failure(MAKE),
-    })?;
-    Ok(dto::BroughtIn {
-        assistant: assistant(home, made),
-        backup: backup.map(|path| {
-            // back_up always makes this folder beneath the supplied home.
-            format!(
-                "~/{}",
-                path.strip_prefix(home)
-                    .expect("backup beneath home")
-                    .display()
-            )
-        }),
-    })
-}
-
-pub fn bring_in_assistant(request: dto::NewAssistantRequest) -> Result<dto::BroughtIn> {
-    let home = home(MAKE)?;
-    bring_in_assistant_in(
-        &home,
-        &crate::use_it::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref()),
-        request,
-    )
 }

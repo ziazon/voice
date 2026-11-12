@@ -464,8 +464,7 @@ fn seconds(time: SystemTime) -> libc::time_t {
     libc::time_t::try_from(seconds).unwrap_or(libc::time_t::MAX)
 }
 
-/// The person's local calendar day, `YYYY-MM-DD`.
-pub fn local_day(time: SystemTime) -> String {
+fn local_tm(time: SystemTime) -> Option<libc::tm> {
     let when = seconds(time);
     // SAFETY: tm is plain data; all-zero is valid and localtime_r fills it.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
@@ -474,14 +473,42 @@ pub fn local_day(time: SystemTime) -> String {
         tzset();
         !libc::localtime_r(&when, &mut tm).is_null()
     };
-    if !filled {
+    filled.then_some(tm)
+}
+
+/// The person's local calendar day, `YYYY-MM-DD`.
+pub fn local_day(time: SystemTime) -> String {
+    let Some(tm) = local_tm(time) else {
         return utc_stamp(time)[..10].to_owned();
-    }
+    };
     format!(
         "{:04}-{:02}-{:02}",
         tm.tm_year + 1900,
         tm.tm_mon + 1,
         tm.tm_mday
+    )
+}
+
+/// The person's local time to the second, `YYYY-MM-DD-HHMMSS`.
+pub fn local_stamp(time: SystemTime) -> String {
+    let Some(tm) = local_tm(time) else {
+        let utc = utc_stamp(time);
+        return format!(
+            "{}-{}{}{}",
+            &utc[..10],
+            &utc[11..13],
+            &utc[14..16],
+            &utc[17..19]
+        );
+    };
+    format!(
+        "{:04}-{:02}-{:02}-{:02}{:02}{:02}",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec
     )
 }
 
@@ -525,5 +552,26 @@ mod tokens_in_tests {
         ] {
             assert_eq!(super::tokens_in(raw), expected, "{raw}");
         }
+    }
+}
+
+#[cfg(test)]
+mod local_stamp_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn local_stamp_has_backup_format_and_matches_local_day() {
+        let time = UNIX_EPOCH + Duration::from_secs(1_794_480_000);
+        let stamp = local_stamp(time);
+        assert_eq!(stamp.len(), 17);
+        for (index, byte) in stamp.bytes().enumerate() {
+            if [4, 7, 10].contains(&index) {
+                assert_eq!(byte, b'-');
+            } else {
+                assert!(byte.is_ascii_digit());
+            }
+        }
+        assert_eq!(&stamp[..10], local_day(time));
     }
 }

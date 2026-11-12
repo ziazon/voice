@@ -53,7 +53,7 @@ pub fn make(
             &places.claude_home,
             &new,
             &today(),
-            &voice_api::assistants::local_stamp(SystemTime::now()),
+            &voice_agent::ledger::local_stamp(SystemTime::now()),
             &cli,
         )
     } else {
@@ -183,7 +183,7 @@ pub fn existing(name: &str, claude_home: Option<PathBuf>) -> Result<()> {
         println!("Folder it was made in: {}", folder.display());
     }
     if let Some(reason) = refusal {
-        println!("Voice can't bring this one in. {reason}");
+        println!("{reason}");
     } else {
         println!("Voice can back it up and bring it in: voice new {name} --bring-in");
     }
