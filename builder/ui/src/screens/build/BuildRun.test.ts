@@ -179,6 +179,19 @@ it('keeps progress indeterminate when the lines have no steps', async () => {
   call.resolve(done); await flushPromises()
 })
 
+it('keeps the last counted steps when a later line has none', async () => {
+  const call = deferred<typeof done>()
+  let progress!: (value: BuildProgress) => void
+  const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_request, callback) => { progress = callback; return call.promise }) })
+  const wrapper = screen(BuildRun, backend, { slug: 'example', name: assistant.name }); await flushPromises()
+  await button(wrapper, 'Start the build').trigger('click')
+  progress({ line: 'Labelling.', spend, steps: { done: 3, total: 25 } }); await flushPromises()
+  progress({ line: 'A line with no count.', spend, steps: null }); await flushPromises()
+  expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('12')
+  expect(wrapper.get('p[aria-live="polite"]').text()).toBe('3 of 25 steps done, 22 left.')
+  call.resolve(done); await flushPromises()
+})
+
 it('uses the singular for one step and keeps full progress after a failure', async () => {
   const call = deferred<typeof done>()
   let progress!: (value: BuildProgress) => void
