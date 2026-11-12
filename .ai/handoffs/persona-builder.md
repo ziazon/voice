@@ -23,8 +23,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   corpus), plus style.
 - **Verified (Mimi, load1 200 to 350%):** `cargo test --locked -p voice-build -p voice-api -p voice-grow
   -p voice-cli` with `VOICE_REQUIRE_PARITY=1`: 69 suites ok, the 7 new or changed tests among them.
-  `pnpm -C builder/ui typecheck` clean; vitest 45 files, 573 tests passed. Mutations (`cp`, restored,
-  `cmp`), each one putting back the old behaviour for one claim, all caught: the count ignored (old
+  `pnpm -C builder/ui typecheck` clean; vitest 45 files, 573 tests passed (before fix-up 2, whose test
+  Codex ran: 17 in the file, failing with the guard removed; the land's gate runs them all).
+  Mutations (`cp`, restored, `cmp`), each one putting back the old behaviour for one claim, all caught: the count ignored (old
   sentence every time); no free name; any middle counted; distil steps not counted; the total not
   recomputed; `is_misfit` refusing the new ending (the app shows `BUILD_FAILED` again); the checking line
   without steps; the bar only while running; steps not reset between runs; the stopped wording.
