@@ -66,12 +66,16 @@ pub fn back_up(home: &Path, slug: &str, stamp: &str, items: &[Item<'_>]) -> Resu
     let canonical_root = io(&root, fs::canonicalize(&root))?;
     for item in items {
         let source = io(item.source, fs::canonicalize(item.source))?;
-        if canonical_root.starts_with(&source) {
+        if canonical_root.starts_with(&source) || source.starts_with(&canonical_root) {
             return Err(Error::Invalid(format!("{}{HOLDS_BACKUP_END}", item.name)));
         }
     }
     let backup = new_backup(&parent, stamp)?;
     let result = (|| {
+        io(
+            &backup,
+            fs::set_permissions(&backup, fs::Permissions::from_mode(0o700)),
+        )?;
         for item in items {
             let source = item_source(item)?;
             copy_entry(&source, &backup.join(item.name))?;
@@ -441,6 +445,27 @@ mod tests {
                 .count(),
             0
         );
+    }
+
+    #[test]
+    fn member_inside_backup_folder_refuses_before_stamp() {
+        let scratch = Scratch::new();
+        let source = scratch.path().join(".claude/voice-backups/ari");
+        fs::create_dir_all(&source).unwrap();
+        let result = back_up(
+            scratch.path(),
+            "ari",
+            STAMP,
+            &[Item {
+                name: "member",
+                source: &source,
+                follow: false,
+            }],
+        );
+        assert!(
+            matches!(result, Err(Error::Invalid(message)) if message == "member holds Voice's own backup folder, so Voice backed nothing up.")
+        );
+        assert_eq!(fs::read_dir(&source).unwrap().count(), 0);
     }
 
     #[test]
