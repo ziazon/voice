@@ -587,8 +587,10 @@ fn snapshot(root: &Path) -> std::collections::BTreeMap<PathBuf, (String, Vec<u8>
             )
         } else if meta.is_dir() {
             ("folder", vec![])
-        } else {
+        } else if meta.is_file() {
             ("file", fs::read(at).unwrap())
+        } else {
+            ("special", vec![])
         };
         out.insert(
             at.strip_prefix(root).unwrap().to_owned(),
@@ -753,7 +755,7 @@ fn bring_in_refuses_existing_before_history_without_writing() {
 }
 #[test]
 fn bring_in_refuses_linked_corpus_without_writing() {
-    refused_tree("corpus-link", HISTORY_REFUSAL);
+    refused_tree("corpus-link", CORPUS_REFUSAL);
 }
 #[test]
 fn bring_in_rolls_back_history_and_backup_when_make_fails() {
@@ -818,8 +820,46 @@ fn bring_in_refuses_empty_corpus_folder_with_an_older_skill() {
         bring_in_assistant_in(h, &claude, request())
             .unwrap_err()
             .message,
-        HISTORY_REFUSAL
+        CORPUS_REFUSAL
     );
     assert_eq!(snapshot(h), before);
     assert!(!claude.join("voice-backups").exists());
 }
+
+#[test]
+fn bring_in_reports_fifo_refusal_without_changing_old_files() {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let home = Home::new();
+    let h = home.path();
+    let state = old_state(h);
+    let fifo = CString::new(state.join("pipe").as_os_str().as_bytes()).unwrap();
+    // SAFETY: fifo is a live, NUL-terminated path and mode is a valid permission mask.
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    assert!(
+        find_existing_in(
+            h,
+            &h.join(".claude"),
+            FindExistingRequest { name: "Ari".into() }
+        )
+        .unwrap()
+        .can_bring_in
+    );
+    let before = snapshot(h);
+    let error = bring_in_assistant_in(h, &h.join(".claude"), request()).unwrap_err();
+    assert_eq!(
+        error.message,
+        "pipe isn't a plain file, so Voice backed nothing up."
+    );
+    let mut after = snapshot(h);
+    assert_eq!(
+        after.remove(Path::new(".claude/voice-backups")),
+        Some(("folder".into(), vec![]))
+    );
+    assert_eq!(
+        after.remove(Path::new(".claude/voice-backups/ari")),
+        Some(("folder".into(), vec![]))
+    );
+    assert_eq!(after, before);
+}
+
+const CORPUS_REFUSAL: &str = "Voice can't bring this one in: the decisions.jsonl in its private folder is a link or a folder, not a file. Pick another name for now.";

@@ -8,9 +8,27 @@ use std::{
     ffi::OsString,
     fs::{self, File, OpenOptions},
     io::Read,
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt, symlink},
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt, symlink},
     path::{Path, PathBuf},
 };
+
+pub const FOLDER_NOT_PLAIN: &str =
+    "Voice's backup folder ~/.claude/voice-backups isn't a plain folder, so it backed nothing up.";
+const CHANGED: &str = "The older assistant's files changed while Voice backed them up, so it kept no backup. Try again.";
+const NO_FOLDER: &str =
+    "Voice couldn't make a new backup folder, so it backed nothing up. Try again in a moment.";
+const HOLDS_BACKUP_END: &str = " holds Voice's own backup folder, so Voice backed nothing up.";
+const NOT_PLAIN_END: &str = " isn't a plain file, so Voice backed nothing up.";
+
+pub fn says(message: &str) -> bool {
+    matches!(message, FOLDER_NOT_PLAIN | CHANGED | NO_FOLDER)
+        || message
+            .strip_suffix(HOLDS_BACKUP_END)
+            .is_some_and(|name| matches!(name, "state" | "skill" | "CLAUDE.md" | "member"))
+        || message
+            .strip_suffix(NOT_PLAIN_END)
+            .is_some_and(|name| !name.is_empty())
+}
 
 pub struct Item<'a> {
     pub name: &'a str,
@@ -45,12 +63,15 @@ pub fn back_up(home: &Path, slug: &str, stamp: &str, items: &[Item<'_>]) -> Resu
     private_parent(&root)?;
     let parent = root.join(slug);
     private_parent(&parent)?;
+    let canonical_root = io(&root, fs::canonicalize(&root))?;
+    for item in items {
+        let source = io(item.source, fs::canonicalize(item.source))?;
+        if canonical_root.starts_with(&source) {
+            return Err(Error::Invalid(format!("{}{HOLDS_BACKUP_END}", item.name)));
+        }
+    }
     let backup = new_backup(&parent, stamp)?;
     let result = (|| {
-        io(
-            &backup,
-            fs::set_permissions(&backup, fs::Permissions::from_mode(0o700)),
-        )?;
         for item in items {
             let source = item_source(item)?;
             copy_entry(&source, &backup.join(item.name))?;
@@ -71,13 +92,23 @@ pub fn back_up(home: &Path, slug: &str, stamp: &str, items: &[Item<'_>]) -> Resu
 
 fn private_parent(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.is_dir() => Ok(()),
-        Ok(_) => Err(Error::Invalid(
-            "Voice's backup folder ~/.claude/voice-backups isn't a plain folder, so it backed nothing up.".into(),
-        )),
+        Ok(metadata) if metadata.is_dir() => {
+            // SAFETY: geteuid has no preconditions.
+            if metadata.uid() != unsafe { libc::geteuid() } {
+                return Err(Error::Invalid(FOLDER_NOT_PLAIN.into()));
+            }
+            io(
+                path,
+                fs::set_permissions(path, fs::Permissions::from_mode(0o700)),
+            )
+        }
+        Ok(_) => Err(Error::Invalid(FOLDER_NOT_PLAIN.into())),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             io(path, fs::DirBuilder::new().mode(0o700).create(path))?;
-            io(path, fs::set_permissions(path, fs::Permissions::from_mode(0o700)))
+            io(
+                path,
+                fs::set_permissions(path, fs::Permissions::from_mode(0o700)),
+            )
         }
         result => io(path, result).map(|_| ()),
     }
@@ -90,16 +121,13 @@ fn new_backup(parent: &Path, stamp: &str) -> Result<PathBuf> {
         } else {
             format!("{stamp}-{n}")
         });
-        match fs::create_dir(&path) {
+        match fs::DirBuilder::new().mode(0o700).create(&path) {
             Ok(()) => return Ok(path),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             result => io(&path, result)?,
         }
     }
-    Err(Error::Invalid(
-        "Voice couldn't make a new backup folder, so it backed nothing up. Try again in a moment."
-            .into(),
-    ))
+    Err(Error::Invalid(NO_FOLDER.into()))
 }
 
 fn not_plain(path: &Path) -> Error {
@@ -107,9 +135,7 @@ fn not_plain(path: &Path) -> Error {
         .file_name()
         .unwrap_or(path.as_os_str())
         .to_string_lossy();
-    Error::Invalid(format!(
-        "{name} isn't a plain file, so Voice backed nothing up."
-    ))
+    Error::Invalid(format!("{name}{NOT_PLAIN_END}"))
 }
 
 fn item_source(item: &Item<'_>) -> Result<PathBuf> {
@@ -186,10 +212,21 @@ fn copy_entry(source: &Path, destination: &Path) -> Result<()> {
 }
 
 fn different() -> Error {
-    Error::Invalid("The older assistant's files changed while Voice backed them up, so it kept no backup. Try again.".into())
+    Error::Invalid(CHANGED.into())
 }
 
 fn verify_entry(source: &Path, destination: &Path) -> Result<()> {
+    let mut left = vec![0u8; 64 * 1024];
+    let mut right = vec![0u8; 64 * 1024];
+    verify_entry_with_buffers(source, destination, &mut left, &mut right)
+}
+
+fn verify_entry_with_buffers(
+    source: &Path,
+    destination: &Path,
+    left: &mut [u8],
+    right: &mut [u8],
+) -> Result<()> {
     let kind = io(source, fs::symlink_metadata(source))?.file_type();
     if kind != io(destination, fs::symlink_metadata(destination))?.file_type() {
         return Err(different());
@@ -200,15 +237,13 @@ fn verify_entry(source: &Path, destination: &Path) -> Result<()> {
             return Err(different());
         }
         for name in names {
-            verify_entry(&source.join(&name), &destination.join(&name))?;
+            verify_entry_with_buffers(&source.join(&name), &destination.join(&name), left, right)?;
         }
     } else if kind.is_file() {
         let mut input = open_regular(source)?;
         let mut copied = open_regular(destination)?;
-        let mut left = [0; 64 * 1024];
-        let mut right = [0; 64 * 1024];
         loop {
-            let count = io(source, input.read(&mut left))?;
+            let count = io(source, input.read(left))?;
             if count == 0 {
                 if io(destination, copied.read(&mut right[..1]))? != 0 {
                     return Err(different());
@@ -380,6 +415,125 @@ mod tests {
         assert_eq!(second.file_name().unwrap(), format!("{STAMP}-2").as_str());
         assert!(first.is_dir());
         assert!(second.is_dir());
+    }
+
+    #[test]
+    fn member_holding_backup_folder_refuses_before_stamp() {
+        let scratch = Scratch::new();
+        let source = scratch.path().join(".claude");
+        fs::create_dir(&source).unwrap();
+        let result = back_up(
+            scratch.path(),
+            "ari",
+            STAMP,
+            &[Item {
+                name: "member",
+                source: &source,
+                follow: false,
+            }],
+        );
+        assert!(
+            matches!(result, Err(Error::Invalid(message)) if message == "member holds Voice's own backup folder, so Voice backed nothing up.")
+        );
+        assert_eq!(
+            fs::read_dir(source.join("voice-backups/ari"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn deep_folders_fit_on_small_stack() {
+        let scratch = Scratch::new();
+        let source = scratch.path().join("old");
+        let mut bottom = source.clone();
+        for _ in 0..60 {
+            bottom.push("nested");
+        }
+        fs::create_dir_all(&bottom).unwrap();
+        fs::write(bottom.join("one"), "invented bytes").unwrap();
+        let home = scratch.path().to_owned();
+        let result = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || back_up(&home, "ari", STAMP, &[item(&source)]))
+            .unwrap()
+            .join();
+        assert!(result.unwrap().is_ok());
+    }
+
+    #[test]
+    fn existing_backup_parents_are_private() {
+        let scratch = Scratch::new();
+        let root = scratch.path().join(".claude/voice-backups");
+        let parent = root.join("ari");
+        fs::create_dir_all(&parent).unwrap();
+        for path in [&root, &parent] {
+            fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        back_up(scratch.path(), "ari", STAMP, &[]).unwrap();
+        for path in [&root, &parent] {
+            assert_eq!(
+                fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+    }
+
+    #[test]
+    fn verification_catches_changed_bytes_and_extra_file() {
+        let scratch = Scratch::new();
+        let source = scratch.path().join("old");
+        let copy = scratch.path().join("copy");
+        fs::create_dir(&source).unwrap();
+        fs::write(source.join("one"), b"abc").unwrap();
+        copy_entry(&source, &copy).unwrap();
+        fs::write(copy.join("one"), b"abd").unwrap();
+        assert!(
+            matches!(verify_entry(&source, &copy), Err(Error::Invalid(message)) if message == CHANGED)
+        );
+        fs::write(copy.join("one"), b"abc").unwrap();
+        fs::write(copy.join("extra"), "invented").unwrap();
+        assert!(
+            matches!(verify_entry(&source, &copy), Err(Error::Invalid(message)) if message == CHANGED)
+        );
+    }
+
+    #[test]
+    fn linked_slug_refuses_without_writing_through_it() {
+        let scratch = Scratch::new();
+        let outside = scratch.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        let root = scratch.path().join(".claude/voice-backups");
+        fs::create_dir_all(&root).unwrap();
+        symlink(&outside, root.join("ari")).unwrap();
+        assert!(
+            matches!(back_up(scratch.path(), "ari", STAMP, &[]), Err(Error::Invalid(message)) if message == FOLDER_NOT_PLAIN)
+        );
+        assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn recognizes_only_person_facing_refusals() {
+        for sentence in [
+            FOLDER_NOT_PLAIN,
+            CHANGED,
+            NO_FOLDER,
+            "pipe isn't a plain file, so Voice backed nothing up.",
+            "member holds Voice's own backup folder, so Voice backed nothing up.",
+        ] {
+            assert!(says(sentence));
+        }
+        for sentence in [
+            "invalid assistant slug",
+            "invalid backup date",
+            "invalid backup item",
+            NOT_PLAIN_END,
+            HOLDS_BACKUP_END,
+            "other holds Voice's own backup folder, so Voice backed nothing up.",
+        ] {
+            assert!(!says(sentence));
+        }
     }
 
     #[test]

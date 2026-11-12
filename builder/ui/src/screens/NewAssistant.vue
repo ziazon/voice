@@ -123,7 +123,7 @@ async function bringIn() {
           </div>
         </div>
         <div v-else class="btn-list">
-          <button type="submit" class="btn btn-primary" :disabled="saving || incomplete">{{ checking ? 'Checking…' : saving ? 'Making it…' : 'Make it' }}</button>
+          <button type="submit" class="btn btn-primary" :disabled="saving || incomplete">{{ checking ? 'Checking…' : saving && !bringingIn ? 'Making it…' : 'Make it' }}</button>
           <button type="button" class="btn btn-outline-secondary" @click="emit('cancel')">Back</button>
         </div>
       </form>

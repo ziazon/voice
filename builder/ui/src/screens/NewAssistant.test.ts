@@ -135,6 +135,8 @@ it('backs up the checked request, announces progress and opens the brought-in as
   await button(wrapper, 'Back it up and bring it in').trigger('click')
   expect(backend.bringInAssistant).toHaveBeenCalledExactlyOnceWith({ name: 'Ari', pronouns: 'they/them', principal: 'Robin', principalPronouns: 'they/them' })
   expect(button(wrapper, 'Backing it up…').attributes('disabled')).toBeDefined()
+  expect(wrapper.findAll('button').some(button => button.text() === 'Making it…')).toBe(false)
+  expect(button(wrapper, 'Make it').attributes('disabled')).toBeDefined()
   pending.resolve({ assistant: brought, backup })
   await flushPromises()
   const success = wrapper.get('.alert-success[role="status"]')

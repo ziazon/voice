@@ -263,6 +263,7 @@ pub fn new_assistant(request: dto::NewAssistantRequest) -> Result<dto::Assistant
         request,
     )
 }
+const CORPUS_NOT_PLAIN: &str = "Voice can't bring this one in: the decisions.jsonl in its private folder is a link or a folder, not a file. Pick another name for now.";
 const HISTORY_BEFORE: &str = "Voice can't bring this one in: its private folder already holds a history from before Voice. Pick another name for now.";
 
 fn state_refusal(slug: &str) -> String {
@@ -297,7 +298,14 @@ pub fn bring_in_refusal(
         let path = state.join(name);
         match fs::symlink_metadata(&path) {
             Ok(metadata) if !must_be_regular || !metadata.is_file() => {
-                return Ok(Some(HISTORY_BEFORE.into()));
+                return Ok(Some(
+                    if must_be_regular {
+                        CORPUS_NOT_PLAIN
+                    } else {
+                        HISTORY_BEFORE
+                    }
+                    .into(),
+                ));
             }
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -393,10 +401,13 @@ pub fn bring_in(
     match result {
         Ok(made) => Ok((made, Some(backup))),
         Err(error) => {
-            if moved && fs::hard_link(&before, &corpus).is_ok() {
-                let _ = fs::remove_file(&before);
+            let restored = !moved || fs::hard_link(&before, &corpus).is_ok();
+            if restored {
+                if moved {
+                    let _ = fs::remove_file(&before);
+                }
+                let _ = fs::remove_dir_all(&backup);
             }
-            let _ = fs::remove_dir_all(&backup);
             Err(error)
         }
     }
@@ -426,7 +437,10 @@ pub fn bring_in_assistant_in(
     )
     .map_err(|error| match error {
         Error::Invalid(sentence)
-            if sentence == HISTORY_BEFORE || sentence == state_refusal(&slug) =>
+            if sentence == HISTORY_BEFORE
+                || sentence == CORPUS_NOT_PLAIN
+                || sentence == state_refusal(&slug)
+                || voice_core::backup::says(&sentence) =>
         {
             failure(&sentence)
         }
