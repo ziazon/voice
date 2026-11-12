@@ -186,11 +186,9 @@ fn private_ok(home: &Path, value: &serde_json::Value) -> bool {
                         .iter()
                         .all(|item| item.as_str().is_some_and(|text| !text.is_empty()))
                 })
-            } else {
+            } else if matches!(key.as_str(), "excluded_folders" | "personal" | "secret") {
                 value.as_str().is_some_and(|pattern| {
-                    if pattern.is_empty()
-                        || voice_ingest::filters::check_pattern(key, pattern).is_err()
-                    {
+                    if voice_ingest::filters::check_pattern(key, pattern).is_err() {
                         return false;
                     }
                     let Some(base) = base_filters
@@ -205,6 +203,8 @@ fn private_ok(home: &Path, value: &serde_json::Value) -> bool {
                     voice_ingest::filters::check_pattern(key, &format!("(?:{base})|(?:{pattern})"))
                         .is_ok()
                 })
+            } else {
+                value.is_string()
             };
             if !valid {
                 return false;

@@ -1134,3 +1134,50 @@ fn pb87c_bring_request_refuses_unknown_fields() {
 fn fixup_refuses_pattern_that_breaks_the_merged_filter() {
     assert_private_refuses(r#"{"filters":{"secret":"(?x)word# comment"}}"#);
 }
+
+#[test]
+fn fixup3_empty_group_refuses_before_backup() {
+    assert_private_refuses(r#"{"filters":{"secret":"(?:)"}}"#);
+}
+#[test]
+fn fixup3_empty_alternative_refuses_before_backup() {
+    assert_private_refuses(r#"{"filters":{"secret":"|"}}"#);
+}
+#[test]
+fn fixup3_zero_or_more_refuses_before_backup() {
+    assert_private_refuses(r#"{"filters":{"personal":"a*"}}"#);
+}
+#[test]
+fn fixup3_optional_folder_refuses_before_backup() {
+    assert_private_refuses(r#"{"filters":{"excluded_folders":"x?"}}"#);
+}
+
+#[test]
+fn fixup3_unknown_filter_is_not_compiled() {
+    let home = Home::new();
+    let h = home.path();
+    let old = old_member_files(h);
+    let private = r#"{"filters":{"future":"("}}"#;
+    fs::write(old.join("private.json"), private).unwrap();
+    let found = find_existing_in(
+        h,
+        &h.join(".claude"),
+        FindExistingRequest { name: "Ari".into() },
+    )
+    .unwrap();
+    assert_eq!(
+        found
+            .files
+            .iter()
+            .find(|file| file.name == "private.json")
+            .unwrap()
+            .problem,
+        None
+    );
+    let result = bring_in_assistant_in(h, &h.join(".claude"), bringing(&["private.json"])).unwrap();
+    assert_eq!(result.files, ["private.json"]);
+    assert_eq!(
+        fs::read_to_string(h.join(".claude/crew/ari/private.json")).unwrap(),
+        private
+    );
+}

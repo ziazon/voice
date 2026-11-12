@@ -478,17 +478,22 @@ fn destination_link_stays_untouched(location: &str) {
     } else {
         "IDENTITY.md"
     };
-    assert_eq!(
-        bring(&from, &to, &[name.into()], &|_| true)
-            .unwrap_err()
-            .to_string(),
-        CANT_BRING
-    );
+    let result = bring(&from, &to, &[name.into()], &|_| true);
+    if location.ends_with(".md") {
+        result.unwrap();
+        assert!(fs::symlink_metadata(&link).unwrap().is_file());
+        assert_eq!(
+            fs::read(&link).unwrap(),
+            fs::read(from.join(location)).unwrap()
+        );
+    } else {
+        assert_eq!(result.unwrap_err().to_string(), CANT_BRING);
+        assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
+    }
     assert_eq!(snapshot(&outside), before);
-    assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
 }
 #[test]
-fn fixup_refuses_destination_identity_link() {
+fn fixup3_replaces_destination_identity_link() {
     destination_link_stays_untouched("IDENTITY.md");
 }
 
@@ -498,7 +503,7 @@ fn fixup_refuses_destination_briefs_folder_link() {
 }
 
 #[test]
-fn fixup_refuses_destination_brief_file_link() {
+fn fixup3_replaces_destination_brief_file_link() {
     destination_link_stays_untouched("briefs/older.md");
 }
 
@@ -550,7 +555,9 @@ fn fixup_private_validator_can_refuse() {
     );
     let to = s.path().join("new");
     template(&to);
+    let before = snapshot(&to);
     assert!(bring(s.path(), &to, &["private.json".into()], &|_| false).is_err());
+    assert_eq!(snapshot(&to), before);
 }
 
 #[test]
@@ -566,4 +573,62 @@ fn fixup_recognizes_new_sentences() {
     assert!(says(
         "Voice can't bring in lens.md, so it changed nothing. Leave it out and try again."
     ));
+}
+
+fn destination_hard_link_stays_untouched(relative: &str) {
+    let s = Scratch::new();
+    let from = s.path().join("old");
+    let to = s.path().join("new");
+    let outside = s.path().join("outside.md");
+    all_files(&from);
+    template(&to);
+    fs::write(&outside, "outside invented text").unwrap();
+    let target = to.join(relative);
+    if target.exists() {
+        fs::remove_file(&target).unwrap();
+    }
+    fs::hard_link(&outside, &target).unwrap();
+    let before = fs::read(&outside).unwrap();
+    let name = if relative.starts_with("briefs/") {
+        "briefs"
+    } else {
+        relative
+    };
+    bring(&from, &to, &[name.into()], &|_| true).unwrap();
+    assert_eq!(fs::read(&outside).unwrap(), before, "{relative}");
+    assert_eq!(fs::metadata(&outside).unwrap().nlink(), 1, "{relative}");
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        fs::read(from.join(relative)).unwrap()
+    );
+    assert_eq!(fs::metadata(&target).unwrap().nlink(), 1, "{relative}");
+}
+
+#[test]
+fn fixup3_replaces_destination_identity_hard_link() {
+    destination_hard_link_stays_untouched("IDENTITY.md");
+}
+
+#[test]
+fn fixup3_replaces_destination_brief_hard_link() {
+    destination_hard_link_stays_untouched("briefs/older.md");
+}
+
+#[test]
+fn fixup3_unsearchable_briefs_are_a_read_problem() {
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let s = Scratch::new();
+    let briefs = s.path().join("briefs");
+    fs::create_dir(&briefs).unwrap();
+    fs::write(briefs.join("one.md"), "invented brief").unwrap();
+    fs::set_permissions(&briefs, fs::Permissions::from_mode(0o400)).unwrap();
+    let result = offer(s.path(), &|_| true);
+    fs::set_permissions(&briefs, fs::Permissions::from_mode(0o700)).unwrap();
+    let offered = result.unwrap();
+    assert_eq!(offered.len(), 1);
+    assert_eq!(offered[0].name, "briefs");
+    assert_eq!(offered[0].problem, Some(READ));
 }

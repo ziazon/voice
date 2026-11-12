@@ -76,5 +76,25 @@ fn compile(key: &str, pattern: &str) -> Result<Regex> {
 
 /// Check a private filter with the same regex builder used at runtime.
 pub fn check_pattern(key: &str, pattern: &str) -> Result<()> {
-    compile(key, pattern).map(|_| ())
+    let regex = compile(key, pattern)?;
+    if regex.is_match("") {
+        return Err(Error::Invalid(format!(
+            "member config: filters.{key} matches empty text, so it would match everything"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixup3_check_pattern_refuses_empty_matches() {
+        let results = ["(?:)", "a*", "secret"]
+            .map(|pattern| check_pattern("secret", pattern).map_err(|error| error.to_string()));
+        let message =
+            "member config: filters.secret matches empty text, so it would match everything";
+        assert_eq!(results, [Err(message.into()), Err(message.into()), Ok(())]);
+    }
 }

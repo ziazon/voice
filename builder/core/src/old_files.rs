@@ -126,7 +126,7 @@ fn check(
         Ok(entries) => entries,
         Err(_) => return Ok(Some(Checked::problem(READ))),
     };
-    let mut entries = entries
+    let entries = entries
         .filter(|entry| {
             !entry
                 .as_ref()
@@ -134,15 +134,21 @@ fn check(
         })
         .take(65)
         .map(|entry| io(&path, entry))
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>();
+    let mut entries = match entries {
+        Ok(entries) => entries,
+        Err(_) => return Ok(Some(Checked::problem(READ))),
+    };
     if entries.len() > 64 {
         return Ok(Some(Checked::problem(FOLDER)));
     }
     entries.sort_by_key(|entry| entry.file_name());
     // Shape errors take precedence over the contents of any brief.
     for entry in &entries {
-        if !io(&entry.path(), fs::symlink_metadata(entry.path()))?.is_file() {
-            return Ok(Some(Checked::problem(FOLDER)));
+        match fs::symlink_metadata(entry.path()) {
+            Ok(metadata) if metadata.is_file() => {}
+            Ok(_) => return Ok(Some(Checked::problem(FOLDER))),
+            Err(_) => return Ok(Some(Checked::problem(READ))),
         }
     }
     let mut files = Vec::new();
@@ -184,7 +190,10 @@ fn check_file(
     cap: u64,
     private_ok: &dyn Fn(&serde_json::Value) -> bool,
 ) -> Result<Checked> {
-    let metadata = io(path, fs::symlink_metadata(path))?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(_) => return Ok(Checked::problem(READ)),
+    };
     let problem = if metadata.is_symlink() {
         Some(LINK)
     } else if !metadata.is_file() {
@@ -306,7 +315,7 @@ fn copy_and_check(to: &Path, files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
         let mut file = open_at(
             directory,
             name,
-            libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
             &target,
         )?;
         io(
@@ -341,6 +350,16 @@ fn open_at(
         return Err(Error::Invalid(CANT_BRING.into()));
     }
     let name = CString::new(bytes).map_err(|_| Error::Invalid(CANT_BRING.into()))?;
+    if flags & libc::O_CREAT != 0 {
+        // Replace the directory entry so a planted hard link is never written through.
+        // SAFETY: directory is open and name is a single NUL-terminated path part.
+        if unsafe { libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0) } < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return io(path, Err(error));
+            }
+        }
+    }
     // SAFETY: directory is open, name is a single NUL-terminated path part, and mode
     // is supplied for O_CREAT. The returned descriptor is owned exactly once below.
     let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), flags, 0o600) };
