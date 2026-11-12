@@ -2,6 +2,40 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.7c: choose which of the older assistant's own files come in (2026-11-12, lane: V1)
+
+- **Why:** PB8.7b brought an older assistant's history in, but its own files (identity, autonomy, interview,
+  lens, decisions, measurements, briefs, private settings) stayed behind and the new folder was all template.
+- **What:** `voice_core::old_files` offers the older folder's `IDENTITY.md`, `autonomy.md`, `interview.md`,
+  `lens.md`, `decisions.md`, `measurements.md`, `briefs` and `private.json`, each with a plain reason when it
+  can't come in (a link, not a plain file, shared with another file by a hard link, unreadable, too big, not
+  plain text, an autonomy list Voice can't read, private settings that change more than privacy or wouldn't
+  work). `bring_in` takes the ticked names, refuses an unoffered one before the backup, then copies the
+  checked bytes from the backup's copy over the template through folder handles (`openat`, no link
+  followed), 0600, and reads the folder back (`read_member`, the filters compiled, the anonymizer rules
+  parsed); any failure undoes the whole bring-in. `SKILL.md` and `member.json` stay Voice's. `voice new
+  --bring-in --leave <file>`, `voice existing` and the tick boxes on *Make a new assistant* share it. Briefs:
+  `plans/briefs/PB8.7c-choose-old-files.md`, `-fixup-1.md`, `-fixup-2.md`.
+- **Decisions at pickup** (the spec leaves them open; each takes the safe side): `decisions.md` capped at
+  256 KiB and `briefs/codebook.md` at 64 KiB, the sizes Voice reads; `private.json` may hold only `filters` and
+  `anonymizer`, since `read_member` lets any other key replace a `member.json` field (name, private folder);
+  `briefs` is one level of plain files, at most 64, `.DS_Store` skipped.
+- **Who wrote it:** Codex, from the brief and two fix-ups; Claude reviewed it. Fix-up 1 (security review LOW
+  1–4, Verifier 1–6): a broken filter, an empty filter (it would mark all text secret) or a bad anonymizer
+  setting came in and broke every later run; hard-linked and unreadable files; `.DS_Store`; codebook case;
+  writes by path; the words said "untick" in the CLI; unpinned link guards and cap boundaries. Fix-up 2 (my
+  review): fix-up 1 had made the core test helpers part of the release library.
+- **Verified so far:** red first per Codex's runs (24 core, 6 API, 6 CLI in the build; fix-up 1's privacy, file
+  and words tests). Screen tests: 3 fail against `main`'s screen, pass with it (83 green, typecheck clean).
+  My mutations: dropping the 0600 `set_permissions` and dropping the consent restore each fail a test.
+  Security review (Opus, `20018ca`): no HIGH or MEDIUM, four LOW, fixed in fix-up 1 (LOW 4b, a failed clean-up
+  leaving a half-made folder, is PB8.7b's existing behaviour). Verifier (Fable, `20018ca`): claims 1, 2, 4, 5
+  verified, 3 and 6 partly; 8 mutations killed, 9 survived (pinned in fix-up 1).
+- **Owed before the land:** the delta Verifier (Opus) on `8b2fb60` (fix-ups past 60 lines), then
+  `bash scripts/ci-local.sh` green (this run's gate was cut off by the run's time limit).
+- **Known limits:** the after-copy check is a second line of defence the offer rules already cover, tested
+  through a private seam. Light and dark not looked at (owed to an attended pass).
+
 ## PB8.7b: back an older assistant up, then bring its history in (2026-11-12, lane: V1)
 
 - **Why:** PB8.7a made Voice refuse a name an older assistant already used. This slice offers the way
