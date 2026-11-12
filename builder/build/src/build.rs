@@ -311,10 +311,12 @@ pub fn check_label_reply(
     }
     let problems = label_problems(book, &part.name, &part.records, &labels, part.mode)
         .map_err(|error| Misfit::new(error.to_string(), "Voice couldn't check its labels"))?;
+    let mut seen = HashSet::new();
     let missing: Vec<_> = part
         .records
         .iter()
         .filter_map(|(_, r)| r.get("id").and_then(Value::as_str))
+        .filter(|id| seen.insert(*id))
         .filter(|id| !labels.contains_key(*id))
         .collect();
     let extra = labels
@@ -727,9 +729,11 @@ pub fn check_backtest_reply(
             json!({"pick": pick, "confidence": confidence}),
         );
     }
+    let mut seen = HashSet::new();
     let missing: Vec<_> = batch
         .iter()
         .filter_map(|q| q.get("id").and_then(Value::as_str))
+        .filter(|id| seen.insert(*id))
         .filter(|id| !predictions.contains_key(*id))
         .collect();
     let mut told = Vec::new();

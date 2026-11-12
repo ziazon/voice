@@ -385,6 +385,20 @@ fn label_replies_that_do_not_fit_are_refused_without_the_models_words() {
 }
 
 #[test]
+fn label_replies_count_a_repeated_record_id_as_missing_once() {
+    let mut train = part(Mode::Train);
+    train.records.push(train.records[0].clone());
+    let reply = json!({"labels": [
+        {"id": "question:t001", "category": "methods", "domain": "teaching", "escalates": [], "reason": "Safe."},
+        {"id": "message:m0", "category": "tooling", "domain": "teaching", "signal": "ruling", "reason": "Rule."},
+        {"id": "message:m1", "category": "tooling", "domain": "teaching", "signal": "ruling", "reason": "Rule."}
+    ]});
+    let misfit = build::check_label_reply(&the_book(), &train, &reply).unwrap_err();
+    assert_eq!(misfit.told, "these records have no label: question:t000");
+    assert_eq!(misfit.shown, "1 record had no label");
+}
+
+#[test]
 fn a_record_id_starting_with_ids_differ_keeps_its_field_problem() {
     let mut train = part(Mode::Train);
     let id = "ids differ: invented record";
@@ -570,6 +584,27 @@ fn backtest_batches_are_near_equal_and_about_forty() {
     assert_eq!(sizes(41), [21, 20]);
     assert_eq!(sizes(81), [27, 27, 27]);
     assert!(sizes(0).is_empty());
+}
+
+#[test]
+fn backtest_replies_count_a_repeated_question_id_as_missing_once() {
+    let batch: Vec<Map<String, Value>> = [
+        question("question:h000", 0, "heldout"),
+        question("question:h000", 0, "heldout"),
+        question("question:h001", 1, "heldout"),
+    ]
+    .iter()
+    .map(|q| q.as_object().unwrap().clone())
+    .collect();
+    let reply = json!({"predictions": [
+        {"id": "question:h001", "pick": "Keep it short", "confidence": "high"}
+    ]});
+    let misfit = build::check_backtest_reply(&batch, &reply).unwrap_err();
+    assert_eq!(
+        misfit.told,
+        "these questions have no prediction: question:h000"
+    );
+    assert_eq!(misfit.shown, "1 question had no prediction");
 }
 
 #[test]
