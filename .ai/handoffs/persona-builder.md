@@ -2,6 +2,48 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.7b: back an older assistant up, then bring its history in (2026-11-12, lane: V1)
+
+- **Why:** PB8.7a made Voice refuse a name an older assistant already used. This slice offers the way
+  through: back the older one up, then make the Voice assistant over its kept history, so *Put it together*
+  merges the old `decisions.jsonl` instead of replacing it.
+- **What:** `voice_core::backup::back_up` copies the older assistant's private folder, its skill, `CLAUDE.md`
+  and its old member folder into `~/.claude/voice-backups/<slug>/<stamp>/` (0700 folders, 0600 files). It
+  never follows a link except a linked `CLAUDE.md` itself, refuses a FIFO or device without blocking, checks
+  every byte and link target of the copy, and removes the copy on any failure.
+  `voice_api::assistants::bring_in` refuses first (a linked or file private folder, a
+  `decisions-before-voice.jsonl` already there, a `decisions.jsonl` that is a link or folder), holds the state
+  lock, backs up, renames `decisions.jsonl` to `decisions-before-voice.jsonl` (hard link then remove, never
+  overwriting), makes the assistant and clears consent, and undoes all of it on failure. `voice new
+  --bring-in`, the `bring_in_assistant` command and *Back it up and bring it in* on *Make a new assistant*
+  share it; `voice existing` and the screen say whether an older one can be brought in. The older skill,
+  `CLAUDE.md` and old folder are never changed here (PB8.7e takes them out). Briefs:
+  `plans/briefs/PB8.7b-back-up-and-bring-in.md`, `-fixup-1.md`, `-fixup-2.md`.
+- **Who wrote it:** Codex, from the brief and two fix-ups; Claude reviewed it. Fix-up 1 (review): `voice
+  existing` said "can't" twice; `local_stamp` copied `local_day` (it now sits beside it in
+  `voice_agent::ledger`, sharing one `localtime_r`), the bring-in code sat below a test module, and the two
+  make paths repeated their request checks. Fix-up 2 (security review LOW 1, LOW 2 and a nit; Verifier A, C,
+  D, E, F): the screen showed the "check there's space" sentence for every backup refusal (now the backup's
+  own sentence); a linked or folder `decisions.jsonl` was called "a history from before Voice"; an old skill
+  naming `~/.claude` as its folder made the backup copy itself; the new backup folder was briefly 0755 and
+  existing parents were never tightened (now 0700 from the start, owner checked); two 64 KiB buffers per
+  folder level overflowed the app's 2 MiB thread at about 15 levels (now one heap pair; the 60-level red test
+  aborted before); the backup is kept when the old history can't be put back; the Make button read "Making
+  it…" while backing up.
+- **Verified:** red first for every new test (Codex's runs: six core tests against a stub, ten API tests, three
+  CLI, six screen, the lockdown list; fix-up 2's reds included the deep-folder abort). Green at 2 workers:
+  core backup 12, API bring-in 11, CLI assistants 12, screen 12, app lockdown 8, fmt and clippy clean.
+  Security review (Opus, `079b8c0`): no HIGH or MEDIUM; LOW 1, LOW 2 and the nit fixed in fix-up 2.
+  Verifier (Fable, `079b8c0`): no data-loss path; the hazard verified (skipping the rename leaves 2 of 4
+  questions after a merge); 6 of 9 mutations caught, the 3 survivors (open flags, verify pass, linked
+  `<slug>`) now have tests or are noted below; races judged accepted limits for a single-user app.
+- **Known limits:** `decisions-before-voice.jsonl` is a History input (the plan's PB8.7 decision), and merge
+  lets History win a duplicate id (tested in `corpus_rules.rs`, mirrored in the Python merge). So an
+  interview record an older merged `decisions.jsonl` also holds is re-split rather than always trained. No
+  record is lost; changing that rule is out of this slice. The `O_NOFOLLOW` and `O_NONBLOCK` open flags only
+  matter in a race and have no test. The state lock is held but not tested. Light and dark screens were not
+  looked at (owed to an attended pass).
+
 ## PB8.7a: look before making, never reuse an older assistant's folders silently (2026-11-12, lane: V1)
 
 - **Why:** making an assistant whose name matched one built before Voice silently reused its private
