@@ -44,7 +44,7 @@ fn new_list_and_private_consent_round_trip() {
     let home = Home::new();
     let h = home.path();
     assert!(list_assistants_in(h).unwrap().is_empty());
-    let made = new_assistant_in(h, request()).unwrap();
+    let made = new_assistant_in(h, &h.join(".claude"), request()).unwrap();
     assert_eq!(made.slug, "ari");
     let skill = fs::read_to_string(h.join(".claude/crew/ari/SKILL.md")).unwrap();
     let word =
@@ -135,7 +135,9 @@ fn fixed_failure_messages_hide_core_details() {
             _ => &mut req.principal_pronouns,
         } = "bad@input".into();
         assert_eq!(
-            new_assistant_in(h, req).unwrap_err().message,
+            new_assistant_in(h, &h.join(".claude"), req)
+                .unwrap_err()
+                .message,
             format!(
                 "{title} can be up to 64 characters on one line, without @ < > {{ }} [ ] ( ) # \\ or `."
             )
@@ -144,18 +146,24 @@ fn fixed_failure_messages_hide_core_details() {
     let mut req = request();
     req.name = "!!!".into();
     assert_eq!(
-        new_assistant_in(h, req).unwrap_err().message,
+        new_assistant_in(h, &h.join(".claude"), req)
+            .unwrap_err()
+            .message,
         "Your assistant's name needs at least one letter or number."
     );
-    new_assistant_in(h, request()).unwrap();
+    new_assistant_in(h, &h.join(".claude"), request()).unwrap();
     assert_eq!(
-        new_assistant_in(h, request()).unwrap_err().message,
+        new_assistant_in(h, &h.join(".claude"), request())
+            .unwrap_err()
+            .message,
         "You already have an assistant called Ari. Pick another name, or open that one."
     );
     let mut req = request();
     req.name = "ARI".into();
     assert_eq!(
-        new_assistant_in(h, req).unwrap_err().message,
+        new_assistant_in(h, &h.join(".claude"), req)
+            .unwrap_err()
+            .message,
         "You already have an assistant called ARI. Pick another name, or open that one."
     );
     for s in ["../x", "A", "absent"] {
@@ -172,7 +180,9 @@ fn fixed_failure_messages_hide_core_details() {
     let mut req = request();
     req.name = "Blocked".into();
     assert_eq!(
-        new_assistant_in(h, req).unwrap_err().message,
+        new_assistant_in(h, &h.join(".claude"), req)
+            .unwrap_err()
+            .message,
         "You already have an assistant called Blocked. Pick another name, or open that one."
     );
     let broken = Home::new();
@@ -182,7 +192,7 @@ fn fixed_failure_messages_hide_core_details() {
         "Voice couldn't look for your assistants. Close it and open it again."
     );
     assert_eq!(
-        new_assistant_in(broken.path(), request())
+        new_assistant_in(broken.path(), &broken.path().join(".claude"), request())
             .unwrap_err()
             .message,
         "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
@@ -198,7 +208,7 @@ fn fixed_failure_messages_hide_core_details() {
 fn folder_opener_gets_canonical_folder_and_safe_errors() {
     let home = Home::new();
     let h = home.path();
-    new_assistant_in(h, request()).unwrap();
+    new_assistant_in(h, &h.join(".claude"), request()).unwrap();
     show_assistant_folder_in(h, slug("ari"), |p| {
         assert_eq!(p, h.join(".claude/crew/ari").canonicalize().unwrap());
         Ok(())
@@ -297,21 +307,20 @@ fn dto_json_and_wording_match_contract() {
 }
 
 #[test]
-fn new_answer_does_not_reuse_orphaned_state() {
+fn new_refuses_orphaned_state_without_changing_it() {
     let home = Home::new();
     let h = home.path();
-    let path = h.join(".claude/state/ari/consent.json");
+    let path = h.join(".claude/state/ari/decisions.jsonl");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, serde_json::to_vec(&serde_json::json!({"version": voice_core::consent::VERSION, "agreed_on": "2026-10-25"})).unwrap()).unwrap();
+    fs::write(&path, b"older history\n").unwrap();
     assert_eq!(
-        new_assistant_in(h, request()).unwrap().consent,
-        Consent {
-            agreed: false,
-            agreed_on: None
-        }
+        new_assistant_in(h, &h.join(".claude"), request())
+            .unwrap_err()
+            .message,
+        "Voice found an older Ari on this computer, so it made nothing and changed nothing. Voice can't bring an older assistant in yet: pick another name for now."
     );
-    assert!(!list_assistants_in(h).unwrap()[0].consent.agreed);
-    assert!(!path.exists());
+    assert_eq!(fs::read(path).unwrap(), b"older history\n");
+    assert!(!h.join(".claude/crew/ari").exists());
 }
 
 #[test]
@@ -331,19 +340,16 @@ fn unlisted_folder_is_never_opened() {
 #[test]
 fn failed_consent_clear_removes_only_the_new_assistant() {
     let home = Home::new();
-    let state = home.path().join(".claude/state");
-    fs::create_dir_all(&state).unwrap();
-    let elsewhere = home.path().join("elsewhere");
-    fs::create_dir(&elsewhere).unwrap();
-    std::os::unix::fs::symlink(&elsewhere, state.join("ari")).unwrap();
+    let state = home.path().join(".claude/state/ari");
+    fs::create_dir_all(state.join("consent.json")).unwrap();
     assert_eq!(
-        new_assistant_in(home.path(), request())
+        new_assistant_in(home.path(), &home.path().join(".claude"), request())
             .unwrap_err()
             .message,
         "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
     );
     assert!(!home.path().join(".claude/crew/ari").exists());
-    assert!(state.join("ari").is_symlink());
+    assert!(state.join("consent.json").is_dir());
 }
 
 #[test]
@@ -381,7 +387,7 @@ fn unsafe_app_folder_shows_the_move_sentence() {
     if std::env::var_os(CHILD).is_some() {
         let home = Home::new();
         assert_eq!(
-            new_assistant_in(home.path(), request())
+            new_assistant_in(home.path(), &home.path().join(".claude"), request())
                 .unwrap_err()
                 .message,
             voice_core::cli_command::CLI_FOLDER
@@ -411,7 +417,7 @@ fn unsafe_app_folder_shows_the_move_sentence() {
 fn version_one_consent_is_no_permission_given() {
     let home = Home::new();
     let h = home.path();
-    new_assistant_in(h, request()).unwrap();
+    new_assistant_in(h, &h.join(".claude"), request()).unwrap();
     agree_consent_in(h, slug("ari")).unwrap();
     fs::write(
         h.join(".claude/state/ari/consent.json"),
@@ -424,5 +430,102 @@ fn version_one_consent_is_no_permission_given() {
             agreed: false,
             agreed_on: None
         }
+    );
+}
+
+#[test]
+fn find_existing_reports_fixed_sentences_without_private_paths() {
+    let home = Home::new();
+    let h = home.path();
+    let claude = h.join("custom-claude");
+    let request = || FindExistingRequest { name: "Ari".into() };
+    assert_eq!(
+        find_existing_in(h, &claude, request()).unwrap(),
+        ExistingAssistant {
+            found: false,
+            lines: vec![]
+        }
+    );
+    let state = h.join(".claude/state/ari");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("decisions.jsonl"), "keep").unwrap();
+    fs::write(state.join("live.jsonl"), "keep too").unwrap();
+    let skill = claude.join("skills/ari");
+    fs::create_dir_all(&skill).unwrap();
+    let old = voice_core::assistants::make(
+        &h.join("old-kit"),
+        &voice_core::assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Robin",
+            principal_pronouns: "they/them",
+        },
+        "2026-11-12",
+        "voice",
+    )
+    .unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        format!(
+            "run --member {} similar",
+            old.dir.join("member.json").display()
+        ),
+    )
+    .unwrap();
+    fs::write(claude.join("CLAUDE.md"), "Ask /ari.\nrun `/ARI`.\n").unwrap();
+    let found = find_existing_in(h, &claude, request()).unwrap();
+    assert!(found.found);
+    assert_eq!(
+        found.lines,
+        [
+            "A private folder from before, ~/.claude/state/ari/, holds 2 files.",
+            "One of them is a put-together history that Voice would replace.",
+            "One of them is a log of answers you recorded.",
+            "Claude Code has a skill called ari that Voice didn't add.",
+            "Your CLAUDE.md mentions /ari on 2 lines that Voice didn't add.",
+            "That skill points to the folder the assistant was made in, with its own files.",
+        ]
+    );
+    assert!(
+        !serde_json::to_string(&found)
+            .unwrap()
+            .contains(h.to_str().unwrap())
+    );
+}
+
+#[test]
+fn find_existing_name_validation_and_errors_are_fixed() {
+    let home = Home::new();
+    let h = home.path();
+    for name in ["bad@", "???"] {
+        let mut req = request();
+        req.name = name.into();
+        assert_eq!(
+            find_existing_in(
+                h,
+                &h.join(".claude"),
+                FindExistingRequest { name: name.into() }
+            )
+            .unwrap_err(),
+            new_assistant_in(h, &h.join(".claude"), req).unwrap_err()
+        );
+    }
+    fs::create_dir_all(h.join(".claude")).unwrap();
+    fs::write(h.join(".claude/CLAUDE.md"), vec![b'x'; 4 * 1024 * 1024 + 1]).unwrap();
+    assert_eq!(
+        find_existing_in(
+            h,
+            &h.join(".claude"),
+            FindExistingRequest { name: "Ari".into() }
+        )
+        .unwrap_err()
+        .message,
+        "Voice couldn't look for an older assistant with that name. Close it and open it again."
+    );
+    assert_eq!(
+        new_assistant_in(h, &h.join(".claude"), request())
+            .unwrap_err()
+            .message,
+        "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again."
     );
 }

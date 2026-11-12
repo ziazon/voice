@@ -22,6 +22,7 @@ impl Home {
         fs::create_dir(&path).unwrap();
         voice_api::new_assistant_in(
             &path,
+            &path.join(".claude"),
             NewAssistantRequest {
                 name: "Ari".into(),
                 pronouns: "they/them".into(),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useBackend } from '../backend'
 import { failureMessage } from '../failure'
 import type { Assistant } from '../types/generated/Assistant'
@@ -13,6 +13,9 @@ const principalPronouns = ref('they/them')
 const otherPronouns = ref('')
 const otherPrincipalPronouns = ref('')
 const saving = ref(false)
+const checking = ref(false)
+const older = ref<{ name: string; lines: string[] } | null>(null)
+watch(name, () => { older.value = null })
 const error = ref('')
 const request = computed(() => ({
   name: name.value.trim(),
@@ -23,13 +26,25 @@ const request = computed(() => ({
 const incomplete = computed(() => Object.values(request.value).some(value => !value))
 async function make() {
   if (saving.value || incomplete.value) return
+  const submitted = request.value
   saving.value = true
+  checking.value = true
   error.value = ''
+  older.value = null
   try {
-    emit('made', await backend.newAssistant(request.value))
+    const existing = await backend.findExisting({ name: submitted.name })
+    if (existing.found) {
+      if (name.value.trim() === submitted.name) older.value = { name: submitted.name, lines: existing.lines }
+      return
+    }
+    checking.value = false
+    emit('made', await backend.newAssistant(submitted))
   } catch (failure) {
-    error.value = failureMessage(failure, "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.")
+    error.value = failureMessage(failure, checking.value
+      ? "Voice couldn't look for an older assistant with that name. Close it and open it again."
+      : "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.")
   } finally {
+    checking.value = false
     saving.value = false
   }
 }
@@ -71,8 +86,15 @@ async function make() {
           </template>
         </div>
         <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
+        <div v-if="older" class="alert alert-warning" role="status">
+          <div>
+            <h3 class="alert-title">Voice found an older {{ older.name }}</h3>
+            <ul><li v-for="line in older.lines" :key="line">{{ line }}</li></ul>
+            <p class="mb-0">Voice made nothing and changed nothing. It can't bring an older assistant in yet, so pick another name for now.</p>
+          </div>
+        </div>
         <div class="btn-list">
-          <button type="submit" class="btn btn-primary" :disabled="saving || incomplete">{{ saving ? 'Making it…' : 'Make it' }}</button>
+          <button type="submit" class="btn btn-primary" :disabled="saving || incomplete">{{ checking ? 'Checking…' : saving ? 'Making it…' : 'Make it' }}</button>
           <button type="button" class="btn btn-outline-secondary" @click="emit('cancel')">Back</button>
         </div>
       </form>

@@ -24,6 +24,7 @@ impl Home {
     fn run(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_voice"))
             .env("HOME", &self.0)
+            .env("CLAUDE_CONFIG_DIR", "")
             .args(args)
             .output()
             .unwrap()
@@ -173,20 +174,10 @@ fn listing_does_not_count_bad_or_outdated_records_as_permission() {
 }
 
 #[test]
-fn new_clears_old_permission_and_rolls_back_when_clearing_fails() {
+fn new_rolls_back_when_clearing_fails() {
     let home = Home::new();
     let state = home.0.join(".claude/state/wren");
-    fs::create_dir_all(&state).unwrap();
-    let record = state.join("consent.json");
-    fs::write(&record, serde_json::to_vec(&serde_json::json!({"version": voice_core::consent::VERSION, "agreed_on": "2026-10-25"})).unwrap()).unwrap();
-    home.success(&["new", "Wren", "--principal", "Robin"]);
-    assert!(!record.exists());
-    assert!(
-        home.success(&["assistants"])
-            .contains("permission not given yet")
-    );
-    fs::remove_dir_all(home.0.join(".claude/crew/wren")).unwrap();
-    fs::create_dir(&record).unwrap();
+    fs::create_dir_all(state.join("consent.json")).unwrap();
     let output = home.run(&["new", "Wren", "--principal", "Robin"]);
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
@@ -194,6 +185,7 @@ fn new_clears_old_permission_and_rolls_back_when_clearing_fails() {
         "voice: Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.\n"
     );
     assert!(!home.0.join(".claude/crew/wren").exists());
+    assert!(state.join("consent.json").is_dir());
 }
 
 #[test]
@@ -300,4 +292,122 @@ fn skill_commands_run_similar_and_record_against_private_state() {
     assert_eq!(records[1]["tier"], "medium");
     assert_eq!(records[1]["rule"], hostile);
     assert_eq!(records[1]["robin_answer"], hostile);
+}
+
+#[test]
+fn existing_reports_nothing_and_new_refuses_older_state_untouched() {
+    let home = Home::new();
+    assert_eq!(
+        home.success(&["existing", "Ari"]),
+        "Nothing from before is called Ari on this computer.\n"
+    );
+    let state = home.0.join(".claude/state/ari");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("decisions.jsonl"), b"older history\n").unwrap();
+    let found = home.success(&["existing", "Ari"]);
+    assert!(found.contains(&format!(
+        "Private folder: {} (1 file, a put-together history (decisions.jsonl))",
+        state.display()
+    )));
+    assert!(found.contains("Voice won't make Ari over these. Pick another name for now."));
+    let output = home.run(&["new", "Ari", "--principal", "Robin"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "voice: Voice found an older Ari on this computer, so it made nothing. See what it found: voice existing Ari\n"
+    );
+    assert_eq!(
+        fs::read(state.join("decisions.jsonl")).unwrap(),
+        b"older history\n"
+    );
+    assert!(!home.0.join(".claude/crew/ari").exists());
+}
+
+#[test]
+fn existing_reports_skill_lines_and_old_folder_in_custom_claude_home() {
+    let home = Home::new();
+    let claude = home.0.join("custom-claude");
+    let skill = claude.join("skills/ari");
+    fs::create_dir_all(&skill).unwrap();
+    let old = voice_core::assistants::make(
+        &home.0.join("old-kit"),
+        &voice_core::assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Robin",
+            principal_pronouns: "they/them",
+        },
+        "2026-11-12",
+        "voice",
+    )
+    .unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        format!(
+            "run --member {} similar",
+            old.dir.join("member.json").display()
+        ),
+    )
+    .unwrap();
+    fs::write(claude.join("CLAUDE.md"), "first\nAsk /ari.\n").unwrap();
+    let args = ["existing", "Ari", "--claude-home", claude.to_str().unwrap()];
+    let found = home.success(&args);
+    assert!(found.contains(&format!("Skill Voice didn't add: {}", skill.display())));
+    assert!(found.contains(&format!(
+        "CLAUDE.md lines naming /ari: {} lines 2",
+        claude.join("CLAUDE.md").display()
+    )));
+    assert!(found.contains(&format!("Folder it was made in: {}", old.dir.display())));
+    assert!(
+        !home
+            .run(&[
+                "new",
+                "Ari",
+                "--principal",
+                "Robin",
+                "--claude-home",
+                claude.to_str().unwrap()
+            ])
+            .status
+            .success()
+    );
+    assert!(!home.0.join(".claude/crew/ari").exists());
+}
+
+#[test]
+fn existing_reports_each_source_alone_and_rejects_bad_names_like_new() {
+    for source in ["skill", "line", "file", "link"] {
+        let home = Home::new();
+        fs::create_dir_all(home.0.join(".claude/state")).unwrap();
+        let expected = match source {
+            "skill" => {
+                fs::create_dir_all(home.0.join(".claude/skills/ari")).unwrap();
+                "Skill Voice didn't add:"
+            }
+            "line" => {
+                fs::write(home.0.join(".claude/CLAUDE.md"), "Ask /ari.\n").unwrap();
+                "CLAUDE.md lines naming /ari:"
+            }
+            "file" => {
+                fs::write(home.0.join(".claude/state/ari"), "keep").unwrap();
+                "(a file, not a folder)"
+            }
+            _ => {
+                std::os::unix::fs::symlink(
+                    home.0.join("missing"),
+                    home.0.join(".claude/state/ari"),
+                )
+                .unwrap();
+                "(a link to somewhere else)"
+            }
+        };
+        assert!(home.success(&["existing", "Ari"]).contains(expected));
+    }
+    let home = Home::new();
+    for name in ["bad@", "???"] {
+        let older = home.run(&["existing", name]);
+        let make = home.run(&["new", name, "--principal", "Robin"]);
+        assert_eq!(older.status.code(), Some(1));
+        assert_eq!(older.stderr, make.stderr);
+    }
 }

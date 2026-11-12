@@ -43,6 +43,8 @@ import type { InterviewKept } from './types/generated/InterviewKept'
 import { inject, provide, type InjectionKey } from 'vue'
 import type { AppInfo } from './types/generated/AppInfo'
 import type { Assistant } from './types/generated/Assistant'
+import type { FindExistingRequest } from './types/generated/FindExistingRequest'
+import type { ExistingAssistant } from './types/generated/ExistingAssistant'
 import type { NewAssistantRequest } from './types/generated/NewAssistantRequest'
 import type { SlugRequest } from './types/generated/SlugRequest'
 import type { ConsentText } from './types/generated/ConsentText'
@@ -105,6 +107,7 @@ export interface Backend {
   appInfo(): Promise<AppInfo>
   listAssistants(): Promise<Assistant[]>
   newAssistant(request: NewAssistantRequest): Promise<Assistant>
+  findExisting(request: FindExistingRequest): Promise<ExistingAssistant>
   showAssistantFolder(request: SlugRequest): Promise<void>
   consentText(): Promise<ConsentText>
   agreeConsent(request: SlugRequest): Promise<Consent>

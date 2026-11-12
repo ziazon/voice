@@ -22,6 +22,7 @@ impl Home {
         fs::create_dir(&h.0).unwrap();
         new_assistant_in(
             &h.0,
+            &h.0.join(".claude"),
             NewAssistantRequest {
                 name: "Pebble".into(),
                 pronouns: "they/them".into(),

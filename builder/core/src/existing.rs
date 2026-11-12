@@ -1,0 +1,542 @@
+use crate::{
+    assistants,
+    error::{Error, Result},
+    forget,
+    install_fs::{exists, io},
+    install_record::{self, Added},
+    member::{read_member, refuse_symlink},
+};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct State {
+    pub path: PathBuf,
+    pub files: u64,
+    pub link: bool,
+    pub not_folder: bool,
+    pub corpus: bool,
+    pub live_log: bool,
+}
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Found {
+    pub slug: String,
+    pub state: Option<State>,
+    pub skill: Option<PathBuf>,
+    pub claude_md: Option<PathBuf>,
+    pub lines: Vec<usize>,
+    pub old_folder: Option<PathBuf>,
+}
+impl Found {
+    pub fn any(&self) -> bool {
+        self.state.is_some()
+            || self.skill.is_some()
+            || !self.lines.is_empty()
+            || self.old_folder.is_some()
+    }
+}
+
+pub fn find(home: &Path, claude_home: &Path, slug: &str) -> Result<Found> {
+    assistants::assistant_dir(home, slug)?;
+    refuse_symlink(claude_home)?;
+    refuse_symlink(&home.join(".claude"))?;
+    refuse_symlink(&home.join(".claude/state"))?;
+    refuse_symlink(&claude_home.join("skills"))?;
+    let state = find_state(home.join(".claude/state").join(slug))?;
+    let skill_path = claude_home.join("skills").join(slug);
+    let claimed = || {
+        install_record::read(claude_home)
+            .ok()
+            .flatten()
+            .is_some_and(|record| {
+                record.slug == slug
+                    && record
+                        .added
+                        .iter()
+                        .any(|added| matches!(added, Added::Dir { path } if path == &skill_path))
+            })
+    };
+    let skill = if exists(&skill_path)? && !claimed() {
+        Some(skill_path)
+    } else {
+        None
+    };
+    let old_folder = skill
+        .as_deref()
+        .and_then(|path| find_old_folder(home, path, slug));
+    let claude_md_path = claude_home.join("CLAUDE.md");
+    let lines = find_lines(&claude_md_path, slug)?;
+    let claude_md = (!lines.is_empty()).then_some(claude_md_path);
+    Ok(Found {
+        slug: slug.into(),
+        state,
+        skill,
+        claude_md,
+        lines,
+        old_folder,
+    })
+}
+
+fn find_state(path: PathBuf) -> Result<Option<State>> {
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        metadata => io(&path, metadata)?,
+    };
+    let link = metadata.is_symlink();
+    let not_folder = !link && !metadata.is_dir();
+    let mut state = State {
+        path,
+        link,
+        not_folder,
+        ..State::default()
+    };
+    if !link && !not_folder {
+        state.files = forget::count_files(&state.path)? as u64;
+        if state.files == 0 {
+            return Ok(None);
+        }
+        state.corpus = exists(&state.path.join("decisions.jsonl"))?;
+        state.live_log = exists(&state.path.join("live.jsonl"))?;
+    }
+    Ok(Some(state))
+}
+
+fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        bytes => io(path, bytes)?,
+    };
+    if bytes.len() > 4 * 1024 * 1024 {
+        return Err(Error::Invalid(
+            "CLAUDE.md is too big for Voice to read".into(),
+        ));
+    }
+    let needle = format!("/{slug}");
+    let mut in_block = false;
+    let mut found = Vec::new();
+    for (index, line) in String::from_utf8_lossy(&bytes).lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("<!-- voice:begin ") {
+            in_block = true;
+            continue;
+        }
+        if trimmed.starts_with("<!-- voice:end ") {
+            in_block = false;
+            continue;
+        }
+        if !in_block && mentions(line.as_bytes(), needle.as_bytes()) {
+            found.push(index + 1);
+        }
+    }
+    Ok(found)
+}
+
+fn mentions(line: &[u8], needle: &[u8]) -> bool {
+    line.windows(needle.len()).enumerate().any(|(start, word)| {
+        let before = start == 0
+            || line[start - 1].is_ascii_whitespace()
+            || matches!(line[start - 1], b'(' | b'[' | b'`' | b'"' | b'\'');
+        let end = start + needle.len();
+        let after = end == line.len()
+            || !(line[end].is_ascii_alphanumeric() || matches!(line[end], b'_' | b'-' | b'/'));
+        before && after && word.eq_ignore_ascii_case(needle)
+    })
+}
+
+fn find_old_folder(home: &Path, skill: &Path, slug: &str) -> Option<PathBuf> {
+    if !fs::symlink_metadata(skill).ok()?.is_dir() {
+        return None;
+    }
+    let skill_md = skill.join("SKILL.md");
+    let metadata = fs::symlink_metadata(&skill_md).ok()?;
+    if !metadata.is_file() || metadata.len() > 1024 * 1024 {
+        return None;
+    }
+    let bytes = fs::read(&skill_md).ok()?;
+    if bytes.len() > 1024 * 1024 {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let (_, member_option) = text.split_once("--member ")?;
+    let token = member_option.split_whitespace().next()?;
+    let token = token
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .or_else(|| token.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+        .unwrap_or(token);
+    if !token.ends_with("/member.json") {
+        return None;
+    }
+    let path = token
+        .strip_prefix("~/")
+        .map_or_else(|| PathBuf::from(token), |rest| home.join(rest));
+    if !path.is_absolute() {
+        return None;
+    }
+    let folder = path.parent()?;
+    // The supplied home is a trusted root. Check each component below it, or every
+    // component of an outside candidate, before opening its member file.
+    let root = if folder.starts_with(home) {
+        home
+    } else {
+        Path::new("/")
+    };
+    let mut checked = root.to_owned();
+    for component in folder.strip_prefix(root).ok()?.components() {
+        if !matches!(component, std::path::Component::Normal(_)) {
+            return None;
+        }
+        checked.push(component);
+        if !fs::symlink_metadata(&checked).ok()?.is_dir() {
+            return None;
+        }
+    }
+    if !fs::symlink_metadata(folder).ok()?.is_dir() {
+        return None;
+    }
+    let member = read_member(&path).ok()?;
+    (member.slug == slug).then(|| folder.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        install, member,
+        test_support::{Scratch, config},
+    };
+    use std::{fs, os::unix::fs::symlink};
+
+    struct Fixture {
+        scratch: Scratch,
+        home: PathBuf,
+        claude: PathBuf,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            let scratch = Scratch::new();
+            let home = scratch.path().join("home");
+            let claude = home.join(".claude");
+            fs::create_dir_all(&claude).unwrap();
+            let home = home.canonicalize().unwrap();
+            let claude = claude.canonicalize().unwrap();
+            Self {
+                scratch,
+                home,
+                claude,
+            }
+        }
+        fn find(&self) -> Found {
+            find(&self.home, &self.claude, "ari").unwrap()
+        }
+        fn state(&self) -> PathBuf {
+            self.home.join(".claude/state/ari")
+        }
+        fn skill(&self, text: &str) -> PathBuf {
+            let path = self.claude.join("skills/ari");
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join("SKILL.md"), text).unwrap();
+            path
+        }
+        fn old(&self) -> PathBuf {
+            let path = self.home.join("old/crew/ari");
+            fs::create_dir_all(&path).unwrap();
+            fs::write(
+                path.join("member.json"),
+                serde_json::to_vec(&config()).unwrap(),
+            )
+            .unwrap();
+            path
+        }
+    }
+    #[test]
+    fn nothing_found_and_no_folders_created() {
+        let f = Fixture::new();
+        assert_eq!(
+            f.find(),
+            Found {
+                slug: "ari".into(),
+                ..Found::default()
+            }
+        );
+        assert!(!f.find().any());
+        assert!(!f.claude.join("state").exists());
+        assert!(!f.claude.join("skills").exists());
+        assert!(!f.claude.join("voice").exists());
+    }
+    #[test]
+    fn state_files_are_counted_recursively_with_links_counted_once() {
+        let f = Fixture::new();
+        fs::create_dir_all(f.state().join("nested/empty")).unwrap();
+        fs::write(f.state().join("nested/notes"), "invented").unwrap();
+        fs::write(f.state().join("decisions.jsonl"), "invented decisions").unwrap();
+        symlink("missing", f.state().join("live.jsonl")).unwrap();
+        symlink(f.state(), f.state().join("loop")).unwrap();
+        let found = f.find();
+        assert!(found.any());
+        assert_eq!(
+            found.state,
+            Some(State {
+                path: f.state(),
+                files: 4,
+                corpus: true,
+                live_log: true,
+                ..State::default()
+            })
+        );
+        assert!(found.skill.is_none());
+        assert!(found.lines.is_empty());
+        assert!(found.old_folder.is_none());
+        assert_eq!(
+            fs::read(f.state().join("decisions.jsonl")).unwrap(),
+            b"invented decisions"
+        );
+    }
+    #[test]
+    fn empty_state_folder_is_not_found() {
+        let f = Fixture::new();
+        fs::create_dir_all(f.state().join("nested/empty")).unwrap();
+        assert!(!f.find().any());
+    }
+    #[test]
+    fn state_links_and_non_folder_are_found_without_descending() {
+        for target_exists in [false, true] {
+            let f = Fixture::new();
+            fs::create_dir_all(f.state().parent().unwrap()).unwrap();
+            let target = f.scratch.path().join("outside");
+            if target_exists {
+                fs::create_dir(&target).unwrap();
+                fs::write(target.join("decisions.jsonl"), "outside").unwrap();
+            }
+            symlink(&target, f.state()).unwrap();
+            assert_eq!(
+                f.find().state,
+                Some(State {
+                    path: f.state(),
+                    link: true,
+                    ..State::default()
+                })
+            );
+        }
+        let f = Fixture::new();
+        fs::create_dir_all(f.state().parent().unwrap()).unwrap();
+        fs::write(f.state(), "keep").unwrap();
+        assert_eq!(
+            f.find().state,
+            Some(State {
+                path: f.state(),
+                not_folder: true,
+                ..State::default()
+            })
+        );
+    }
+    #[test]
+    fn unclaimed_skill_and_dangling_skill_are_found() {
+        let f = Fixture::new();
+        let skill = f.skill("invented skill");
+        let found = f.find();
+        assert_eq!(found.skill, Some(skill.clone()));
+        assert!(found.any());
+        assert!(found.state.is_none());
+        assert!(found.lines.is_empty());
+        assert!(found.old_folder.is_none());
+        fs::remove_dir_all(&skill).unwrap();
+        symlink("missing", &skill).unwrap();
+        assert_eq!(f.find().skill, Some(skill));
+    }
+    #[test]
+    fn voice_claimed_skill_is_not_found_and_unreadable_record_cannot_claim() {
+        let f = Fixture::new();
+        let made = crate::assistants::make(
+            &f.home,
+            &crate::assistants::New {
+                name: "Ari",
+                pronouns: "they/them",
+                principal: "Robin",
+                principal_pronouns: "they/them",
+            },
+            "2026-11-12",
+            "voice",
+        )
+        .unwrap();
+        install::turn_on(
+            &made.dir,
+            &install::Places {
+                home: f.home.clone(),
+                claude_home: f.claude.clone(),
+            },
+        )
+        .unwrap();
+        assert!(!f.find().any());
+        fs::write(f.claude.join("voice/installed.json"), "not JSON").unwrap();
+        assert_eq!(f.find().skill, Some(f.claude.join("skills/ari")));
+    }
+    #[test]
+    fn claude_lines_have_word_boundaries_case_crlf_and_original_line_numbers() {
+        let f = Fixture::new();
+        let path = f.claude.join("CLAUDE.md");
+        fs::write(
+            &path,
+            concat!(
+                "- Ask Ari (/ari) before a decision\r\n",
+                "run `/ari`.\r\n",
+                "~/.claude/state/ari/x\r\n/ari/\r\n/ari-old\r\n/arik\r\n",
+                " <!-- voice:begin another -->\r\n/ari\r\n<!-- voice:end another -->\r\n",
+                "/ARI\r\n[/ari]\r\n\"/ari\"\r\n'/ari'\r\nx/ari\r\n/ari_2\r\n/ari9\r\n",
+                "/ari\u{2026}\r\n"
+            ),
+        )
+        .unwrap();
+        let found = f.find();
+        assert_eq!(found.lines, [1, 2, 10, 11, 12, 13, 17]);
+        assert_eq!(found.claude_md, Some(path));
+        assert!(found.any());
+        assert!(found.state.is_none());
+        assert!(found.skill.is_none());
+    }
+    #[test]
+    fn claude_read_is_lossy_follows_only_claude_file_link_and_refuses_oversize() {
+        let f = Fixture::new();
+        let real = f.scratch.path().join("claude-real");
+        let path = f.claude.join("CLAUDE.md");
+        fs::write(&real, b"\xff /ari\n").unwrap();
+        symlink(&real, &path).unwrap();
+        assert_eq!(f.find().lines, [1]);
+        fs::write(&real, vec![b' '; 4 * 1024 * 1024 + 1]).unwrap();
+        assert!(
+            matches!(find(&f.home, &f.claude, "ari"), Err(Error::Invalid(message)) if message == "CLAUDE.md is too big for Voice to read")
+        );
+    }
+    #[test]
+    fn only_voice_block_lines_do_not_set_claude_md() {
+        let f = Fixture::new();
+        fs::write(
+            f.claude.join("CLAUDE.md"),
+            "<!-- voice:begin x -->\n/ari\n<!-- voice:end x -->\n",
+        )
+        .unwrap();
+        assert!(!f.find().any());
+        assert!(f.find().claude_md.is_none());
+    }
+    #[test]
+    fn old_folder_expands_home_and_accepts_one_pair_of_quotes() {
+        for quote in ["", "\"", "'"] {
+            let f = Fixture::new();
+            let old = f.old();
+            f.skill(&format!(
+                "python3 -I tool --member {quote}~/old/crew/ari/member.json{quote} similar"
+            ));
+            assert_eq!(f.find().old_folder, Some(old));
+        }
+        let f = Fixture::new();
+        let old = f.old();
+        f.skill(&format!(
+            "tool --member {}/member.json record",
+            old.display()
+        ));
+        assert_eq!(f.find().old_folder, Some(old));
+    }
+    #[test]
+    fn invalid_old_folder_candidates_are_ignored() {
+        for text in [
+            "no member option",
+            "--member crew/ari/member.json",
+            "--member ~/old/crew/ari/not-member.json",
+            "--member ~/missing/member.json",
+            "--member invalid --member ~/old/crew/ari/member.json",
+        ] {
+            let f = Fixture::new();
+            f.old();
+            f.skill(text);
+            assert!(f.find().old_folder.is_none(), "{text}");
+        }
+        let f = Fixture::new();
+        let old = f.old();
+        let mut member = member::read_member(&old.join("member.json")).unwrap();
+        member.slug = "mo-lee".into();
+        member::write_member(&old.join("member.json"), &member).unwrap();
+        f.skill("--member ~/old/crew/ari/member.json");
+        assert!(f.find().old_folder.is_none());
+    }
+    #[test]
+    fn old_folder_and_skill_file_links_are_ignored() {
+        let f = Fixture::new();
+        let old = f.old();
+        let moved = f.home.join("old-real");
+        fs::rename(&old, &moved).unwrap();
+        symlink(&moved, &old).unwrap();
+        let skill = f.skill("--member ~/old/crew/ari/member.json");
+        assert!(f.find().old_folder.is_none());
+        fs::remove_file(skill.join("SKILL.md")).unwrap();
+        let real = f.scratch.path().join("real-skill");
+        fs::write(&real, format!("--member {}/member.json", moved.display())).unwrap();
+        symlink(&real, skill.join("SKILL.md")).unwrap();
+        assert!(f.find().old_folder.is_none());
+    }
+    #[test]
+    fn old_skill_larger_than_one_mib_is_not_read() {
+        let f = Fixture::new();
+        f.old();
+        let text = format!(
+            "--member ~/old/crew/ari/member.json {}",
+            " ".repeat(1024 * 1024)
+        );
+        f.skill(&text);
+        assert!(f.find().old_folder.is_none());
+    }
+    #[test]
+    fn linked_state_and_skills_parents_are_refused() {
+        for folder in ["state", "skills"] {
+            let f = Fixture::new();
+            let target = f.scratch.path().join("outside");
+            fs::create_dir(&target).unwrap();
+            symlink(&target, f.claude.join(folder)).unwrap();
+            assert!(
+                matches!(find(&f.home, &f.claude, "ari"), Err(Error::Invalid(message)) if message.contains("symlink refused"))
+            );
+        }
+    }
+    #[test]
+    fn linked_old_folder_ancestor_and_member_file_are_ignored() {
+        let f = Fixture::new();
+        f.old();
+        let moved = f.home.join("old-real");
+        fs::rename(f.home.join("old"), &moved).unwrap();
+        symlink(&moved, f.home.join("old")).unwrap();
+        f.skill("--member ~/old/crew/ari/member.json");
+        assert!(f.find().old_folder.is_none());
+        let f = Fixture::new();
+        let old = f.old();
+        let real = f.home.join("real-member.json");
+        fs::rename(old.join("member.json"), &real).unwrap();
+        symlink(&real, old.join("member.json")).unwrap();
+        f.skill("--member ~/old/crew/ari/member.json");
+        assert!(f.find().old_folder.is_none());
+    }
+    #[test]
+    fn linked_custom_claude_root_is_refused() {
+        let f = Fixture::new();
+        let target = f.scratch.path().join("custom-real");
+        fs::create_dir_all(target.join("skills/ari")).unwrap();
+        fs::write(target.join("skills/ari/SKILL.md"), "invented skill").unwrap();
+        let custom = f.scratch.path().join("custom-link");
+        symlink(&target, &custom).unwrap();
+        assert!(
+            matches!(find(&f.home, &custom, "ari"), Err(Error::Invalid(message)) if message.contains("symlink refused"))
+        );
+    }
+
+    #[test]
+    fn invalid_slug_is_refused_before_reading_anything() {
+        let f = Fixture::new();
+        for slug in ["", "../ari", "Ari", "ari/x"] {
+            assert!(
+                matches!(find(&f.home, &f.claude, slug), Err(Error::Invalid(message)) if message == "invalid assistant slug")
+            );
+        }
+    }
+}

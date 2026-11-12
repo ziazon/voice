@@ -16,6 +16,13 @@ pub fn new_assistant(
 }
 
 #[tauri::command(async)]
+pub fn find_existing(
+    request: voice_api::dto::FindExistingRequest,
+) -> Result<voice_api::dto::ExistingAssistant, voice_api::dto::Failure> {
+    voice_api::find_existing(request)
+}
+
+#[tauri::command(async)]
 pub fn show_assistant_folder(
     request: voice_api::dto::SlugRequest,
 ) -> Result<(), voice_api::dto::Failure> {

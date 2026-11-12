@@ -39,6 +39,7 @@ impl Home {
         let path = path.canonicalize().unwrap();
         new_assistant_in(
             &path,
+            &path.join(".claude"),
             NewAssistantRequest {
                 name: "Wren".into(),
                 pronouns: "she/her".into(),

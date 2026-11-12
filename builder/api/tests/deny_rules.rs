@@ -14,6 +14,7 @@ fn chosen_export_under_ssh_shows_denial_instead_of_export_bad() {
     let home = Scratch::new("deny-api-export");
     new_assistant_in(
         &home.0,
+        &home.0.join(".claude"),
         NewAssistantRequest {
             name: "Pebble".into(),
             pronouns: "they/them".into(),

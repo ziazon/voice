@@ -35,6 +35,7 @@ it.each([
 it.each([
   ['claudeSignIn', 'claude_sign_in', { subscription: false }],
   ['claudeSignIn', 'claude_sign_in', { subscription: true }],
+  ['findExisting', 'find_existing', { name: 'Ari' }],
   ['newAssistant', 'new_assistant', { name: 'Example', pronouns: 'they/them', principal: 'Sample', principalPronouns: 'they/them' }],
   ['showAssistantFolder', 'show_assistant_folder', { slug: 'example' }],
   ['agreeConsent', 'agree_consent', { slug: 'example' }],

@@ -14,6 +14,7 @@ pub mod consent;
 pub mod crew;
 pub mod deny;
 pub mod error;
+pub mod existing;
 pub mod fields;
 pub mod forget;
 pub mod install;

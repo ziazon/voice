@@ -24,6 +24,7 @@ impl Home {
         for name in ["Pebble", "Quill"] {
             let assistant = new_assistant_in(
                 &path,
+                &path.join(".claude"),
                 NewAssistantRequest {
                     name: name.into(),
                     pronouns: "she/her".into(),

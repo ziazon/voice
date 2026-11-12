@@ -17,12 +17,15 @@ use voice_core::{
     cli_command::{CLI_FOLDER, CLI_PLACE, shipped_cli_word},
     consent, crew,
     error::Error,
+    existing,
 };
 use voice_ingest::private::{read_private_optional, remove_private, write_private};
 
 type Result<T> = std::result::Result<T, dto::Failure>;
 const LOOK: &str = "Voice couldn't look for your assistants. Close it and open it again.";
 pub(crate) const FIND: &str = "Voice couldn't find that assistant. Close it and open it again.";
+const LOOK_BEFORE: &str =
+    "Voice couldn't look for an older assistant with that name. Close it and open it again.";
 const MAKE: &str = "Voice couldn't make the assistant's folder. Check there's space on this computer, then try again.";
 const KEEP: &str =
     "Voice couldn't keep your answer. Check there's space on this computer, then try again.";
@@ -109,9 +112,90 @@ pub fn list_assistants_in(home: &Path) -> Result<Vec<dto::Assistant>> {
 pub fn list_assistants() -> Result<Vec<dto::Assistant>> {
     list_assistants_in(&home(LOOK)?)
 }
-pub fn new_assistant_in(home: &Path, request: dto::NewAssistantRequest) -> Result<dto::Assistant> {
+fn check_field(what: &str, value: &str, field: &str) -> Result<()> {
+    crew::check_name(what, value).map_err(|_| {
+        failure(&format!(
+            "{field} can be up to 64 characters on one line, without @ < > {{ }} [ ] ( ) # \\ or `."
+        ))
+    })
+}
+fn checked_name(name: &str) -> Result<String> {
+    check_field("name", name, "Your assistant's name")?;
+    crew::slugify(name)
+        .ok_or_else(|| failure("Your assistant's name needs at least one letter or number."))
+}
+pub fn find_existing_in(
+    home: &Path,
+    claude_home: &Path,
+    request: dto::FindExistingRequest,
+) -> Result<dto::ExistingAssistant> {
+    let slug = checked_name(&request.name)?;
+    let found = existing::find(home, claude_home, &slug).map_err(|_| failure(LOOK_BEFORE))?;
+    let mut lines = Vec::new();
+    if let Some(state) = &found.state {
+        if !state.link && !state.not_folder {
+            let noun = if state.files == 1 { "file" } else { "files" };
+            lines.push(format!(
+                "A private folder from before, ~/.claude/state/{slug}/, holds {} {noun}.",
+                state.files
+            ));
+        }
+        if state.corpus {
+            lines.push("One of them is a put-together history that Voice would replace.".into());
+        }
+        if state.live_log {
+            lines.push("One of them is a log of answers you recorded.".into());
+        }
+        if state.link {
+            lines.push(format!(
+                "~/.claude/state/{slug} is a link to somewhere else."
+            ));
+        }
+        if state.not_folder {
+            lines.push(format!("~/.claude/state/{slug} is a file, not a folder."));
+        }
+    }
+    if found.skill.is_some() {
+        lines.push(format!(
+            "Claude Code has a skill called {slug} that Voice didn't add."
+        ));
+    }
+    if !found.lines.is_empty() {
+        let noun = if found.lines.len() == 1 {
+            "line"
+        } else {
+            "lines"
+        };
+        lines.push(format!(
+            "Your CLAUDE.md mentions /{slug} on {} {noun} that Voice didn't add.",
+            found.lines.len()
+        ));
+    }
+    if found.old_folder.is_some() {
+        lines.push(
+            "That skill points to the folder the assistant was made in, with its own files.".into(),
+        );
+    }
+    Ok(dto::ExistingAssistant {
+        found: found.any(),
+        lines,
+    })
+}
+pub fn find_existing(request: dto::FindExistingRequest) -> Result<dto::ExistingAssistant> {
+    let home = home(LOOK_BEFORE)?;
+    find_existing_in(
+        &home,
+        &crate::use_it::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref()),
+        request,
+    )
+}
+pub fn new_assistant_in(
+    home: &Path,
+    claude_home: &Path,
+    request: dto::NewAssistantRequest,
+) -> Result<dto::Assistant> {
+    check_field("name", &request.name, "Your assistant's name")?;
     for (what, value, field) in [
-        ("name", &request.name, "Your assistant's name"),
         ("pronouns", &request.pronouns, "Its pronouns"),
         ("your name", &request.principal, "Your name"),
         (
@@ -120,16 +204,18 @@ pub fn new_assistant_in(home: &Path, request: dto::NewAssistantRequest) -> Resul
             "Your pronouns",
         ),
     ] {
-        crew::check_name(what, value).map_err(|_| {
-            failure(&format!(
-                "{field} can be up to 64 characters on one line, without @ < > {{ }} [ ] ( ) # \\ or `."
-            ))
-        })?;
+        check_field(what, value, field)?;
     }
-    if crew::slugify(&request.name).is_none() {
-        return Err(failure(
-            "Your assistant's name needs at least one letter or number.",
-        ));
+    let slug = checked_name(&request.name)?;
+    let dir = assistants::assistant_dir(home, &slug).map_err(|_| failure(MAKE))?;
+    if std::fs::symlink_metadata(&dir).is_err() {
+        let found = existing::find(home, claude_home, &slug).map_err(|_| failure(MAKE))?;
+        if found.any() {
+            return Err(failure(&format!(
+                "Voice found an older {} on this computer, so it made nothing and changed nothing. Voice can't bring an older assistant in yet: pick another name for now.",
+                request.name
+            )));
+        }
     }
     let new = assistants::New {
         name: &request.name,
@@ -160,7 +246,12 @@ pub fn new_assistant_in(home: &Path, request: dto::NewAssistantRequest) -> Resul
     Ok(assistant(home, listed))
 }
 pub fn new_assistant(request: dto::NewAssistantRequest) -> Result<dto::Assistant> {
-    new_assistant_in(&home(MAKE)?, request)
+    let home = home(MAKE)?;
+    new_assistant_in(
+        &home,
+        &crate::use_it::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref()),
+        request,
+    )
 }
 pub fn consent_text() -> Result<dto::ConsentText> {
     Ok(dto::ConsentText {

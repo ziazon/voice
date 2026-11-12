@@ -55,6 +55,7 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     appInfo: vi.fn().mockResolvedValue({ version: '1.2.3', agents: [] }),
     listAssistants: vi.fn().mockResolvedValue([]),
     newAssistant: vi.fn().mockResolvedValue(assistant),
+    findExisting: vi.fn().mockResolvedValue({ found: false, lines: [] }),
     showAssistantFolder: vi.fn().mockResolvedValue(undefined),
     consentText: vi.fn().mockResolvedValue(consentText),
     agreeConsent: vi.fn().mockResolvedValue({ agreed: true, agreedOn: '2026-10-25' }),

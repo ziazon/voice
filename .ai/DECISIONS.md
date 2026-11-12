@@ -1,5 +1,23 @@
 # Decisions: voice
 
+## 2026-11-12: look for an older assistant before making one (PB8.7a)
+
+Making an assistant now looks for an older one with the same slug and refuses to reuse it:
+
+- A private state folder counts when it holds files recursively, without following links;
+  a link (including a dangling one) or something other than a folder counts too, but an empty
+  folder does not. Top-level `decisions.jsonl` and `live.jsonl` are reported by name only.
+- An existing skill counts unless Voice's readable install record claims that exact skill
+  folder for the same slug; a record that cannot be read does not claim it.
+- Lines in `CLAUDE.md` naming `/<slug>` as a word count outside all Voice blocks, without
+  regard to ASCII letter case; the read is capped at 4 MiB and retains line numbers.
+- An unclaimed, real skill folder's regular `SKILL.md` (at most 1 MiB) can identify the old
+  folder through its first `--member` path: absolute or home-relative, ending in `/member.json`,
+  with no links followed and a readable member whose slug matches.
+
+The check writes nothing. PB8.7b brings an older assistant in after a backup; this slice only
+finds and reports it. This replaces VO2's "Nothing is migrated" only for this case.
+
 ## 2026-11-09: Claude Code keeps its own login file in Voice's profile (VF3)
 
 The owner chose option 1 of V-Q15, reconfirming the login file chosen by V-Q10 on 2026-10-31.

@@ -14,6 +14,7 @@ fn main() {
             commands::app_info,
             commands::list_assistants,
             commands::new_assistant,
+            commands::find_existing,
             commands::show_assistant_folder,
             commands::consent_text,
             commands::agree_consent,

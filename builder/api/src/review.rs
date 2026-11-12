@@ -467,6 +467,7 @@ mod tests {
         std::fs::create_dir(&home).unwrap();
         crate::new_assistant_in(
             &home,
+            &home.join(".claude"),
             NewAssistantRequest {
                 name: "Wren".into(),
                 pronouns: "she/her".into(),

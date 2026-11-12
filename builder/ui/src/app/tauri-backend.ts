@@ -26,6 +26,7 @@ import type { InterviewKept } from '../types/generated/InterviewKept'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type { Backend } from '../backend'
 import type { AppInfo } from '../types/generated/AppInfo'
+import type { ExistingAssistant } from '../types/generated/ExistingAssistant'
 import type { Assistant } from '../types/generated/Assistant'
 import type { ConsentText } from '../types/generated/ConsentText'
 import type { Consent } from '../types/generated/Consent'
@@ -91,6 +92,7 @@ export const tauriBackend: Backend = {
   appInfo: () => invoke<AppInfo>('app_info'),
   listAssistants: () => invoke<Assistant[]>('list_assistants'),
   newAssistant: request => invoke<Assistant>('new_assistant', { request }),
+  findExisting: request => invoke<ExistingAssistant>('find_existing', { request }),
   showAssistantFolder: request => invoke<void>('show_assistant_folder', { request }),
   consentText: () => invoke<ConsentText>('consent_text'),
   agreeConsent: request => invoke<Consent>('agree_consent', { request }),

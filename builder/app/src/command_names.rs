@@ -3,6 +3,7 @@ pub const COMMANDS: &[&str] = &[
     "app_info",
     "list_assistants",
     "new_assistant",
+    "find_existing",
     "show_assistant_folder",
     "consent_text",
     "agree_consent",

@@ -13,7 +13,7 @@ pub struct Forgotten {
     pub existed: bool,
 }
 
-fn count_files(path: &Path) -> Result<usize> {
+pub(crate) fn count_files(path: &Path) -> Result<usize> {
     let mut files = 0;
     for entry in io(path, fs::read_dir(path))? {
         let path = io(path, entry)?.path();

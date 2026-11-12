@@ -24,6 +24,7 @@ impl Fixture {
         let home = home.canonicalize().unwrap();
         voice_api::new_assistant_in(
             &home,
+            &home.join(".claude"),
             NewAssistantRequest {
                 name: "Wren".into(),
                 pronouns: "she/her".into(),

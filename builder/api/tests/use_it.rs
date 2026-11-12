@@ -34,6 +34,7 @@ impl Home {
     fn make(&self, name: &str) {
         new_assistant_in(
             &self.0,
+            &self.0.join(".claude"),
             NewAssistantRequest {
                 name: name.into(),
                 pronouns: "they/them".into(),
