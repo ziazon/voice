@@ -2,6 +2,48 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.6: the build shows how far it got and how much is left (2026-11-12, lane: V1)
+
+- **What:** someone watching a real build kept clicking *Run the build again* with no idea how
+  many runs it would take. (1) The build counts its paid steps and sends them with each line
+  (`build::Progress { line, done, total }`): label parts, distil groups, test batches. The distil share
+  is the settings' group count until sorting ends, then the groups that have decisions, so the total
+  never grows. `BuildProgress` carries them as `steps` (`None` for a refresh's test). The Build screen
+  draws a real bar with "3 of 25 steps done, 22 left."; after a stop or a failure the bar stays with
+  "Stopped after 3 of 25 steps, 22 left."; a finished build clears it. (2) A misfit counts how many
+  builds that part has stopped (its second tries' rejected replies, `rejected-<stem>-<digits>-2.json`
+  in `build/`, at least 1). From the second time the sentence says running the build again is unlikely
+  to help, instead of inviting another run. A rejected reply takes the next free second in its name, so
+  two failures in one second are both kept and counted. The first failure keeps PB8.5's sentence; grow's
+  sentences are unchanged. Briefs: `plans/briefs/PB8.6-build-progress.md`,
+  `plans/briefs/PB8.6-fixup1-empty-group-and-style.md`.
+- **Who built it:** Codex, from both briefs. Her sandbox can't bind loopback sockets or reach the
+  npm registry, so V1 ran every stub test, the screen checks and the mutations on Mimi. Fix-up 1 was
+  V1's review: no test covered the total dropping (the stub fills both groups in every existing
+  corpus), plus style.
+- **Verified (Mimi, load1 200 to 350%):** `cargo test --locked -p voice-build -p voice-api -p voice-grow
+  -p voice-cli` with `VOICE_REQUIRE_PARITY=1`: 69 suites ok, the 7 new or changed tests among them.
+  `pnpm -C builder/ui typecheck` clean; vitest 45 files, 573 tests passed. Mutations (`cp`, restored,
+  `cmp`), each one putting back the old behaviour for one claim, all caught: the count ignored (old
+  sentence every time); no free name; any middle counted; distil steps not counted; the total not
+  recomputed; `is_misfit` refusing the new ending (the app shows `BUILD_FAILED` again); the checking line
+  without steps; the bar only while running; steps not reset between runs; the stopped wording.
+- **Reviews:** security review (Opus sub-task): no HIGH or MEDIUM. Two LOW, not taken: the free
+  name is check-then-rename, so two builds of one assistant in the same second could lose a rejected
+  reply (the build lock already allows one build per assistant); `stopped_times` lists `build/` by path,
+  so the person swapping their own folder for a link could change only the count. Verifier (Fable, on
+  `e00ff23`, run because the diff adds over 400 lines; the spec said not required): all 7 claims
+  verified, each by a mutation or probe; tree left clean. Should-fixes: the `if (progress.steps)` guard
+  was untested, fixed in fix-up 2 (a test-only brief, `plans/briefs/PB8.6-fixup2-steps-guard-test.md`;
+  the test fails with the guard removed). Not taken: `is_misfit` checks only the opening and ending, as
+  on `main`, so its safety still rests on `text::misfit` being the only producer; after a failure while
+  sorting, "N left" can overstate by the number of empty groups, since the total is still the upper
+  bound (it is exact from the first distil line on, and a whole group with no decisions is rare). Her
+  probe also showed a changed corpus starts again at the first-time sentence.
+- **Not verified:** the screen in light and dark (walk owed); a real build on a real history (the next
+  tester build). Rejected replies are never cleared, so the count is per identical part for the
+  assistant's life; a changed part gets a new cache name and starts again at one.
+
 ## PB8.5: a label answer that doesn't fit no longer stops the build silently (2026-11-12, lane: V1)
 
 - **What:** a real build (11 label parts) kept part 1 only on its 8th call, and part 2 failed both tries
