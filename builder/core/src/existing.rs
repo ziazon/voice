@@ -9,7 +9,7 @@ use crate::{
 use std::{
     fs::{self, OpenOptions},
     io::Read,
-    os::unix::fs::OpenOptionsExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 
@@ -145,24 +145,28 @@ fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
     };
     let needle = format!("/{slug}");
     let text = String::from_utf8_lossy(&bytes);
-    let last_end = text
-        .lines()
-        .enumerate()
-        .filter_map(|(index, line)| line.trim().starts_with("<!-- voice:end ").then_some(index))
-        .last();
-    let mut in_block = false;
+    let lines: Vec<_> = text.lines().collect();
+    let mut block_end = None;
     let mut found = Vec::new();
-    for (index, line) in text.lines().enumerate() {
+    for (index, line) in lines.iter().enumerate() {
+        if block_end.is_some_and(|end| index <= end) {
+            continue;
+        }
         let trimmed = line.trim();
-        if trimmed.starts_with("<!-- voice:begin ") {
-            in_block = last_end.is_some_and(|end| end > index);
+        if let Some(marker) = trimmed.strip_prefix("<!-- voice:begin ") {
+            if let Some(id) = marker.strip_suffix(" -->") {
+                let end = format!("<!-- voice:end {id} -->");
+                block_end = lines[index + 1..]
+                    .iter()
+                    .position(|line| line.trim() == end)
+                    .map(|offset| index + 1 + offset);
+            }
             continue;
         }
         if trimmed.starts_with("<!-- voice:end ") {
-            in_block = false;
             continue;
         }
-        if !in_block && mentions(line.as_bytes(), needle.as_bytes()) {
+        if mentions(line.as_bytes(), needle.as_bytes()) {
             found.push(index + 1);
         }
     }
@@ -205,8 +209,18 @@ fn find_old_folder(home: &Path, skill: &Path, slug: &str) -> Option<PathBuf> {
         return None;
     }
     let folder = path.parent()?;
-    if folder.starts_with(home.join(".claude/state")) {
-        return None;
+    let state = match fs::metadata(home.join(".claude/state")) {
+        Ok(metadata) => Some(metadata),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return None,
+    };
+    if let Some(state) = state {
+        for ancestor in folder.ancestors() {
+            let metadata = fs::metadata(ancestor).ok()?;
+            if (metadata.dev(), metadata.ino()) == (state.dev(), state.ino()) {
+                return None;
+            }
+        }
     }
     // The supplied home is a trusted root. Check each component below it, or every
     // component of an outside candidate, before opening its member file.
@@ -534,6 +548,22 @@ mod tests {
         assert_eq!(f.find().lines, [2]);
     }
     #[test]
+    fn unclosed_voice_begin_does_not_pair_with_another_blocks_end() {
+        let f = Fixture::new();
+        fs::write(
+            f.claude.join("CLAUDE.md"),
+            concat!(
+                "<!-- voice:begin x -->\n",
+                "- Ask Ari (/ari)\n",
+                "  <!-- voice:begin y -->  \n",
+                "- Ask Ari (/ari)\n",
+                "  <!-- voice:end y -->  \n",
+            ),
+        )
+        .unwrap();
+        assert_eq!(f.find().lines, [2]);
+    }
+    #[test]
     fn only_voice_block_lines_do_not_set_claude_md() {
         let f = Fixture::new();
         fs::write(
@@ -602,19 +632,40 @@ mod tests {
         assert_eq!(found, Some(old));
     }
     #[test]
-    fn private_state_is_never_an_old_folder_even_with_unreadable_member() {
-        use std::os::unix::fs::PermissionsExt;
+    fn private_state_is_never_an_old_folder() {
         let f = Fixture::new();
         fs::create_dir_all(f.state()).unwrap();
-        let path = f.state().join("member.json");
-        fs::write(&path, serde_json::to_vec(&config()).unwrap()).unwrap();
+        fs::write(
+            f.state().join("member.json"),
+            serde_json::to_vec(&config()).unwrap(),
+        )
+        .unwrap();
         f.skill("--member ~/.claude/state/ari/member.json");
-        let readable = f.find().old_folder;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
-        let unreadable = f.find().old_folder;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-        assert!(readable.is_none());
-        assert_eq!(readable, unreadable);
+        assert!(f.find().old_folder.is_none());
+        // Case-sensitive scratch filesystems cannot exercise this alias.
+        if f.home.join(".CLAUDE").exists() {
+            f.skill("--member ~/.Claude/state/ari/member.json");
+            assert!(f.find().old_folder.is_none());
+        }
+    }
+    #[test]
+    fn private_state_through_a_linked_claude_root_is_never_an_old_folder() {
+        let f = Fixture::new();
+        let real = f.home.join("real/claude");
+        fs::create_dir_all(real.parent().unwrap()).unwrap();
+        fs::rename(&f.claude, &real).unwrap();
+        symlink(&real, &f.claude).unwrap();
+        fs::create_dir_all(real.join("state/ari")).unwrap();
+        fs::write(
+            real.join("state/ari/member.json"),
+            serde_json::to_vec(&config()).unwrap(),
+        )
+        .unwrap();
+        f.skill("--member ~/real/claude/state/ari/member.json");
+        assert!(f.find().old_folder.is_none());
+        let old = f.old();
+        f.skill("--member ~/old/crew/ari/member.json");
+        assert_eq!(f.find().old_folder, Some(old));
     }
     #[test]
     fn invalid_old_folder_candidates_are_ignored() {
