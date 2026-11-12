@@ -2,6 +2,51 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.5: a label answer that doesn't fit no longer stops the build silently (2026-11-12, lane: V1; built, not landed: fix-up 2 owed)
+
+- **What:** a real build (11 label parts) kept part 1 only on its 8th call, and part 2 failed both tries
+  of the next run, behind the generic "The build stopped before it finished" line. Three faults, all
+  fixed. (1) A label or backtest retry was checked alone. The model answers "didn't fit" with only its
+  corrections, so every record it left out counted as missing. Now `Asker::ask_by_id` merges the retry
+  over the reply that didn't fit, by id: from the earlier reply it keeps only ids that were asked for
+  and not sent again, then checks the merged reply whole. The retry is told every missing record id and
+  "you may give only the entries for the ids named above". An id the model made up is only ever counted,
+  never written into the retry. Distil and `builder/grow` keep their full-reply retry. (2) Each rejected
+  reply is kept with its problem, 0600, in the state folder's `build/` as
+  `rejected-<cache name>-<secs>-<try>.json`, and is never reused. (3) The app shows the build's own
+  misfit sentence: the part, and counts such as "1 record had no label, 2 labels didn't fit the
+  codebook". `text::is_misfit` recognises the sentence by its fixed text; the daily limit still wins
+  first. Briefs: `plans/briefs/PB8.5-label-misfit-reason.md`,
+  `plans/briefs/PB8.5-fixup1-review-should-fixes.md`.
+- **Who built it:** Codex, from both briefs. Her sandbox can't bind loopback sockets, so every
+  stub-driven test failed there before any call. V1 ran the reds, greens and mutations on Mimi. V1 also
+  wrote the `.ai/SECURITY.md` build-row update. One V1 error, caught by the Verifier and fixed in
+  fix-up 1: a `sed` meant for the new tests also turned three existing mined-mail tests from
+  `python().expect` into a silent skip.
+- **Verified:** red as found, with the original source under the new tests. The partial-retry tests
+  stop with "didn't fit twice". In the app, the misfit build showed `BUILD_FAILED` instead of the
+  reason. Green: `voice-build`, `voice-api`, `voice-cli` and `voice-grow` all pass. Mutations (`cp`,
+  restored, `cmp`): merge returning the reply unchanged fails the 3 partial-retry tests; `is_misfit`
+  always false fails `a_misfit_build_shows_its_reason`; removing the rejected write fails
+  `two_misfits_keep_both_rejected_replies`; the plain retry text swapped for the partial one fails
+  `a_distil_retry_keeps_the_full_reply_instruction`. Full gate: `bash scripts/ci-local.sh` passed on
+  `3b290d6` and on `9314bce`, both run with `RUSTC_WRAPPER=` because `sccache` couldn't start
+  inside the job's background shell (`Operation not permitted`). The first run on `3b290d6` died on
+  that, after clippy had passed.
+- **Reviews:** security review (Opus sub-task) found no HIGH or MEDIUM. Of its LOWs, the
+  `ids differ:` prefix filter and the stale SECURITY.md line were fixed in fix-up 1. Not taken:
+  rejected replies are never swept while the assistant exists. Each one is a paid call's reply, they
+  are kept on purpose for walks, and forgetting the assistant removes them. Verifier (Fable, on
+  `3b290d6`): all six claims verified; should-fixes (two unpinned behaviours, distil's plural and
+  "their" wording, the repeated-id refusal, the stray `sed`) fixed in fix-up 1. Repeat Verifier
+  (Opus, on `9314bce`): all seven claims verified, one should-fix: a record id that repeats inside a part is listed missing twice and `label_problems`' count line then reads as a wrong label (no model words leak; only a corpus with repeated ids). Fix-up 2 brief written (`plans/briefs/PB8.5-fixup2-repeated-record-ids.md`), not yet built.
+- **Not verified:** the cause on the real history. The replies from that build were not kept (that is
+  this slice's fix), so the merge answers the lead (retries that hold only corrections) but not
+  whatever made the first tries fail. A walk after the next tester build should read the
+  `rejected-label-*` files. Also untested: a run that fails twice still starts from scratch on the
+  next run. Carrying a rejected reply over into the next run's first try is an option for PB8.6 or
+  later.
+
 ## VF12: the over-long mail test measures processor time (2026-11-11, lane: V1)
 
 - **What:** `tests/crew_extra_sources_test.py`'s `test_an_over_long_mail_is_skipped_before_the_filters_run`
