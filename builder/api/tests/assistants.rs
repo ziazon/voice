@@ -1028,37 +1028,76 @@ fn pb87c_bad_ticks_refuse_before_any_writes() {
         let error = bring_in_assistant_in(h, &h.join(".claude"), bringing(&ticks)).unwrap_err();
         assert_eq!(
             error.message,
-            format!("Voice can't bring in {file}, so it changed nothing. Untick it and try again.")
+            format!(
+                "Voice can't bring in {file}, so it changed nothing. Leave it out and try again."
+            )
         );
         assert_eq!(snapshot(h), before, "{kind}");
         assert!(!h.join(".claude/voice-backups").exists());
     }
 }
 #[test]
-fn pb87c_bad_merged_private_file_undoes_copy_history_and_backup() {
+fn pb87c_bad_merged_private_file_refuses_before_backup() {
+    assert_private_refuses(r#"{"filters":{"personal":7}}"#);
+}
+fn assert_private_refuses(value: &str) {
     let home = Home::new();
     let h = home.path();
     let old = old_member_files(h);
-    fs::write(old.join("private.json"), r#"{"filters":{"personal":7}}"#).unwrap();
-    let state = old_state(h);
-    fs::write(state.join("consent.json"), "older permission bytes").unwrap();
-    let before = snapshot(h);
-    let error = bring_in_assistant_in(
+    fs::write(old.join("private.json"), value).unwrap();
+    let found = find_existing_in(
         h,
         &h.join(".claude"),
-        bringing(&voice_core::old_files::NAMES),
+        FindExistingRequest { name: "Ari".into() },
     )
-    .unwrap_err();
-    assert_eq!(error.message, voice_core::old_files::CANT_BRING);
-    let mut after = snapshot(h);
-    after.remove(Path::new(".claude/voice-backups"));
-    after.remove(Path::new(".claude/voice-backups/ari"));
-    assert_eq!(after, before);
+    .unwrap();
     assert_eq!(
-        fs::read(state.join("decisions.jsonl")).unwrap(),
-        b"older history\n"
+        found
+            .files
+            .iter()
+            .find(|f| f.name == "private.json")
+            .unwrap()
+            .problem
+            .as_deref(),
+        Some("It changes more than the privacy settings, so Voice leaves it."),
+        "{value}"
     );
-    assert!(!h.join(".claude/crew/ari").exists());
+    let before = snapshot(h);
+    let error =
+        bring_in_assistant_in(h, &h.join(".claude"), bringing(&["private.json"])).unwrap_err();
+    assert_eq!(
+        error.message,
+        "Voice can't bring in private.json, so it changed nothing. Leave it out and try again."
+    );
+    assert_eq!(snapshot(h), before);
+    assert!(!h.join(".claude/voice-backups").exists());
+}
+#[test]
+fn fixup_private_rules_refuse_before_backup() {
+    for value in [
+        r#"{"filters":{"secret":"("}}"#,
+        r#"{"filters":{"secret":""}}"#,
+        r#"{"anonymizer":7}"#,
+        r#"{"anonymizer":{"bogus":1}}"#,
+        r#"{"filters":7}"#,
+        r#"{"filters":{"denied_paths":[""]}}"#,
+        r#"{"filters":{"pasted_prefixes":[7]}}"#,
+    ] {
+        assert_private_refuses(value);
+    }
+}
+#[test]
+fn fixup_returns_files_in_names_order() {
+    let home = Home::new();
+    let h = home.path();
+    old_member_files(h);
+    let result = bring_in_assistant_in(
+        h,
+        &h.join(".claude"),
+        bringing(&["private.json", "lens.md", "IDENTITY.md"]),
+    )
+    .unwrap();
+    assert_eq!(result.files, ["IDENTITY.md", "lens.md", "private.json"]);
 }
 #[test]
 fn pb87c_existing_lists_files_and_problem_sentences() {
@@ -1089,4 +1128,9 @@ fn pb87c_existing_lists_files_and_problem_sentences() {
 fn pb87c_bring_request_refuses_unknown_fields() {
     let value = serde_json::json!({"assistant": request(), "files": [], "extra": true});
     assert!(serde_json::from_value::<BringInRequest>(value).is_err());
+}
+
+#[test]
+fn fixup_refuses_pattern_that_breaks_the_merged_filter() {
+    assert_private_refuses(r#"{"filters":{"secret":"(?x)word# comment"}}"#);
 }

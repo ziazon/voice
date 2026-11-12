@@ -4,7 +4,7 @@ use voice_core::{
     cli_command::shipped_cli_word,
     consent, crew,
     error::{Error, Result},
-    existing, old_files,
+    existing,
 };
 
 fn today() -> String {
@@ -51,7 +51,7 @@ pub fn make(
     let result = if bring_in {
         let found = existing::find(&home, &places.claude_home, &slug)?;
         let offered = match found.old_folder {
-            Some(folder) => old_files::offer(&folder)?,
+            Some(folder) => voice_api::assistants::offer_old_files(&home, &folder)?,
             None => Vec::new(),
         };
         for file in leave {
@@ -206,13 +206,16 @@ pub fn existing(name: &str, claude_home: Option<PathBuf>) -> Result<()> {
     }
     let offered = if let Some(folder) = found.old_folder {
         println!("Folder it was made in: {}", folder.display());
-        old_files::offer(&folder)?
+        voice_api::assistants::offer_old_files(&places.home, &folder)?
     } else {
         Vec::new()
     };
     for file in &offered {
         match file.problem {
             Some(problem) => println!("Leaves out {}: {problem}", file.name),
+            None if file.name == "private.json" => println!(
+                "Can bring in private.json: Its privacy settings: what the older assistant hid, and any words it let through."
+            ),
             None => println!("Can bring in {}", file.name),
         }
     }

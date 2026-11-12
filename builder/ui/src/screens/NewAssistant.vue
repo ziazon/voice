@@ -128,6 +128,7 @@ async function bringIn() {
               <div v-for="(file, index) in older.files" :key="file.name" class="form-check">
                 <input :id="`old-file-${index}`" v-model="older.ticked" type="checkbox" class="form-check-input" :value="file.name" :disabled="!!file.problem">
                 <label :for="`old-file-${index}`" class="form-check-label"><code>{{ file.name }}</code><span v-if="file.problem" class="text-secondary"> {{ file.problem }}</span></label>
+                <div v-if="file.name === 'private.json'" class="form-hint">Its privacy settings: what the older assistant hid, and any words it let through.</div>
               </div>
             </fieldset>
             <p v-if="older.canBringIn">Voice made nothing and changed nothing. It can copy everything listed here into a backup folder first, then bring this {{ older.name }}'s history in, or you can pick another name.</p>

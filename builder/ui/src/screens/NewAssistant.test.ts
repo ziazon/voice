@@ -251,3 +251,15 @@ it('shows no file choices when the older assistant has none', async () => {
   await flushPromises()
   expect(wrapper.find('fieldset').exists()).toBe(false)
 })
+
+it.each([null, "It changes more than the privacy settings, so Voice leaves it.", 'absent'])('explains private.json only when offered (%s)', async problem => {
+  const files = problem === 'absent' ? [{ name: 'IDENTITY.md', problem: null }] : [{ name: 'private.json', problem }]
+  const backend = fakeBackend({ findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true, files }) })
+  const wrapper = screen(NewAssistant, backend)
+  await wrapper.get('#assistant-name').setValue('Ari')
+  await wrapper.get('#principal-name').setValue('Robin')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  const hints = wrapper.findAll('.form-hint').filter(hint => hint.text() === 'Its privacy settings: what the older assistant hid, and any words it let through.')
+  expect(hints).toHaveLength(problem === 'absent' ? 0 : 1)
+})

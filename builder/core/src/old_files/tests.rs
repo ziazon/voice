@@ -14,6 +14,44 @@ const TEXT: &str = "It isn't plain text, so Voice leaves it.";
 const AUTONOMY: &str = "Voice can't read its list of who decides what, so Voice leaves it.";
 const PRIVATE: &str = "It changes more than the privacy settings, so Voice leaves it.";
 
+fn snapshot(root: &Path) -> std::collections::BTreeMap<PathBuf, (String, Vec<u8>)> {
+    fn walk(
+        root: &Path,
+        at: &Path,
+        out: &mut std::collections::BTreeMap<PathBuf, (String, Vec<u8>)>,
+    ) {
+        let meta = fs::symlink_metadata(at).unwrap();
+        let (kind, bytes) = if meta.is_symlink() {
+            (
+                "link",
+                fs::read_link(at)
+                    .unwrap()
+                    .as_os_str()
+                    .as_encoded_bytes()
+                    .to_vec(),
+            )
+        } else if meta.is_dir() {
+            ("folder", vec![])
+        } else if meta.is_file() {
+            ("file", fs::read(at).unwrap())
+        } else {
+            ("special", vec![])
+        };
+        out.insert(
+            at.strip_prefix(root).unwrap().to_owned(),
+            (kind.into(), bytes),
+        );
+        if meta.is_dir() {
+            for entry in fs::read_dir(at).unwrap() {
+                walk(root, &entry.unwrap().path(), out);
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    walk(root, root, &mut out);
+    out
+}
+
 fn all_files(folder: &Path) {
     fs::create_dir_all(folder.join("briefs")).unwrap();
     for name in NAMES {
@@ -45,7 +83,7 @@ fn template(folder: &Path) {
 fn problem(name: &str, prepare: impl FnOnce(&Path), expected: &str) {
     let scratch = Scratch::new();
     prepare(scratch.path());
-    let offered = offer(scratch.path()).unwrap();
+    let offered = offer(scratch.path(), &|_| true).unwrap();
     assert_eq!(offered.len(), 1);
     assert_eq!(offered[0].name, name);
     assert_eq!(offered[0].problem, Some(expected));
@@ -64,7 +102,7 @@ fn offers_all_eight_in_order_without_unlisted_files() {
     all_files(scratch.path());
     fs::write(scratch.path().join("SKILL.md"), "not offered").unwrap();
     fs::write(scratch.path().join("member.json"), "not offered").unwrap();
-    let offered = offer(scratch.path()).unwrap();
+    let offered = offer(scratch.path(), &|_| true).unwrap();
     assert_eq!(
         offered.iter().map(|file| file.name).collect::<Vec<_>>(),
         NAMES
@@ -76,14 +114,18 @@ fn omits_absent_names_and_missing_old_folder() {
     let scratch = Scratch::new();
     fs::write(scratch.path().join("lens.md"), "lens").unwrap();
     assert_eq!(
-        offer(scratch.path())
+        offer(scratch.path(), &|_| true)
             .unwrap()
             .iter()
             .map(|file| file.name)
             .collect::<Vec<_>>(),
         ["lens.md"]
     );
-    assert!(offer(&scratch.path().join("missing")).unwrap().is_empty());
+    assert!(
+        offer(&scratch.path().join("missing"), &|_| true)
+            .unwrap()
+            .is_empty()
+    );
 }
 #[test]
 fn leaves_links() {
@@ -219,7 +261,7 @@ fn brings_exact_bytes_private_modes_and_keeps_other_template_briefs() {
     let skill = fs::read(to.join("SKILL.md")).unwrap();
     let config = fs::read(to.join("member.json")).unwrap();
     fs::write(to.join("briefs/stays.md"), "template brief").unwrap();
-    bring(&from, &to, &NAMES.map(str::to_owned)).unwrap();
+    bring(&from, &to, &NAMES.map(str::to_owned), &|_| true).unwrap();
     for name in NAMES {
         let name = if name == "briefs" {
             "briefs/older.md"
@@ -265,13 +307,14 @@ fn refuses_unknown_absent_and_duplicate_before_writing() {
                 .iter()
                 .map(|name| (*name).to_owned())
                 .collect::<Vec<_>>(),
+            &|_| true,
         )
         .unwrap_err()
         .to_string();
         assert_eq!(
             message,
             format!(
-                "Voice can't bring in {}, so it changed nothing. Untick it and try again.",
+                "Voice can't bring in {}, so it changed nothing. Leave it out and try again.",
                 names[1]
             )
         );
@@ -287,9 +330,9 @@ fn refuses_invalid_final_member_with_folder_check_sentence() {
     fs::create_dir(&from).unwrap();
     fs::write(from.join("private.json"), br#"{"filters":{"personal":7}}"#).unwrap();
     template(&to);
-    assert_eq!(offer(&from).unwrap()[0].problem, None);
+    assert_eq!(offer(&from, &|_| true).unwrap()[0].problem, None);
     assert_eq!(
-        bring(&from, &to, &["private.json".into()])
+        bring(&from, &to, &["private.json".into()], &|_| true)
             .unwrap_err()
             .to_string(),
         CANT_BRING
@@ -308,11 +351,219 @@ fn refuses_missing_source_folder_before_writing() {
         &scratch.path().join("missing"),
         &to,
         &["IDENTITY.md".into()],
+        &|_| true,
     )
     .unwrap_err();
     assert_eq!(
         error.to_string(),
-        "Voice can't bring in IDENTITY.md, so it changed nothing. Untick it and try again."
+        "Voice can't bring in IDENTITY.md, so it changed nothing. Leave it out and try again."
     );
     assert_eq!(fs::read(to.join("IDENTITY.md")).unwrap(), before);
+}
+
+#[test]
+fn fixup_leaves_hard_links() {
+    problem(
+        "IDENTITY.md",
+        |p| {
+            fs::write(p.join("other"), "unchanged").unwrap();
+            fs::hard_link(p.join("other"), p.join("IDENTITY.md")).unwrap();
+        },
+        "It shares its contents with another file, so Voice leaves it.",
+    );
+}
+#[test]
+fn fixup_unreadable_files_and_briefs_are_problems() {
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    for name in ["lens.md", "briefs/one.md", "briefs"] {
+        let s = Scratch::new();
+        fs::create_dir(s.path().join("briefs")).unwrap();
+        if name != "briefs" {
+            fs::write(s.path().join(name), "text").unwrap();
+        }
+        let path = s.path().join(name);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o0)).unwrap();
+        let result = offer(s.path(), &|_| true);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        let offered = result.unwrap();
+        assert_eq!(
+            offered
+                .iter()
+                .find(|f| f.name
+                    == if name.starts_with("briefs") {
+                        "briefs"
+                    } else {
+                        name
+                    })
+                .unwrap()
+                .problem,
+            Some("Voice can't read it, so Voice leaves it.")
+        );
+    }
+}
+#[test]
+fn fixup_uppercase_codebook_has_same_cap() {
+    problem(
+        "briefs",
+        |p| {
+            fs::create_dir(p.join("briefs")).unwrap();
+            fs::write(p.join("briefs/CODEBOOK.md"), vec![b'a'; 64 * 1024 + 1]).unwrap();
+        },
+        BIG,
+    );
+}
+#[test]
+fn fixup_ignores_ds_store_when_offering_and_copying() {
+    let s = Scratch::new();
+    let from = s.path().join("old");
+    let to = s.path().join("new");
+    fs::create_dir_all(from.join("briefs")).unwrap();
+    fs::write(from.join("briefs/.DS_Store"), [0, 255]).unwrap();
+    fs::write(from.join("briefs/one.md"), "brief").unwrap();
+    assert_eq!(offer(&from, &|_| true).unwrap()[0].problem, None);
+    template(&to);
+    bring(&from, &to, &["briefs".into()], &|_| true).unwrap();
+    assert_eq!(fs::read(to.join("briefs/one.md")).unwrap(), b"brief");
+    assert!(!to.join("briefs/.DS_Store").exists());
+}
+#[test]
+fn fixup_accepts_exact_caps() {
+    let s = Scratch::new();
+    fs::write(s.path().join("IDENTITY.md"), vec![b'a'; 1024 * 1024]).unwrap();
+    fs::write(s.path().join("decisions.md"), vec![b'a'; 256 * 1024]).unwrap();
+    fs::create_dir(s.path().join("briefs")).unwrap();
+    fs::write(s.path().join("briefs/codebook.md"), vec![b'a'; 64 * 1024]).unwrap();
+    for n in 0..63 {
+        fs::write(s.path().join(format!("briefs/{n}.md")), "brief").unwrap();
+    }
+    let offered = offer(s.path(), &|_| true).unwrap();
+    assert_eq!(offered.len(), 3);
+    assert!(offered.iter().all(|f| f.problem.is_none()));
+}
+fn destination_link_stays_untouched(location: &str) {
+    let s = Scratch::new();
+    let from = s.path().join("old");
+    let to = s.path().join("new");
+    let outside = s.path().join("outside");
+    all_files(&from);
+    template(&to);
+    if location.is_empty() {
+        template(&outside);
+    } else {
+        fs::create_dir(&outside).unwrap();
+    }
+    fs::write(outside.join("sentinel"), "untouched").unwrap();
+    let link = if location.is_empty() {
+        to.clone()
+    } else {
+        to.join(location)
+    };
+    if link.is_dir() {
+        fs::remove_dir_all(&link).unwrap();
+    } else if link.exists() {
+        fs::remove_file(&link).unwrap();
+    }
+    let target = if location.ends_with(".md") {
+        outside.join("sentinel")
+    } else {
+        outside.clone()
+    };
+    symlink(&target, &link).unwrap();
+    let before = snapshot(&outside);
+    let name = if location.starts_with("briefs") {
+        "briefs"
+    } else {
+        "IDENTITY.md"
+    };
+    assert_eq!(
+        bring(&from, &to, &[name.into()], &|_| true)
+            .unwrap_err()
+            .to_string(),
+        CANT_BRING
+    );
+    assert_eq!(snapshot(&outside), before);
+    assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
+}
+#[test]
+fn fixup_refuses_destination_identity_link() {
+    destination_link_stays_untouched("IDENTITY.md");
+}
+
+#[test]
+fn fixup_refuses_destination_briefs_folder_link() {
+    destination_link_stays_untouched("briefs");
+}
+
+#[test]
+fn fixup_refuses_destination_brief_file_link() {
+    destination_link_stays_untouched("briefs/older.md");
+}
+
+#[test]
+fn fixup_refuses_destination_root_link() {
+    destination_link_stays_untouched("");
+}
+
+#[test]
+fn fixup_refuses_linked_source_and_changed_backup_before_writing() {
+    for linked in [false, true] {
+        let s = Scratch::new();
+        let from = s.path().join("old");
+        let to = s.path().join("new");
+        all_files(&from);
+        template(&to);
+        assert!(
+            offer(&from, &|_| true)
+                .unwrap()
+                .iter()
+                .all(|f| f.problem.is_none())
+        );
+        let source = if linked {
+            let link = s.path().join("link");
+            symlink(&from, &link).unwrap();
+            link
+        } else {
+            fs::write(from.join("IDENTITY.md"), b"bad\0text").unwrap();
+            from
+        };
+        let before = snapshot(&to);
+        assert_eq!(
+            bring(&source, &to, &["IDENTITY.md".into()], &|_| true)
+                .unwrap_err()
+                .to_string(),
+            "Voice can't bring in IDENTITY.md, so it changed nothing. Leave it out and try again."
+        );
+        assert_eq!(snapshot(&to), before);
+    }
+}
+
+#[test]
+fn fixup_private_validator_can_refuse() {
+    let s = Scratch::new();
+    fs::write(s.path().join("private.json"), "{}").unwrap();
+    assert_eq!(
+        offer(s.path(), &|_| false).unwrap()[0].problem,
+        Some(PRIVATE)
+    );
+    let to = s.path().join("new");
+    template(&to);
+    assert!(bring(s.path(), &to, &["private.json".into()], &|_| false).is_err());
+}
+
+#[test]
+fn fixup_recognizes_new_sentences() {
+    assert_eq!(
+        CANT_BRING,
+        "Voice couldn't bring in the older assistant's own files, so it changed nothing. Leave out private.json and autonomy.md, then try again."
+    );
+    assert!(says(
+        "It shares its contents with another file, so Voice leaves it."
+    ));
+    assert!(says("Voice can't read it, so Voice leaves it."));
+    assert!(says(
+        "Voice can't bring in lens.md, so it changed nothing. Leave it out and try again."
+    ));
 }

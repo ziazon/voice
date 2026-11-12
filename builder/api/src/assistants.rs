@@ -153,6 +153,74 @@ fn checked_name(name: &str) -> Result<String> {
     crew::slugify(name)
         .ok_or_else(|| failure("Your assistant's name needs at least one letter or number."))
 }
+/// Offer files using the same privacy rules as the assistant's readers.
+pub fn offer_old_files(
+    home: &Path,
+    folder: &Path,
+) -> voice_core::error::Result<Vec<old_files::Offered>> {
+    old_files::offer(folder, &|value| private_ok(home, value))
+}
+
+fn private_ok(home: &Path, value: &serde_json::Value) -> bool {
+    if let Some(filters) = value.get("filters") {
+        let Some(filters) = filters.as_object() else {
+            return false;
+        };
+        let Some(template) = voice_core::template::FILES
+            .iter()
+            .find(|(name, _)| *name == "member.json")
+            .and_then(|(_, text)| serde_json::from_str::<serde_json::Value>(text).ok())
+        else {
+            return false;
+        };
+        let Some(base_filters) = template
+            .get("filters")
+            .and_then(serde_json::Value::as_object)
+        else {
+            return false;
+        };
+        for (key, value) in filters {
+            let valid = if matches!(key.as_str(), "pasted_prefixes" | "denied_paths") {
+                value.as_array().is_some_and(|items| {
+                    items
+                        .iter()
+                        .all(|item| item.as_str().is_some_and(|text| !text.is_empty()))
+                })
+            } else {
+                value.as_str().is_some_and(|pattern| {
+                    if pattern.is_empty()
+                        || voice_ingest::filters::check_pattern(key, pattern).is_err()
+                    {
+                        return false;
+                    }
+                    let Some(base) = base_filters
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .filter(|base| !base.is_empty())
+                    else {
+                        return true;
+                    };
+                    // read_member joins patterns inside groups. An extended-mode
+                    // comment must not swallow the closing group in that form.
+                    voice_ingest::filters::check_pattern(key, &format!("(?:{base})|(?:{pattern})"))
+                        .is_ok()
+                })
+            };
+            if !valid {
+                return false;
+            }
+        }
+    }
+    voice_ingest::anonymize::Rules::from_value(value.get("anonymizer"), home).is_ok()
+}
+
+fn check_brought_member(home: &Path, folder: &Path) -> voice_core::error::Result<()> {
+    let member = voice_core::member::read_member(&folder.join("member.json"))?;
+    voice_ingest::filters::Filters::compile(&member.filters)?;
+    voice_ingest::anonymize::Rules::for_member(&member, home)?;
+    Ok(())
+}
+
 pub fn find_existing_in(
     home: &Path,
     claude_home: &Path,
@@ -209,7 +277,7 @@ pub fn find_existing_in(
         files: found
             .old_folder
             .as_deref()
-            .map(old_files::offer)
+            .map(|folder| offer_old_files(home, folder))
             .transpose()
             .map_err(|_| failure(LOOK_BEFORE))?
             .unwrap_or_default()
@@ -352,6 +420,29 @@ pub fn bring_in(
     cli: &str,
     files: &[String],
 ) -> voice_core::error::Result<(assistants::Listed, Option<PathBuf>, Vec<String>)> {
+    bring_in_checked(
+        home,
+        claude_home,
+        new,
+        date,
+        stamp,
+        cli,
+        files,
+        &check_brought_member,
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // The public bring-in arguments plus its late-check seam.
+fn bring_in_checked(
+    home: &Path,
+    claude_home: &Path,
+    new: &assistants::New<'_>,
+    date: &str,
+    stamp: &str,
+    cli: &str,
+    files: &[String],
+    after_copy: &dyn Fn(&Path, &Path) -> voice_core::error::Result<()>,
+) -> voice_core::error::Result<(assistants::Listed, Option<PathBuf>, Vec<String>)> {
     let slug = crew::slugify(new.name)
         .ok_or_else(|| Error::Invalid("name must contain a letter or digit".into()))?;
     let found = existing::find(home, claude_home, &slug)?;
@@ -359,7 +450,7 @@ pub fn bring_in(
         let offered = found
             .old_folder
             .as_deref()
-            .map(old_files::offer)
+            .map(|folder| offer_old_files(home, folder))
             .transpose()?;
         let mut seen = std::collections::HashSet::new();
         for name in files {
@@ -434,11 +525,18 @@ pub fn bring_in(
         }
         let made = make_and_clear(home, new, date, cli)?;
         cleared = true;
-        if !files.is_empty()
-            && let Err(error) = old_files::bring(&backup.join("member"), &made.dir, files)
-        {
-            let _ = fs::remove_dir_all(&made.dir);
-            return Err(error);
+        if !files.is_empty() {
+            let copied = old_files::bring(&backup.join("member"), &made.dir, files, &|value| {
+                private_ok(home, value)
+            });
+            let checked = copied.and_then(|()| {
+                after_copy(home, &made.dir)
+                    .map_err(|_| Error::Invalid(old_files::CANT_BRING.into()))
+            });
+            if let Err(error) = checked {
+                let _ = fs::remove_dir_all(&made.dir);
+                return Err(error);
+            }
         }
         Ok(made)
     })();
@@ -894,6 +992,161 @@ mod server_message_tests {
     fn model_server_failures_cross_the_app_boundary() {
         for message in [text::SERVER_UNREACHABLE.to_owned(), text::server_cut_off(2)] {
             assert_eq!(claude_message(Error::Invalid(message.clone())), message);
+        }
+    }
+}
+
+#[cfg(test)]
+mod bring_in_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+    struct Scratch(pub PathBuf);
+    impl Scratch {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "voice-bring-in-api-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    fn snapshot(root: &Path) -> std::collections::BTreeMap<PathBuf, (String, Vec<u8>)> {
+        fn walk(
+            root: &Path,
+            at: &Path,
+            out: &mut std::collections::BTreeMap<PathBuf, (String, Vec<u8>)>,
+        ) {
+            let meta = fs::symlink_metadata(at).unwrap();
+            let (kind, bytes) = if meta.is_symlink() {
+                (
+                    "link",
+                    fs::read_link(at)
+                        .unwrap()
+                        .as_os_str()
+                        .as_encoded_bytes()
+                        .to_vec(),
+                )
+            } else if meta.is_dir() {
+                ("folder", vec![])
+            } else if meta.is_file() {
+                ("file", fs::read(at).unwrap())
+            } else {
+                ("special", vec![])
+            };
+            out.insert(
+                at.strip_prefix(root).unwrap().to_owned(),
+                (kind.into(), bytes),
+            );
+            if meta.is_dir() {
+                for entry in fs::read_dir(at).unwrap() {
+                    walk(root, &entry.unwrap().path(), out);
+                }
+            }
+        }
+        let mut out = std::collections::BTreeMap::new();
+        walk(root, root, &mut out);
+        out
+    }
+
+    #[test]
+    fn late_check_failure_restores_history_consent_and_removes_new_crew_and_backup() {
+        let scratch = Scratch::new();
+        let home = scratch.path();
+        let new = assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Robin",
+            principal_pronouns: "they/them",
+        };
+        let old = assistants::make(&home.join("old"), &new, "2026-11-12", "voice").unwrap();
+        fs::write(old.dir.join("IDENTITY.md"), "older identity\n").unwrap();
+        let claude = home.join(".claude");
+        let skill = claude.join("skills/ari");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            format!("--member {}", old.dir.join("member.json").display()),
+        )
+        .unwrap();
+        let state = claude.join("state/ari");
+        fs::create_dir_all(&state).unwrap();
+        fs::write(state.join("decisions.jsonl"), "older history\n").unwrap();
+        fs::write(state.join("consent.json"), "older permission bytes").unwrap();
+        let before = snapshot(home);
+        let error = bring_in_checked(
+            home,
+            &claude,
+            &new,
+            "2026-11-12",
+            "2026-11-12-100000",
+            "voice",
+            &["IDENTITY.md".into()],
+            &|actual_home, dir| {
+                assert_eq!(actual_home, home);
+                assert_eq!(
+                    fs::read(dir.join("IDENTITY.md")).unwrap(),
+                    b"older identity\n"
+                );
+                assert!(!state.join("consent.json").exists());
+                assert!(!state.join("decisions.jsonl").exists());
+                Err(Error::Invalid("invented late failure".into()))
+            },
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error.to_string(), old_files::CANT_BRING);
+        let mut after = snapshot(home);
+        assert_eq!(
+            after.remove(Path::new(".claude/voice-backups")),
+            Some(("folder".into(), vec![]))
+        );
+        assert_eq!(
+            after.remove(Path::new(".claude/voice-backups/ari")),
+            Some(("folder".into(), vec![]))
+        );
+        assert_eq!(after, before);
+        assert!(!claude.join("crew/ari").exists());
+        assert_eq!(
+            fs::read_dir(claude.join("voice-backups/ari"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn authoritative_check_rejects_broken_runtime_privacy_settings() {
+        let scratch = Scratch::new();
+        let home = scratch.path();
+        let made = assistants::make(
+            home,
+            &assistants::New {
+                name: "Ari",
+                pronouns: "they/them",
+                principal: "Robin",
+                principal_pronouns: "they/them",
+            },
+            "2026-11-12",
+            "voice",
+        )
+        .unwrap();
+        for private in [r#"{"filters":{"secret":"("}}"#, r#"{"anonymizer":7}"#] {
+            fs::write(made.dir.join("private.json"), private).unwrap();
+            assert!(check_brought_member(home, &made.dir).is_err());
         }
     }
 }

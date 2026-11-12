@@ -664,7 +664,7 @@ fn pb87c_existing_prints_each_offer_and_problem_then_leave_hint() {
             "Can bring in decisions.md",
             "Can bring in measurements.md",
             "Can bring in briefs",
-            "Can bring in private.json",
+            "Can bring in private.json: Its privacy settings: what the older assistant hid, and any words it let through.",
             "Voice can back it up and bring it in: voice new Ari --bring-in (add --leave <file> to leave a file out)",
         ]
     );

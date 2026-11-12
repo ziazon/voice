@@ -9,9 +9,13 @@ use crate::{
 };
 use std::{
     collections::HashSet,
+    ffi::{CString, OsStr},
     fs::{self, OpenOptions},
     io::Write,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    os::{
+        fd::{AsRawFd, FromRawFd, OwnedFd},
+        unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    },
     path::{Path, PathBuf},
 };
 
@@ -29,8 +33,10 @@ pub struct Offered {
     pub name: &'static str,
     pub problem: Option<&'static str>,
 }
-pub const CANT_BRING: &str = "Voice couldn't bring in the older assistant's own files, so it changed nothing. Untick private.json and autonomy.md, then try again.";
+pub const CANT_BRING: &str = "Voice couldn't bring in the older assistant's own files, so it changed nothing. Leave out private.json and autonomy.md, then try again.";
 const LINK: &str = "It's a link, so Voice leaves it.";
+const SHARED: &str = "It shares its contents with another file, so Voice leaves it.";
+const READ: &str = "Voice can't read it, so Voice leaves it.";
 const FILE: &str = "It isn't a plain file, so Voice leaves it.";
 const FOLDER: &str = "It isn't a plain folder of files, so Voice leaves it.";
 const BIG: &str = "It's too big for Voice to read, so Voice leaves it.";
@@ -38,12 +44,12 @@ const TEXT: &str = "It isn't plain text, so Voice leaves it.";
 const AUTONOMY: &str = "Voice can't read its list of who decides what, so Voice leaves it.";
 const PRIVATE: &str = "It changes more than the privacy settings, so Voice leaves it.";
 const REFUSE_START: &str = "Voice can't bring in ";
-const REFUSE_END: &str = ", so it changed nothing. Untick it and try again.";
+const REFUSE_END: &str = ", so it changed nothing. Leave it out and try again.";
 
 pub fn says(message: &str) -> bool {
     matches!(
         message,
-        CANT_BRING | LINK | FILE | FOLDER | BIG | TEXT | AUTONOMY | PRIVATE
+        CANT_BRING | SHARED | READ | LINK | FILE | FOLDER | BIG | TEXT | AUTONOMY | PRIVATE
     ) || message
         .strip_prefix(REFUSE_START)
         .and_then(|rest| rest.strip_suffix(REFUSE_END))
@@ -68,7 +74,10 @@ impl Checked {
 }
 
 /// The old folder's files Voice can offer, in NAMES order; absent names are left out.
-pub fn offer(folder: &Path) -> Result<Vec<Offered>> {
+pub fn offer(
+    folder: &Path,
+    private_ok: &dyn Fn(&serde_json::Value) -> bool,
+) -> Result<Vec<Offered>> {
     match fs::symlink_metadata(folder) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         metadata => {
@@ -79,7 +88,7 @@ pub fn offer(folder: &Path) -> Result<Vec<Offered>> {
     }
     let mut offered = Vec::new();
     for name in NAMES {
-        if let Some(checked) = check(folder, name)? {
+        if let Some(checked) = check(folder, name, private_ok)? {
             offered.push(Offered {
                 name,
                 problem: checked.problem,
@@ -89,7 +98,11 @@ pub fn offer(folder: &Path) -> Result<Vec<Offered>> {
     Ok(offered)
 }
 
-fn check(folder: &Path, name: &str) -> Result<Option<Checked>> {
+fn check(
+    folder: &Path,
+    name: &str,
+    private_ok: &dyn Fn(&serde_json::Value) -> bool,
+) -> Result<Option<Checked>> {
     let path = folder.join(name);
     let metadata = match fs::symlink_metadata(&path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -99,12 +112,26 @@ fn check(folder: &Path, name: &str) -> Result<Option<Checked>> {
         return Ok(Some(Checked::problem(LINK)));
     }
     if name != "briefs" {
-        return Ok(Some(check_file(&path, Path::new(name), file_cap(name))?));
+        return Ok(Some(check_file(
+            &path,
+            Path::new(name),
+            file_cap(name),
+            private_ok,
+        )?));
     }
     if !metadata.is_dir() {
         return Ok(Some(Checked::problem(FOLDER)));
     }
-    let mut entries = io(&path, fs::read_dir(&path))?
+    let entries = match fs::read_dir(&path) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(Some(Checked::problem(READ))),
+    };
+    let mut entries = entries
+        .filter(|entry| {
+            !entry
+                .as_ref()
+                .is_ok_and(|entry| entry.file_name() == ".DS_Store")
+        })
         .take(65)
         .map(|entry| io(&path, entry))
         .collect::<Result<Vec<_>>>()?;
@@ -121,12 +148,17 @@ fn check(folder: &Path, name: &str) -> Result<Option<Checked>> {
     let mut files = Vec::new();
     for entry in entries {
         let name = entry.file_name();
-        let cap = if name == "codebook.md" {
+        let cap = if name.as_encoded_bytes().eq_ignore_ascii_case(b"codebook.md") {
             64 * 1024 // voice_build::draft::CODEBOOK_MOST; no dependency on the build crate.
         } else {
             1024 * 1024
         };
-        let checked = check_file(&entry.path(), &Path::new("briefs").join(name), cap)?;
+        let checked = check_file(
+            &entry.path(),
+            &Path::new("briefs").join(name),
+            cap,
+            private_ok,
+        )?;
         if checked.problem.is_some() {
             return Ok(Some(checked));
         }
@@ -146,12 +178,19 @@ fn file_cap(name: &str) -> u64 {
     }
 }
 
-fn check_file(path: &Path, relative: &Path, cap: u64) -> Result<Checked> {
+fn check_file(
+    path: &Path,
+    relative: &Path,
+    cap: u64,
+    private_ok: &dyn Fn(&serde_json::Value) -> bool,
+) -> Result<Checked> {
     let metadata = io(path, fs::symlink_metadata(path))?;
     let problem = if metadata.is_symlink() {
         Some(LINK)
     } else if !metadata.is_file() {
         Some(FILE)
+    } else if metadata.nlink() > 1 {
+        Some(SHARED)
     } else if metadata.len() > cap {
         Some(BIG)
     } else {
@@ -171,6 +210,7 @@ fn check_file(path: &Path, relative: &Path, cap: u64) -> Result<Checked> {
                 FILE
             }));
         }
+        Err(Error::Io { .. }) => return Ok(Checked::problem(READ)),
         Err(error) => return Err(error),
     };
     let text = match std::str::from_utf8(&bytes) {
@@ -181,16 +221,16 @@ fn check_file(path: &Path, relative: &Path, cap: u64) -> Result<Checked> {
         return Ok(Checked::problem(AUTONOMY));
     }
     if relative == Path::new("private.json") {
-        let private = serde_json::from_str::<serde_json::Value>(text);
-        if !private
+        let valid = serde_json::from_str::<serde_json::Value>(text)
             .ok()
-            .and_then(|value| value.as_object().cloned())
-            .is_some_and(|object| {
-                object
-                    .keys()
-                    .all(|key| matches!(key.as_str(), "filters" | "anonymizer"))
-            })
-        {
+            .is_some_and(|value| {
+                value.as_object().is_some_and(|object| {
+                    object
+                        .keys()
+                        .all(|key| matches!(key.as_str(), "filters" | "anonymizer"))
+                }) && private_ok(&value)
+            });
+        if !valid {
             return Ok(Checked::problem(PRIVATE));
         }
     }
@@ -202,7 +242,12 @@ fn check_file(path: &Path, relative: &Path, cap: u64) -> Result<Checked> {
 
 /// Copy checked selections from the backup's member copy, then check the new crew folder.
 /// The caller removes the new crew folder and undoes its backup if this returns an error.
-pub fn bring(from: &Path, to: &Path, names: &[String]) -> Result<()> {
+pub fn bring(
+    from: &Path,
+    to: &Path,
+    names: &[String],
+    private_ok: &dyn Fn(&serde_json::Value) -> bool,
+) -> Result<()> {
     let mut seen = HashSet::new();
     let mut selections = Vec::new();
     for name in names {
@@ -212,7 +257,7 @@ pub fn bring(from: &Path, to: &Path, names: &[String]) -> Result<()> {
         if !fs::symlink_metadata(from).is_ok_and(|metadata| metadata.is_dir()) {
             return Err(refusal(name));
         }
-        match check(from, name).map_err(|_| refusal(name))? {
+        match check(from, name, private_ok).map_err(|_| refusal(name))? {
             Some(checked) if checked.problem.is_none() => selections.extend(checked.files),
             _ => return Err(refusal(name)),
         }
@@ -221,34 +266,48 @@ pub fn bring(from: &Path, to: &Path, names: &[String]) -> Result<()> {
 }
 
 fn copy_and_check(to: &Path, files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
-    if !io(to, fs::symlink_metadata(to))?.is_dir() {
-        return Err(Error::Invalid(CANT_BRING.into()));
-    }
+    let directory_flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+    let folder = io(
+        to,
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(directory_flags)
+            .open(to),
+    )?;
     let expected = member::read_member(&to.join("member.json"))?;
+    let mut briefs_folder = None;
     for (relative, bytes) in files {
-        if relative.starts_with("briefs") {
-            let briefs = to.join("briefs");
-            match fs::symlink_metadata(&briefs) {
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    io(&briefs, fs::create_dir(&briefs))?
+        let directory = if relative.starts_with("briefs") {
+            if briefs_folder.is_none() {
+                let briefs = to.join("briefs");
+                let name = CString::new("briefs").expect("literal has no NUL");
+                // SAFETY: folder is an open directory and name is a valid C string.
+                let created = unsafe { libc::mkdirat(folder.as_raw_fd(), name.as_ptr(), 0o700) };
+                if created < 0
+                    && std::io::Error::last_os_error().kind() != std::io::ErrorKind::AlreadyExists
+                {
+                    return io(&briefs, Err(std::io::Error::last_os_error()));
                 }
-                metadata => {
-                    if !io(&briefs, metadata)?.is_dir() {
-                        return Err(Error::Invalid(CANT_BRING.into()));
-                    }
-                }
+                briefs_folder = Some(open_at(
+                    &folder,
+                    OsStr::new("briefs"),
+                    directory_flags,
+                    &briefs,
+                )?);
             }
-        }
+            briefs_folder.as_ref().expect("briefs opened above")
+        } else {
+            &folder
+        };
         let target = to.join(relative);
-        let mut file = io(
+        let name = relative
+            .file_name()
+            .ok_or_else(|| Error::Invalid(CANT_BRING.into()))?;
+        let mut file = open_at(
+            directory,
+            name,
+            libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_NOFOLLOW | libc::O_CLOEXEC,
             &target,
-            OpenOptions::new()
-                .custom_flags(libc::O_NOFOLLOW)
-                .write(true)
-                .truncate(true)
-                .create(true)
-                .mode(0o600)
-                .open(&target),
         )?;
         io(
             &target,
@@ -269,6 +328,28 @@ fn copy_and_check(to: &Path, files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
     }
     MemberDir::open(to)?.autonomy()?;
     Ok(())
+}
+
+fn open_at(
+    directory: &fs::File,
+    name: &OsStr,
+    flags: libc::c_int,
+    path: &Path,
+) -> Result<fs::File> {
+    let bytes = name.as_encoded_bytes();
+    if bytes.is_empty() || bytes.contains(&b'/') || bytes == b"." || bytes == b".." {
+        return Err(Error::Invalid(CANT_BRING.into()));
+    }
+    let name = CString::new(bytes).map_err(|_| Error::Invalid(CANT_BRING.into()))?;
+    // SAFETY: directory is open, name is a single NUL-terminated path part, and mode
+    // is supplied for O_CREAT. The returned descriptor is owned exactly once below.
+    let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), flags, 0o600) };
+    if fd < 0 {
+        return io(path, Err(std::io::Error::last_os_error()));
+    }
+    // SAFETY: openat returned a new, valid descriptor; OwnedFd closes it on every path.
+    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+    Ok(fs::File::from(owned))
 }
 
 #[cfg(test)]

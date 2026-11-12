@@ -24,11 +24,6 @@ pub struct Filters {
 }
 impl Filters {
     pub fn compile(filters: &voice_core::member::Filters) -> Result<Self> {
-        fn compile(key: &str, pattern: &str) -> Result<Regex> {
-            RegexBuilder::new(pattern).case_insensitive(true).build().map_err(|_| {
-                Error::Invalid(format!("member config: filters.{key} is not a valid regex, or it uses look-around or a backreference, which Voice can't read"))
-            })
-        }
         Ok(Self {
             excluded: compile("excluded_folders", &filters.excluded_folders)?,
             personal: compile("personal", &filters.personal)?,
@@ -70,4 +65,16 @@ impl Filters {
         }
         found.into_iter().collect()
     }
+}
+
+fn compile(key: &str, pattern: &str) -> Result<Regex> {
+    RegexBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()
+        .map_err(|_| Error::Invalid(format!("member config: filters.{key} is not a valid regex, or it uses look-around or a backreference, which Voice can't read")))
+}
+
+/// Check a private filter with the same regex builder used at runtime.
+pub fn check_pattern(key: &str, pattern: &str) -> Result<()> {
+    compile(key, pattern).map(|_| ())
 }
