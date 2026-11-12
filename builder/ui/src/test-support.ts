@@ -88,7 +88,7 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     showClaudeAiFiles: vi.fn().mockResolvedValue(undefined),
     forgetPreview: vi.fn().mockResolvedValue({ files: 0 }),
     forget: vi.fn().mockResolvedValue({ message: 'Deleted 7 files.' }),
-    buildAssistant: vi.fn().mockResolvedValue({ answered: 2, heldOut: 0, tested: true, spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } }),
+    buildAssistant: vi.fn<Backend['buildAssistant']>().mockResolvedValue({ answered: 2, heldOut: 0, tested: true, spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } }),
     stopBuild: vi.fn().mockResolvedValue(undefined),
     spendToday: vi.fn().mockResolvedValue({ spentUsd: 0, dailyCapUsd: 50, usage: null }),
     spendingLimit: vi.fn().mockResolvedValue({ dailyUsd: 50, callUsd: 5 }),

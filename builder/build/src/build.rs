@@ -28,7 +28,7 @@ use voice_steps::{
     input::{RecordList, Records, read_json},
     labels::{Mode, Row, label_problems, tally},
     score::{Score, TIERS, score},
-    shingle::overlaps,
+    shingle::{overlaps, runs},
     similar::{similar, similar_text},
     text_check::hidden,
 };
@@ -577,6 +577,11 @@ pub fn check_distil_reply(
                 "Voice couldn't check it for your own words",
             )
         })?;
+    let point_runs: HashSet<String> = text.iter().flat_map(|point| runs(point, SHINGLE)).collect();
+    let quoted: Vec<_> = quoted
+        .into_iter()
+        .filter(|run| point_runs.contains(run))
+        .collect();
     if !quoted.is_empty() {
         let runs: Vec<String> = quoted
             .iter()
@@ -595,6 +600,124 @@ pub fn check_distil_reply(
         ));
     }
     Ok(rendered)
+}
+
+/// Keep only points that can pass the distil check, without inventing or rewriting text.
+/// Malformed lists and missing lean points remain for the check to reject and retry.
+pub fn repair_distil_reply(
+    categories: &[(String, usize)],
+    corpus_name: &str,
+    records: &Records,
+    filters: &Filters,
+    reply: &Value,
+) -> Value {
+    let Some(sections) = reply.get("sections").and_then(Value::as_array) else {
+        return reply.clone();
+    };
+    let mut seen = HashSet::new();
+    let mut kept = Vec::new();
+    let mut candidates = Vec::new();
+    for section in sections {
+        let Some(category) = section.get("category").and_then(Value::as_str) else {
+            continue;
+        };
+        if !section.is_object()
+            || !categories.iter().any(|(asked, _)| asked == category)
+            || !seen.insert(category)
+        {
+            continue;
+        }
+        let mut section = section.clone();
+        let lists = LISTS
+            .iter()
+            .map(|(key, _, _)| {
+                section
+                    .get(*key)?
+                    .as_array()?
+                    .iter()
+                    .map(Value::as_str)
+                    .collect::<Option<Vec<_>>>()
+            })
+            .collect::<Option<Vec<_>>>();
+        if let Some(lists) = lists {
+            let clean: Vec<Vec<Value>> = lists
+                .iter()
+                .zip(LISTS)
+                .map(|(list, (key, _, _))| {
+                    list.iter()
+                        .map(|point| point.trim())
+                        .filter(|point| {
+                            !point.is_empty()
+                                && !point.contains(['\n', '\r'])
+                                && !point.chars().any(hidden)
+                                && point.chars().count() <= MAX_POINT
+                                && (key != "precedents" || dated(point))
+                                && filters.kind(point).is_none()
+                        })
+                        .map(|point| Value::String(point.to_owned()))
+                        .collect()
+                })
+                .collect();
+            for ((key, _, _), points) in LISTS.into_iter().zip(clean) {
+                candidates.extend(points.iter().filter_map(Value::as_str).map(str::to_owned));
+                section[key] = Value::Array(points);
+            }
+        }
+        kept.push(section);
+    }
+    // A malformed corpus must still fail the normal check; do not hide its error.
+    let Ok(quoted) = overlaps(&candidates.join("\n"), &[(corpus_name, records)], SHINGLE) else {
+        return reply.clone();
+    };
+    let quoted: std::collections::BTreeSet<_> = quoted.into_iter().collect();
+    for section in &mut kept {
+        if !LISTS.iter().all(|(key, _, _)| {
+            section
+                .get(*key)
+                .and_then(Value::as_array)
+                .is_some_and(|list| list.iter().all(Value::is_string))
+        }) {
+            continue;
+        }
+        for (key, _, most) in LISTS {
+            if let Some(list) = section.get_mut(key).and_then(Value::as_array_mut) {
+                list.retain(|point| {
+                    point
+                        .as_str()
+                        .is_some_and(|point| runs(point, SHINGLE).is_disjoint(&quoted))
+                });
+                list.truncate(most);
+            }
+        }
+        loop {
+            let words: usize = LISTS
+                .iter()
+                .filter_map(|(key, _, _)| section[*key].as_array())
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|point| point.split_whitespace().count())
+                .sum();
+            if words <= MAX_WORDS {
+                break;
+            }
+            let mut dropped = false;
+            for key in ["precedents", "rules", "own_answer", "flips", "lean"] {
+                if let Some(list) = section.get_mut(key).and_then(Value::as_array_mut)
+                    && list.len() > usize::from(key == "lean")
+                {
+                    list.pop();
+                    dropped = true;
+                    break;
+                }
+            }
+            if !dropped {
+                break;
+            }
+        }
+    }
+    let mut repaired = reply.clone();
+    repaired["sections"] = Value::Array(kept);
+    repaired
 }
 
 /// The held-out questions in batches of near-equal size, about [`BATCH`] each.
@@ -1259,6 +1382,22 @@ pub fn build(
                     inputs.filters,
                     reply,
                 )
+                .or_else(|original_misfit| {
+                    check_distil_reply(
+                        &categories,
+                        inputs.corpus_name,
+                        &records,
+                        inputs.filters,
+                        &repair_distil_reply(
+                            &categories,
+                            inputs.corpus_name,
+                            &records,
+                            inputs.filters,
+                            reply,
+                        ),
+                    )
+                    .map_err(|_| original_misfit)
+                })
             })?;
         rendered.extend(written);
         done += 1;

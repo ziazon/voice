@@ -1,3 +1,4 @@
+import type { BuildRequest } from '../types/generated/BuildRequest'
 import type { AskAnswer } from '../types/generated/AskAnswer'
 import type { Permissions } from '../types/generated/Permissions'
 import type { PermissionsChanged } from '../types/generated/PermissionsChanged'
@@ -77,7 +78,7 @@ export const tauriBackend: Backend = {
     channel.onmessage = onProgress
     return invoke<RefreshApplied>('apply_refresh', { request, onProgress: channel })
   },
-  buildAssistant: (request, onProgress) => {
+  buildAssistant: (request: BuildRequest, onProgress) => {
     const channel = new Channel<BuildProgress>()
     channel.onmessage = onProgress
     return invoke<BuildDone>('build_assistant', { request, onProgress: channel })

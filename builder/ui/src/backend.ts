@@ -1,3 +1,4 @@
+import type { BuildRequest } from './types/generated/BuildRequest'
 import type { AskRequest } from './types/generated/AskRequest'
 import type { AskAnswer } from './types/generated/AskAnswer'
 import type { Permissions } from './types/generated/Permissions'
@@ -97,7 +98,7 @@ export interface Backend {
   draftRefresh(request: SlugRequest): Promise<RefreshDrafted>
   answerRefresh(request: RefreshAnswerRequest): Promise<ReviewStatus>
   applyRefresh(request: RefreshApplyRequest, onProgress: (progress: BuildProgress) => void): Promise<RefreshApplied>
-  buildAssistant(request: SlugRequest, onProgress: (progress: BuildProgress) => void): Promise<BuildDone>
+  buildAssistant(request: BuildRequest, onProgress: (progress: BuildProgress) => void): Promise<BuildDone>
   stopBuild(request: SlugRequest): Promise<void>
   spendToday(request: SlugRequest): Promise<Spend>
   spendingLimit(request: SlugRequest): Promise<SpendingLimit>

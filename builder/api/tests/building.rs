@@ -103,7 +103,10 @@ impl Home {
             &self.path,
             Some(self.bin.as_os_str()),
             &[],
-            slug(),
+            BuildRequest {
+                slug: "wren".into(),
+                no_limit: false,
+            },
             progress,
         )
     }
@@ -251,9 +254,17 @@ fn every_command_requires_permission_and_valid_assistant_without_writing() {
         let before = fs::read_dir(h.state("")).into_iter().flatten().count();
         safe(
             &h,
-            build_assistant_in(&builds, &h.path, None, &[], request(), &mut |_| {
-                panic!("gate sent progress")
-            }),
+            build_assistant_in(
+                &builds,
+                &h.path,
+                None,
+                &[],
+                BuildRequest {
+                    slug: s.into(),
+                    no_limit: false,
+                },
+                &mut |_| panic!("gate sent progress"),
+            ),
             expected,
         );
         safe(&h, spend_today_in(&h.path, None, &[], request()), expected);
@@ -1291,4 +1302,82 @@ fn build_progress_carries_the_steps() {
     let steps = last.steps.as_ref().unwrap();
     assert!(steps.total > 0);
     assert_eq!(steps.done, steps.total);
+}
+
+#[test]
+fn no_limit_applies_only_to_this_build_and_omits_the_call_budget() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s);
+    set_spending_limit_in(&h.path, limit_request(0.01, 0.01)).unwrap();
+    let saved = fs::read(h.state("limit.json")).unwrap();
+    h.write(
+        "runs.jsonl",
+        format!(
+            "{}\n",
+            json!({"day":local_day(SystemTime::now()),"cost_usd":0.02})
+        )
+        .as_bytes(),
+    );
+    safe(
+        &h,
+        h.build(&Builds::new(), &mut |_| {}),
+        "Today's spending limit for this assistant is reached: about $0.02 of $0.01, as Claude Code estimates it. Run the build again tomorrow to carry on.",
+    );
+    assert_eq!(h.calls(), 0);
+    let request = serde_json::from_value(json!({"slug":"wren","noLimit":true})).unwrap();
+    let done = build_assistant_in(
+        &Builds::new(),
+        &h.path,
+        Some(h.bin.as_os_str()),
+        &[],
+        request,
+        &mut |_| {},
+    )
+    .unwrap();
+    assert_eq!(done.spend.daily_cap_usd, 0.0);
+    assert!(h.calls() > 0);
+    for n in 0..h.calls() {
+        let argv: Vec<String> =
+            serde_json::from_slice(&fs::read(h.bin.join(format!("argv{n}"))).unwrap()).unwrap();
+        assert!(!argv.iter().any(|arg| arg == "--max-budget-usd"));
+    }
+    assert_eq!(fs::read(h.state("limit.json")).unwrap(), saved);
+}
+
+#[test]
+fn the_retry_screen_pins_the_agents_plan_limit_message() {
+    let source = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui/src/screens/build/keepGoing.ts"),
+    )
+    .unwrap();
+    assert!(source.contains(agent_text::PLAN_STOPPED));
+}
+
+#[test]
+fn a_rejected_claude_plan_reaches_the_app_as_the_plan_limit_message() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    let h = Home::new(true);
+    h.corpus(12, 32);
+    h.stub(|s| s.replace("    first = prompt.split", "    print(json.dumps({\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":1793003600,\"rateLimitType\":\"five_hour\",\"utilization\":1.0},\"uuid\":\"event-1\",\"session_id\":\"s-1\"}))\n    print(json.dumps({\"type\":\"result\",\"is_error\":True,\"result\":\"You've hit your limit\",\"total_cost_usd\":0.0}))\n    return 0\n    first = prompt.split"));
+    safe(
+        &h,
+        h.build(&Builds::new(), &mut |_| {}),
+        agent_text::PLAN_STOPPED,
+    );
+    assert_eq!(h.calls(), 1);
+}
+
+#[test]
+fn the_build_request_accepts_a_per_build_no_limit_choice() {
+    let request: BuildRequest =
+        serde_json::from_value(json!({"slug":"wren","noLimit":true})).unwrap();
+    assert_eq!(
+        serde_json::to_value(request).unwrap(),
+        json!({"slug":"wren","noLimit":true})
+    );
+    let default: BuildRequest = serde_json::from_value(json!({"slug":"wren"})).unwrap();
+    assert!(!default.no_limit);
+    assert!(serde_json::from_value::<BuildRequest>(json!({"slug":"wren","extra":true})).is_err());
 }

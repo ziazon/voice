@@ -147,7 +147,7 @@ it('enables Your assistants after forgetting during an unsettled build', async (
   await button(wrapper, 'Open').trigger('click'); await flushPromises()
   await button(wrapper, 'Build').trigger('click'); await flushPromises()
   await button(wrapper, 'Start the build').trigger('click'); await flushPromises()
-  expect(backend.buildAssistant).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug }, expect.any(Function))
+  expect(backend.buildAssistant).toHaveBeenCalledExactlyOnceWith({ slug: assistant.slug, noLimit: false }, expect.any(Function))
   expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeDefined()
   expect(wrapper.text()).toContain('Stop the build first to choose another assistant.')
   await button(wrapper, 'Save').trigger('click'); await flushPromises()

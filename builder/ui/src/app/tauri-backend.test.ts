@@ -104,8 +104,8 @@ it.each([
 it('buildAssistant passes a progress channel', async () => {
   const onProgress = vi.fn()
   vi.mocked(invoke).mockClear().mockResolvedValue('answer')
-  expect(await tauriBackend.buildAssistant({ slug: 'example' }, onProgress)).toBe('answer')
-  expect(invoke).toHaveBeenCalledExactlyOnceWith('build_assistant', { request: { slug: 'example' }, onProgress: expect.any(Channel) })
+  expect(await tauriBackend.buildAssistant({ slug: 'example', noLimit: true }, onProgress)).toBe('answer')
+  expect(invoke).toHaveBeenCalledExactlyOnceWith('build_assistant', { request: { slug: 'example', noLimit: true }, onProgress: expect.any(Channel) })
   const args = vi.mocked(invoke).mock.calls[0]![1] as { onProgress: Channel<unknown> }
   args.onProgress.onmessage({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } })
   expect(onProgress).toHaveBeenCalledExactlyOnceWith({ line: 'Reading your history', spend: { spentUsd: 1, dailyCapUsd: 50, usage: null } })

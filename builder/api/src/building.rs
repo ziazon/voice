@@ -104,6 +104,9 @@ impl Drop for Running<'_> {
 }
 pub(crate) fn open(home: &Path, slug: &str) -> Result<Session> {
     let cap = Cap::load(home, slug).map_err(|_| failure(LIMIT_DAMAGED))?;
+    open_with(home, slug, cap)
+}
+fn open_with(home: &Path, slug: &str, cap: Cap) -> Result<Session> {
     Session::open_existing(home, slug, cap).map_err(|e| match e {
         Error::Invalid(message) if message == private::BUSY => failure(BUSY),
         Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
@@ -151,7 +154,7 @@ pub fn build_assistant_in(
     home: &Path,
     path: Option<&OsStr>,
     fallbacks: &[PathBuf],
-    request: SlugRequest,
+    request: BuildRequest,
     progress: &mut dyn FnMut(BuildProgress),
 ) -> Result<BuildDone> {
     let dir = assistants::assistant_dir(home, &request.slug).map_err(|_| failure(FIND))?;
@@ -177,7 +180,15 @@ pub fn build_assistant_in(
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member).map_err(|_| failure(SETTINGS))?,
     );
-    let session = open(home, &request.slug)?;
+    let session = if request.no_limit {
+        open_with(
+            home,
+            &request.slug,
+            Cap::new(0.0, 0.0).map_err(|_| failure(LIMIT_BAD))?,
+        )?
+    } else {
+        open(home, &request.slug)?
+    };
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
     }
@@ -554,7 +565,7 @@ pub fn keep_interview_answers_in(home: &Path, request: SlugRequest) -> Result<In
     })
 }
 pub fn build_assistant(
-    request: SlugRequest,
+    request: BuildRequest,
     progress: &mut dyn FnMut(BuildProgress),
 ) -> Result<BuildDone> {
     let home = home(FIND)?;

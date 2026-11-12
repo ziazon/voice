@@ -4,7 +4,7 @@ The test copies it into a folder of its own, with a `#!` line naming the Python 
 keeps its argv (a JSON list) and stdin there (`argv<N>`, `stdin<N>`); `plan.json` there can make call N answer
 `bad` (a reply that fails the build's check), `quote` (a distilled point that repeats the record's
 own words) or `error` (a failed run). For label and backtest, `missing` drops the first
-entry and `first` answers with only the first entry, correct.
+entry and `first` answers with only the first entry, correct. A JSON object supplies the reply directly.
 """
 import json
 import os
@@ -33,7 +33,9 @@ def main():
     if how == "error":
         return 1
     first = prompt.split("\n", 1)[0]
-    if first.startswith("Label"):
+    if isinstance(how, dict):
+        out = how
+    elif first.startswith("Label"):
         out = label(prompt, how)
     elif first.startswith("Write how"):
         out = distil(prompt, how)

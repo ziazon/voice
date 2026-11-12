@@ -10,11 +10,18 @@ const FIELDS: [&str; 5] = ["text", "own_words", "notes", "question", "context"];
 static TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new("[a-z0-9']+").expect("token pattern"));
 
 fn shingles(text: &str, n: usize, into: &mut BTreeSet<String>) {
+    into.extend(runs(text, n));
+}
+
+/// Every `n`-word run, with the same tokens used by [`overlaps`].
+pub fn runs(text: &str, n: usize) -> BTreeSet<String> {
+    let mut into = BTreeSet::new();
     let lower = text.to_lowercase();
     let tokens: Vec<&str> = TOKEN.find_iter(&lower).map(|m| m.as_str()).collect();
     for run in tokens.windows(n) {
         into.insert(run.join(" "));
     }
+    into
 }
 
 /// Every `n`-word run the doc shares with the corpora's own words, sorted.
@@ -46,4 +53,30 @@ pub fn render(hits: &[String]) -> String {
         out.push_str(&format!("   {h}\n"));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runs_use_the_same_case_apostrophe_and_punctuation_tokens_as_overlaps() {
+        let text = "Sam's PLAN: keep 2, small steps!";
+        let expected = BTreeSet::from([
+            "sam's plan keep".into(),
+            "plan keep 2".into(),
+            "keep 2 small".into(),
+            "2 small steps".into(),
+        ]);
+        assert_eq!(runs(text, 3), expected);
+        let records = vec![(
+            1,
+            serde_json::from_value(serde_json::json!({"kind":"message", "text":text})).unwrap(),
+        )];
+        assert_eq!(
+            overlaps(text, &[("fixture", &records)], 3).unwrap(),
+            expected.into_iter().collect::<Vec<_>>()
+        );
+        assert!(runs("short", 6).is_empty());
+    }
 }

@@ -80,6 +80,15 @@ pub struct SlugRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
+pub struct BuildRequest {
+    pub slug: String,
+    #[serde(default)]
+    pub no_limit: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
 pub struct FindExistingRequest {
     pub name: String,
 }

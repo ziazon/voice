@@ -255,7 +255,7 @@ pub fn forget(
 
 #[tauri::command(async)]
 pub fn build_assistant(
-    request: voice_api::dto::SlugRequest,
+    request: voice_api::dto::BuildRequest,
     on_progress: tauri::ipc::Channel<voice_api::dto::BuildProgress>,
 ) -> Result<voice_api::dto::BuildDone, voice_api::dto::Failure> {
     voice_api::build_assistant(request, &mut |p| {

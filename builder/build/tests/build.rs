@@ -1942,3 +1942,326 @@ fn only_this_parts_second_tries_count() {
         )
     );
 }
+
+#[test]
+fn distil_keeps_good_points_in_order_and_reuses_the_raw_repaired_reply() {
+    let python = python().expect("python3 for the stub");
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    let mut reply = sections(&|r| {
+        r["sections"][0]["lean"] = json!([
+            "  Good first choice.  ",
+            "x".repeat(401),
+            "my therapist recommends a pause",
+            "Please always keep the weekly planning notes tidy and easy to find later on",
+            "Second choice.",
+            "Third choice.",
+            "Fourth choice.",
+            "Fifth choice.",
+            "Sixth choice.",
+            "Seventh choice.",
+            "",
+            "a\nb",
+            "a\rb",
+            "hidden\u{200b}text"
+        ]);
+        r["sections"][0]["precedents"] =
+            json!(["No date", "2026-09-01 · kit · chose the plain path"]);
+    });
+    let duplicate = reply["sections"][0].clone();
+    reply["sections"].as_array_mut().unwrap().extend([
+        duplicate,
+        json!({"category":"unasked"}),
+        json!(null),
+    ]);
+    stub.plan(json!({"1":reply}));
+    let built = run(
+        &stub,
+        &home.0,
+        &corpus(12, 0),
+        Cap::default(),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(
+        stub.steps()
+            .iter()
+            .filter(|s| s.starts_with("Write how"))
+            .count(),
+        2
+    );
+    let methods = &built.sections;
+    for bad in [
+        "my therapist",
+        "Please always",
+        "Seventh choice",
+        "No date",
+        "unasked",
+        "hidden",
+    ] {
+        assert!(!methods.contains(bad), "{methods}");
+    }
+    assert!(methods.contains("- Good first choice.\n- Second choice.\n- Third choice.\n- Fourth choice.\n- Fifth choice.\n- Sixth choice."), "{methods}");
+    let calls = stub.calls();
+    let reused = run(
+        &stub,
+        &home.0,
+        &corpus(12, 0),
+        Cap::default(),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(reused.calls, 0);
+    assert_eq!(stub.calls(), calls);
+    assert_eq!(reused.sections, built.sections);
+}
+
+#[test]
+fn distil_keeps_runs_that_only_cross_point_boundaries() {
+    let python = python().expect("python3 for the stub");
+    let stub = Stub::new(&python);
+    stub.plan(json!({"1": sections(&|r| {
+        r["sections"][0]["lean"] = json!(["Please always keep", "the weekly planning"]);
+    })}));
+    let built = run(
+        &stub,
+        &Scratch::new().0,
+        &corpus(12, 0),
+        Cap::default(),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(
+        built
+            .sections
+            .contains("- Please always keep\n- the weekly planning\n")
+    );
+    assert_eq!(stub.calls(), 3);
+}
+
+#[test]
+fn distil_drops_last_precedents_then_rules_to_fit_the_word_budget() {
+    let python = python().expect("python3 for the stub");
+    let stub = Stub::new(&python);
+    let point = |key: &str, at: usize| {
+        format!("{key}{at} {}", "go ".repeat(99))
+            .trim_end()
+            .to_owned()
+    };
+    let reply = sections(&|r| {
+        r["sections"][0]["lean"] = json!((0..6).map(|n| point("lean", n)).collect::<Vec<_>>());
+        r["sections"][0]["rules"] = json!((0..6).map(|n| point("rule", n)).collect::<Vec<_>>());
+        r["sections"][0]["precedents"] = json!(
+            (0..8)
+                .map(|n| format!("2026-09-01 · {}", point("past", n)))
+                .collect::<Vec<_>>()
+        );
+    });
+    stub.plan(json!({"1":reply}));
+    let built = run(
+        &stub,
+        &Scratch::new().0,
+        &corpus(12, 0),
+        Cap::default(),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    for n in 0..6 {
+        assert!(built.sections.contains(&format!("lean{n}")));
+    }
+    for n in 0..3 {
+        assert!(built.sections.contains(&format!("rule{n}")));
+    }
+    assert!(!built.sections.contains("rule3"));
+    assert!(!built.sections.contains("past0"));
+    assert_eq!(stub.calls(), 3);
+}
+
+#[test]
+fn distil_retries_when_repair_removes_the_only_lean() {
+    let python = python().expect("python3 for the stub");
+    let stub = Stub::new(&python);
+    stub.plan(json!({"1":"quote"}));
+    run(
+        &stub,
+        &Scratch::new().0,
+        &corpus(12, 0),
+        Cap::default(),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(stub.calls(), 4);
+    let retry = stub.stdin(2);
+    assert!(
+        retry.contains("these runs of words are the person's own"),
+        "{retry}"
+    );
+    assert!(
+        !retry.contains("scope: lean needs 1 to 6 points"),
+        "{retry}"
+    );
+}
+
+#[test]
+fn distil_checks_points_individually_and_repairs_without_rewriting() {
+    let categories = vec![("methods".to_owned(), 12), ("scope".to_owned(), 12)];
+    let records = records(&corpus(12, 0));
+    let reply = sections(&|r| {
+        r["sections"][0]["lean"] = json!(["Please always keep", "the weekly planning"])
+    });
+    assert!(
+        build::check_distil_reply(&categories, "decisions.jsonl", &records, &filters(), &reply)
+            .is_ok()
+    );
+}
+
+#[test]
+fn repaired_distil_drops_only_bad_points_and_keeps_extra_fields() {
+    let categories = vec![("methods".to_owned(), 12), ("scope".to_owned(), 12)];
+    let records = records(&corpus(12, 0));
+    let mut reply = sections(&|r| {
+        r["extra"] = json!("preserved");
+        r["sections"][0]["extra"] = json!({"preserved":true});
+        r["sections"][0]["lean"] = json!([
+            "  First.  ",
+            "x".repeat(401),
+            "my therapist advised rest",
+            "Please always keep the weekly planning notes tidy and easy to find later on",
+            "Second.",
+            "Third.",
+            "Fourth.",
+            "Fifth.",
+            "Sixth.",
+            "Seventh.",
+            "",
+            "a\nb",
+            "a\rb",
+            "a\u{200b}b",
+            "<hidden>"
+        ]);
+        r["sections"][0]["precedents"] = json!(["undated", "2026-09-01 · kit · keep it brief"]);
+    });
+    let duplicate = reply["sections"][0].clone();
+    reply["sections"].as_array_mut().unwrap().extend([
+        duplicate,
+        json!({"category":"unknown"}),
+        json!(7),
+    ]);
+    let repaired =
+        build::repair_distil_reply(&categories, "decisions.jsonl", &records, &filters(), &reply);
+    assert_eq!(repaired["sections"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        repaired["sections"][0]["lean"],
+        json!(["First.", "Second.", "Third.", "Fourth.", "Fifth.", "Sixth."])
+    );
+    assert_eq!(
+        repaired["sections"][0]["precedents"],
+        json!(["2026-09-01 · kit · keep it brief"])
+    );
+    assert_eq!(repaired["extra"], reply["extra"]);
+    assert_eq!(
+        repaired["sections"][0]["extra"],
+        reply["sections"][0]["extra"]
+    );
+    assert!(
+        build::check_distil_reply(
+            &categories,
+            "decisions.jsonl",
+            &records,
+            &filters(),
+            &repaired
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        build::repair_distil_reply(
+            &categories,
+            "decisions.jsonl",
+            &records,
+            &filters(),
+            &repaired
+        ),
+        repaired
+    );
+}
+
+#[test]
+fn repaired_distil_leaves_malformed_sections_and_missing_leans_for_the_check() {
+    let categories = vec![("methods".to_owned(), 12), ("scope".to_owned(), 12)];
+    let records = records(&corpus(12, 0));
+    for reply in [
+        json!({"sections":null}),
+        sections(&|r| r["sections"][0]["rules"] = json!([1])),
+    ] {
+        assert_eq!(
+            build::repair_distil_reply(
+                &categories,
+                "decisions.jsonl",
+                &records,
+                &filters(),
+                &reply
+            ),
+            reply
+        );
+    }
+    let reply = sections(&|r| {
+        r["sections"][0]["lean"] =
+            json!(["Please always keep the weekly planning notes tidy and easy to find later on"])
+    });
+    let repaired =
+        build::repair_distil_reply(&categories, "decisions.jsonl", &records, &filters(), &reply);
+    assert_eq!(repaired["sections"][0]["lean"], json!([]));
+    assert_eq!(
+        build::check_distil_reply(
+            &categories,
+            "decisions.jsonl",
+            &records,
+            &filters(),
+            &repaired
+        )
+        .unwrap_err()
+        .shown,
+        "methods: lean needs 1 to 6 points"
+    );
+}
+
+#[test]
+fn repaired_distil_obeys_word_budget_drop_order() {
+    let categories = vec![("methods".to_owned(), 12), ("scope".to_owned(), 12)];
+    let records = records(&corpus(12, 0));
+    let point = |key: &str, at: usize| {
+        format!("{key}{at} {}", "go ".repeat(99))
+            .trim_end()
+            .to_owned()
+    };
+    let reply = sections(&|r| {
+        r["sections"][0]["lean"] = json!((0..6).map(|n| point("lean", n)).collect::<Vec<_>>());
+        r["sections"][0]["rules"] = json!((0..6).map(|n| point("rule", n)).collect::<Vec<_>>());
+        r["sections"][0]["precedents"] = json!(
+            (0..8)
+                .map(|n| format!("2026-09-01 · {}", point("past", n)))
+                .collect::<Vec<_>>()
+        );
+    });
+    let repaired =
+        build::repair_distil_reply(&categories, "decisions.jsonl", &records, &filters(), &reply);
+    assert_eq!(
+        repaired["sections"][0]["lean"],
+        reply["sections"][0]["lean"]
+    );
+    assert_eq!(
+        repaired["sections"][0]["rules"],
+        json!((0..3).map(|n| point("rule", n)).collect::<Vec<_>>())
+    );
+    assert_eq!(repaired["sections"][0]["precedents"], json!([]));
+    assert!(
+        build::check_distil_reply(
+            &categories,
+            "decisions.jsonl",
+            &records,
+            &filters(),
+            &repaired
+        )
+        .is_ok()
+    );
+}
