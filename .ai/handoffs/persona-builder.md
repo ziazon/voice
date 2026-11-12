@@ -15,7 +15,7 @@ One record per slice, newest first. Paraphrase only; no real person.
   followed), 0600, and reads the folder back (`read_member`, the filters compiled, the anonymizer rules
   parsed); any failure undoes the whole bring-in. `SKILL.md` and `member.json` stay Voice's. `voice new
   --bring-in --leave <file>`, `voice existing` and the tick boxes on *Make a new assistant* share it. Briefs:
-  `plans/briefs/PB8.7c-choose-old-files.md`, `-fixup-1.md`, `-fixup-2.md`.
+  `plans/briefs/PB8.7c-choose-old-files.md`, `-fixup-1.md`, `-fixup-2.md`, `-fixup-3.md`.
 - **Decisions at pickup** (the spec leaves them open; each takes the safe side): `decisions.md` capped at
   256 KiB and `briefs/codebook.md` at 64 KiB, the sizes Voice reads; `private.json` may hold only `filters` and
   `anonymizer`, since `read_member` lets any other key replace a `member.json` field (name, private folder);
@@ -31,10 +31,27 @@ One record per slice, newest first. Paraphrase only; no real person.
   Security review (Opus, `20018ca`): no HIGH or MEDIUM, four LOW, fixed in fix-up 1 (LOW 4b, a failed clean-up
   leaving a half-made folder, is PB8.7b's existing behaviour). Verifier (Fable, `20018ca`): claims 1, 2, 4, 5
   verified, 3 and 6 partly; 8 mutations killed, 9 survived (pinned in fix-up 1).
-- **Owed before the land:** the delta Verifier (Opus) on `8b2fb60` (fix-ups past 60 lines), then
-  `bash scripts/ci-local.sh` green (this run's gate was cut off by the run's time limit).
+- **The delta passes and fix-up 3** (run `125732-r1`): delta security review (Opus, `20018ca..8b2fb60`): no HIGH
+  or MEDIUM, three LOW: `private.json` filters Voice never reads were compiled (a large file of them stalled the
+  offer), a filter matching empty text (`(?:)`, `|`, `a*`) still came in and marked all text secret, and a hard
+  link planted in the new folder was written through. Delta Verifier (Opus, same range): PASS on reading (the
+  machine's load gate held, so no mutation ran), one should-fix: a `briefs` folder Voice can list but not
+  search made the offer fail instead of leaving `briefs` out. Fix-up 3 (`plans/briefs/PB8.7c-fixup-3.md`,
+  Codex, `1a2335e`) fixes all four: only the three filters Voice compiles are compiled; `check_pattern`
+  refuses a pattern matching empty text; each target is unlinked and created fresh (`O_EXCL`), so a planted
+  link of either kind is replaced, never written through (two fix-up 1 tests now say "replaces"); entry and
+  metadata errors in `briefs` are the `READ` problem. Red first per Codex. My mutations on fix-up 3: no
+  `unlinkat` fails 4 tests, no empty-match check fails 5. The delta Verifier's six unrun mutations: I ran
+  five on `1a2335e` (no link-count check, no `.DS_Store` skip, a case-sensitive codebook cap, unreadable as
+  `FILE`, no `O_NOFOLLOW` on folders), each failed its test; the sixth (no consent restore) is the one
+  killed above. Repeat Verifier (Opus, `0178ed3..1a2335e`): PASS on reading (the gate held again), two nits
+  left: `.` as a filter still matches nearly everything (fails closed, toward hiding more), and no test puts
+  a folder at a target name (it errors into the undo, by reading).
+- **Gate:** `bash scripts/ci-local.sh` all passed on `1a2335e` (2 workers, the load gate at throttle).
 - **Known limits:** the after-copy check is a second line of defence the offer rules already cover, tested
-  through a private seam. Light and dark not looked at (owed to an attended pass).
+  through a private seam. The offer's link-count check and the read that follows it are two path lookups, and
+  the after-copy read-back reads by path: a same-user race only. Light and dark not looked at (owed to an
+  attended pass).
 
 ## PB8.7b: back an older assistant up, then bring its history in (2026-11-12, lane: V1)
 
