@@ -286,32 +286,31 @@ pub fn check_label_reply(
     }
     if !repeated.is_empty() || repeated_extra > 0 {
         let mut told = Vec::new();
+        let mut shown = Vec::new();
         if !repeated.is_empty() {
             told.push(format!(
                 "these records are labelled more than once: {}",
                 repeated.join(", ")
             ));
+            shown.push(format!(
+                "{} labelled more than once",
+                counted(repeated.len(), "record was", "records were")
+            ));
         }
         if repeated_extra > 0 {
             told.push(format!(
-                "and {repeated_extra} labels for ids that are not records here are repeated"
+                "leave out the {repeated_extra} repeated labels whose id is not a record here"
+            ));
+            shown.push(counted(
+                repeated_extra,
+                "label was for a record that isn't there",
+                "labels were for records that aren't there",
             ));
         }
-        let n = repeated.len() + repeated_extra;
-        return Err(Misfit::new(
-            told.join("; "),
-            format!(
-                "{} labelled more than once",
-                counted(n, "record was", "records were")
-            ),
-        ));
+        return Err(Misfit::new(told.join("; "), shown.join(", ")));
     }
     let problems = label_problems(book, &part.name, &part.records, &labels, part.mode)
         .map_err(|error| Misfit::new(error.to_string(), "Voice couldn't check its labels"))?;
-    let problems: Vec<_> = problems
-        .into_iter()
-        .filter(|p| !p.starts_with("ids differ: "))
-        .collect();
     let missing: Vec<_> = part
         .records
         .iter()
@@ -322,6 +321,11 @@ pub fn check_label_reply(
         .keys()
         .filter(|id| !kinds.contains_key(id.as_str()))
         .count();
+    let count_problem = format!("ids differ: missing {}, extra {}", missing.len(), extra);
+    let problems: Vec<_> = problems
+        .into_iter()
+        .filter(|p| p != &count_problem)
+        .collect();
     let mut told = Vec::new();
     let mut shown = Vec::new();
     if !missing.is_empty() {
@@ -554,7 +558,10 @@ pub fn check_distil_reply(
                 "these points look personal or secret, so leave that detail out: {}",
                 marked.join("; ")
             ),
-            format!("{} points looked personal or secret", marked.len()),
+            format!(
+                "{} personal or secret",
+                counted(marked.len(), "point looked", "points looked")
+            ),
         ));
     }
     let text: Vec<&str> = points
@@ -580,8 +587,8 @@ pub fn check_distil_reply(
                 runs.join(", ")
             ),
             format!(
-                "{} runs of {SHINGLE} or more of their own words",
-                quoted.len()
+                "{} of {SHINGLE} or more of your own words",
+                counted(quoted.len(), "run", "runs")
             ),
         ));
     }

@@ -699,6 +699,19 @@ mod limit_tests {
                     "daily={daily}, step={step}, spent={spent}: {message:?} instead of {expected:?}"
                 ));
             }
+            let misfit = text::misfit(&text::labelling(1, 2), "1 label didn't fit the codebook");
+            let message =
+                call_failure(Error::Invalid(misfit.clone()), &session, BUILD_FAILED).message;
+            let expected = if reached {
+                cap_reached(spent, daily)
+            } else {
+                misfit
+            };
+            if message != expected {
+                mismatches.push(format!(
+                    "misfit daily={daily}, step={step}, spent={spent}: {message:?} instead of {expected:?}"
+                ));
+            }
         }
         fs::remove_dir_all(home).unwrap();
         assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));

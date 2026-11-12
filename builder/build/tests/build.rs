@@ -337,6 +337,43 @@ fn label_replies_that_do_not_fit_are_refused_without_the_models_words() {
     );
     assert_eq!(extra.shown, "1 label was for a record that isn't there");
     assert!(!extra.told.contains(SENTINEL) && !extra.shown.contains(SENTINEL));
+    for (repeats, shown) in [
+        (1, "1 label was for a record that isn't there"),
+        (2, "2 labels were for records that aren't there"),
+    ] {
+        let repeated = good(&|r| {
+            let mut label = r["labels"][0].clone();
+            label["id"] = Value::from(SENTINEL);
+            for _ in 0..=repeats {
+                r["labels"].as_array_mut().unwrap().push(label.clone());
+            }
+        })
+        .unwrap_err();
+        assert_eq!(
+            repeated.told,
+            format!("leave out the {repeats} repeated labels whose id is not a record here")
+        );
+        assert_eq!(repeated.shown, shown);
+    }
+    let mixed = good(&|r| {
+        let first = r["labels"][0].clone();
+        r["labels"].as_array_mut().unwrap().push(first.clone());
+        let mut extra = first;
+        extra["id"] = Value::from(SENTINEL);
+        r["labels"]
+            .as_array_mut()
+            .unwrap()
+            .extend([extra.clone(), extra]);
+    })
+    .unwrap_err();
+    assert_eq!(
+        mixed.told,
+        "these records are labelled more than once: question:t000; leave out the 1 repeated labels whose id is not a record here"
+    );
+    assert_eq!(
+        mixed.shown,
+        "1 record was labelled more than once, 1 label was for a record that isn't there"
+    );
     let no_reason = good(&|r| r["labels"][1]["reason"] = Value::Null).unwrap_err();
     assert!(
         no_reason.told.contains("question:t001 reason"),
@@ -345,6 +382,23 @@ fn label_replies_that_do_not_fit_are_refused_without_the_models_words() {
     let not_a_list =
         build::check_label_reply(&the_book(), &train, &json!({"labels": 3})).unwrap_err();
     assert_eq!(not_a_list.shown, "the answer holds no list of labels");
+}
+
+#[test]
+fn a_record_id_starting_with_ids_differ_keeps_its_field_problem() {
+    let mut train = part(Mode::Train);
+    let id = "ids differ: invented record";
+    train.records[0].1["id"] = Value::from(id);
+    let reply = json!({"labels": train.records.iter().map(|(_, r)| {
+        json!({"id": r["id"], "category": if r["id"] == id { SENTINEL } else { "scope" },
+               "domain": "teaching", "escalates": [], "signal": "ruling", "reason": "Small."})
+    }).collect::<Vec<_>>()});
+    let misfit = build::check_label_reply(&the_book(), &train, &reply).unwrap_err();
+    assert!(
+        misfit.told.contains(&format!("{id} category")),
+        "{misfit:?}"
+    );
+    assert_eq!(misfit.shown, "1 label didn't fit the codebook");
 }
 
 fn group(rows: usize) -> (Group, Vec<(String, usize)>) {
@@ -479,12 +533,21 @@ fn distil_replies_that_do_not_fit_are_refused() {
         r["sections"][1]["flips"][0] =
             Value::from(format!("They ask {SENTINEL} my therapist first."))
     });
-    assert_eq!(private.shown, "1 points looked personal or secret");
+    assert_eq!(private.shown, "1 point looked personal or secret");
+    let private_many = check(&|r| {
+        r["sections"][0]["lean"][0] = Value::from("They ask my therapist first.");
+        r["sections"][1]["flips"][0] = Value::from("They ask my therapist next.");
+    });
+    assert_eq!(private_many.shown, "2 points looked personal or secret");
     assert!(private.told.contains("scope flips point 1"), "{private:?}");
     assert!(!private.told.contains(SENTINEL));
     let own = "Should the weekly planning notes stay short this term";
     let quoted = check(&|r| r["sections"][0]["lean"][0] = Value::from(own));
-    assert_eq!(quoted.shown, "4 runs of 6 or more of their own words");
+    assert_eq!(quoted.shown, "4 runs of 6 or more of your own words");
+    let one_quote = check(&|r| {
+        r["sections"][0]["lean"][0] = Value::from("Should the weekly planning notes stay");
+    });
+    assert_eq!(one_quote.shown, "1 run of 6 or more of your own words");
     assert!(
         quoted
             .told
@@ -713,6 +776,28 @@ fn a_reply_that_does_not_fit_is_asked_for_once_more() {
 }
 
 #[test]
+fn a_distil_retry_keeps_the_full_reply_instruction() {
+    let Some(python) = python() else { return };
+    let home = Scratch::new();
+    let stub = Stub::new(&python);
+    stub.plan(json!({"1": "bad"}));
+    run(
+        &stub,
+        &home.0,
+        &corpus(12, 0),
+        Cap::default(),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    let retry = stub.stdin(2);
+    assert!(
+        retry.ends_with("Answer again in full, following every rule above.\n"),
+        "{retry}"
+    );
+    assert!(!retry.contains("You may give only"), "{retry}");
+}
+
+#[test]
 fn two_replies_that_do_not_fit_stop_the_build() {
     let Some(python) = python() else { return };
     let home = Scratch::new();
@@ -746,7 +831,7 @@ fn two_replies_that_do_not_fit_stop_the_build() {
     .unwrap()
     .to_string();
     assert!(
-        error.contains("runs of 6 or more of their own words"),
+        error.contains("runs of 6 or more of your own words"),
         "{error}"
     );
     assert!(!error.contains("planning notes"), "{error}");
@@ -1361,7 +1446,7 @@ fn mail_sources() -> Vec<voice_core::ceilings::Source> {
 
 #[test]
 fn mined_mail_at_its_default_is_refused_before_a_call_or_ledger_line() {
-    let Some(python) = python() else { return };
+    let python = python().expect("python3 for the stub");
     let home = Scratch::new();
     let stub = Stub::new(&python);
     mined_mail(&home.0);
@@ -1380,7 +1465,7 @@ fn mined_mail_at_its_default_is_refused_before_a_call_or_ledger_line() {
 
 #[test]
 fn mined_mail_allowed_to_anthropic_is_named_in_every_build_brief() {
-    let Some(python) = python() else { return };
+    let python = python().expect("python3 for the stub");
     let home = Scratch::new();
     let stub = Stub::new(&python);
     mined_mail(&home.0);
@@ -1400,7 +1485,7 @@ fn mined_mail_allowed_to_anthropic_is_named_in_every_build_brief() {
 
 #[test]
 fn merged_mbox_config_names_mail_without_a_mined_file_and_other_sources_do_not() {
-    let Some(python) = python() else { return };
+    let python = python().expect("python3 for the stub");
     for kind in [None, Some("project"), Some("mbox")] {
         let home = Scratch::new();
         let stub = Stub::new(&python);
