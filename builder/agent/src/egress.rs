@@ -799,6 +799,16 @@ mod tests {
         assert_eq!(socket.read(&mut [0]).unwrap(), 0);
     }
 
+    // A socket closed with unread bytes sends a reset instead of an end of stream.
+    fn closed(socket: &mut std::net::TcpStream) {
+        use std::io::Read;
+        match socket.read(&mut [0]) {
+            Ok(0) => {}
+            Err(error) if error.kind() == io::ErrorKind::ConnectionReset => {}
+            other => panic!("the proxy did not close the connection: {other:?}"),
+        }
+    }
+
     #[test]
     fn allowed_tunnels_round_trip() {
         use std::io::{Read, Write};
@@ -977,7 +987,7 @@ mod tests {
                 io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
             ));
             socket.set_read_timeout(Some(header_time * 4)).unwrap();
-            eof(&mut socket);
+            closed(&mut socket);
             assert!(started.elapsed() >= header_time - Duration::from_millis(300));
             assert!(started.elapsed() < header_time * 3);
             let _ = socket.shutdown(std::net::Shutdown::Both);
