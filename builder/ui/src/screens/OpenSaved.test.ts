@@ -182,3 +182,17 @@ it('also disables sign-in when the form becomes busy', async () => {
   await wrapper.setProps({ disabled: false })
   expect(wrapper.find('fieldset[disabled]').exists()).toBe(false)
 })
+
+it.each([false, true])('finishes sign-in even if disabled becomes %s and never repeats sign-in on failure', async disabled => {
+  const finish = deferred<Said>()
+  const backend = fakeBackend({ savedOnGithub: vi.fn().mockResolvedValueOnce({ signedIn: false, items: [] }).mockRejectedValue({ message: 'Please look again.' }), githubSignInFinish: vi.fn().mockReturnValue(finish.promise) })
+  const wrapper = screen(OpenSaved, backend, { disabled: false })
+  await button(wrapper, 'Look on GitHub').trigger('click'); await flushPromises()
+  await button(wrapper, 'Sign in to GitHub').trigger('click'); await flushPromises()
+  await wrapper.setProps({ disabled })
+  finish.resolve({ message: 'Signed in.' }); await flushPromises()
+  expect(backend.savedOnGithub).toHaveBeenCalledTimes(2)
+  expect(wrapper.get('.alert-warning').text()).toBe('Please look again.')
+  expect(button(wrapper, 'Look on GitHub').exists()).toBe(true)
+  expect(wrapper.findAll('button').some(item => item.text() === 'Sign in to GitHub')).toBe(false)
+})

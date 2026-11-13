@@ -123,7 +123,7 @@ async function signedIn(answer: Said) {
   <section class="card">
     <div class="card-body p-5">
       <h2 class="mb-3">Keep {{ assistant.name }} safe</h2>
-      <p v-if="loading || options?.memberComputer == null">Choose where {{ assistant.name }} is kept. A private GitHub repo is a backup only you can see; or keep it on this computer only.</p>
+      <p v-if="!options || options.memberComputer === null">Choose where {{ assistant.name }} is kept. A private GitHub repo is a backup only you can see; or keep it on this computer only.</p>
       <p v-else>{{ options.memberComputer }}</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Looking for places to keep {{ assistant.name }}…</span></div>
       <template v-else-if="loadError">

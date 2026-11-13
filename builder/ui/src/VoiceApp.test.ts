@@ -1,6 +1,6 @@
 import { flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
-import { assistant, button, fakeBackend, screen } from './test-support'
+import { assistant, button, deferred, fakeBackend, screen } from './test-support'
 import VoiceApp from './VoiceApp.vue'
 import Panels from './screens/Panels.vue'
 
@@ -343,4 +343,18 @@ it('replaces the current assistant after Save updates it without remounting Save
   expect(wrapper.getComponent({ name: 'Save' }).element).toBe(save.element)
   expect(wrapper.get('main h2').text()).toBe('Keep Wren safe')
   expect(backend.saveOptions).toHaveBeenCalledTimes(1)
+})
+
+it('keeps Your assistants locked until opening finishes', async () => {
+  const pending = deferred<{ assistant: typeof assistant; backup: null; message: string }>()
+  const wrapper = screen(VoiceApp, fakeBackend({ savedOnGithub: vi.fn().mockResolvedValue({ signedIn: true, items: [{ owner: 'example-owner', repo: 'example-assistant', slug: 'wren', name: 'Wren', here: false }] }), openSaved: vi.fn().mockReturnValue(pending.promise) }))
+  await flushPromises()
+  await button(wrapper, 'Make a new one').trigger('click')
+  await button(wrapper, 'Look on GitHub').trigger('click'); await flushPromises()
+  await button(wrapper, 'Open Wren').trigger('click')
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeDefined()
+  expect(wrapper.text()).toContain('Wait for Voice to finish opening it before you leave.')
+  pending.resolve({ assistant, backup: null, message: 'Opened.' }); await flushPromises()
+  expect(button(wrapper, 'Your assistants').attributes('disabled')).toBeUndefined()
+  expect(wrapper.text()).not.toContain('Wait for Voice to finish opening it before you leave.')
 })

@@ -17,7 +17,12 @@ const error = ref('')
 const opening = ref<SavedAssistant | null>(null)
 const opened = ref<OpenedSaved | null>(null)
 async function look() {
-  if (props.disabled || looking.value || opening.value) return
+  if (props.disabled) return
+  await list()
+}
+async function signedIn() { saved.value = undefined; await list() }
+async function list() {
+  if (looking.value || opening.value) return
   looking.value = true
   error.value = ''
   try {
@@ -55,11 +60,11 @@ async function open(item: SavedAssistant) {
         <button type="button" class="btn btn-primary" :disabled="disabled || looking || !!opening" @click="emit('made', opened.assistant)">Next: give permission</button>
       </div>
       <template v-else>
-        <button type="button" class="btn btn-outline-primary" :disabled="disabled || looking || !!opening" @click="look">{{ looking ? 'Looking…' : saved ? 'Look again' : 'Look on GitHub' }}</button>
+        <button type="button" class="btn btn-outline-primary mb-3" :disabled="disabled || looking || !!opening" @click="look">{{ looking ? 'Looking…' : saved ? 'Look again' : 'Look on GitHub' }}</button>
         <div v-if="looking" class="spinner-border" role="status"><span class="visually-hidden">Looking in your private GitHub repos…</span></div>
         <template v-else-if="saved">
           <fieldset v-if="!saved.signedIn" :disabled="disabled" class="border-0 p-0 m-0">
-            <GithubSignIn lead="To open an assistant you saved, sign in to your GitHub account first." @signed-in="look" />
+            <GithubSignIn lead="To open an assistant you saved, sign in to your GitHub account first." @signed-in="signedIn" />
           </fieldset>
           <p v-else-if="!saved.items.length" class="text-secondary">Voice found no saved assistants in your private GitHub repos.</p>
           <ul v-else class="list-unstyled">

@@ -259,7 +259,8 @@ it.each([
 })
 
 it('requires sign-in with the take lead, reloads after approval and clears sign-out info on take', async () => {
-  const backend = fakeBackend({ saveOptions: vi.fn().mockResolvedValueOnce({ ...memberOptions, signedIn: false }).mockResolvedValueOnce({ ...memberOptions }).mockResolvedValue({ ...memberOptions, signedIn: false }) })
+  const reload = deferred<SaveOptions>()
+  const backend = fakeBackend({ saveOptions: vi.fn().mockResolvedValueOnce({ ...memberOptions, signedIn: false }).mockReturnValueOnce(reload.promise).mockResolvedValue({ ...memberOptions, signedIn: false }) })
   const wrapper = screen(Save, backend, { assistant })
   await flushPromises()
   expect(wrapper.text()).toContain('To take the newest version, sign in to your GitHub account first.')
@@ -268,6 +269,9 @@ it('requires sign-in with the take lead, reloads after approval and clears sign-
   expect(backend.takeNewest).not.toHaveBeenCalled()
   await button(wrapper, 'Sign in to GitHub').trigger('click')
   await flushPromises()
+  expect(wrapper.text()).toContain(memberOptions.memberComputer)
+  expect(wrapper.text()).not.toContain('Choose where Example is kept.')
+  reload.resolve({ ...memberOptions }); await flushPromises()
   expect(backend.saveOptions).toHaveBeenCalledTimes(2)
   expect(button(wrapper, 'Take the newest version').attributes('disabled')).toBeUndefined()
   await button(wrapper, 'Sign out of GitHub').trigger('click')

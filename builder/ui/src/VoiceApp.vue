@@ -26,6 +26,7 @@ const buildOpened = ref(false)
 const buildRunning = ref(false)
 const panelsRunning = ref(false)
 const askRunning = ref(false)
+const openingRunning = ref(false)
 const reviewOpened = ref(false)
 const reviewRunning = ref(false)
 watch(view, value => {
@@ -77,6 +78,7 @@ function disabled(step: string) {
 }
 function home() {
   askRunning.value = false
+  openingRunning.value = false
   panelsRunning.value = false
   buildOpened.value = false
   reviewOpened.value = false
@@ -110,7 +112,8 @@ function home() {
             </ol>
           </aside>
           <main class="col-9">
-            <button v-if="view !== 'home'" type="button" class="btn btn-link p-0 mb-4" :disabled="buildRunning || reviewRunning || panelsRunning || askRunning" @click="home">Your assistants</button>
+            <button v-if="view !== 'home'" type="button" class="btn btn-link p-0 mb-4" :disabled="buildRunning || reviewRunning || panelsRunning || askRunning || openingRunning" @click="home">Your assistants</button>
+            <p v-if="openingRunning" class="text-secondary">Wait for Voice to finish opening it before you leave.</p>
             <p v-if="askRunning" class="text-secondary">Wait for the answer before you leave.</p>
             <p v-if="panelsRunning" class="text-secondary">Stop the panel first to leave Panels.</p>
             <p v-if="reviewRunning" class="text-secondary">Wait for the test to finish to choose another assistant.</p>
@@ -135,7 +138,7 @@ function home() {
             </template>
             <Ask v-else-if="view === 'ask'" @running="askRunning = $event" />
             <Panels v-else-if="view === 'panels'" @running="panelsRunning = $event" />
-            <NewAssistant v-else-if="view === 'new'" @made="made" @cancel="home" />
+            <NewAssistant v-else-if="view === 'new'" @made="made" @cancel="home" @running="openingRunning = $event" />
             <Consent v-else-if="view === 'consent' && assistant" :key="assistant.slug" :assistant="assistant" @agreed="agreed" @next="goToStep('connect')" />
             <ConnectClaude v-else-if="view === 'connect' && assistant" :key="assistant.slug" :assistant="assistant" @next="goToStep('sources')" />
             <Sources v-else-if="view === 'sources' && assistant" :key="assistant.slug" :assistant="assistant" @next="goToStep('build')" />

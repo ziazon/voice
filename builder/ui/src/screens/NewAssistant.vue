@@ -8,7 +8,7 @@ import type { NewAssistantRequest } from '../types/generated/NewAssistantRequest
 import type { OldFile } from '../types/generated/OldFile'
 import OpenSaved from './OpenSaved.vue'
 
-const emit = defineEmits<{ made: [assistant: Assistant]; cancel: [] }>()
+const emit = defineEmits<{ made: [assistant: Assistant]; cancel: []; running: [running: boolean] }>()
 const backend = useBackend()
 const name = ref('')
 const principal = ref('')
@@ -143,7 +143,7 @@ async function bringIn() {
           <div>
             <h3 class="alert-title">{{ broughtIn.assistant.name }} is ready</h3>
             <p>Voice brought in the older {{ broughtIn.assistant.name }}'s history<template v-if="broughtIn.files.length"> and its own files: {{ broughtIn.files.join(', ') }}</template>.<template v-if="broughtIn.backup"> A copy of everything it found is in {{ broughtIn.backup }}.</template></p>
-            <button type="button" class="btn btn-primary" @click="emit('made', broughtIn.assistant)">Open {{ broughtIn.assistant.name }}</button>
+            <button type="button" class="btn btn-primary" :disabled="openingSaved" @click="emit('made', broughtIn.assistant)">Open {{ broughtIn.assistant.name }}</button>
           </div>
         </div>
         <div v-else class="btn-list">
@@ -153,6 +153,6 @@ async function bringIn() {
       </form>
     </div>
   </section>
-  <OpenSaved :disabled="saving" @made="emit('made', $event)" @running="openingSaved = $event" />
+  <OpenSaved :disabled="saving" @made="emit('made', $event)" @running="openingSaved = $event; emit('running', $event)" />
   </div>
 </template>
