@@ -2,6 +2,35 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.9b3: the screens for opening a saved assistant and taking the newest version (2026-11-13, lane: V1)
+
+- **Why:** PB8.9b1 and PB8.9b2 built opening a saved assistant on a member computer and taking each newer version
+  there, with no screen (PB8.9, step 1.2). UI only: no Rust, app command or DTO change.
+- **What:** *Make a new assistant* gains a card, *Open one you saved on GitHub*: nothing is fetched until *Look on
+  GitHub*; signing in first when needed (the list follows at once); each saved assistant with its repo, *Open
+  <Name>* or *Already on this computer*; after an open, the api's message (which names any backup of an older one)
+  and *Next: give permission*, the permission screen. While an open runs, *Make it*, *Back*, the brought-in *Open*
+  and *Your assistants* are locked, with *Wait for Voice to finish opening it before you leave.* A member computer's
+  Save card shows the api's sentence naming who saves the assistant, in place of the save choices, and *Take the
+  newest version* (signing in first when needed); the answer's assistant replaces the app's. `GithubSignIn` takes
+  its lead sentence as a prop.
+- **Briefs:** `plans/briefs/PB8.9b3-screens.md`, fix-up 1 (`plans/briefs/PB8.9b3-fixup-1.md`: the Verifier's two
+  should-fixes and two nits).
+- **Who built it:** Codex, from both briefs (`7df10c9`, `f9e14aa`).
+- **Reviews:** Verifier (Fable) on `7df10c9`: PASS, two should-fixes (an open could be left by *Your assistants* or
+  the brought-in *Open*; a sign-in whose re-list failed asked to sign in again, and a busy form skipped the
+  re-list), four nits. Both should-fixes and two nits fixed in fix-up 1 (58 added lines, files she saw). Security
+  review on `7df10c9`: no findings (no `v-html` or bound URLs; every failure through `failureMessage`; no new
+  command or capability).
+- **Known limits (nits left):** leaving the Save step mid-take drops the `updated` emit, so the side panel keeps an
+  old name until the assistant is reopened; `GithubSignIn`'s failure fallback still says "or keep your assistant on
+  this computer only" in the open and take flows.
+- **Verified:** Codex reports every red first and 20 mutations caught on the build, 12 on fix-up 1 (`cp`, `cmp`),
+  and the UI tests (651), typecheck and build green. The Verifier ran the five touched test files (89 tests) and 7
+  mutations of her own, all caught. Full `ci-local.sh` at the land.
+- **Not verified:** V1's own UI test run was refused by the resource gate's suite mutex (other lanes' suites); it
+  rests on Codex's and the Verifier's runs and the land's gate. No visual pass: a walk is owed (light and dark).
+
 ## PB8.9b2: take the newest version (2026-11-13, lane: V1)
 
 - **Why:** PB8.9b1 opens a saved assistant on a member computer, but nothing there could take the versions the
