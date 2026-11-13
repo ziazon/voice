@@ -21,7 +21,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   the brought-in *Open*; a sign-in whose re-list failed asked to sign in again, and a busy form skipped the
   re-list), four nits. Both should-fixes and two nits fixed in fix-up 1 (58 added lines, files she saw). Security
   review on `7df10c9`: no findings (no `v-html` or bound URLs; every failure through `failureMessage`; no new
-  command or capability).
+  command or capability). Fix-up 1's delta reviewed by V1 by reading: it renders no new data, only a fixed
+  sentence, and adds no call.
 - **Known limits (nits left):** leaving the Save step mid-take drops the `updated` emit, so the side panel keeps an
   old name until the assistant is reopened; `GithubSignIn`'s failure fallback still says "or keep your assistant on
   this computer only" in the open and take flows.
