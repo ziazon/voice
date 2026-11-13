@@ -38,6 +38,7 @@ fn opening_requires_both_the_repo_and_the_slug() {
         error.contains("the following required arguments were not provided:\n  <SLUG>"),
         "{error}"
     );
+    assert!(error.contains("voice open --update <SLUG>"), "{error}");
 }
 
 #[test]
@@ -47,6 +48,7 @@ fn updating_refuses_a_repository_in_place_of_a_slug() {
     assert!(output.stdout.is_empty());
     let error = String::from_utf8(output.stderr).unwrap();
     assert!(error.contains("Use the assistant's folder name"), "{error}");
+    assert!(error.contains("voice open --update <SLUG>"), "{error}");
 }
 
 #[test]
@@ -59,6 +61,7 @@ fn updating_requires_a_slug() {
         error.contains("Name the assistant's folder, such as wren."),
         "{error}"
     );
+    assert!(error.contains("voice open --update <SLUG>"), "{error}");
 }
 
 #[test]

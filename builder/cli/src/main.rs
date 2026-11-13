@@ -2902,20 +2902,16 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         Some(Command::Open { repo, slug, update }) => {
             if update {
                 let slug = repo.unwrap_or_else(|| {
-                    Cli::command()
-                        .error(
-                            clap::error::ErrorKind::MissingRequiredArgument,
-                            "Name the assistant's folder, such as wren.",
-                        )
-                        .exit()
+                    open_usage_error(
+                        clap::error::ErrorKind::MissingRequiredArgument,
+                        "Name the assistant's folder, such as wren.",
+                    )
                 });
                 if voice_core::crew::slugify(&slug).as_deref() != Some(slug.as_str()) {
-                    Cli::command()
-                        .error(
-                            clap::error::ErrorKind::InvalidValue,
-                            "Use the assistant's folder name, such as wren.",
-                        )
-                        .exit();
+                    open_usage_error(
+                        clap::error::ErrorKind::InvalidValue,
+                        "Use the assistant's folder name, such as wren.",
+                    );
                 }
                 let taken = voice_api::save::take_newest(voice_api::dto::SlugRequest { slug })
                     .map_err(|error| Error::Invalid(error.message))?;
@@ -2923,12 +2919,10 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 Ok(())
             } else {
                 if repo.is_some() && slug.is_none() {
-                    Cli::command()
-                        .error(
-                            clap::error::ErrorKind::MissingRequiredArgument,
-                            "the following required arguments were not provided:\n  <SLUG>",
-                        )
-                        .exit();
+                    open_usage_error(
+                        clap::error::ErrorKind::MissingRequiredArgument,
+                        "the following required arguments were not provided:\n  <SLUG>",
+                    );
                 }
                 open_saved(repo, slug)
             }
@@ -3065,6 +3059,16 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         None => Ok(()),
     };
     result.map(|()| std::process::ExitCode::SUCCESS)
+}
+
+fn open_usage_error(kind: clap::error::ErrorKind, message: &str) -> ! {
+    Cli::command()
+        .find_subcommand_mut("open")
+        .expect("open subcommand")
+        .clone()
+        .bin_name("voice open")
+        .error(kind, message)
+        .exit()
 }
 
 fn main() -> std::process::ExitCode {

@@ -42,6 +42,10 @@ impl Saver<'_> {
         if !fs::symlink_metadata(&member_dir).is_ok_and(|metadata| metadata.is_dir()) {
             return Err(Error::Invalid("member folder isn't plain".into()));
         }
+        let github = self
+            .github
+            .ok_or_else(|| Error::Invalid(text::NOT_SET_UP.into()))?;
+        self.git.check_version()?;
         let repo = RepoRef { owner, name };
         let full = repo.full();
         let git_dir = member.state_dir.join("backup.git");
@@ -56,10 +60,6 @@ impl Saver<'_> {
                 "saved copy origin doesn't match the record".into(),
             ));
         }
-        let github = self
-            .github
-            .ok_or_else(|| Error::Invalid(text::NOT_SET_UP.into()))?;
-        self.git.check_version()?;
         let token = self
             .tokens
             .load()?

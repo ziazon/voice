@@ -741,6 +741,37 @@ fn rollback_preserves_an_existing_empty_parent_of_a_new_file() {
 }
 
 #[test]
+fn missing_git_is_reported_before_origin_check() {
+    let f = Fixture::new();
+    let before = listing(&f.member.dir);
+    let head = common::pb6::git(&f.backup(), &["rev-parse", "main"]);
+    let record = fs::read(f.member.state_dir.join("save.json")).unwrap();
+    let git = Git::at(f.home.join("missing-git"));
+    let http = FakeHttp::new(vec![]);
+    let github = Github::new(
+        &http,
+        voice_save::github::Endpoints::github(),
+        "Iv1.invented",
+    )
+    .unwrap();
+    let error = Saver {
+        git: &git,
+        github: Some(&github),
+        tokens: &Tokens,
+    }
+    .take_newest(&f.home, &f.member, "2026-11-13-120001", &Privacy)
+    .unwrap_err();
+    assert_eq!(error.to_string(), voice_save::text::NEEDS_GIT);
+    assert!(http.requests.borrow().is_empty());
+    assert_eq!(listing(&f.member.dir), before);
+    assert_eq!(common::pb6::git(&f.backup(), &["rev-parse", "main"]), head);
+    assert_eq!(
+        fs::read(f.member.state_dir.join("save.json")).unwrap(),
+        record
+    );
+}
+
+#[test]
 fn mismatched_origin_is_refused_before_http_or_fetch() {
     let f = Fixture::new();
     common::pb6::git(
