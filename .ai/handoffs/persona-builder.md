@@ -2,6 +2,27 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF8: the egress header-deadline test accepts a reset (2026-11-13, lane: V1)
+
+- **Why:** `header_deadline_is_absolute` failed once while gating VF7a (2026-11-09): its trickle pass read
+  `ConnectionReset` (os error 54) where it asserted an end of stream. The proxy closes a socket that still holds
+  unread bytes, or the writer sends a byte after the close, and the OS then answers with a reset. Either means the
+  proxy closed on time.
+- **What:** test only. A `closed` helper in `egress.rs`'s `tests` module accepts `Ok(0)` or a reset and panics on
+  anything else (a timed-out read included); only that test calls it. `eof`, the 50 ms writer and both timing
+  bounds are unchanged.
+- **Brief:** `plans/briefs/VF8-egress-deadline-reset.md`.
+- **Who built it:** Codex, from the brief (`c86f486`); V1 ran the proofs outside Codex's sandbox, which can't bind
+  the test's listeners.
+- **Reviews:** security review sub-agent: no findings (a reset only passes inside the same 500 ms to 2.4 s window
+  `Ok(0)` did). Verifier: not required (spec: test only).
+- **Verified:** the cause first: unchanged test, writer at 200 µs in place of 50 ms, failed 2 of 5 runs at the
+  `eof` read with `ConnectionReset` (30 of 30 passed at 50 ms, so the flake didn't show at today's load). After the
+  change, the same 200 µs probe passed 5 of 5. V1's mutations, each caught and restored (`cp`, `cmp`): a deadline
+  that restarts on every read (fails in `closed` with `WouldBlock`); a deadline at a quarter of `header_time`
+  (fails the `>= header_time - 300 ms` bound). 10 runs in a row green. Landed with V-Q19's test-only gate.
+- **Not verified:** Linux, where a reset reads as the same `ConnectionReset` kind but wasn't run.
+
 ## VF13: a backup keeps the owner's execute bit (2026-11-13, lane: V1)
 
 - **Why:** the backup copied every file 0600, so a backed-up skill's scripts lost their execute bit, and since
