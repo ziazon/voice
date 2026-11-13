@@ -823,12 +823,9 @@ fn old_status_caps_unicode_text_and_find_errors_are_safe() {
         vec![b' '; 4 * 1024 * 1024 + 1],
     )
     .unwrap();
-    assert_eq!(
-        claude_code_status_in(&h.0, &h.claude(), slug("ari"))
-            .unwrap_err()
-            .message,
-        "Voice couldn't check Claude Code. Close it and open it again."
-    );
+    let status = succeeds(claude_code_status_in(&h.0, &h.claude(), slug("ari")));
+    assert_eq!(status.state, OnState::Off);
+    assert!(serde_json::to_value(status).unwrap()["oldOne"].is_null());
 }
 
 #[test]
@@ -905,4 +902,73 @@ fn failed_turn_on_after_replacement_names_retained_backup() {
     );
     assert!(!h.claude().join("skills/ari").exists());
     assert!(h.claude().join("voice/assistants/ari").is_dir());
+}
+
+#[test]
+fn undeletable_aside_turns_on_and_names_the_leftover() {
+    let h = Home::new();
+    let nested = h.claude().join("skills/ari/nested");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("data"), "older skill").unwrap();
+    fs::write(h.claude().join("CLAUDE.md"), "keep\n/ari\n").unwrap();
+    fs::set_permissions(&nested, fs::Permissions::from_mode(0o555)).unwrap();
+    let result = turn_on_in(
+        &h.0,
+        &h.claude(),
+        TurnOnRequest {
+            slug: "ari".into(),
+            replace_old: true,
+        },
+    );
+    let aside = fs::read_dir(h.claude().join("skills"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(".ari.voice-replacing-")
+        })
+        .unwrap();
+    fs::set_permissions(aside.join("nested"), fs::Permissions::from_mode(0o755)).unwrap();
+    let result = succeeds(result);
+    assert!(result.message.starts_with("Ari is on. Voice moved "));
+    assert!(result.message.contains(&format!(
+        "Voice couldn't delete the moved folder ~/.claude/skills/{}; you can delete it.",
+        aside.file_name().unwrap().to_str().unwrap()
+    )));
+    assert!(
+        !result
+            .message
+            .contains("nothing in your Claude folder was changed")
+    );
+    assert_eq!(status(&h).state, OnState::This);
+    let backup = fs::read_dir(h.claude().join("voice-backups/ari"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    assert_eq!(
+        fs::read(backup.join("skill/nested/data")).unwrap(),
+        b"older skill"
+    );
+}
+
+#[test]
+fn plain_turn_on_ignores_old_one_find_size_error() {
+    let h = Home::new();
+    let original = vec![b' '; 4 * 1024 * 1024 + 1];
+    fs::write(h.claude().join("CLAUDE.md"), &original).unwrap();
+    assert_eq!(
+        succeeds(turn_on_in(&h.0, &h.claude(), on("ari"))).message,
+        "Ari is on. Start a new Claude Code session to use Ari."
+    );
+    assert_eq!(status(&h).state, OnState::This);
+    assert!(
+        fs::read(h.claude().join("CLAUDE.md"))
+            .unwrap()
+            .starts_with(&original)
+    );
+    assert!(!h.claude().join("voice-backups").exists());
 }

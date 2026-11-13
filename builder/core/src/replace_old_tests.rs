@@ -240,3 +240,101 @@ fn stale_lines_refused(changed: &str) {
     );
     f.no_backup();
 }
+
+#[test]
+fn undeletable_aside_is_a_success_with_verified_backup() {
+    let f = Fixture::new();
+    f.old_skill();
+    fs::write(f.claude(), "keep\n/ari\n").unwrap();
+    fs::set_permissions(f.skill().join("nested"), fs::Permissions::from_mode(0o555)).unwrap();
+    let result = replace(&f.places, "ari", STAMP);
+    let aside = f
+        .skill()
+        .with_file_name(format!(".ari.voice-replacing-{STAMP}"));
+    // Restore before asserting so even a failed assertion leaves clean scratch files.
+    fs::set_permissions(aside.join("nested"), fs::Permissions::from_mode(0o755)).unwrap();
+    let replaced = result.expect("replacement already committed; cleanup failure is success");
+    assert_eq!(replaced.leftover, Some(aside));
+    assert_eq!(fs::read(f.claude()).unwrap(), b"keep\n");
+    assert!(!f.skill().exists());
+    assert_eq!(
+        fs::read(replaced.backup.join("skill/nested/data")).unwrap(),
+        b"nested bytes"
+    );
+    assert_eq!(
+        fs::read(replaced.backup.join("CLAUDE.md")).unwrap(),
+        b"keep\n/ari\n"
+    );
+}
+
+#[test]
+fn rollback_failure_sentence_is_recognized() {
+    assert!(says(
+        "Voice couldn't put the older ari skill back. It's at ~/.claude/skills/.ari.voice-replacing-<stamp>, and a copy is in ~/.claude/voice-backups/ari/<stamp>/."
+    ));
+}
+
+#[test]
+fn lone_carriage_return_on_final_found_line_replaces() {
+    let f = Fixture::new();
+    fs::write(f.claude(), "keep\n/ari\r").unwrap();
+    let result = replace(&f.places, "ari", STAMP).unwrap();
+    assert_eq!(result.lines, 1);
+    assert_eq!(fs::read(f.claude()).unwrap(), b"keep\n");
+    assert_eq!(
+        fs::read(result.backup.join("CLAUDE.md")).unwrap(),
+        b"keep\n/ari\r"
+    );
+}
+
+#[test]
+fn failed_replace_removes_only_a_new_empty_backup_parent() {
+    for preexisting in [false, true] {
+        let f = Fixture::new();
+        f.old_skill();
+        fs::write(f.claude(), "keep\n/ari\n").unwrap();
+        let parent = f.places.home.join(".claude/voice-backups/ari");
+        if preexisting {
+            fs::create_dir_all(&parent).unwrap();
+        }
+        let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {
+            fs::write(f.skill().join("SKILL.md"), "changed skill").unwrap();
+        });
+        assert!(matches!(result, Err(Error::Invalid(message)) if message == CHANGED));
+        assert_eq!(parent.exists(), preexisting);
+    }
+}
+
+#[test]
+fn failed_backup_removes_new_empty_backup_parent() {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let f = Fixture::new();
+    f.old_skill();
+    let fifo = CString::new(f.skill().join("pipe").as_os_str().as_bytes()).unwrap();
+    // SAFETY: fifo is a live NUL-terminated path and mode is valid.
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    assert!(replace(&f.places, "ari", STAMP).is_err());
+    assert!(!f.places.home.join(".claude/voice-backups/ari").exists());
+}
+
+#[test]
+fn changed_unfound_byte_after_copy_refuses_and_preserves_concurrent_edit() {
+    let f = Fixture::new();
+    f.old_skill();
+    fs::write(f.claude(), "keep\n/ari\n").unwrap();
+    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {
+        fs::write(f.claude(), "Keep\n/ari\n").unwrap();
+    });
+    assert!(matches!(result, Err(Error::Invalid(message)) if message == CHANGED));
+    assert_eq!(
+        fs::read(f.skill().join("SKILL.md")).unwrap(),
+        b"old skill\0\xff"
+    );
+    assert_eq!(fs::read(f.claude()).unwrap(), b"Keep\n/ari\n");
+    assert!(
+        !f.skill()
+            .with_file_name(format!(".ari.voice-replacing-{STAMP}"))
+            .exists()
+    );
+    assert!(!f.places.home.join(".claude/voice-backups/ari").exists());
+}

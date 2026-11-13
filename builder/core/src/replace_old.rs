@@ -13,8 +13,23 @@ pub const CHANGED: &str = backup::CHANGED;
 pub const NO_OLDER_START: &str = "Voice found no older ";
 pub const NO_OLDER_END: &str = " to replace.";
 
+pub const ROLLED_BACK_FAILED_START: &str = "Voice couldn't put the older ";
+pub const ROLLED_BACK_FAILED_END: &str = " skill back.";
+
+pub fn rolled_back_failed(slug: &str) -> String {
+    format!(
+        "{ROLLED_BACK_FAILED_START}{slug}{ROLLED_BACK_FAILED_END} It's at ~/.claude/skills/.{slug}.voice-replacing-<stamp>, and a copy is in ~/.claude/voice-backups/{slug}/<stamp>/."
+    )
+}
+
 pub fn says(message: &str) -> bool {
-    matches!(message, SKILL_NOT_FOLDER | CHANGED)
+    message
+        .strip_prefix(ROLLED_BACK_FAILED_START)
+        .and_then(|rest| rest.split_once(ROLLED_BACK_FAILED_END))
+        .is_some_and(|(slug, _)| {
+            block::validate_id(slug).is_ok() && message == rolled_back_failed(slug)
+        })
+        || matches!(message, SKILL_NOT_FOLDER | CHANGED)
         || message
             .strip_prefix(NO_OLDER_START)
             .and_then(|rest| rest.strip_suffix(NO_OLDER_END))
@@ -43,6 +58,7 @@ pub struct Replaced {
     pub backup: PathBuf,
     pub skill: bool,
     pub lines: usize,
+    pub leftover: Option<PathBuf>,
 }
 
 pub fn find(places: &install::Places, slug: &str) -> Result<OldOne> {
@@ -118,7 +134,16 @@ fn replace_checked(
     }
     #[cfg(test)]
     before_backup();
-    let backup = backup::back_up(&places.home, slug, stamp, &items)?;
+    let backup_parent = places.home.join(".claude/voice-backups").join(slug);
+    let new_parent = !exists(&backup_parent)?;
+    let clean_parent = || {
+        if new_parent {
+            // remove_dir only removes an empty folder; keep all existing backups.
+            let _ = fs::remove_dir(&backup_parent);
+        }
+    };
+    let backup =
+        backup::back_up(&places.home, slug, stamp, &items).inspect_err(|_| clean_parent())?;
     let mut moved = false;
     let result = (|| {
         after_copy();
@@ -137,8 +162,9 @@ fn replace_checked(
             let lines: Vec<_> = claude.text.split_inclusive('\n').collect();
             for (number, expected) in &found.lines {
                 let actual = lines.get(number - 1).map(|line| {
-                    let line = line.strip_suffix('\n').unwrap_or(line);
-                    line.strip_suffix('\r').unwrap_or(line)
+                    line.strip_suffix('\n')
+                        .map(|line| line.strip_suffix('\r').unwrap_or(line))
+                        .unwrap_or(line)
                 });
                 if actual != Some(expected.as_str()) {
                     return Err(Error::Invalid(CHANGED.into()));
@@ -164,22 +190,21 @@ fn replace_checked(
     if let Err(error) = result {
         if moved {
             let skill = found.skill.as_ref().expect("moved skill exists");
-            io(
-                skill,
-                fs::rename(aside.as_ref().expect("moved skill has aside"), skill),
-            )?;
+            if fs::rename(aside.as_ref().expect("moved skill has aside"), skill).is_err() {
+                return Err(Error::Invalid(rolled_back_failed(slug)));
+            }
         }
         io(&backup, fs::remove_dir_all(&backup))?;
+        clean_parent();
         return Err(error);
     }
     // From here on the verified backup is retained even if removing the aside fails.
-    if let Some(aside) = &aside {
-        io(aside, fs::remove_dir_all(aside))?;
-    }
+    let leftover = aside.filter(|path| fs::remove_dir_all(path).is_err());
     Ok(Replaced {
         backup,
         skill: moved,
         lines: found.lines.len(),
+        leftover,
     })
 }
 

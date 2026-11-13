@@ -199,9 +199,9 @@ fn old_skill_requires_explicit_replacement_and_keeps_a_backup() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     let error = String::from_utf8(output.stderr).unwrap();
-    assert!(error.contains("Claude Code already has a skill called ari that Voice didn't add"));
-    assert!(
-        error.contains("Run voice on <member_dir> --replace-old to back it up and move it aside.")
+    assert_eq!(
+        error,
+        "voice: Claude Code already has a skill called ari that Voice didn't add, so Voice didn't turn Ari on. Run voice on <member_dir> --replace-old to back it up and move it aside.\n"
     );
     assert_eq!(fs::read(skill.join("SKILL.md")).unwrap(), b"older skill");
     let text = f.run(&["on", f.member.to_str().unwrap(), "--replace-old"]);
@@ -228,5 +228,20 @@ fn stale_replace_flag_still_turns_on() {
     let f = Fixture::new();
     let text = f.run(&["on", f.member.to_str().unwrap(), "--replace-old"]);
     assert!(text.starts_with("Ari is on in Claude Code."));
+    assert!(!f.claude.join("voice-backups").exists());
+}
+
+#[test]
+fn plain_on_ignores_old_one_find_size_error() {
+    let f = Fixture::new();
+    let original = vec![b' '; 4 * 1024 * 1024 + 1];
+    fs::write(f.claude.join("CLAUDE.md"), &original).unwrap();
+    let text = f.run(&["on", f.member.to_str().unwrap()]);
+    assert!(text.starts_with("Ari is on in Claude Code."));
+    assert!(
+        fs::read(f.claude.join("CLAUDE.md"))
+            .unwrap()
+            .starts_with(&original)
+    );
     assert!(!f.claude.join("voice-backups").exists());
 }

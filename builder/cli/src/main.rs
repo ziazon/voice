@@ -2528,20 +2528,27 @@ fn pack(member_dir: PathBuf, out: PathBuf) -> Result<()> {
 fn turn_on(member_dir: PathBuf, claude_home: Option<PathBuf>, replace_old: bool) -> Result<()> {
     let places = places(claude_home)?;
     let member = voice_core::crew::MemberDir::open(&member_dir)?.member;
-    let found = voice_core::replace_old::find(&places, &member.slug)?;
-    if found.skill.is_some() && !replace_old {
+    let found = match voice_core::replace_old::find(&places, &member.slug) {
+        Ok(found) => Some(found),
+        Err(_) if !replace_old => None,
+        Err(error) => return Err(error),
+    };
+    if found.as_ref().is_some_and(|found| found.skill.is_some()) && !replace_old {
         return Err(Error::Invalid(format!(
-            "{} Run voice on <member_dir> --replace-old to back it up and move it aside.",
-            voice_core::replace_old::old_skill(&member.name, &member.slug)
+            "Claude Code already has a skill called {} that Voice didn't add, so Voice didn't turn {} on. Run voice on <member_dir> --replace-old to back it up and move it aside.",
+            member.slug, member.name
         )));
     }
-    if found.any() && replace_old {
+    if found.as_ref().is_some_and(|found| found.any()) && replace_old {
         let replaced = voice_core::replace_old::replace(
             &places,
             &member.slug,
             &voice_agent::ledger::local_stamp(std::time::SystemTime::now()),
         )?;
         println!("backup: {}", replaced.backup.display());
+        if let Some(leftover) = replaced.leftover {
+            println!("left: {}", leftover.display());
+        }
     }
     let on = install::turn_on(&member_dir, &places)?;
     println!("{} is on in Claude Code.", on.name);

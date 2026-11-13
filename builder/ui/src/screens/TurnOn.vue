@@ -31,7 +31,10 @@ async function turnOn(replaceOld = false) {
   try {
     message.value = (await backend.turnOn({ slug: props.assistant.slug, replaceOld })).message
   } catch (failure) {
-    error.value = failureMessage(failure, `Voice couldn't turn ${props.assistant.name} on, so nothing in your Claude folder was changed.`)
+    const fallback = replaceOld
+      ? `Voice couldn't replace the old one. Look in ~/.claude/voice-backups/${props.assistant.slug}/ before you try again.`
+      : `Voice couldn't turn ${props.assistant.name} on, so nothing in your Claude folder was changed.`
+    error.value = failureMessage(failure, fallback)
   }
   await load()
   action.value = ''

@@ -129,3 +129,17 @@ it('can keep old lines when no old skill exists', async () => {
   await button(wrapper, 'Turn Ari on and keep those lines').trigger('click'); await flushPromises()
   expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari', replaceOld: false })
 })
+
+
+it('uses the backup recovery fallback when replacement fails', async () => {
+  const backend = fakeBackend({
+    claudeCodeStatus: vi.fn().mockResolvedValue({ ...off, oldOne: { skill: true, lines: ['/ari'] } }),
+    turnOn: vi.fn().mockRejectedValue(new Error('private detail')),
+  })
+  const wrapper = screen(TurnOn, backend, { assistant })
+  await flushPromises()
+  await button(wrapper, 'Replace the old one').trigger('click'); await flushPromises()
+  expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari', replaceOld: true })
+  expect(wrapper.get('.alert-warning.mt-3').text()).toBe("Voice couldn't replace the old one. Look in ~/.claude/voice-backups/ari/ before you try again.")
+  expect(wrapper.text()).not.toContain('nothing in your Claude folder was changed')
+})

@@ -115,10 +115,10 @@ pub fn claude_code_status_in(
     }
     let Some(status) = install::status(&places(home, claude_home)).map_err(|_| failure(STATUS))?
     else {
-        let found = replace_old::find(&places(home, claude_home), &request.slug)
-            .map_err(|_| failure(STATUS))?;
         let mut status = empty(dto::OnState::Off);
-        if found.any() {
+        if let Ok(found) = replace_old::find(&places(home, claude_home), &request.slug)
+            && found.any()
+        {
             status.old_one = Some(dto::OldOneFound {
                 skill: found.skill.is_some(),
                 lines: found
@@ -202,11 +202,15 @@ pub fn turn_on_in(
             name,
         )));
     }
-    let found = replace_old::find(&places, &request.slug).map_err(|_| failure(&on_failed(name)))?;
-    if found.skill.is_some() && !request.replace_old {
+    let found = match replace_old::find(&places, &request.slug) {
+        Ok(found) => Some(found),
+        Err(_) if !request.replace_old => None,
+        Err(_) => return Err(failure(&on_failed(name))),
+    };
+    if found.as_ref().is_some_and(|found| found.skill.is_some()) && !request.replace_old {
         return Err(failure(&replace_old::old_skill(name, &request.slug)));
     }
-    let replaced = if found.any() && request.replace_old {
+    let replaced = if found.as_ref().is_some_and(|found| found.any()) && request.replace_old {
         let now = std::time::SystemTime::now();
         Some(
             replace_old::replace(
@@ -239,9 +243,20 @@ pub fn turn_on_in(
         })
     })?;
     if let Some(moved) = moved {
-        return Ok(said(format!(
+        let mut message = format!(
             "{name} is on. {moved} (only the parts it found). Turning {name} off won't put them back. Start a new Claude Code session to use {name}."
-        )));
+        );
+        if let Some(leftover) = replaced.and_then(|replaced| replaced.leftover) {
+            let canonical_home = home.canonicalize().map_err(|_| failure(&on_failed(name)))?;
+            let shown = leftover
+                .strip_prefix(&canonical_home)
+                .map(|path| format!("~/{}", path.display()))
+                .unwrap_or_else(|_| leftover.display().to_string());
+            message.push_str(&format!(
+                " Voice couldn't delete the moved folder {shown}; you can delete it."
+            ));
+        }
+        return Ok(said(message));
     }
     Ok(said(format!(
         "{name} is on. Start a new Claude Code session to use {name}."
