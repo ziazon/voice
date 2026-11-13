@@ -2,6 +2,7 @@ import { flushPromises, type DOMWrapper, type VueWrapper } from '@vue/test-utils
 import { expect, it, vi } from 'vitest'
 import { assistant, deferred, fakeBackend, screen } from '../../test-support'
 import type { Assistant } from '../../types/generated/Assistant'
+import type { ClaudeStatus } from '../../types/generated/ClaudeStatus'
 import NewPanel from './NewPanel.vue'
 
 const assistants: Assistant[] = ['Pebble', 'Quill', 'Moss'].map(name => ({
@@ -164,4 +165,49 @@ it('derives selected seats from the selection alone', async () => {
   await flushPromises()
   expect(form.seats).toEqual(['pebble', 'quill'])
   expect(control(wrapper, 'Quill').attributes('disabled')).toBeDefined()
+})
+
+it('shows the subscription note for a ready subscription', async () => {
+  const backend = fakeBackend({
+    listAssistants: vi.fn().mockResolvedValue(assistants),
+    claudeCheck: vi.fn().mockResolvedValue({ ready: true, subscription: true, message: 'Ready.', note: null, canSignIn: false, canSignInWithSubscription: false }),
+  })
+  const wrapper = screen(NewPanel, backend); await flushPromises()
+  expect(wrapper.get('form > p').text()).toBe("Each assistant's turns use your Claude plan, and stop for the day when Claude Code says your plan is nearly used up.")
+  expect(wrapper.text()).not.toContain("count toward that assistant's daily limit")
+})
+
+it('keeps the Console note for the default backend', async () => {
+  const { wrapper } = await ready()
+  expect(wrapper.get('form > p').text()).toBe("Each assistant's turns use your Claude plan and count toward that assistant's daily limit.")
+})
+
+it('keeps the Console note and assistant list without an error when the Claude check fails', async () => {
+  const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue(assistants), claudeCheck: vi.fn().mockRejectedValue({ message: 'Claude check is unavailable.' }) })
+  const wrapper = screen(NewPanel, backend); await flushPromises()
+  expect(wrapper.get('form > p').text()).toBe("Each assistant's turns use your Claude plan and count toward that assistant's daily limit.")
+  for (const item of assistants) expect(control(wrapper, item.name).exists()).toBe(true)
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('Claude check is unavailable.')
+})
+
+it('keeps the Console note for a subscription that is not ready', async () => {
+  const backend = fakeBackend({
+    listAssistants: vi.fn().mockResolvedValue(assistants),
+    claudeCheck: vi.fn().mockResolvedValue({ ready: false, subscription: true, message: 'Sign in for Voice.', note: null, canSignIn: true, canSignInWithSubscription: false }),
+  })
+  const wrapper = screen(NewPanel, backend); await flushPromises()
+  expect(wrapper.get('form > p').text()).toBe("Each assistant's turns use your Claude plan and count toward that assistant's daily limit.")
+})
+
+it('lists assistants and starts a panel while the Claude check stays pending', async () => {
+  const pending = deferred<ClaudeStatus>()
+  const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue(assistants), claudeCheck: vi.fn().mockReturnValue(pending.promise) })
+  const wrapper = screen(NewPanel, backend); await flushPromises()
+  for (const item of assistants) expect(control(wrapper, item.name).exists()).toBe(true)
+  await valid(wrapper)
+  await submit(wrapper)
+  expect(wrapper.emitted('start')).toEqual([[{
+    question: 'Which path should we try?', background: '', kind: 'text', seats: ['pebble', 'moss'], timeBox: null,
+  }]])
 })

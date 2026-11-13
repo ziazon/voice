@@ -151,7 +151,8 @@ onMounted(loadLimit)
   <section class="card">
     <div class="card-body p-5">
       <h2 class="mb-3">Connect Claude</h2>
-      <p>Voice works through your own Claude Code, signed in with your own Anthropic Console account, which is billed for what it uses. It checks that now, and you set how much it may use in a day.</p>
+      <p v-if="status?.ready && status.subscription">Voice works through your own Claude Code, signed in with your own Claude subscription, so what it does uses your plan.</p>
+      <p v-else>Voice works through your own Claude Code, signed in with your own Anthropic Console account, which is billed for what it uses. It checks that now, and you set how much it may use in a day.</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Checking Claude Code…</span></div>
       <template v-else-if="signingIn">
         <div class="mb-3" role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Finish signing in on the page that opened in your browser. Voice carries on when you're done.</div>

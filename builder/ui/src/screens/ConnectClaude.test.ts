@@ -401,3 +401,34 @@ it('shows dollar fields for a subscription that is not ready', async () => {
   expect(wrapper.find('#limit-step').exists()).toBe(true)
   expect(button(wrapper, 'Save the limit').exists()).toBe(true)
 })
+
+it('explains a ready subscription in exactly one first paragraph without Console or daily-limit words', async () => {
+  const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ...signedOut, ready: true, subscription: true }) }), { assistant })
+  await flushPromises()
+  const card = wrapper.findAll('.card')[0]!
+  expect(card.findAll('h2 + p')).toHaveLength(1)
+  expect(card.get('h2 + p').text()).toBe('Voice works through your own Claude Code, signed in with your own Claude subscription, so what it does uses your plan.')
+  expect(card.text()).not.toContain('Anthropic Console account')
+  expect(card.text()).not.toContain('in a day')
+})
+
+it('keeps the exact first paragraph for a ready Console sign-in', async () => {
+  const wrapper = screen(ConnectClaude, fakeBackend(), { assistant })
+  await flushPromises()
+  expect(wrapper.get('h2 + p').text()).toBe('Voice works through your own Claude Code, signed in with your own Anthropic Console account, which is billed for what it uses. It checks that now, and you set how much it may use in a day.')
+})
+
+it('keeps the exact first paragraph for a subscription that is not ready', async () => {
+  const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockResolvedValue({ ...signedOut, subscription: true }) }), { assistant })
+  await flushPromises()
+  expect(wrapper.get('h2 + p').text()).toBe('Voice works through your own Claude Code, signed in with your own Anthropic Console account, which is billed for what it uses. It checks that now, and you set how much it may use in a day.')
+})
+
+it('keeps the Console first paragraph while checking and changes it after a ready subscription resolves', async () => {
+  const pending = deferred<ClaudeStatus>()
+  const wrapper = screen(ConnectClaude, fakeBackend({ claudeCheck: vi.fn().mockReturnValue(pending.promise) }), { assistant })
+  expect(wrapper.get('h2 + p').text()).toBe('Voice works through your own Claude Code, signed in with your own Anthropic Console account, which is billed for what it uses. It checks that now, and you set how much it may use in a day.')
+  pending.resolve({ ...signedOut, ready: true, subscription: true }); await flushPromises()
+  expect(wrapper.findAll('.card')[0]!.findAll('h2 + p')).toHaveLength(1)
+  expect(wrapper.get('h2 + p').text()).toBe('Voice works through your own Claude Code, signed in with your own Claude subscription, so what it does uses your plan.')
+})

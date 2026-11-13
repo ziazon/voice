@@ -10,6 +10,7 @@ const emit = defineEmits<{ start: [ConvenePanelRequest]; cancel: [] }>()
 const backend = useBackend()
 const assistants = ref<Assistant[]>([])
 const loading = ref(true)
+const subscription = ref(false)
 const error = ref('')
 const question = ref('')
 const background = ref('')
@@ -23,6 +24,14 @@ const seats = computed(() => assistants.value.filter(item => selected.value.incl
 const valid = computed(() => !loading.value && !error.value && questionCount.value >= 1 && questionCount.value <= 200
   && backgroundBytes.value <= 4096 && seats.value.length >= 2 && seats.value.length <= 24
   && (kind.value === 'text' || (typeof items.value === 'number' && Number.isInteger(items.value) && items.value >= 1 && items.value <= 12)))
+onMounted(async () => {
+  try {
+    const status = await backend.claudeCheck()
+    subscription.value = status.ready && status.subscription
+  } catch {
+    // Keep the Console words when the sign-in check fails.
+  }
+})
 onMounted(async () => {
   try {
     assistants.value = await backend.listAssistants()
@@ -78,7 +87,8 @@ function start() {
             <input v-model="timeBox" type="radio" :value="limit.value" class="form-check-input"><span class="form-check-label">{{ limit.label }}</span>
           </label>
         </fieldset>
-        <p>Each assistant's turns use your Claude plan and count toward that assistant's daily limit.</p>
+        <p v-if="subscription">Each assistant's turns use your Claude plan, and stop for the day when Claude Code says your plan is nearly used up.</p>
+        <p v-else>Each assistant's turns use your Claude plan and count toward that assistant's daily limit.</p>
         <button type="submit" class="btn btn-primary" :disabled="!valid">Start the panel</button>
         <button type="button" class="btn btn-link" @click="emit('cancel')">Cancel</button>
       </form>

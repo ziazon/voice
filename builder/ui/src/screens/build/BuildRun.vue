@@ -9,9 +9,18 @@ import ReadProgress from '../sources/ReadProgress.vue'
 import { PLAN_STOPPED, RETRY_DELAY_MS, PLAN_WAIT_MS, MAX_STOPS } from './keepGoing'
 
 const props = defineProps<{ slug: string, name: string }>()
-const emit = defineEmits<{ running: [boolean], finished: [], report: [] }>()
+const emit = defineEmits<{ running: [boolean], finished: [], report: [], subscription: [boolean] }>()
 const backend = useBackend()
 const spend = ref<Spend | null>(null)
+let lastSubscription: boolean | undefined
+watch(spend, value => {
+  if (value === null) return
+  const subscription = value.usage !== null
+  if (subscription !== lastSubscription) {
+    lastSubscription = subscription
+    emit('subscription', subscription)
+  }
+}, { flush: 'sync' })
 const running = ref(false)
 const stopping = ref(false)
 const attempted = ref(false)

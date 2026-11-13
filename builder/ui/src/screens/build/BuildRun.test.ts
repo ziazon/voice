@@ -7,6 +7,39 @@ import BuildRun from './BuildRun.vue'
 
 const spend: Spend = { spentUsd: 3, dailyCapUsd: 50, usage: null }
 const done = { answered: 1000, heldOut: 2, tested: false, spend }
+it.each([
+  ['Today, 2 calls to Claude and 850 tokens, on your Claude subscription.', true],
+  [null, false],
+] as const)('emits subscription once after initial spend resolves with usage %s', async (usage, subscription) => {
+  const pending = deferred<Spend>()
+  const wrapper = screen(BuildRun, fakeBackend({ spendToday: vi.fn().mockReturnValue(pending.promise) }), { slug: assistant.slug, name: assistant.name })
+  expect(wrapper.emitted('subscription')).toBeUndefined()
+  pending.resolve({ ...spend, usage }); await flushPromises()
+  expect(wrapper.emitted('subscription')).toEqual([[subscription]])
+})
+
+it('emits no subscription when the initial spend fails', async () => {
+  const wrapper = screen(BuildRun, fakeBackend({ spendToday: vi.fn().mockRejectedValue({ message: 'Spending is unavailable.' }) }), { slug: assistant.slug, name: assistant.name })
+  await flushPromises()
+  expect(wrapper.emitted('subscription')).toBeUndefined()
+})
+
+it('emits a Console start then a subscription change from progress without repeating the same usage', async () => {
+  const call = deferred<typeof done>()
+  let progress!: (value: BuildProgress) => void
+  const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_request, callback) => { progress = callback; return call.promise }) })
+  const wrapper = screen(BuildRun, backend, { slug: assistant.slug, name: assistant.name }); await flushPromises()
+  expect(wrapper.emitted('subscription')).toEqual([[false]])
+  await button(wrapper, 'Start the build').trigger('click')
+  const subscriptionSpend: Spend = { ...spend, usage: 'Today, 2 calls to Claude and 850 tokens, on your Claude subscription.' }
+  progress({ line: 'Labelling.', spend: subscriptionSpend, steps: null }); await flushPromises()
+  expect(wrapper.emitted('subscription')).toEqual([[false], [true]])
+  progress({ line: 'Checking.', spend: { ...subscriptionSpend }, steps: null }); await flushPromises()
+  expect(wrapper.emitted('subscription')).toEqual([[false], [true]])
+  call.resolve({ ...done, spend: subscriptionSpend }); await flushPromises()
+  expect(wrapper.emitted('subscription')).toEqual([[false], [true]])
+})
+
 it('shows live lines and spend, finishes with counts and emits running', async () => {
   const call = deferred<typeof done>()
   const backend = fakeBackend({ buildAssistant: vi.fn().mockImplementation((_r, progress) => { progress({ line: 'Reading your history', spend, steps: null }); return call.promise }) })
