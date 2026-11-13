@@ -364,6 +364,7 @@ mod tests {
         fs::create_dir_all(source.join("scripts")).unwrap();
         let files = [
             ("scripts/run.sh", "#!/bin/sh\necho invented\n", 0o755, 0o700),
+            ("setuid-run", "invented", 0o4755, 0o700),
             ("owner-only", "invented", 0o500, 0o700),
             ("group-run", "invented", 0o654, 0o600),
             ("notes.md", "invented notes", 0o644, 0o600),
