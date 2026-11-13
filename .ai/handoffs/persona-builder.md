@@ -2,6 +2,50 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF7b: no daily limit under a Claude subscription (2026-11-13, lane: V1)
+
+- **Why:** V-Q16's answer. Signed in with a Claude subscription (testers' builds only), Voice stops for
+  the day only when Claude Code says the plan is nearly used up (V-Q8's plan guard). The step amount
+  stays, because `--max-budget-usd` is the only stop inside a call. A Console sign-in and every public
+  build keep the $50 day and $5 step word for word.
+- **What:** `Cap::for_sign_in(subscription)` drops the daily part and keeps the step; a saved step of 0
+  becomes the $5 default, so a call under a subscription always has a stop (*Keep going* is unchanged and
+  still passes none). It is applied with the Claude check's own `Ready::subscription` wherever a session
+  is opened for calls: CLI `build`, `interview draft`, `refresh propose` and `apply` (through `cap_for`,
+  which now runs after the check, so `--daily-cap-usd` is ignored under a subscription); the app's build,
+  interview, both refresh flows and `ask` (through `building::open`); panels (`ClaudeTurns::new`). A place
+  that forgot it would keep the daily limit, the safer side. `voice limit show` and `set` print
+  `text::LIMIT_SUBSCRIPTION` / `LIMIT_SAVED_SUBSCRIPTION` under a subscription (`set` still saves the
+  Console amounts, and drops the state lock before it checks the sign-in). `dto::ClaudeStatus` gains
+  `subscription`; Connect Claude's limit card then shows only that sentence, and its dollar fields wait for
+  the Claude check so a subscription never sees them for a moment. Briefs:
+  `plans/briefs/VF7b-subscription-limit.md` and `VF7b-fixup1-review-findings.md`.
+- **Who built it:** Codex, from both briefs. Her sandbox blocked sockets and pnpm, so V1 ran the
+  integration, CLI and UI suites outside it.
+- **Verified:** red first for the cap and `cap_for` tests (Codex). Outside the sandbox: the 29
+  subscription-named tests in voice-agent, voice-api and voice-cli under `--features claude-subscription`,
+  `cap_tests` and `explicit_call_cap_above_the_day_is_refused` in the public build, the UI suite (605
+  passed after the fix-up; 604 before) and its typecheck. Each new call-site test pairs a `claude.ai` stub
+  that runs past a $1.00 day with an `api_key` stub refused with the limit sentence. Mutations, each
+  killed on an assertion, files restored and `cmp`-checked: `for_sign_in` returning `self`, zeroing the
+  step, keeping a 0 step; `cap_for` ignoring the sign-in; `building::open` ignoring it; `ready_status`
+  always false; each of the six call sites (CLI build, refresh propose, refresh apply, interview's
+  new-session branch, the app's interview draft and refresh apply) passing `false`; the CLI interview's
+  open; Connect Claude's subscription branch, its `ready` condition, its wait for the check and its
+  `!signingIn`.
+- **Reviews:** security review (sub-task): no HIGH or MEDIUM; three LOWs, two fixed in fix-up 1 (the 0
+  step, the lock held during the sign-in check). Verifier (Fable) on `41c3a27`: no must-fix; should-fixes
+  fixed in fix-up 1 (`--daily-cap-usd` still clamped the step; six untested call sites), nits fixed
+  (literal expected sentences, two unpinned UI conditions). Kept as a known limit (security LOW 1,
+  Verifier should-fix 2): the sign-in is read once when a run starts, so a person who signs out and back
+  in with a Console account during a running build or panel finishes that run with no daily limit, each
+  call still under its step stop. It needs the payer's own action.
+- **Not verified:** panels under a subscription (`voice-panel-runner` has no `claude-subscription`
+  feature; checked by reading). A real subscription sign-in in a testers' build (walk owed, attended):
+  Connect Claude's card, `voice limit show`, and a build past the saved daily amount.
+- **Left:** the other words that still describe the daily limit as always applying (Connect Claude's first
+  paragraph, the Build screen, the panels note, the consent text) are VF7c (`wHxQqwcA`, Backlog on VF7b).
+
 ## VO16.2b: Voice pins radio-panels v0.1.0 and deletes builder/panels (2026-11-12, lane: V1)
 
 - **Why:** the deliberation protocol moved out of voice into the shared public repo `awna-ai/radio` (VO16.2, the
