@@ -196,17 +196,23 @@ fn copy_entry(source: &Path, destination: &Path) -> Result<()> {
         }
     } else if kind.is_file() {
         let mut input = open_regular(source)?;
+        // Keep a script runnable for its owner; nothing else from the source mode carries over.
+        let mode = if io(source, input.metadata())?.permissions().mode() & 0o100 == 0 {
+            0o600
+        } else {
+            0o700
+        };
         let mut output = io(
             destination,
             OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .mode(0o600)
+                .mode(mode)
                 .open(destination),
         )?;
         io(
             destination,
-            output.set_permissions(fs::Permissions::from_mode(0o600)),
+            output.set_permissions(fs::Permissions::from_mode(mode)),
         )?;
         io(destination, std::io::copy(&mut input, &mut output))?;
     } else if kind.is_symlink() {
@@ -349,6 +355,37 @@ mod tests {
             fs::read_link(backup.join("state/dangling")).unwrap(),
             Path::new("does-not-exist")
         );
+    }
+
+    #[test]
+    fn keeps_only_the_owners_execute_bit() {
+        let scratch = Scratch::new();
+        let source = scratch.path().join("old");
+        fs::create_dir_all(source.join("scripts")).unwrap();
+        let files = [
+            ("scripts/run.sh", "#!/bin/sh\necho invented\n", 0o755, 0o700),
+            ("owner-only", "invented", 0o500, 0o700),
+            ("group-run", "invented", 0o654, 0o600),
+            ("notes.md", "invented notes", 0o644, 0o600),
+        ];
+        for (path, contents, mode, _) in files {
+            let path = source.join(path);
+            fs::write(&path, contents).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+        }
+        let backup = back_up(scratch.path(), "ari", STAMP, &[item(&source)]).unwrap();
+        for (path, _, _, expected_mode) in files {
+            let copied = backup.join("state").join(path);
+            assert_eq!(
+                fs::metadata(&copied).unwrap().permissions().mode() & 0o7777,
+                expected_mode,
+                "{path}"
+            );
+            assert_eq!(
+                fs::read(&copied).unwrap(),
+                fs::read(source.join(path)).unwrap()
+            );
+        }
     }
 
     #[test]
