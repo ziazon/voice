@@ -75,6 +75,7 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     savePush: vi.fn().mockResolvedValue({ message: 'Your copy is saved.' }),
     savedOnGithub: vi.fn().mockResolvedValue({ signedIn: false, items: [] }),
     openSaved: vi.fn().mockResolvedValue({ assistant, backup: null, message: 'Opened Example from example-owner/example-assistant.' }),
+    takeNewest: vi.fn().mockResolvedValue({ assistant, changed: 0, message: 'Example is already the newest version saved in example-owner/example-assistant.' }),
     claudeCodeFolders: vi.fn().mockResolvedValue({ found: false, folders: [] }),
     readClaudeCode: vi.fn().mockResolvedValue({ questions: 0, heldOut: 0, messages: 0, privateLeftOut: 0, unreadable: 0, first: null, last: null }),
     chooseClaudeaiExport: vi.fn().mockResolvedValue(null),

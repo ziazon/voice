@@ -46,6 +46,7 @@ it.each([
   ['saveChoose', 'save_choose', { slug: 'example', choice: 0, kind: 'github', name: 'example-assistant' }],
   ['savePush', 'save_push', { slug: 'example' }],
   ['openSaved', 'open_saved', { owner: 'example-owner', repo: 'ari-assistant', slug: 'ari' }],
+  ['takeNewest', 'take_newest', { slug: 'ari' }],
   ['claudeCodeStatus', 'claude_code_status', { slug: 'ari' }],
   ['turnOn', 'turn_on', { slug: 'ari' }],
   ['turnOff', 'turn_off', { slug: 'ari' }],

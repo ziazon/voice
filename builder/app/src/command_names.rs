@@ -22,6 +22,7 @@ pub const COMMANDS: &[&str] = &[
     "save_push",
     "saved_on_github",
     "open_saved",
+    "take_newest",
     "claude_code_folders",
     "read_claude_code",
     "choose_claudeai_export",

@@ -180,6 +180,15 @@ pub struct OpenedSaved {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
+pub struct TookNewest {
+    pub assistant: Assistant,
+    pub changed: u32,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct SaveOption {
     pub kind: SaveKind,
     pub label: String,

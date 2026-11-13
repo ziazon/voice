@@ -397,9 +397,16 @@ enum Command {
         command: SaveCommand,
     },
     /// Open an assistant you saved on GitHub, on this computer.
+    #[command(
+        group(clap::ArgGroup::new("open_target").args(["slug", "update"]).multiple(true)),
+        override_usage = "voice open [REPO] [SLUG]\n       voice open --update <SLUG>"
+    )]
     Open {
-        /// The GitHub repository: <owner>/<repo>.
-        #[arg(requires = "slug")]
+        /// Take the newest saved version of this assistant.
+        #[arg(long, requires = "repo", conflicts_with = "slug")]
+        update: bool,
+        /// The GitHub repository: <owner>/<repo>, or the assistant's folder name with --update.
+        #[arg(requires = "open_target")]
         repo: Option<String>,
         /// The assistant's folder name.
         #[arg(requires = "repo")]
@@ -2896,7 +2903,25 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             },
             SaveCommand::Push { path } => save_push(path),
         },
-        Some(Command::Open { repo, slug }) => open_saved(repo, slug),
+        Some(Command::Open { repo, slug, update }) => {
+            if update {
+                let slug = repo.expect("clap requires a folder name with --update");
+                if voice_core::crew::slugify(&slug).as_deref() != Some(slug.as_str()) {
+                    Cli::command()
+                        .error(
+                            clap::error::ErrorKind::InvalidValue,
+                            "Use the assistant's folder name, such as wren.",
+                        )
+                        .exit();
+                }
+                let taken = voice_api::save::take_newest(voice_api::dto::SlugRequest { slug })
+                    .map_err(|error| Error::Invalid(error.message))?;
+                println!("{}", taken.message);
+                Ok(())
+            } else {
+                open_saved(repo, slug)
+            }
+        }
         Some(Command::Agents) => agents(),
         Some(Command::Claude { command }) => match command {
             ClaudeCommand::Check => claude_check(),

@@ -93,6 +93,10 @@ pub const PARITY: &[Parity] = &[
         cli: &[&["open"]],
     },
     Parity {
+        app: "take_newest",
+        cli: &[&["open", "--update"]],
+    },
+    Parity {
         app: "claude_code_folders",
         cli: &[&["folders"]],
     },

@@ -122,6 +122,19 @@ impl Git {
             None,
         )
     }
+    pub(crate) fn ancestor(&self, git_dir: &Path, old: &str, new: &str) -> Result<bool> {
+        let output = output(
+            self.repo_command(Env::Own, git_dir, "merge-base")
+                .args(["--is-ancestor", old, new]),
+            "merge-base",
+            None,
+        )?;
+        match output.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            _ => Err(failed("merge-base")),
+        }
+    }
     pub(crate) fn run_bytes(
         &self,
         git_dir: &Path,
@@ -495,6 +508,12 @@ fn auth_header(command: &mut Command, token: Option<&Secret>) -> Option<String> 
 }
 
 pub fn fetch_main(git: &Git, git_dir: &Path, token: &Secret) -> Result<()> {
+    fetch_main_into(git, git_dir, token, "refs/heads/main")
+}
+pub fn fetch_main_into(git: &Git, git_dir: &Path, token: &Secret, dest_ref: &str) -> Result<()> {
+    if !matches!(dest_ref, "refs/heads/main" | "refs/voice/incoming") {
+        return Err(Error::Invalid("invalid fetch reference".into()));
+    }
     let mut command = git.command(Env::Own);
     command
         .args(["-c", "transfer.fsckObjects=true"])
@@ -505,7 +524,7 @@ pub fn fetch_main(git: &Git, git_dir: &Path, token: &Secret) -> Result<()> {
         "--no-recurse-submodules",
         "--",
         "origin",
-        "+refs/heads/main:refs/heads/main",
+        &format!("+refs/heads/main:{dest_ref}"),
     ]);
     let credential = auth_header(&mut command, Some(token));
     let output = output(&mut command, "fetch", None)

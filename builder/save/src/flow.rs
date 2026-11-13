@@ -470,7 +470,7 @@ impl Saver<'_> {
             )?;
             git::fetch_main(self.git, &git_dir, &token)?;
             let member_dir = dir.join("member");
-            let entries = opening_entries(self.git, &git_dir, repo, slug)?;
+            let entries = opening_entries(self.git, &git_dir, repo, slug, "refs/heads/main")?;
             open_io(
                 &member_dir,
                 fs::DirBuilder::new().mode(0o700).create(&member_dir),
@@ -478,34 +478,7 @@ impl Saver<'_> {
             for (rel, oid, executable) in entries {
                 write_opened_blob(self.git, &git_dir, &member_dir, &rel, &oid, executable)?;
             }
-            let full = repo.full();
-            match fs::symlink_metadata(member_dir.join("private.json")) {
-                Ok(_) => {
-                    return Err(Error::Invalid(text::saved_copy_refused(
-                        &full,
-                        "private.json",
-                    )));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return open_io(&member_dir.join("private.json"), Err(error)),
-            }
-            let unusable = || Error::Invalid(text::saved_copy_unusable(&full));
-            let member = read_member(&member_dir.join("member.json")).map_err(|_| unusable())?;
-            if member.slug != slug
-                || voice_core::member::private_state_dir(&member, home)
-                    != Some(home.join(".claude/state").join(slug))
-            {
-                return Err(unusable());
-            }
-            voice_core::crew::check_name("name", &member.name)?;
-            voice_core::crew::check_name("principal", &member.principal)?;
-            let hits = privacy.hits(&member_dir)?;
-            if !hits.is_empty() {
-                return Err(Error::Invalid(text::saved_copy_private(
-                    &repo.full(),
-                    &places(&hits),
-                )));
-            }
+            let member = validate_opened(&member_dir, home, repo, slug, privacy)?;
             let trailer = self.git.run(
                 Env::Own,
                 &git_dir,
@@ -536,6 +509,44 @@ impl Saver<'_> {
         result
     }
 }
+fn validate_opened(
+    member_dir: &Path,
+    home: &Path,
+    repo: &RepoRef,
+    slug: &str,
+    privacy: &dyn PrivacyCheck,
+) -> Result<voice_core::member::Member> {
+    use std::fs;
+    let full = repo.full();
+    match fs::symlink_metadata(member_dir.join("private.json")) {
+        Ok(_) => {
+            return Err(Error::Invalid(text::saved_copy_refused(
+                &full,
+                "private.json",
+            )));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return open_io(&member_dir.join("private.json"), Err(error)),
+    }
+    let unusable = || Error::Invalid(text::saved_copy_unusable(&full));
+    let member = read_member(&member_dir.join("member.json")).map_err(|_| unusable())?;
+    if member.slug != slug
+        || voice_core::member::private_state_dir(&member, home)
+            != Some(home.join(".claude/state").join(slug))
+    {
+        return Err(unusable());
+    }
+    voice_core::crew::check_name("name", &member.name)?;
+    voice_core::crew::check_name("principal", &member.principal)?;
+    let hits = privacy.hits(member_dir)?;
+    if !hits.is_empty() {
+        return Err(Error::Invalid(text::saved_copy_private(
+            &repo.full(),
+            &places(&hits),
+        )));
+    }
+    Ok(member)
+}
 fn places(hits: &[String]) -> String {
     let mut places = hits.iter().take(20).cloned().collect::<Vec<_>>().join(", ");
     if hits.len() > 20 {
@@ -549,12 +560,13 @@ fn opening_entries(
     git_dir: &Path,
     repo: &RepoRef,
     slug: &str,
+    revision: &str,
 ) -> Result<Vec<OpeningEntry>> {
     let prefix = format!("crew/{slug}/");
     let bytes = git.run_bytes(
         git_dir,
         "ls-tree",
-        &["-r", "-z", "--full-tree", "refs/heads/main", "--", &prefix],
+        &["-r", "-z", "--full-tree", revision, "--", &prefix],
     )?;
     let full = repo.full();
     let refused = |rel: &str| {
@@ -806,3 +818,6 @@ mod opening_tests {
         }
     }
 }
+
+mod take;
+pub use take::Took;

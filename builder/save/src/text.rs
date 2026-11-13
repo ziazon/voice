@@ -146,6 +146,9 @@ pub fn is_said(message: &str) -> bool {
             && message.ends_with("Move that folder somewhere else, then try again."))
         || (message.starts_with("Voice found no assistant called ")
             && message.ends_with(", so it opened nothing."))
+        || (message.starts_with("This computer saves ") && message.ends_with(", so there's no newer version to take here."))
+        || (message.contains(" in ") && message.ends_with("'s folder changed on this computer, so Voice took nothing. Put it back as it was, or move it somewhere else, then try again."))
+        || (message.starts_with("The copy saved in ") && message.ends_with(" doesn't build on the version on this computer, so Voice took nothing."))
         || message.starts_with("Voice couldn't fetch the saved copy: ")
         || [
             SIGN_IN_FAILED,
@@ -210,4 +213,27 @@ pub fn saved_copy_missing(full: &str, slug: &str) -> String {
 }
 pub fn saved_copy_unusable(full: &str) -> String {
     format!("The saved copy in {full} has a member.json Voice can't use, so it opened nothing.")
+}
+
+fn plain(value: &str) -> String {
+    value.chars().filter(|c| !c.is_control()).collect()
+}
+pub fn not_a_member(name: &str) -> String {
+    format!(
+        "This computer saves {}, so there's no newer version to take here.",
+        plain(name)
+    )
+}
+pub fn changed_here(name: &str, rel: &str) -> String {
+    format!(
+        "{} in {}'s folder changed on this computer, so Voice took nothing. Put it back as it was, or move it somewhere else, then try again.",
+        plain(rel),
+        plain(name)
+    )
+}
+pub fn not_newer(full: &str) -> String {
+    format!(
+        "The copy saved in {} doesn't build on the version on this computer, so Voice took nothing.",
+        plain(full)
+    )
 }

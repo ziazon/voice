@@ -26,6 +26,7 @@
     "allow-save-push",
     "allow-saved-on-github",
     "allow-open-saved",
+    "allow-take-newest",
     "allow-claude-code-folders",
     "allow-read-claude-code",
     "allow-choose-claudeai-export",

@@ -84,7 +84,7 @@ fn places(home: &Path, claude_home: &Path) -> Places {
         claude_home: claude_home.into(),
     }
 }
-fn is_this(status: &install::Status, listed: &Listed) -> bool {
+pub(crate) fn is_this(status: &install::Status, listed: &Listed) -> bool {
     status.slug == listed.member.slug
         && matches!((fs::canonicalize(&status.member_dir), fs::canonicalize(&listed.dir)), (Ok(a), Ok(b)) if a == b)
 }

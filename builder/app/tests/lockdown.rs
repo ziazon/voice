@@ -66,6 +66,7 @@ fn lockdown_1_command_lists_agree_in_order() {
             "save_push",
             "saved_on_github",
             "open_saved",
+            "take_newest",
             "claude_code_folders",
             "read_claude_code",
             "choose_claudeai_export",

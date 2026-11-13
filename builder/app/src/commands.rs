@@ -129,6 +129,13 @@ pub fn open_saved(
 }
 
 #[tauri::command(async)]
+pub fn take_newest(
+    request: voice_api::dto::SlugRequest,
+) -> Result<voice_api::dto::TookNewest, voice_api::dto::Failure> {
+    voice_api::take_newest(request)
+}
+
+#[tauri::command(async)]
 pub fn claude_code_folders(
     request: voice_api::dto::SlugRequest,
 ) -> Result<voice_api::dto::ClaudeCodeFolders, voice_api::dto::Failure> {

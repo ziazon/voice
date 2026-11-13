@@ -33,6 +33,7 @@ fn main() {
             commands::save_push,
             commands::saved_on_github,
             commands::open_saved,
+            commands::take_newest,
             commands::claude_code_folders,
             commands::read_claude_code,
             commands::choose_claudeai_export,

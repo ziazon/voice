@@ -511,6 +511,91 @@ pub fn open_saved(request: dto::OpenSavedRequest) -> Result<dto::OpenedSaved> {
     })
 }
 
+pub fn take_newest_in(
+    home: &Path,
+    claude_home: &Path,
+    request: dto::SlugRequest,
+    git: &Git,
+    github: Option<&Github<'_>>,
+    tokens: &dyn TokenStore,
+) -> Result<dto::TookNewest> {
+    let lock = voice_ingest::private::lock_state(home, &request.slug);
+    let found = listed(home, &request.slug)?;
+    let name = &found.member.name;
+    let fallback = format!("Voice couldn't take the newest version of {name}. Try again.");
+    let _lock = lock.map_err(|error| map_error(error, &fallback))?;
+    let member = MemberPaths::load(&found.dir.join("member.json"), home)
+        .map_err(|error| map_error(error, &fallback))?;
+    let took = Saver {
+        git,
+        github,
+        tokens,
+    }
+    .take_newest(
+        home,
+        &member,
+        &voice_agent::ledger::local_stamp(SystemTime::now()),
+        &FolderPrivacy,
+    )
+    .map_err(|error| map_error(error, &fallback))?;
+    let (changed, mut message) = match took {
+        flow::Took::AlreadyNewest { full } => (
+            0,
+            format!("{name} is already the newest version saved in {full}."),
+        ),
+        flow::Took::Updated { full, changed } => {
+            let files = if changed == 1 {
+                "1 file".into()
+            } else {
+                format!("{changed} files")
+            };
+            (
+                changed,
+                format!("Took the newest version of {name} from {full}: {files} changed."),
+            )
+        }
+    };
+    if changed > 0 {
+        let places = voice_core::install::Places {
+            home: home.into(),
+            claude_home: claude_home.into(),
+        };
+        if voice_core::install::status(&places)
+            .ok()
+            .flatten()
+            .is_some_and(|status| crate::use_it::is_this(&status, &found))
+        {
+            if voice_core::install::turn_on(&member.dir, &places).is_ok() {
+                message.push_str(&format!(" Voice refreshed {name} in Claude Code too."));
+            } else {
+                message.push_str(&format!(
+                    " Voice couldn't refresh {name} in Claude Code; turn {name} on again to do it."
+                ));
+            }
+        }
+    }
+    Ok(dto::TookNewest {
+        assistant: crate::assistants::assistant(home, listed(home, &request.slug)?),
+        changed: changed as u32,
+        message,
+    })
+}
+
+pub fn take_newest(request: dto::SlugRequest) -> Result<dto::TookNewest> {
+    let fallback = "Voice couldn't take the newest version of your assistant. Try again.";
+    let home = home(fallback)?;
+    with_github(fallback, |github| {
+        take_newest_in(
+            &home,
+            &crate::use_it::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref()),
+            request,
+            &Git::system(),
+            github,
+            &Keychain::github(),
+        )
+    })
+}
+
 fn with_github<T>(fallback: &str, run: impl FnOnce(Option<&Github<'_>>) -> Result<T>) -> Result<T> {
     with_github_in(github::client_id(), fallback, run)
 }

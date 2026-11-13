@@ -1043,3 +1043,129 @@ fn open_saved_reports_a_member_that_fails_the_final_check() {
     );
     assert_no_staging(&home.0);
 }
+
+#[test]
+fn take_newest_non_member_keeps_the_explanation() {
+    let home = Home::new();
+    home.make();
+    let error = take_newest_in(
+        &home.0,
+        &home.0.join(".claude"),
+        slug("ari"),
+        &git(),
+        None,
+        &MemoryStore::new(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.message,
+        "This computer saves Ari, so there's no newer version to take here."
+    );
+}
+
+fn newer_fixture(fixture: &Home, home: &Home, git: &Git, tokens: &MemoryStore) -> PathBuf {
+    let http = open_http();
+    let github = github(&http);
+    open_saved_in(
+        &home.0,
+        &home.0.join(".claude"),
+        open_request(),
+        git,
+        Some(&github),
+        tokens,
+    )
+    .unwrap();
+    http.drained();
+    let repo = fixture.0.join("source/.claude");
+    let skill = repo.join("crew/ari/SKILL.md");
+    let mut bytes = fs::read_to_string(&skill).unwrap();
+    bytes.push_str("\nUse the newest saved guidance.\n");
+    fs::write(&skill, bytes).unwrap();
+    run_git(&repo, &["add", "crew"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "user.name=Voice",
+            "-c",
+            "user.email=voice@localhost",
+            "commit",
+            "-qm",
+            "Save Ari",
+        ],
+    );
+    skill
+}
+
+#[test]
+fn take_newest_refreshes_the_assistant_turned_on_in_claude_code() {
+    let fixture = Home::new();
+    let git = open_fixture(&fixture);
+    let home = Home::new();
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    let skill = newer_fixture(&fixture, &home, &git, &tokens);
+    let places = voice_core::install::Places {
+        home: home.0.clone(),
+        claude_home: home.0.join(".claude"),
+    };
+    let on = voice_core::install::turn_on(&home.0.join(".claude/crew/ari"), &places).unwrap();
+    let before = fs::read(on.skill.join("SKILL.md")).unwrap();
+    let http = open_http();
+    let github = github(&http);
+    let result = take_newest_in(
+        &home.0,
+        &places.claude_home,
+        slug("ari"),
+        &git,
+        Some(&github),
+        &tokens,
+    );
+    assert!(result.is_ok(), "{result:?}");
+    let answer = result.unwrap();
+    assert_eq!(answer.changed, 1);
+    assert_eq!(
+        answer.message,
+        "Took the newest version of Ari from example-owner/ari-assistant: 1 file changed. Voice refreshed Ari in Claude Code too."
+    );
+    assert_ne!(fs::read(on.skill.join("SKILL.md")).unwrap(), before);
+    assert!(
+        fs::read_to_string(on.skill.join("SKILL.md"))
+            .unwrap()
+            .contains("Use the newest saved guidance.")
+    );
+    assert_eq!(
+        fs::read(home.0.join(".claude/crew/ari/SKILL.md")).unwrap(),
+        fs::read(skill).unwrap()
+    );
+    http.drained();
+}
+
+#[test]
+fn take_newest_when_turned_off_does_not_refresh() {
+    let fixture = Home::new();
+    let git = open_fixture(&fixture);
+    let home = Home::new();
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    newer_fixture(&fixture, &home, &git, &tokens);
+    let http = open_http();
+    let github = github(&http);
+    let result = take_newest_in(
+        &home.0,
+        &home.0.join(".claude"),
+        slug("ari"),
+        &git,
+        Some(&github),
+        &tokens,
+    );
+    assert!(result.is_ok(), "{result:?}");
+    let answer = result.unwrap();
+    assert_eq!(answer.changed, 1);
+    assert_eq!(
+        answer.message,
+        "Took the newest version of Ari from example-owner/ari-assistant: 1 file changed."
+    );
+    assert!(!home.0.join(".claude/skills/ari").exists());
+    http.drained();
+}
