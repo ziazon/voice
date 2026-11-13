@@ -5,6 +5,14 @@ import type { Said } from '../types/generated/Said'
 import type { SignInCode } from '../types/generated/SignInCode'
 import GithubSignIn from './GithubSignIn.vue'
 
+it('keeps the save lead by default and replaces it when a lead is supplied', () => {
+  expect(screen(GithubSignIn).get('p').text()).toBe('To save to GitHub, sign in to your GitHub account first.')
+  const lead = 'To open an assistant you saved, sign in to your GitHub account first.'
+  const wrapper = screen(GithubSignIn, fakeBackend(), { lead })
+  expect(wrapper.get('p').text()).toBe(lead)
+  expect(wrapper.text()).not.toContain('To save to GitHub')
+})
+
 it('starts once, shows the code and fixed plain address, then finishes immediately', async () => {
   const start = deferred<SignInCode>()
   const finish = deferred<Said>()

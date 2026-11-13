@@ -263,3 +263,73 @@ it.each([null, "It changes more than the privacy settings, so Voice leaves it.",
   const hints = wrapper.findAll('.form-hint').filter(hint => hint.text() === 'Its privacy settings: what the older assistant hid, and any words it let through.')
   expect(hints).toHaveLength(problem === 'absent' ? 0 : 1)
 })
+
+it('places opening below the form, locks make, bring-in and back during open, then forwards made', async () => {
+  const pending = deferred<{ assistant: typeof assistant; backup: null; message: string }>()
+  const saved = { owner: 'example-owner', repo: 'example-assistant', slug: 'wren', name: 'Wren', here: false }
+  const backend = fakeBackend({
+    findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true, files: [] }),
+    savedOnGithub: vi.fn().mockResolvedValue({ signedIn: true, items: [saved] }),
+    openSaved: vi.fn().mockReturnValue(pending.promise),
+  })
+  const wrapper = screen(NewAssistant, backend)
+  expect(wrapper.findAll('section.card').map(card => card.get('h2').text())).toEqual(['Make a new assistant', 'Open one you saved on GitHub'])
+  await wrapper.get('#assistant-name').setValue('Ari')
+  await wrapper.get('#principal-name').setValue('Rowan Vale')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  await button(wrapper, 'Look on GitHub').trigger('click')
+  await flushPromises()
+  await button(wrapper, 'Open Wren').trigger('click')
+  for (const label of ['Make it', 'Back', 'Back it up and bring it in']) expect(button(wrapper, label).attributes('disabled')).toBeDefined()
+  await wrapper.get('form').trigger('submit')
+  expect(backend.findExisting).toHaveBeenCalledTimes(1)
+  expect(backend.newAssistant).not.toHaveBeenCalled()
+  await button(wrapper, 'Back it up and bring it in').trigger('click')
+  expect(backend.bringInAssistant).not.toHaveBeenCalled()
+  await button(wrapper, 'Back').trigger('click')
+  expect(wrapper.emitted('cancel')).toBeUndefined()
+  pending.resolve({ assistant, backup: null, message: 'Opened the saved assistant.' })
+  await flushPromises()
+  expect(button(wrapper, 'Make it').attributes('disabled')).toBeUndefined()
+  expect(button(wrapper, 'Back').attributes('disabled')).toBeUndefined()
+  expect(button(wrapper, 'Back it up and bring it in').attributes('disabled')).toBeUndefined()
+  await button(wrapper, 'Next: give permission').trigger('click')
+  expect(wrapper.emitted('made')).toEqual([[assistant]])
+})
+
+it('disables the saved card while making an assistant', async () => {
+  const pending = deferred<typeof assistant>()
+  const backend = fakeBackend({ newAssistant: vi.fn().mockReturnValue(pending.promise) })
+  const wrapper = screen(NewAssistant, backend)
+  await wrapper.get('#assistant-name').setValue('Ari')
+  await wrapper.get('#principal-name').setValue('Rowan Vale')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(button(wrapper, 'Look on GitHub').attributes('disabled')).toBeDefined()
+  pending.resolve(assistant)
+  await flushPromises()
+  expect(button(wrapper, 'Look on GitHub').attributes('disabled')).toBeUndefined()
+})
+
+it('guards the bring-in handler while a saved open runs', async () => {
+  const pending = deferred<{ assistant: typeof assistant; backup: null; message: string }>()
+  const backend = fakeBackend({
+    findExisting: vi.fn().mockResolvedValue({ found: true, lines: [], canBringIn: true, files: [] }),
+    savedOnGithub: vi.fn().mockResolvedValue({ signedIn: true, items: [{ owner: 'example-owner', repo: 'example-assistant', slug: 'wren', name: 'Wren', here: false }] }),
+    openSaved: vi.fn().mockReturnValue(pending.promise),
+  })
+  const wrapper = screen(NewAssistant, backend)
+  await wrapper.get('#assistant-name').setValue('Ari')
+  await wrapper.get('#principal-name').setValue('Rowan Vale')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  await button(wrapper, 'Look on GitHub').trigger('click')
+  await flushPromises()
+  await button(wrapper, 'Open Wren').trigger('click')
+  const actions = wrapper.vm as unknown as { bringIn: () => Promise<void> }
+  await actions.bringIn()
+  expect(backend.bringInAssistant).not.toHaveBeenCalled()
+  pending.resolve({ assistant, backup: null, message: 'Opened.' })
+  await flushPromises()
+})

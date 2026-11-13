@@ -6,6 +6,7 @@ import type { Assistant } from '../types/generated/Assistant'
 import type { BroughtIn } from '../types/generated/BroughtIn'
 import type { NewAssistantRequest } from '../types/generated/NewAssistantRequest'
 import type { OldFile } from '../types/generated/OldFile'
+import OpenSaved from './OpenSaved.vue'
 
 const emit = defineEmits<{ made: [assistant: Assistant]; cancel: [] }>()
 const backend = useBackend()
@@ -16,6 +17,7 @@ const principalPronouns = ref('they/them')
 const otherPronouns = ref('')
 const otherPrincipalPronouns = ref('')
 const saving = ref(false)
+const openingSaved = ref(false)
 const checking = ref(false)
 const older = ref<{ name: string; lines: string[]; canBringIn: boolean; files: OldFile[]; ticked: Set<string>; request: NewAssistantRequest } | null>(null)
 const broughtIn = ref<BroughtIn | null>(null)
@@ -30,7 +32,7 @@ const request = computed(() => ({
 }))
 const incomplete = computed(() => Object.values(request.value).some(value => !value))
 async function make() {
-  if (saving.value || incomplete.value) return
+  if (saving.value || openingSaved.value || incomplete.value) return
   const submitted = request.value
   saving.value = true
   checking.value = true
@@ -61,7 +63,7 @@ async function make() {
   }
 }
 async function bringIn() {
-  if (saving.value || !older.value?.canBringIn) return
+  if (saving.value || openingSaved.value || !older.value?.canBringIn) return
   const found = older.value
   const submitted = {
     assistant: found.request,
@@ -83,6 +85,7 @@ async function bringIn() {
 </script>
 
 <template>
+  <div>
   <section class="card">
     <div class="card-body p-5">
       <h2 class="mb-4">Make a new assistant</h2>
@@ -133,7 +136,7 @@ async function bringIn() {
             </fieldset>
             <p v-if="older.canBringIn">Voice made nothing and changed nothing. It can copy everything listed here into a backup folder first, then bring this {{ older.name }}'s history in, or you can pick another name.</p>
             <p v-else class="mb-0">Voice made nothing and changed nothing. Voice can't bring this one in, so pick another name.</p>
-            <button v-if="older.canBringIn" type="button" class="btn btn-warning" :disabled="saving" @click="bringIn">{{ bringingIn ? 'Backing it up…' : 'Back it up and bring it in' }}</button>
+            <button v-if="older.canBringIn" type="button" class="btn btn-warning" :disabled="saving || openingSaved" @click="bringIn">{{ bringingIn ? 'Backing it up…' : 'Back it up and bring it in' }}</button>
           </div>
         </div>
         <div v-if="broughtIn" class="alert alert-success" role="status">
@@ -144,10 +147,12 @@ async function bringIn() {
           </div>
         </div>
         <div v-else class="btn-list">
-          <button type="submit" class="btn btn-primary" :disabled="saving || incomplete">{{ checking ? 'Checking…' : saving && !bringingIn ? 'Making it…' : 'Make it' }}</button>
-          <button type="button" class="btn btn-outline-secondary" @click="emit('cancel')">Back</button>
+          <button type="submit" class="btn btn-primary" :disabled="saving || incomplete || openingSaved">{{ checking ? 'Checking…' : saving && !bringingIn ? 'Making it…' : 'Make it' }}</button>
+          <button type="button" class="btn btn-outline-secondary" :disabled="openingSaved" @click="emit('cancel')">Back</button>
         </div>
       </form>
     </div>
   </section>
+  <OpenSaved :disabled="saving" @made="emit('made', $event)" @running="openingSaved = $event" />
+  </div>
 </template>

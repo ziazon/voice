@@ -8,6 +8,7 @@ import type { Said } from '../types/generated/Said'
 import GithubSignIn from './GithubSignIn.vue'
 
 const props = defineProps<{ assistant: Assistant }>()
+const emit = defineEmits<{ updated: [assistant: Assistant] }>()
 const backend = useBackend()
 const options = ref<SaveOptions>()
 const loading = ref(true)
@@ -21,6 +22,7 @@ const name = ref('')
 const keeping = ref(false)
 const saving = ref(false)
 const signingOut = ref(false)
+const taking = ref(false)
 const kind = computed(() => options.value?.choices[choice.value]?.kind)
 const needsSignIn = computed(() => kind.value !== 'local' && !options.value?.signedIn)
 const needsName = computed(() => kind.value === 'github' && !name.value.trim())
@@ -49,7 +51,7 @@ async function openSignup() {
 }
 async function keep() {
   const checkedKind = kind.value
-  if (!checkedKind || keeping.value || saving.value || signingOut.value || needsSignIn.value || needsName.value) return
+  if (!checkedKind || keeping.value || saving.value || signingOut.value || taking.value || needsSignIn.value || needsName.value) return
   keeping.value = true
   error.value = ''
   message.value = ''
@@ -65,7 +67,7 @@ async function keep() {
   }
 }
 async function save() {
-  if (saving.value || keeping.value || signingOut.value) return
+  if (saving.value || keeping.value || signingOut.value || taking.value) return
   saving.value = true
   error.value = ''
   message.value = ''
@@ -79,7 +81,7 @@ async function save() {
   }
 }
 async function signOut() {
-  if (signingOut.value || keeping.value || saving.value) return
+  if (signingOut.value || keeping.value || saving.value || taking.value) return
   signingOut.value = true
   error.value = ''
   message.value = ''
@@ -94,6 +96,22 @@ async function signOut() {
     signingOut.value = false
   }
 }
+async function takeNewest() {
+  if (taking.value || signingOut.value || keeping.value || saving.value || !options.value?.signedIn) return
+  taking.value = true
+  message.value = ''
+  error.value = ''
+  info.value = ''
+  try {
+    const answer = await backend.takeNewest({ slug: props.assistant.slug })
+    message.value = answer.message
+    emit('updated', answer.assistant)
+  } catch (failure) {
+    error.value = failureMessage(failure, `Voice couldn't take the newest version of ${props.assistant.name}. Try again.`)
+  } finally {
+    taking.value = false
+  }
+}
 async function signedIn(answer: Said) {
   message.value = answer.message
   if (options.value) options.value.signedIn = true
@@ -105,7 +123,8 @@ async function signedIn(answer: Said) {
   <section class="card">
     <div class="card-body p-5">
       <h2 class="mb-3">Keep {{ assistant.name }} safe</h2>
-      <p>Choose where {{ assistant.name }} is kept. A private GitHub repo is a backup only you can see; or keep it on this computer only.</p>
+      <p v-if="loading || options?.memberComputer == null">Choose where {{ assistant.name }} is kept. A private GitHub repo is a backup only you can see; or keep it on this computer only.</p>
+      <p v-else>{{ options.memberComputer }}</p>
       <div v-if="loading" class="spinner-border" role="status"><span class="visually-hidden">Looking for places to keep {{ assistant.name }}…</span></div>
       <template v-else-if="loadError">
         <div class="alert alert-warning" role="alert">{{ loadError }}</div>
@@ -113,6 +132,13 @@ async function signedIn(answer: Said) {
       </template>
       <template v-else-if="options">
         <p v-if="options.chosen" class="text-secondary">Right now: {{ options.chosen }}</p>
+        <template v-if="options.memberComputer !== null">
+          <GithubSignIn v-if="!options.signedIn" lead="To take the newest version, sign in to your GitHub account first." @signed-in="signedIn" />
+          <div class="btn-list mb-4">
+            <button type="button" class="btn btn-primary" :disabled="!options.signedIn || taking || signingOut || keeping || saving" @click="takeNewest">{{ taking ? 'Taking it…' : 'Take the newest version' }}</button>
+          </div>
+        </template>
+        <template v-else>
         <div class="mb-4">
           <label v-for="(option, index) in options.choices" :key="index" class="form-check">
             <input v-model="choice" type="radio" class="form-check-input" name="save-choice" :value="index" :disabled="keeping || saving || signingOut">
@@ -134,9 +160,10 @@ async function signedIn(answer: Said) {
           <button type="button" class="btn btn-primary" :disabled="keeping || saving || signingOut || needsSignIn || needsName" @click="keep">{{ keeping ? 'Keeping it…' : 'Keep this choice' }}</button>
           <button v-if="options.chosen" type="button" class="btn btn-outline-primary" :disabled="saving || keeping || signingOut" @click="save">{{ saving ? 'Saving…' : `Save ${assistant.name}` }}</button>
         </div>
+        </template>
         <template v-if="options.signedIn">
           <p class="text-secondary">You're signed in to GitHub on this computer.</p>
-          <button type="button" class="btn btn-link p-0" :disabled="signingOut || keeping || saving" @click="signOut">Sign out of GitHub</button>
+          <button type="button" class="btn btn-link p-0" :disabled="signingOut || keeping || saving || taking" @click="signOut">Sign out of GitHub</button>
         </template>
       </template>
       <div v-if="message" class="alert alert-success mt-3" role="alert">{{ message }}</div>

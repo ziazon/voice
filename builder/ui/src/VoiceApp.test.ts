@@ -326,3 +326,21 @@ it('puts Ask between assistants and Panels and blocks leaving while it runs', as
   await button(wrapper, 'Your assistants').trigger('click'); await flushPromises()
   expect(wrapper.get('main h1').text()).toBe('Voice')
 })
+
+it('replaces the current assistant after Save updates it without remounting Save', async () => {
+  const backend = fakeBackend({ listAssistants: vi.fn().mockResolvedValue([assistant]) })
+  const wrapper = screen(VoiceApp, backend)
+  await flushPromises()
+  await button(wrapper, 'Open').trigger('click')
+  await flushPromises()
+  await button(wrapper, 'Save').trigger('click')
+  await flushPromises()
+  const save = wrapper.getComponent({ name: 'Save' })
+  const updated = { ...assistant, name: 'Wren' }
+  save.vm.$emit('updated', updated)
+  await flushPromises()
+  expect(wrapper.get('aside h2').text()).toBe('Making Wren')
+  expect(wrapper.getComponent({ name: 'Save' }).element).toBe(save.element)
+  expect(wrapper.get('main h2').text()).toBe('Keep Wren safe')
+  expect(backend.saveOptions).toHaveBeenCalledTimes(1)
+})

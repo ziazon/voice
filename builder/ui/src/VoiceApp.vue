@@ -141,7 +141,7 @@ function home() {
             <Sources v-else-if="view === 'sources' && assistant" :key="assistant.slug" :assistant="assistant" @next="goToStep('build')" />
             <Report v-else-if="view === 'report' && assistant" :assistant="assistant" @build="goToStep('build')" @next="goToStep('review')" />
             <template v-else-if="view === 'save' && assistant">
-              <Save :key="`save-${assistant.slug}-${resets}`" :assistant="assistant" />
+              <Save :key="`save-${assistant.slug}-${resets}`" :assistant="assistant" @updated="assistant = $event" />
               <TurnOn :key="`on-${assistant.slug}-${resets}`" :assistant="assistant" />
               <ClaudeAiFiles :key="`files-${assistant.slug}-${resets}`" :assistant="assistant" />
               <Skills :key="`skills-${assistant.slug}-${resets}`" :assistant="assistant" />

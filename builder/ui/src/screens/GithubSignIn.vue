@@ -4,6 +4,7 @@ import { useBackend } from '../backend'
 import { failureMessage } from '../failure'
 import type { Said } from '../types/generated/Said'
 
+const props = withDefaults(defineProps<{ lead?: string }>(), { lead: 'To save to GitHub, sign in to your GitHub account first.' })
 const emit = defineEmits<{ 'signed-in': [answer: Said] }>()
 const backend = useBackend()
 const busy = ref(false)
@@ -78,7 +79,7 @@ onBeforeUnmount(() => {
       <button type="button" class="btn btn-link p-0" @click="cancel">Cancel</button>
     </template>
     <template v-else-if="!message">
-      <p>To save to GitHub, sign in to your GitHub account first.</p>
+      <p>{{ props.lead }}</p>
       <button type="button" class="btn btn-primary" :disabled="busy" @click="signIn">Sign in to GitHub</button>
     </template>
     <div v-if="message" class="alert alert-success mt-3" role="alert">{{ message }}</div>
