@@ -2,6 +2,34 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF7c: the rest of the daily-limit words follow a subscription sign-in (2026-11-13, lane: V1)
+
+- **Why:** VF7b's out-of-scope list. Three screen sentences still described the daily limit as always
+  applying, which is wrong under a Claude subscription in a testers' build.
+- **What:** under a subscription, Connect Claude's first paragraph says Voice is signed in with the
+  person's Claude subscription and uses their plan; the Build screen says it stops for the day when
+  Claude Code says the plan is nearly used up, unless *Keep going* is on; the new-panel note says each
+  assistant's turns stop for the day the same way. No dollars. A Console sign-in, a sign-in that isn't
+  ready yet, a failed check and every public build keep today's words exactly. Connect Claude uses the
+  limit card's own condition (`status.ready && status.subscription`); `BuildRun` emits `subscription`
+  from a watch on its spend (`usage` is set exactly under a subscription), and `Build` follows it;
+  `NewPanel` calls `claudeCheck()` on its own, so a slow or failed check never holds up the list or the
+  form. UI only: no DTO, Rust or generated type changes. Brief: `plans/briefs/VF7c-subscription-words.md`.
+- **Left out:** the permission (consent) text. Changing it bumps the consent version, which asks every
+  person again, and the card said public builds keep today's words: V-Q20, card VF7d (`XwB1BQNw`).
+- **Who built it:** Codex, in two dispatches: the specs first (7 new tests red, each on a missing sentence
+  or emit), then the code from a fresh run with the specs frozen (blob hashes unchanged).
+- **Verified:** the UI suite (45 files, 619 tests) and its typecheck, run outside Codex's sandbox.
+  Mutations, each by `mutate-check.sh` (backup, `cmp` restore): Connect Claude without `ready` and
+  without `subscription`; BuildRun always `true` and without its repeat check; Build not listening;
+  NewPanel without `ready` and without `subscription`, a failed check that shows an error, and the list
+  waiting on the check: all killed. One survived, by design: an emit when spend is empty, a branch the
+  screen never reaches (spend starts empty and is never emptied again); the guard is there for the type.
+- **Reviews:** security review (sub-task): no findings. `claude_check` starts no sign-in, takes no lock
+  and shows no message from the check on the panel. Verifier not required by the spec.
+- **Not verified:** a real subscription sign-in in a testers' build (walk owed with VF7b's: Connect
+  Claude, Build and a new panel show the subscription words).
+
 ## VF7b: no daily limit under a Claude subscription (2026-11-13, lane: V1)
 
 - **Why:** V-Q16's answer. Signed in with a Claude subscription (testers' builds only), Voice stops for
