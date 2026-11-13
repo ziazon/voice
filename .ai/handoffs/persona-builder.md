@@ -23,7 +23,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   `save_options` carries `memberComputer`. No screens.
 - **Briefs:** `plans/briefs/PB8.9b1-open-saved.md`, fix-up 1 (Claude's review: a finished open reported as failed,
   a damaged `save.json` blocking a new choice, edge spaces in a computer name, bring-in's member check, unused
-  parameters, CLI help) and fix-up 2 (the Verifier's and the security review's findings, below).
+  parameters, CLI help), fix-up 2 (the Verifier's and the security review's findings, below) and fix-up 3
+  (`plans/briefs/PB8.9b1-fixup-3.md`: the repeat Verifier's should-fix).
 - **Who built it:** Codex, from every brief. Her sandbox blocks sockets, so the five Ask tests fail there; V1 ran
   the full gate outside it.
 - **Reviews:** security review (sub-agent) on `aeb3074`: no HIGH; MEDIUM, a saved copy could plant a working
@@ -35,11 +36,19 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Known limits:** the fetch takes all of `main`'s history (PB8.9b2's fast-forward check needs it; the repo is the
   person's own); `member.json` keys only the Python kit reads (such as `queues`) aren't checked on open. The
   SKILL.md's `voice` command is the building computer's (`"$HOME/Applications/…"` when both install there).
-- **Verified so far:** full `ci-local.sh` passed on `aeb3074` (all passed). Codex's targeted suites green on
-  `0bdd67f`; the full gate on `0bdd67f` was stopped at the run's time limit (no failure seen before it stopped).
-  Repeat Verifier (Opus) on `0bdd67f`: PASS, one should-fix (an empty `~/.claude/crew` left when the open fails
-  after staging), which is fix-up 3 (`plans/briefs/PB8.9b1-fixup-3.md`, not yet built).
-- **Not landed yet.** Owed: fix-up 3, the full gate on its head, a delta Verifier (Opus), then the land.
+- **Fix-up 3:** an open that fails after staging (an assistant already here, the state refusal, the member
+  check, a placing error, a failed consent reset) now removes the empty `~/.claude/crew`, `~/.claude/state/<slug>`
+  and `~/.claude/state` folders it made, each with `remove_dir` (an empty folder only), each only when Voice made
+  it. The fetch test checks the object-check setting comes before `fetch`.
+- **Verified:** full `ci-local.sh` passed on `aeb3074` and on `96c5f11` (fix-up 3; `ci-local: all passed`). The new
+  test went red on its assertion before the fix (Codex) and again when V1 removed the crew cleanup (mutation check,
+  file restored and `cmp`-checked). Verifier (Fable) FAIL on `aeb3074`, fixed in fix-up 2; repeat Verifier (Opus)
+  PASS on `0bdd67f` with one should-fix (fix-up 3); delta Verifier (Opus) PASS on `96c5f11`, no must- or
+  should-fix. Security review on `aeb3074` (MEDIUM `.git`, fixed) and on the fix-up 3 delta (no findings).
+- **Not verified:** nothing tests the state-folder cleanup after a failed consent reset (it can't be made to fail
+  in a test; correct by reading, per the Verifier). No live open against a real GitHub repo: that is PB8.9's
+  attended phase 4. When an older copy exists and the open fails, empty `~/.claude/voice-backups/<slug>` folders
+  can stay behind, as bring-in already does.
 
 ## PB8.7e: replace the old one when turning an assistant on (2026-11-13, lane: V1)
 
