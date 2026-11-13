@@ -31,11 +31,13 @@ One record per slice, newest first. Paraphrase only; no real person.
   `member` in the `From` impl survived). Fix-up 1 (`2887aa8`, now `1498193`) asserts it in the 15-minute time-box test; the
   mutation now fails. Nits left: a `result.json` written now can't be read by an older Voice; the reported column
   of an invalid-UTF-8 error in a growth record can differ by serde_json version; no `.ai/DECISIONS.md` entry for the
-  first git dependency.
+  first git dependency. Repeat Verifier (Opus) PASS on `3677588` (fix-up 1 and the record).
 - **Rebased (run `193704-r1`):** the first land passed `ci-local.sh` but lost the push race to PB8.8, and the
   rebase conflicted only in `Cargo.lock` (PB8.8's 0.1.1 → 0.1.2 bump next to the deleted `voice-panels` entry);
   resolved by keeping the deletion, `cargo metadata --locked` accepts it. `git range-diff`: every commit `=` except
   the build commit, whose change is those version lines. Nothing on `main` names `voice_panels` or `builder/panels`.
+  Repeat Verifier (Opus) PASS on `019e06c`: range-diff and lock checked, `cargo test -p voice-panel-runner
+  -p voice-api` 538 passed.
 - **Verified:** red first (the new-key api test failed on unchanged code; the old-key api test and the reopen test
   failed after the switch, before the alias); mutations killed: the alias removed, the api reading `crewmate`, the
   `From` impl blanking `member`; Verifier's scratch probe: a real time-box close with dissent, its key renamed to
