@@ -38,8 +38,24 @@ impl Saver<'_> {
         if !voice_core::backup::valid_stamp(stamp) {
             return Err(Error::Invalid("invalid update stamp".into()));
         }
+        let member_dir = home.join(".claude/crew").join(&member.member.slug);
+        if !fs::symlink_metadata(&member_dir).is_ok_and(|metadata| metadata.is_dir()) {
+            return Err(Error::Invalid("member folder isn't plain".into()));
+        }
         let repo = RepoRef { owner, name };
         let full = repo.full();
+        let git_dir = member.state_dir.join("backup.git");
+        let expected = format!("https://github.com/{full}.git");
+        if !git_dir.exists()
+            || !self
+                .git
+                .run(Env::Own, &git_dir, "remote", &["get-url", "--", "origin"])
+                .is_ok_and(|url| url.trim_end() == expected)
+        {
+            return Err(Error::Invalid(
+                "saved copy origin doesn't match the record".into(),
+            ));
+        }
         let github = self
             .github
             .ok_or_else(|| Error::Invalid(text::NOT_SET_UP.into()))?;
@@ -50,7 +66,6 @@ impl Saver<'_> {
             .ok_or_else(|| Error::Invalid(text::SIGN_IN_FIRST.into()))?;
         github.account(&token)?;
         github.confirm_private(&token, &repo)?;
-        let git_dir = member.state_dir.join("backup.git");
         let old_head = self.git.run(
             Env::Own,
             &git_dir,
@@ -269,23 +284,6 @@ fn check_local(
         return Err(changed());
     }
     Ok(true)
-}
-fn make_parents(root: &Path, rel: &str, made: &mut Vec<PathBuf>) -> Result<()> {
-    let mut folder = root.to_owned();
-    let parts: Vec<_> = rel.split('/').collect();
-    for part in &parts[..parts.len() - 1] {
-        folder.push(part);
-        match fs::symlink_metadata(&folder) {
-            Ok(metadata) if metadata.is_dir() => {}
-            Ok(_) => return Err(Error::Invalid("saved copy folder isn't plain".into())),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                open_io(&folder, fs::DirBuilder::new().mode(0o700).create(&folder))?;
-                made.push(folder.clone());
-            }
-            Err(error) => return open_io(&folder, Err(error)),
-        }
-    }
-    Ok(())
 }
 fn prune_parents(root: &Path, rel: &str) {
     let target = root.join(rel);

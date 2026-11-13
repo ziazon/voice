@@ -4,6 +4,7 @@ use common::{FakeHttp, Scratch, pb6::*, reply};
 use std::{
     collections::BTreeMap,
     fs,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
 use voice_core::error::Result;
@@ -208,27 +209,32 @@ impl Fixture {
         );
     }
 }
-fn listing(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
-    fn visit(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
+fn listing(dir: &Path) -> BTreeMap<PathBuf, (u32, Vec<u8>)> {
+    fn visit(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, (u32, Vec<u8>)>) {
         for entry in fs::read_dir(dir).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
             let rel = path.strip_prefix(root).unwrap().to_owned();
-            let kind = entry.file_type().unwrap();
+            let metadata = fs::symlink_metadata(&path).unwrap();
+            let mode = metadata.permissions().mode() & 0o7777;
+            let kind = metadata.file_type();
             if kind.is_dir() {
-                out.insert(rel, b"directory".to_vec());
+                out.insert(rel, (mode, b"directory".to_vec()));
                 visit(root, &path, out);
             } else if kind.is_symlink() {
                 out.insert(
                     rel,
-                    fs::read_link(path)
-                        .unwrap()
-                        .as_os_str()
-                        .as_encoded_bytes()
-                        .to_vec(),
+                    (
+                        mode,
+                        fs::read_link(path)
+                            .unwrap()
+                            .as_os_str()
+                            .as_encoded_bytes()
+                            .to_vec(),
+                    ),
                 );
             } else {
-                out.insert(rel, fs::read(path).unwrap());
+                out.insert(rel, (mode, fs::read(path).unwrap()));
             }
         }
     }
@@ -398,12 +404,22 @@ fn rewritten_history_is_refused() {
     let head = common::pb6::git(&remote, &["commit-tree", &tree, "-m", "Unrelated history"]);
     common::pb6::git(&remote, &["update-ref", "refs/heads/main", &head]);
     let before = listing(&f.member.dir);
+    let old_head = common::pb6::git(&f.backup(), &["rev-parse", "main"]);
+    let record = fs::read(f.member.state_dir.join("save.json")).unwrap();
     let error = f.take(&Privacy).err().unwrap();
     assert_eq!(
         error.to_string(),
         "The copy saved in rowan/wren-assistant doesn't build on the version on this computer, so Voice took nothing."
     );
     assert!(listing(&f.member.dir) == before, "member files changed");
+    assert_eq!(
+        common::pb6::git(&f.backup(), &["rev-parse", "main"]),
+        old_head
+    );
+    assert_eq!(
+        fs::read(f.member.state_dir.join("save.json")).unwrap(),
+        record
+    );
     f.assert_clean();
 }
 fn validation_refusal(scenario: &str) {
@@ -548,8 +564,8 @@ fn apply_failure_rolls_back_prior_files_and_preserves_record() {
     fs::write(f.source.join("old/a.md"), b"new second file\n").unwrap();
     f.save("Library");
     let parent = f.member.dir.join("old");
-    fs::set_permissions(&parent, fs::Permissions::from_mode(0o500)).unwrap();
     let before = listing(&f.member.dir);
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o500)).unwrap();
     let record = fs::read(f.member.state_dir.join("save.json")).unwrap();
     let head = common::pb6::git(&f.backup(), &["rev-parse", "main"]);
     let result = f.take(&Privacy);
@@ -721,5 +737,144 @@ fn rollback_preserves_an_existing_empty_parent_of_a_new_file() {
         listing(&f.member.dir) == before,
         "rollback removed a pre-existing folder"
     );
+    f.assert_clean();
+}
+
+#[test]
+fn mismatched_origin_is_refused_before_http_or_fetch() {
+    let f = Fixture::new();
+    common::pb6::git(
+        &f.backup(),
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            "https://github.com/rowan/other-assistant.git",
+        ],
+    );
+    let before = listing(&f.member.dir);
+    let head = common::pb6::git(&f.backup(), &["rev-parse", "main"]);
+    let record = fs::read(f.member.state_dir.join("save.json")).unwrap();
+    let git = Git::at(f.wrap.program.clone());
+    let http = FakeHttp::new(vec![]);
+    let github = Github::new(
+        &http,
+        voice_save::github::Endpoints::github(),
+        "Iv1.invented",
+    )
+    .unwrap();
+    let error = Saver {
+        git: &git,
+        github: Some(&github),
+        tokens: &Tokens,
+    }
+    .take_newest(&f.home, &f.member, "2026-11-13-120001", &Privacy)
+    .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "saved copy origin doesn't match the record"
+    );
+    assert!(!voice_save::text::is_said(&error.to_string()));
+    assert!(http.requests.borrow().is_empty());
+    assert!(!f.wrap.calls().iter().any(|call| {
+        call["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|arg| arg == "fetch")
+    }));
+    assert_eq!(listing(&f.member.dir), before);
+    assert_eq!(common::pb6::git(&f.backup(), &["rev-parse", "main"]), head);
+    assert_eq!(
+        fs::read(f.member.state_dir.join("save.json")).unwrap(),
+        record
+    );
+    f.assert_clean();
+}
+
+#[test]
+fn non_folder_member_is_refused_before_git_or_http() {
+    use std::os::unix::fs::symlink;
+    for kind in ["link", "file", "missing"] {
+        let f = Fixture::new();
+        let moved = f.home.join("moved-member");
+        fs::rename(&f.member.dir, &moved).unwrap();
+        match kind {
+            "link" => symlink(&moved, &f.member.dir).unwrap(),
+            "file" => fs::write(&f.member.dir, b"keep this file").unwrap(),
+            "missing" => {}
+            _ => unreachable!(),
+        }
+        // Loading after the link exists canonicalizes dir to the moved folder.
+        let reloaded = (kind == "link")
+            .then(|| MemberPaths::load(&f.member.dir.join("member.json"), &f.home).unwrap());
+        let member = reloaded.as_ref().unwrap_or(&f.member);
+        let before = listing(&moved);
+        let head = common::pb6::git(&f.backup(), &["rev-parse", "main"]);
+        let record = fs::read(f.member.state_dir.join("save.json")).unwrap();
+        let git = Git::at(f.wrap.program.clone());
+        let http = FakeHttp::new(vec![]);
+        let github = Github::new(
+            &http,
+            voice_save::github::Endpoints::github(),
+            "Iv1.invented",
+        )
+        .unwrap();
+        let error = Saver {
+            git: &git,
+            github: Some(&github),
+            tokens: &Tokens,
+        }
+        .take_newest(&f.home, member, "2026-11-13-120001", &Privacy)
+        .unwrap_err();
+        assert!(
+            matches!(error, voice_core::error::Error::Invalid(_)),
+            "{error:?}"
+        );
+        assert!(!voice_save::text::is_said(&error.to_string()));
+        assert!(http.requests.borrow().is_empty());
+        assert!(f.wrap.calls().is_empty());
+        assert_eq!(listing(&moved), before);
+        assert_eq!(common::pb6::git(&f.backup(), &["rev-parse", "main"]), head);
+        assert_eq!(
+            fs::read(f.member.state_dir.join("save.json")).unwrap(),
+            record
+        );
+        match kind {
+            "link" => fs::remove_file(&f.member.dir).unwrap(),
+            "file" => {
+                assert_eq!(fs::read(&f.member.dir).unwrap(), b"keep this file");
+                fs::remove_file(&f.member.dir).unwrap();
+            }
+            "missing" => assert!(!f.member.dir.exists()),
+            _ => unreachable!(),
+        }
+        fs::rename(moved, &f.member.dir).unwrap();
+        f.assert_clean();
+    }
+}
+
+#[test]
+fn record_write_failure_restores_removed_file_and_parent() {
+    let f = Fixture::new();
+    fs::write(f.source.join("SKILL.md"), b"new skill\n").unwrap();
+    fs::remove_file(f.source.join("old/a.md")).unwrap();
+    f.save("Library");
+    let before = listing(&f.member.dir);
+    let record = fs::read(f.member.state_dir.join("save.json")).unwrap();
+    let head = common::pb6::git(&f.backup(), &["rev-parse", "main"]);
+    let obstruction = f
+        .member
+        .state_dir
+        .join(format!("save.json.tmp-{}", std::process::id()));
+    fs::write(&obstruction, b"keep obstruction\n").unwrap();
+    assert!(f.take(&Privacy).is_err());
+    assert_eq!(listing(&f.member.dir), before);
+    assert_eq!(common::pb6::git(&f.backup(), &["rev-parse", "main"]), head);
+    assert_eq!(
+        fs::read(f.member.state_dir.join("save.json")).unwrap(),
+        record
+    );
+    assert_eq!(fs::read(obstruction).unwrap(), b"keep obstruction\n");
     f.assert_clean();
 }

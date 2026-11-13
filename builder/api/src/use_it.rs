@@ -64,7 +64,7 @@ fn other_on(shown: Option<&str>, name: &str) -> String {
         ),
     }
 }
-fn busy(name: &str) -> String {
+pub(crate) fn busy(name: &str) -> String {
     format!("Voice is already working on {name}. Wait for it to finish, then try again.")
 }
 fn no_kinds(name: &str) -> String {

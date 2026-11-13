@@ -202,19 +202,20 @@ if 'GIT_INDEX_FILE' in os.environ:
     witness = os.path.join(os.path.dirname(__file__), 'index-witness')
     if not os.path.lexists(witness):
         os.symlink(scratch, witness)
-os.execv({}, [{}, *{}, *sys.argv[1:]])
+rewrite = {} if any(verb in sys.argv[1:] for verb in ('push', 'fetch')) else []
+os.execv({}, [{}, *rewrite, *sys.argv[1:]])
 "##,
                 python.display(),
                 serde_json::to_string(&log).unwrap(),
                 if fail_push { "True" } else { "False" },
-                serde_json::to_string(real_git()).unwrap(),
-                serde_json::to_string(real_git()).unwrap(),
                 serde_json::to_string(
                     &remote
                         .map(|value| vec!["-c".to_owned(), value])
                         .unwrap_or_default()
                 )
-                .unwrap()
+                .unwrap(),
+                serde_json::to_string(real_git()).unwrap(),
+                serde_json::to_string(real_git()).unwrap()
             );
             fs::write(&program, source).unwrap();
             fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();

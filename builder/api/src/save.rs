@@ -519,11 +519,21 @@ pub fn take_newest_in(
     github: Option<&Github<'_>>,
     tokens: &dyn TokenStore,
 ) -> Result<dto::TookNewest> {
-    let lock = voice_ingest::private::lock_state(home, &request.slug);
     let found = listed(home, &request.slug)?;
     let name = &found.member.name;
     let fallback = format!("Voice couldn't take the newest version of {name}. Try again.");
-    let _lock = lock.map_err(|error| map_error(error, &fallback))?;
+    let _lock =
+        voice_ingest::private::lock_existing_state(home, &found.member.slug).map_err(|error| {
+            match error {
+                Error::Invalid(ref message) if message == voice_ingest::private::BUSY => {
+                    failure(&crate::use_it::busy(name))
+                }
+                Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                    failure(&text::not_a_member(name))
+                }
+                _ => map_error(error, &fallback),
+            }
+        })?;
     let member = MemberPaths::load(&found.dir.join("member.json"), home)
         .map_err(|error| map_error(error, &fallback))?;
     let took = Saver {

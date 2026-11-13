@@ -745,7 +745,7 @@ fn open_fixture(home: &Home) -> Git {
         repo.display()
     ))
     .unwrap();
-    fs::write(&wrapper, format!("#!/usr/bin/python3\nimport os, sys\nos.execv({real}, [{real}, '-c', {rewrite}] + sys.argv[1:])\n")).unwrap();
+    fs::write(&wrapper, format!("#!/usr/bin/python3\nimport os, sys\nrewrite = ['-c', {rewrite}] if any(verb in sys.argv[1:] for verb in ('push', 'fetch')) else []\nos.execv({real}, [{real}] + rewrite + sys.argv[1:])\n")).unwrap();
     fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
     Git::at(wrapper)
 }
@@ -1168,4 +1168,63 @@ fn take_newest_when_turned_off_does_not_refresh() {
     );
     assert!(!home.0.join(".claude/skills/ari").exists());
     http.drained();
+}
+
+#[test]
+fn take_newest_unknown_assistant_does_not_create_state() {
+    let home = Home::new();
+    let error = take_newest_in(
+        &home.0,
+        &home.0.join(".claude"),
+        slug("wrne"),
+        &git(),
+        None,
+        &MemoryStore::new(),
+    )
+    .unwrap_err();
+    assert_eq!(error.message, FIND);
+    assert!(!home.0.join(".claude/state/wrne").exists());
+}
+
+#[test]
+fn take_newest_without_state_is_not_a_member_and_creates_nothing() {
+    let home = Home::new();
+    let member = home.make();
+    if member.state_dir.exists() {
+        fs::remove_dir_all(&member.state_dir).unwrap();
+    }
+    let error = take_newest_in(
+        &home.0,
+        &home.0.join(".claude"),
+        slug("ari"),
+        &git(),
+        None,
+        &MemoryStore::new(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.message,
+        "This computer saves Ari, so there's no newer version to take here."
+    );
+    assert!(!member.state_dir.exists());
+}
+
+#[test]
+fn take_newest_while_locked_says_to_wait() {
+    let home = Home::new();
+    home.make();
+    let _lock = voice_ingest::private::lock_state(&home.0, "ari").unwrap();
+    let error = take_newest_in(
+        &home.0,
+        &home.0.join(".claude"),
+        slug("ari"),
+        &git(),
+        None,
+        &MemoryStore::new(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.message,
+        "Voice is already working on Ari. Wait for it to finish, then try again."
+    );
 }

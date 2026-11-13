@@ -639,20 +639,9 @@ fn opening_entries(
     }
     Ok(entries)
 }
-fn write_opened_blob(
-    git: &Git,
-    git_dir: &Path,
-    member_dir: &Path,
-    rel: &str,
-    oid: &str,
-    executable: bool,
-) -> Result<()> {
-    use std::{
-        fs,
-        io::Write,
-        os::unix::fs::{DirBuilderExt, OpenOptionsExt},
-    };
-    let mut folder = member_dir.to_owned();
+pub(super) fn make_parents(root: &Path, rel: &str, made: &mut Vec<PathBuf>) -> Result<()> {
+    use std::{fs, os::unix::fs::DirBuilderExt};
+    let mut folder = root.to_owned();
     let parts: Vec<_> = rel.split('/').collect();
     for part in &parts[..parts.len() - 1] {
         folder.push(part);
@@ -661,10 +650,23 @@ fn write_opened_blob(
             Ok(_) => return Err(Error::Invalid("saved copy folder isn't plain".into())),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 open_io(&folder, fs::DirBuilder::new().mode(0o700).create(&folder))?;
+                made.push(folder.clone());
             }
             Err(error) => return open_io(&folder, Err(error)),
         }
     }
+    Ok(())
+}
+fn write_opened_blob(
+    git: &Git,
+    git_dir: &Path,
+    member_dir: &Path,
+    rel: &str,
+    oid: &str,
+    executable: bool,
+) -> Result<()> {
+    use std::{fs, io::Write, os::unix::fs::OpenOptionsExt};
+    make_parents(member_dir, rel, &mut Vec::new())?;
     let path = member_dir.join(rel);
     let bytes = git.run_bytes(git_dir, "cat-file", &["blob", oid])?;
     let mut file = open_io(

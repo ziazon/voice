@@ -397,16 +397,12 @@ enum Command {
         command: SaveCommand,
     },
     /// Open an assistant you saved on GitHub, on this computer.
-    #[command(
-        group(clap::ArgGroup::new("open_target").args(["slug", "update"]).multiple(true)),
-        override_usage = "voice open [REPO] [SLUG]\n       voice open --update <SLUG>"
-    )]
+    #[command(override_usage = "voice open [REPO] [SLUG]\n       voice open --update <SLUG>")]
     Open {
         /// Take the newest saved version of this assistant.
-        #[arg(long, requires = "repo", conflicts_with = "slug")]
+        #[arg(long, conflicts_with = "slug")]
         update: bool,
         /// The GitHub repository: <owner>/<repo>, or the assistant's folder name with --update.
-        #[arg(requires = "open_target")]
         repo: Option<String>,
         /// The assistant's folder name.
         #[arg(requires = "repo")]
@@ -2905,7 +2901,14 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         },
         Some(Command::Open { repo, slug, update }) => {
             if update {
-                let slug = repo.expect("clap requires a folder name with --update");
+                let slug = repo.unwrap_or_else(|| {
+                    Cli::command()
+                        .error(
+                            clap::error::ErrorKind::MissingRequiredArgument,
+                            "Name the assistant's folder, such as wren.",
+                        )
+                        .exit()
+                });
                 if voice_core::crew::slugify(&slug).as_deref() != Some(slug.as_str()) {
                     Cli::command()
                         .error(
@@ -2919,6 +2922,14 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
                 println!("{}", taken.message);
                 Ok(())
             } else {
+                if repo.is_some() && slug.is_none() {
+                    Cli::command()
+                        .error(
+                            clap::error::ErrorKind::MissingRequiredArgument,
+                            "the following required arguments were not provided:\n  <SLUG>",
+                        )
+                        .exit();
+                }
                 open_saved(repo, slug)
             }
         }
