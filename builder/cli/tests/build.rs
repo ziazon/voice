@@ -419,3 +419,29 @@ fn build_honors_the_members_local_folder_ceiling() {
     assert_eq!(f.calls(), 0);
     assert!(!f.state().join("runs.jsonl").exists());
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_build_ignores_daily_limit() {
+    let python = python().expect("python3 is required for the stub");
+    for method in ["claude.ai", "api_key"] {
+        let f = Fixture::new();
+        f.write_state("decisions.jsonl", &corpus(32));
+        f.write_state("limit.json", r#"{"daily_usd":1,"call_usd":0.5}"#);
+        f.write_state("runs.jsonl", &format!("{}\n", json!({"day":voice_agent::ledger::local_day(std::time::SystemTime::now()),"cost_usd":2})));
+        let script =
+            include_str!("../../build/tests/fixtures/claude_stub.py").replace("api_key", method);
+        f.write_stub(&format!("#!{} -I\n{script}", python.display()));
+        let out = f.run(&["build", &f.member()]);
+        if method == "claude.ai" {
+            assert!(out.status.success(), "{}", text(&out.stderr));
+            assert_eq!(f.calls(), 6);
+        } else {
+            assert_eq!(
+                text(&out.stderr),
+                "voice: Today's spending limit for this assistant is reached: about $2.00 of $1.00, as Claude Code estimates it. The build can carry on tomorrow, or you can raise the limit.\n"
+            );
+            assert_eq!(f.calls(), 0);
+        }
+    }
+}

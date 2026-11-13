@@ -1416,3 +1416,36 @@ fn subscription_build_ignores_daily_limit() {
         }
     }
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_interview_ignores_daily_limit() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    for method in ["claude.ai", "api_key"] {
+        let h = Home::new(true);
+        interview_stub(&h);
+        let source = fs::read_to_string(h.bin.join("claude")).unwrap();
+        h.program(&source.replace("api_key", method));
+        set_spending_limit_in(&h.path, limit_request(1.0, 0.5)).unwrap();
+        h.write(
+            "runs.jsonl",
+            format!(
+                "{}\n",
+                json!({"day":local_day(SystemTime::now()),"cost_usd":2})
+            )
+            .as_bytes(),
+        );
+        let result = h.draft(false);
+        if method == "claude.ai" {
+            result.unwrap();
+            assert_eq!(h.calls(), 1);
+        } else {
+            safe(
+                &h,
+                result,
+                "Today's spending limit for this assistant is reached: about $2.00 of $1.00, as Claude Code estimates it. Run the build again tomorrow to carry on.",
+            );
+            assert_eq!(h.calls(), 0);
+        }
+    }
+}

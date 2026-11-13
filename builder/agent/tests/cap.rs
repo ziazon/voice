@@ -426,10 +426,10 @@ fn subscription_cap_keeps_only_the_step_limit() {
             .unwrap()
             .for_sign_in(true)
             .budget_for(49.999),
-        Ok(None)
+        Ok(Some(5.0))
     );
     let unlimited = Cap::new(0.0, 0.0).unwrap();
-    assert_eq!(unlimited.for_sign_in(true), unlimited);
+    assert_eq!(unlimited.for_sign_in(true).call_limit(), Some(5.0));
 }
 
 #[test]
@@ -454,7 +454,10 @@ fn subscription_session_runs_past_daily_limit_with_step_budget() {
             let at = argv.iter().position(|s| s == "--max-budget-usd").unwrap();
             assert_eq!(argv[at + 1], "0.50");
         } else {
-            assert_eq!(result.unwrap_err().to_string(), text::cap_reached(2.0, 1.0));
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Today's spending limit for this assistant is reached: about $2.00 of $1.00, as Claude Code estimates it. The build can carry on tomorrow, or you can raise the limit."
+            );
             assert!(!stub.ran());
         }
     }

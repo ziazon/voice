@@ -736,3 +736,35 @@ fn subscription_refresh_ignores_daily_limit() {
         }
     }
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_refresh_apply_ignores_daily_limit() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    for method in ["claude.ai", "api_key"] {
+        let h = Home::new(true);
+        let id = h.prepared();
+        h.approve(&id, true).unwrap();
+        h.stub(true, |s| s.replace("api_key", method));
+        voice_ingest::private::write_private(
+            &h.path,
+            "wren",
+            "limit.json",
+            br#"{"daily_usd":1,"call_usd":0.5}"#,
+        )
+        .unwrap();
+        voice_ingest::private::write_private(&h.path, "wren", "runs.jsonl", format!("{}\n", json!({"day":voice_agent::ledger::local_day(std::time::SystemTime::now()),"cost_usd":2})).as_bytes()).unwrap();
+        let before = h.calls();
+        let result = h.apply(&id, &mut |_| {});
+        if method == "claude.ai" {
+            result.unwrap();
+            assert!(h.calls() > before);
+        } else {
+            assert_eq!(
+                result.unwrap_err().message,
+                "Today's spending limit for this assistant is reached: about $2.00 of $1.00, as Claude Code estimates it. Run the build again tomorrow to carry on."
+            );
+            assert_eq!(h.calls(), before);
+        }
+    }
+}

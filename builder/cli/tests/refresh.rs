@@ -625,3 +625,51 @@ fn subscription_refresh_propose_closes_with_usage() {
         Some("Today, 1 call to Claude and about 1 thousand tokens, on your Claude subscription.")
     );
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_refresh_ignores_daily_limit_in_both_flows() {
+    let python = python().expect("python3 is required for the stub");
+    for apply in [false, true] {
+        for method in ["claude.ai", "api_key"] {
+            let f = Fixture::new();
+            f.built(&python);
+            f.keep_answers();
+            let mut id = String::new();
+            if apply {
+                let out = f.run(&["refresh", "propose", &f.member()]);
+                assert!(out.status.success(), "{}", text(&out.stderr));
+                id = f.records("prop-")[0]["id"].as_str().unwrap().to_owned();
+                let out = f.run(&["refresh", "approve", &f.member(), &id]);
+                assert!(out.status.success(), "{}", text(&out.stderr));
+            }
+            let script = if apply {
+                include_str!("../../grow/tests/fixtures/apply_stub.py")
+            } else {
+                include_str!("../../grow/tests/fixtures/refresh_stub.py")
+            }
+            .replace("api_key", method);
+            f.write_stub(&format!("#!{} -I\n{script}", python.display()));
+            f.write_state("limit.json", r#"{"daily_usd":1,"call_usd":0.5}"#);
+            f.write_state("runs.jsonl", &format!("{}\n", json!({"day":voice_agent::ledger::local_day(std::time::SystemTime::now()),"cost_usd":2})));
+            let before = f.calls();
+            let member = f.member();
+            let args = if apply {
+                vec!["refresh", "apply", &member, &id]
+            } else {
+                vec!["refresh", "propose", &member]
+            };
+            let out = f.run(&args);
+            if method == "claude.ai" {
+                assert!(out.status.success(), "{}", text(&out.stderr));
+                assert!(f.calls() > before);
+            } else {
+                assert_eq!(
+                    text(&out.stderr),
+                    "voice: Today's spending limit for this assistant is reached: about $2.00 of $1.00, as Claude Code estimates it. The build can carry on tomorrow, or you can raise the limit.\n"
+                );
+                assert_eq!(f.calls(), before);
+            }
+        }
+    }
+}

@@ -436,7 +436,7 @@ enum Command {
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
-        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
+        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5). Under a Claude subscription, 0 means $5.
         #[arg(long)]
         call_cap_usd: Option<f64>,
     },
@@ -715,7 +715,7 @@ enum RefreshCommand {
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
-        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
+        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5). Under a Claude subscription, 0 means $5.
         #[arg(long)]
         call_cap_usd: Option<f64>,
     },
@@ -731,7 +731,7 @@ enum RefreshCommand {
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
-        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
+        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5). Under a Claude subscription, 0 means $5.
         #[arg(long)]
         call_cap_usd: Option<f64>,
     },
@@ -785,7 +785,7 @@ enum InterviewCommand {
         /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
-        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
+        /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5). Under a Claude subscription, 0 means $5.
         #[arg(long)]
         call_cap_usd: Option<f64>,
         /// Draft new questions in place of the ones waiting for your answers.
@@ -1703,10 +1703,15 @@ fn cap_for(
     slug: &str,
     daily: Option<f64>,
     call: Option<f64>,
+    subscription: bool,
 ) -> Result<voice_agent::ledger::Cap> {
     use voice_agent::ledger::Cap;
     let saved = Cap::load(home, slug)?;
-    let daily = daily.unwrap_or(saved.daily_usd());
+    let daily = if subscription {
+        0.0
+    } else {
+        daily.unwrap_or(saved.daily_usd())
+    };
     let call = call.unwrap_or_else(|| {
         let step = saved.call_usd();
         if daily > 0.0 && step > 0.0 {
@@ -1715,7 +1720,7 @@ fn cap_for(
             step
         }
     });
-    Cap::new(daily, call)
+    Ok(Cap::new(daily, call)?.for_sign_in(subscription))
 }
 fn limit_show(member_dir: PathBuf) -> Result<()> {
     use voice_agent::{ledger::Cap, text};
@@ -1741,6 +1746,7 @@ fn limit_set(member_dir: PathBuf, daily_usd: f64, step_usd: f64) -> Result<()> {
         },
     )?;
     cap.save(&home, &member.slug)?;
+    drop(_lock);
     if signed_in_with_subscription(&home) {
         println!("{}", text::LIMIT_SAVED_SUBSCRIPTION);
     } else {
@@ -1772,9 +1778,9 @@ fn spend(member_dir: PathBuf, daily_cap_usd: Option<f64>) -> Result<()> {
     use voice_agent::ledger::Session;
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
-    let cap = cap_for(&home, &member.slug, daily_cap_usd, None)?;
     let subscription = signed_in_with_subscription(&home);
-    let session = Session::open(&home, &member.slug, cap.for_sign_in(subscription))?;
+    let cap = cap_for(&home, &member.slug, daily_cap_usd, None, subscription)?;
+    let session = Session::open(&home, &member.slug, cap)?;
     println!("{}", closing_spend(&session, subscription)?);
     Ok(())
 }
@@ -1789,17 +1795,23 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
     use voice_build::{build, interview, report, run, text};
     let (member, home) = member_and_home(&member_dir)?;
     run::prepare(&member, &member_dir, &home, &args.corpus)?;
-    let cap = cap_for(&home, &member.slug, args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     let ready = claude.check(&home)?;
+    let cap = cap_for(
+        &home,
+        &member.slug,
+        args.daily_cap_usd,
+        args.call_cap_usd,
+        ready.subscription,
+    )?;
     let server = SelfHosted::load(&home, &member.slug)?;
     let guard = Guard::new(
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member)?,
     );
-    let session = Session::open_existing(&home, &member.slug, cap.for_sign_in(ready.subscription))
-        .map_err(|error| match error {
+    let session =
+        Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
             Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
                 nothing_yet(&member.slug)
             }
@@ -1950,26 +1962,30 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
     {
         return Err(Error::Invalid(text::ALREADY_DRAFTED.into()));
     }
-    let cap = cap_for(&home, &member.slug, args.daily_cap_usd, args.call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     let ready = claude.check(&home)?;
+    let cap = cap_for(
+        &home,
+        &member.slug,
+        args.daily_cap_usd,
+        args.call_cap_usd,
+        ready.subscription,
+    )?;
     let server = SelfHosted::load(&home, &member.slug)?;
     let guard = Guard::new(
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member)?,
     );
     let session = if existed {
-        Session::open_existing(&home, &member.slug, cap.for_sign_in(ready.subscription)).map_err(
-            |error| match error {
-                Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
-                    nothing_yet(&member.slug)
-                }
-                error => error,
-            },
-        )?
+        Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
+            Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                nothing_yet(&member.slug)
+            }
+            error => error,
+        })?
     } else {
-        Session::open(&home, &member.slug, cap.for_sign_in(ready.subscription))?
+        Session::open(&home, &member.slug, cap)?
     };
     let DraftPlan {
         answered,
@@ -2075,17 +2091,27 @@ fn refresh_propose(
     use voice_ingest::filters::Filters;
     let (member, home) = member_and_home(&member_dir)?;
     let filters = Filters::compile(&member.filters)?;
-    let cap = cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd)?;
+    // Preserve the early Console-limit error, even when Claude Code is missing.
+    if !signed_in_with_subscription(&home) {
+        cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd, false)?;
+    }
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     let ready = claude.check(&home)?;
+    let cap = cap_for(
+        &home,
+        &member.slug,
+        daily_cap_usd,
+        call_cap_usd,
+        ready.subscription,
+    )?;
     let server = SelfHosted::load(&home, &member.slug)?;
     let guard = Guard::new(
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member)?,
     );
     let store = Store::open(&home, &member)?;
-    let session = Session::open(&home, &member.slug, cap.for_sign_in(ready.subscription))?;
+    let session = Session::open(&home, &member.slug, cap)?;
     match refresh::propose(
         &guard,
         &session,
@@ -2125,17 +2151,23 @@ fn refresh_apply(
     use voice_ingest::filters::Filters;
     let (member, home) = member_and_home(&member_dir)?;
     let filters = Filters::compile(&member.filters)?;
-    let cap = cap_for(&home, &member.slug, daily_cap_usd, call_cap_usd)?;
     let path = std::env::var_os("PATH");
     let claude = claude::find(path.as_deref(), &home)?;
     let ready = claude.check(&home)?;
+    let cap = cap_for(
+        &home,
+        &member.slug,
+        daily_cap_usd,
+        call_cap_usd,
+        ready.subscription,
+    )?;
     let server = SelfHosted::load(&home, &member.slug)?;
     let guard = Guard::new(
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member)?,
     );
     let store = Store::open(&home, &member)?;
-    let session = Session::open(&home, &member.slug, cap.for_sign_in(ready.subscription))?;
+    let session = Session::open(&home, &member.slug, cap)?;
     let Measured {
         proposal,
         measurement,
@@ -2909,5 +2941,36 @@ fn main() -> std::process::ExitCode {
             eprintln!("voice: {error}");
             std::process::ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod cap_tests {
+    use super::*;
+
+    #[test]
+    fn subscription_cap_ignores_daily_flags_and_keeps_the_step() {
+        let home = std::env::temp_dir().join(format!("voice-cap-flags-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        {
+            let _lock = voice_ingest::private::lock_state(&home, "wren").unwrap();
+            voice_agent::ledger::Cap::new(50.0, 5.0)
+                .unwrap()
+                .save(&home, "wren")
+                .unwrap();
+        }
+        for step in [None, Some(5.0)] {
+            let cap = cap_for(&home, "wren", Some(2.0), step, true).unwrap();
+            assert_eq!(cap.daily_limit(), None);
+            assert_eq!(cap.budget_for(2.0), Ok(Some(5.0)));
+        }
+        assert!(cap_for(&home, "wren", Some(2.0), Some(5.0), false).is_err());
+        assert_eq!(
+            cap_for(&home, "wren", Some(2.0), None, false)
+                .unwrap()
+                .call_limit(),
+            Some(2.0)
+        );
+        std::fs::remove_dir_all(home).unwrap();
     }
 }
