@@ -38,8 +38,9 @@ One record per slice, newest first. Paraphrase only; no real person.
   Verifier (Opus) on `4c88d93`: PASS, no must- or should-fix (nit: the rejection list pins no empty
   name, `..` or `-0`; the code rejects them). Security review: no HIGH or MEDIUM.
 - **Known limits, kept:** a save to CLAUDE.md in the microseconds between the byte check and the
-  rewrite is lost (closing it needs a lock); retrying after a failed rollback says "changed" until the
-  person moves the aside folder the sentence names; `voice on --replace-old` doesn't list the lines
+  rewrite is lost (closing it needs a lock); after a failed rollback, a retry in the same second says
+  "changed", and a later one goes ahead on what now sits at the skill path and leaves the first aside
+  folder where it is (it and its backup are the ones the rollback-failed sentence named); `voice on --replace-old` doesn't list the lines
   before it removes them, and the screen lists them as found at status time (lines added since are
   removed too, after being backed up); the `~/.claude/` wording assumes the default Claude folder, as
   `backup.rs`'s sentences do; a chmod on the backup's parent could be sent through a link swapped in by
