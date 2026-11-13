@@ -270,9 +270,23 @@ fn undeletable_aside_is_a_success_with_verified_backup() {
 
 #[test]
 fn rollback_failure_keeps_backup_and_aside_and_reports_real_stamp() {
+    check_rollback_failure(false);
+}
+
+#[test]
+fn rollback_failure_after_stamp_collision_reports_real_backup_name() {
+    check_rollback_failure(true);
+}
+
+fn check_rollback_failure(collision: bool) {
     let f = Fixture::new();
     f.old_skill();
     fs::write(f.claude(), "keep\n/ari\n").unwrap();
+    let original = f.places.home.join(".claude/voice-backups/ari").join(STAMP);
+    if collision {
+        fs::create_dir_all(&original).unwrap();
+        fs::set_permissions(&original, fs::Permissions::from_mode(0o700)).unwrap();
+    }
     let result = replace_checked(
         &f.places,
         "ari",
@@ -285,7 +299,12 @@ fn rollback_failure_keeps_backup_and_aside_and_reports_real_stamp() {
         &|| {},
         &|| {},
     );
-    let backup = f.places.home.join(".claude/voice-backups/ari").join(STAMP);
+    let backup_name = if collision {
+        format!("{STAMP}-2")
+    } else {
+        STAMP.to_owned()
+    };
+    let backup = original.with_file_name(&backup_name);
     let aside = f
         .skill()
         .with_file_name(format!(".ari.voice-replacing-{STAMP}"));
@@ -305,12 +324,21 @@ fn rollback_failure_keeps_backup_and_aside_and_reports_real_stamp() {
         fs::read(f.skill().join("blocker")).unwrap(),
         b"concurrent skill"
     );
+    if collision {
+        assert!(fs::read_dir(&original).unwrap().next().is_none());
+        assert_eq!(
+            fs::metadata(&original).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
     let Err(Error::Invalid(message)) = result else {
         panic!("expected rollback failure, got {result:?}");
     };
     assert_eq!(
         message,
-        "Voice couldn't put the older ari skill back. It's at ~/.claude/skills/.ari.voice-replacing-2026-11-12-093000, and a copy is in ~/.claude/voice-backups/ari/2026-11-12-093000/."
+        format!(
+            "Voice couldn't put the older ari skill back. It's at ~/.claude/skills/.ari.voice-replacing-{STAMP}, and a copy is in ~/.claude/voice-backups/ari/{backup_name}/."
+        )
     );
 }
 
@@ -322,6 +350,27 @@ fn rollback_failure_sentence_is_recognized() {
                 "Voice couldn't put the older {slug} skill back. It's at ~/.claude/skills/.{slug}.voice-replacing-{stamp}, and a copy is in ~/.claude/voice-backups/{slug}/{stamp}/."
             );
             assert!(says(&sentence), "rejected {sentence}");
+            let backup_path = format!("voice-backups/{slug}/{stamp}/");
+            for suffix in ["-2", "-9"] {
+                let collided = sentence.replace(
+                    &backup_path,
+                    &format!("voice-backups/{slug}/{stamp}{suffix}/"),
+                );
+                assert!(says(&collided), "rejected {collided}");
+            }
+            for backup_name in [
+                format!("{stamp}-1"),
+                format!("{stamp}-10"),
+                format!("{stamp}-x"),
+                "2024-01-01-000000".to_owned(),
+                format!("{stamp}/2"),
+            ] {
+                let malformed = sentence.replace(
+                    &backup_path,
+                    &format!("voice-backups/{slug}/{backup_name}/"),
+                );
+                assert!(!says(&malformed), "accepted {malformed}");
+            }
             for malformed in [
                 "<stamp>",
                 "2026-11-12-09300",

@@ -16,9 +16,9 @@ pub const NO_OLDER_END: &str = " to replace.";
 pub const ROLLED_BACK_FAILED_START: &str = "Voice couldn't put the older ";
 pub const ROLLED_BACK_FAILED_END: &str = " skill back.";
 
-pub fn rolled_back_failed(slug: &str, stamp: &str) -> String {
+pub fn rolled_back_failed(slug: &str, stamp: &str, backup_name: &str) -> String {
     format!(
-        "{ROLLED_BACK_FAILED_START}{slug}{ROLLED_BACK_FAILED_END} It's at ~/.claude/skills/.{slug}.voice-replacing-{stamp}, and a copy is in ~/.claude/voice-backups/{slug}/{stamp}/."
+        "{ROLLED_BACK_FAILED_START}{slug}{ROLLED_BACK_FAILED_END} It's at ~/.claude/skills/.{slug}.voice-replacing-{stamp}, and a copy is in ~/.claude/voice-backups/{slug}/{backup_name}/."
     )
 }
 
@@ -30,10 +30,25 @@ pub fn says(message: &str) -> bool {
             let prefix = format!(" It's at ~/.claude/skills/.{slug}.voice-replacing-");
             rest.strip_prefix(&prefix)
                 .and_then(|rest| rest.split_once(", and a copy is in "))
-                .is_some_and(|(stamp, _)| {
+                .is_some_and(|(stamp, backup_path)| {
+                    let prefix = format!("~/.claude/voice-backups/{slug}/");
+                    let Some(backup_name) = backup_path
+                        .strip_prefix(&prefix)
+                        .and_then(|name| name.strip_suffix("/."))
+                    else {
+                        return false;
+                    };
+                    let valid_name = backup_name == stamp
+                        || backup_name
+                            .strip_prefix(stamp)
+                            .and_then(|suffix| suffix.strip_prefix('-'))
+                            .is_some_and(|digit| {
+                                digit.len() == 1 && matches!(digit.as_bytes()[0], b'2'..=b'9')
+                            });
                     block::validate_id(slug).is_ok()
                         && backup::valid_stamp(stamp)
-                        && message == rolled_back_failed(slug, stamp)
+                        && valid_name
+                        && message == rolled_back_failed(slug, stamp, backup_name)
                 })
         })
         || matches!(message, SKILL_NOT_FOLDER | CHANGED)
@@ -203,7 +218,11 @@ fn replace_checked(
         if moved {
             let skill = found.skill.as_ref().expect("moved skill exists");
             if fs::rename(aside.as_ref().expect("moved skill has aside"), skill).is_err() {
-                return Err(Error::Invalid(rolled_back_failed(slug, stamp)));
+                let backup_name = backup
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("backup name is an ASCII stamp with an optional digit suffix");
+                return Err(Error::Invalid(rolled_back_failed(slug, stamp, backup_name)));
             }
         }
         io(&backup, fs::remove_dir_all(&backup))?;
