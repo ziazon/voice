@@ -143,7 +143,7 @@ fn stages_then_places_without_private_files() {
     assert!(!state.join("backup.git").exists());
     assert_eq!(fs::read(&obstruction).unwrap(), b"keep obstruction");
     fs::remove_file(&obstruction).unwrap();
-    let paths = place_opened(&staged, &home, &repo).unwrap();
+    let (paths, _, _) = place_opened(&staged, &home, &repo).unwrap();
     assert_eq!(
         fs::read(paths.dir.join("member.json")).unwrap(),
         fs::read(source.join("member.json")).unwrap()
@@ -534,6 +534,7 @@ fn placing_cleans_new_empty_state_after_a_member_move_failure() {
     let source = dir.join("member");
     member(&source);
     let staged = voice_save::flow::Staged {
+        made_crew: false,
         member: voice_core::member::read_member(&source.join("member.json")).unwrap(),
         member_dir: source.clone(),
         git_dir: dir.join("backup.git"),
@@ -567,6 +568,7 @@ fn placing_succeeds_when_staging_cannot_be_removed() {
     let source = dir.join("member");
     member(&source);
     let staged = voice_save::flow::Staged {
+        made_crew: false,
         member: voice_core::member::read_member(&source.join("member.json")).unwrap(),
         member_dir: source,
         git_dir: dir.join("backup.git"),
@@ -579,7 +581,7 @@ fn placing_succeeds_when_staging_cannot_be_removed() {
         owner: "rowan".into(),
         name: "wren-assistant".into(),
     };
-    let paths = place_opened(&staged, home, &repo).unwrap();
+    let (paths, _, _) = place_opened(&staged, home, &repo).unwrap();
     assert!(paths.dir.join("member.json").is_file());
     assert!(paths.state_dir.join("backup.git").is_dir());
     assert!(read_record(&paths.state_dir).unwrap().is_some());

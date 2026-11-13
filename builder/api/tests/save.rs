@@ -765,15 +765,45 @@ fn open_http() -> FakeHttp {
     ])
 }
 fn assert_no_staging(home: &Path) {
-    assert!(
-        fs::read_dir(home.join(".claude/crew"))
+    let mut entries = match fs::read_dir(home.join(".claude/crew")) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) => panic!("{error}"),
+    };
+    assert!(entries.all(|entry| {
+        !entry
             .unwrap()
-            .all(|entry| !entry
-                .unwrap()
-                .file_name()
-                .to_string_lossy()
-                .contains("voice-opening"))
+            .file_name()
+            .to_string_lossy()
+            .contains("voice-opening")
+    }));
+}
+
+#[test]
+fn open_saved_removes_new_crew_after_a_state_refusal() {
+    let fixture = Home::new();
+    let git = open_fixture(&fixture);
+    let home = Home::new();
+    let claude = home.0.join(".claude");
+    fs::create_dir_all(claude.join("state")).unwrap();
+    fs::write(claude.join("state/ari"), "older state file\n").unwrap();
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    let http = open_http();
+    let github = github(&http);
+    assert!(
+        open_saved_in(
+            &home.0,
+            &claude,
+            open_request(),
+            &git,
+            Some(&github),
+            &tokens,
+        )
+        .is_err()
     );
+    assert_no_staging(&home.0);
+    assert!(!claude.join("crew").exists());
 }
 
 #[test]

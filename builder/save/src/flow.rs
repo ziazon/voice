@@ -379,6 +379,7 @@ fn refuse_member(member: &MemberPaths) -> Result<()> {
 }
 
 pub struct Staged {
+    pub made_crew: bool,
     pub dir: PathBuf,
     pub member_dir: PathBuf,
     pub git_dir: PathBuf,
@@ -518,6 +519,7 @@ impl Saver<'_> {
             let trailer = trailer.trim();
             let builder = crate::computer::valid_computer_name(trailer).then(|| trailer.to_owned());
             Ok(Staged {
+                made_crew,
                 dir: dir.clone(),
                 member_dir,
                 git_dir,
@@ -700,7 +702,11 @@ fn rename_new(from: &Path, to: &Path) -> std::io::Result<()> {
         std::fs::rename(from, to)
     }
 }
-pub fn place_opened(staged: &Staged, home: &Path, repo: &RepoRef) -> Result<MemberPaths> {
+pub fn place_opened(
+    staged: &Staged,
+    home: &Path,
+    repo: &RepoRef,
+) -> Result<(MemberPaths, bool, bool)> {
     use std::fs;
     let slug = &staged.member.slug;
     let member_dir = home.join(".claude/crew").join(slug);
@@ -750,6 +756,7 @@ pub fn place_opened(staged: &Staged, home: &Path, repo: &RepoRef) -> Result<Memb
         }
         let _ = fs::remove_dir(&staged.dir);
         MemberPaths::load(&member_dir.join("member.json"), home)
+            .map(|paths| (paths, made_state, made_state_parent))
     })();
     if result.is_err() {
         if made_state {

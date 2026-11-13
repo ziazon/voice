@@ -613,9 +613,15 @@ fn fetch_checks_transferred_objects() {
     );
     let calls = wrapper.calls();
     let args = calls[0]["argv"].as_array().unwrap();
-    assert!(args.windows(2).any(|pair| pair
-        == [
-            serde_json::json!("-c"),
-            serde_json::json!("transfer.fsckObjects=true")
-        ]));
+    let fsck = args
+        .windows(2)
+        .position(|pair| {
+            pair == [
+                serde_json::json!("-c"),
+                serde_json::json!("transfer.fsckObjects=true"),
+            ]
+        })
+        .unwrap();
+    let fetch = args.iter().position(|arg| arg == "fetch").unwrap();
+    assert!(fsck + 1 < fetch);
 }

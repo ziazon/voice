@@ -434,12 +434,18 @@ pub fn open_saved_in(
         let refusal = crate::assistants::bring_in_refusal(home, &found)
             .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?;
         let (made, backup) = crate::assistants::back_up_older_then(home, claude_home, &request.slug, &stamp, &mut || {
-            let placed = flow::place_opened(&staged, home, &repo)?;
+            let (placed, made_state, made_state_parent) = flow::place_opened(&staged, home, &repo)?;
             if let Err(error) = crate::assistants::clear_consent(home, &request.slug) {
-                // place_opened created only these three paths; leave the older state intact.
+                // Remove only what place_opened made; leave the older state intact.
                 let _ = std::fs::remove_dir_all(&placed.dir);
                 let _ = std::fs::remove_dir_all(placed.state_dir.join("backup.git"));
                 let _ = std::fs::remove_file(placed.state_dir.join("save.json"));
+                if made_state {
+                    let _ = std::fs::remove_dir(&placed.state_dir);
+                }
+                if made_state_parent {
+                    let _ = std::fs::remove_dir(home.join(".claude/state"));
+                }
                 return Err(error);
             }
             Ok(voice_core::assistants::Listed { dir: placed.dir, member: placed.member })
@@ -478,6 +484,9 @@ pub fn open_saved_in(
         })
     })();
     let _ = std::fs::remove_dir_all(&staged.dir);
+    if result.is_err() && staged.made_crew {
+        let _ = std::fs::remove_dir(home.join(".claude/crew"));
+    }
     result
 }
 
