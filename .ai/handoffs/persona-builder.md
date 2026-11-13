@@ -27,7 +27,8 @@ One record per slice, newest first. Paraphrase only; no real person.
   in the listing, a removed file's rollback, history refusal leaving `main` and the record), the CLI's usage
   errors. Security review on `1bbef28`: one LOW (the same empty state folder). All fixed in fix-up 1. Delta
   Verifier (Opus) on `4176aed`: PASS, three nits; two fixed in fix-up 2 (60 added lines, within her pass), the third
-  recorded below. Security review of the whole slice and the fix-up 1 delta: no findings.
+  recorded below. Security review of the whole slice and the fix-up 1 delta: no findings. Security review of the
+  fix-up 2 delta (next run): no findings.
 - **Known limits:** a new version that turns a saved file into a folder, or a folder into a file, is refused with
   the "changed on this computer" sentence (it fails safe; found by the security review by reading, not
   reproduced). An interrupted take (a failed rollback, or the process killed between the first rename and the
@@ -37,10 +38,10 @@ One record per slice, newest first. Paraphrase only; no real person.
 - **Verified:** the voice-save, voice-api and voice-cli tests (2 threads) passed on `4176aed`. The Verifier ran
   `take` 23/23, `save` 34/34, CLI `open` 5/5 and every `voice open` argument combination on the built binary, and
   one mutation (the removed-file rollback; the new test caught it, the old one didn't). Codex reports every red on
-  the base and 8 mutations caught for fix-up 2 (each restored by `cp` and `cmp`). Full `ci-local.sh` at the land.
-- **Not verified:** V1's own mutation rerun on fix-up 2 was blocked by the resource gate (load1 367%); it rests on
-  Codex's report and the Verifier's mutation. No live take against a real GitHub repo: that is PB8.9's attended
-  phase 4.
+  the base and 8 mutations caught for fix-up 2 (each restored by `cp` and `cmp`). V1's own mutation on fix-up 2
+  (the git check moved back after the origin check): `missing_git_is_reported_before_origin_check` failed, restored
+  by `cp` and `cmp`. Full `ci-local.sh` at the land.
+- **Not verified:** no live take against a real GitHub repo: that is PB8.9's attended phase 4.
 
 ## PB8.9b1: open an assistant you saved on GitHub (2026-11-13, lane: V1)
 
