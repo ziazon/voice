@@ -2,6 +2,46 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.9b2: take the newest version (2026-11-13, lane: V1)
+
+- **Why:** PB8.9b1 opens a saved assistant on a member computer, but nothing there could take the versions the
+  building computer saves after that (PB8.9, step 1.2). Screens are PB8.9b3.
+- **What:** `Saver::take_newest` and `voice_api::save::take_newest_in`. Only a member computer takes a version
+  (`not_a_member` otherwise, before any git or HTTP call). The member folder must be a plain folder, git must be
+  there (`NEEDS_GIT`), and `backup.git`'s origin must be exactly the record's repo, all before any HTTP call or
+  fetch. `main` is fetched into `refs/voice/incoming`; fast-forward only (`not_newer` otherwise). Before anything is
+  written, every file Voice wrote must still match its saved bytes (`changed_here` names the first that doesn't). The
+  new version is staged and checked the way PB8.9b1 checks an open (the shared check), then applied file by file
+  with a rollback on any failure, `refs/heads/main` moved with a compare-and-swap, and the record's builder updated
+  from the `Saved-on:` trailer. `private.json` is never read, written or removed. When Voice turned the assistant
+  on, the installed SKILL.md is refreshed; a failed refresh keeps the update and says so. The API locks the
+  existing state folder only after the assistant is found (never creating it). App command `take_newest` (no
+  screen), `voice open --update <slug>`.
+- **Briefs:** `plans/briefs/PB8.9b2-take-newest.md`, fix-up 1 (`plans/briefs/PB8.9b2-fixup-1.md`: the first
+  Verifier's and the security review's findings, Claude's review) and fix-up 2 (`plans/briefs/PB8.9b2-fixup-2.md`:
+  the delta Verifier's two nits).
+- **Who built it:** Codex, from every brief (`1bbef28`, `4176aed`, `1482606`). Her sandbox blocked the socket tests
+  and the UI install on the first build; V1 ran those outside it.
+- **Reviews:** Verifier (Fable) on `1bbef28`: should-fixes, the lock made an empty state folder for an unknown
+  name, the fetch didn't check the saved copy's origin, a linked member folder wasn't refused, missing tests (modes
+  in the listing, a removed file's rollback, history refusal leaving `main` and the record), the CLI's usage
+  errors. Security review on `1bbef28`: one LOW (the same empty state folder). All fixed in fix-up 1. Delta
+  Verifier (Opus) on `4176aed`: PASS, three nits; two fixed in fix-up 2 (60 added lines, within her pass), the third
+  recorded below. Security review of the whole slice and the fix-up 1 delta: no findings.
+- **Known limits:** a new version that turns a saved file into a folder, or a folder into a file, is refused with
+  the "changed on this computer" sentence (it fails safe; found by the security review by reading, not
+  reproduced). An interrupted take (a failed rollback, or the process killed between the first rename and the
+  `main` update) leaves files the next take calls changed here. The member-folder check uses
+  `~/.claude/crew/<slug>` while the writes use `member.dir`; the API, the only caller, builds both from the same
+  `crew_dir(home)`.
+- **Verified:** the voice-save, voice-api and voice-cli tests (2 threads) passed on `4176aed`. The Verifier ran
+  `take` 23/23, `save` 34/34, CLI `open` 5/5 and every `voice open` argument combination on the built binary, and
+  one mutation (the removed-file rollback; the new test caught it, the old one didn't). Codex reports every red on
+  the base and 8 mutations caught for fix-up 2 (each restored by `cp` and `cmp`). Full `ci-local.sh` at the land.
+- **Not verified:** V1's own mutation rerun on fix-up 2 was blocked by the resource gate (load1 367%); it rests on
+  Codex's report and the Verifier's mutation. No live take against a real GitHub repo: that is PB8.9's attended
+  phase 4.
+
 ## PB8.9b1: open an assistant you saved on GitHub (2026-11-13, lane: V1)
 
 - **Why:** one assistant is used on several computers (PB8.9, step 1.2). One computer builds her and saves her
