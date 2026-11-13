@@ -2,6 +2,29 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF13: a backup keeps the owner's execute bit (2026-11-13, lane: V1)
+
+- **Why:** the backup copied every file 0600, so a backed-up skill's scripts lost their execute bit, and since
+  PB8.7e the backup is the only copy of an older skill once Voice deletes the moved-aside folder (found by the
+  Verifier on PB8.7e).
+- **What:** `backup.rs` `copy_entry` backs a file up 0700 when its owner could run it (`0o100`), else 0600; no
+  other source bit carries over. The mode is read from the already-opened source, so it and the bytes come from
+  the same file. Folders stay 0700; verification is unchanged (bytes, not modes).
+- **Briefs:** `plans/briefs/VF13-backup-execute-bit.md`, fix-up 1 (`plans/briefs/VF13-fixup-1.md`: a setuid row,
+  from the security review).
+- **Who built it:** Codex, from both briefs (`f91aecf`, `bdc734e`).
+- **Reviews:** security review on the build: no findings; one test gap (no source file with a special bit, so the
+  test's `0o7777` mask proved less than the brief said), closed by fix-up 1. Verifier: not required (spec).
+- **Verified:** red first on its assertion (`scripts/run.sh` 0o600 against 0o700); `voice-core` green (245 tests).
+  V1's mutations, each caught and restored (`cp`, `cmp`): copy the full source mode; test `0o111` in place of
+  `0o100`; take `0o4700` of the source in the 0700 branch (caught by `owner-only`); always 0600; and carry setuid
+  with the chmod moved after the copy (caught by `setuid-run`, 2496 against 448). Full `ci-local.sh` at the land.
+- **Learned:** setuid on the copy can't leak in today's order, because writing the bytes after the chmod clears it;
+  the setuid row guards a chmod moved after the copy (fix-up 1's own mutation, the chmod before the copy, was
+  caught by `owner-only` instead, for that reason).
+- **Not verified:** a by-hand restore of a backed-up skill through the app (the unit test drives the real
+  filesystem); Linux.
+
 ## PB8.9b3: the screens for opening a saved assistant and taking the newest version (2026-11-13, lane: V1)
 
 - **Why:** PB8.9b1 and PB8.9b2 built opening a saved assistant on a member computer and taking each newer version
