@@ -80,6 +80,12 @@ impl Drop for Home {
 fn slug(s: &str) -> SlugRequest {
     SlugRequest { slug: s.into() }
 }
+fn on(s: &str) -> TurnOnRequest {
+    TurnOnRequest {
+        slug: s.into(),
+        replace_old: false,
+    }
+}
 fn off(s: &str) -> TurnOffRequest {
     TurnOffRequest { slug: s.into() }
 }
@@ -152,7 +158,8 @@ fn status_not_set_up_and_off() {
             on_name: None,
             on_slug: None,
             out_of_date: false,
-            changed: false
+            changed: false,
+            old_one: None
         }
     );
     assert_eq!(status(&h).state, OnState::Off);
@@ -168,7 +175,8 @@ fn status_this_out_of_date_and_changed() {
             on_name: Some("Ari".into()),
             on_slug: Some("ari".into()),
             out_of_date: false,
-            changed: false
+            changed: false,
+            old_one: None
         }
     );
     let skill = h.member().join("SKILL.md");
@@ -192,7 +200,8 @@ fn status_other_assistant() {
             on_name: Some("Mo Lee".into()),
             on_slug: Some("mo-lee".into()),
             out_of_date: false,
-            changed: false
+            changed: false,
+            old_one: None
         }
     );
 }
@@ -204,7 +213,7 @@ fn kit_copy_is_other_even_with_same_slug() {
     assert_eq!(status(&h).state, OnState::Other);
     let before = snapshot(&h.claude());
     assert_eq!(
-        turn_on_in(&h.0, &h.claude(), slug("ari"))
+        turn_on_in(&h.0, &h.claude(), on("ari"))
             .unwrap_err()
             .message,
         "Ari is on in Claude Code. Turn Ari off first, then turn Ari on."
@@ -215,7 +224,7 @@ fn kit_copy_is_other_even_with_same_slug() {
 fn on_installs_and_refreshes() {
     let h = Home::new();
     assert_eq!(
-        succeeds(turn_on_in(&h.0, &h.claude(), slug("ari"))).message,
+        succeeds(turn_on_in(&h.0, &h.claude(), on("ari"))).message,
         "Ari is on. Start a new Claude Code session to use Ari."
     );
     assert!(h.claude().join("skills/ari/SKILL.md").is_file());
@@ -223,7 +232,7 @@ fn on_installs_and_refreshes() {
     let text = fs::read_to_string(&skill).unwrap();
     fs::write(&skill, format!("{text}\nMore guidance.\n")).unwrap();
     assert!(status(&h).out_of_date);
-    succeeds(turn_on_in(&h.0, &h.claude(), slug("ari")));
+    succeeds(turn_on_in(&h.0, &h.claude(), on("ari")));
     assert!(!status(&h).out_of_date);
     assert_eq!(
         fs::read(skill).unwrap(),
@@ -237,7 +246,7 @@ fn on_refuses_other_without_changing_bytes() {
     install::turn_on(&h.claude().join("crew/mo-lee"), &h.places()).unwrap();
     let before = snapshot(&h.claude());
     assert_eq!(
-        turn_on_in(&h.0, &h.claude(), slug("ari"))
+        turn_on_in(&h.0, &h.claude(), on("ari"))
             .unwrap_err()
             .message,
         "Mo Lee is on in Claude Code. Turn Mo Lee off first, then turn Ari on."
@@ -248,7 +257,7 @@ fn on_refuses_other_without_changing_bytes() {
 fn on_not_set_up_and_failure_are_safe() {
     let h = Home::new();
     assert_eq!(
-        turn_on_in(&h.0, &h.0.join("missing"), slug("ari"))
+        turn_on_in(&h.0, &h.0.join("missing"), on("ari"))
             .unwrap_err()
             .message,
         "Claude Code isn't set up on this computer yet. Install it and sign in, then come back."
@@ -256,10 +265,10 @@ fn on_not_set_up_and_failure_are_safe() {
     fs::create_dir_all(h.claude().join("skills/ari")).unwrap();
     let before = snapshot(&h.claude());
     assert_eq!(
-        turn_on_in(&h.0, &h.claude(), slug("ari"))
+        turn_on_in(&h.0, &h.claude(), on("ari"))
             .unwrap_err()
             .message,
-        "Voice couldn't turn Ari on, so nothing in your Claude folder was changed."
+        "Claude Code already has a skill called ari that Voice didn't add, so Voice didn't turn Ari on. Choose Replace the old one, and Voice backs it up and moves it aside first."
     );
     assert_eq!(snapshot(&h.claude()), before);
 }
@@ -558,7 +567,7 @@ fn all_member_commands_require_listed_slug() {
             FIND
         );
         assert_eq!(
-            turn_on_in(&h.0, &h.claude(), slug(value))
+            turn_on_in(&h.0, &h.claude(), on(value))
                 .unwrap_err()
                 .message,
             FIND
@@ -606,10 +615,11 @@ fn dto_contract() {
             on_name: Some("Ari".into()),
             on_slug: Some("ari".into()),
             out_of_date: true,
-            changed: true
+            changed: true,
+            old_one: None
         })
         .unwrap(),
-        json!({"state":"this","onName":"Ari","onSlug":"ari","outOfDate":true,"changed":true})
+        json!({"state":"this","onName":"Ari","onSlug":"ari","outOfDate":true,"changed":true,"oldOne":null})
     );
     for (state, text) in [
         (OnState::NotSetUp, "notSetUp"),
@@ -635,6 +645,17 @@ fn dto_contract() {
         to_value(ForgetPreview { files: 3 }).unwrap(),
         json!({"files":3})
     );
+    assert_eq!(
+        from_value::<TurnOnRequest>(json!({"slug":"ari"})).unwrap(),
+        on("ari")
+    );
+    assert_eq!(
+        to_value(on("ari")).unwrap(),
+        json!({"slug":"ari","replaceOld":false})
+    );
+    assert!(
+        from_value::<TurnOnRequest>(json!({"slug":"ari","replaceOld":true,"extra":1})).is_err()
+    );
     assert!(from_value::<TurnOffRequest>(json!({"slug":"ari","extra":1})).is_err());
     assert!(from_value::<ForgetRequest>(json!({"slug":"ari","files":3,"extra":1})).is_err());
 }
@@ -647,7 +668,7 @@ fn sentence_commands_refuse_a_name_with_a_line_break() {
     member["name"] = serde_json::json!("Ari\nAnother line");
     fs::write(&path, serde_json::to_vec(&member).unwrap()).unwrap();
     for result in [
-        turn_on_in(&h.0, &h.claude(), slug("ari")).map(|_| ()),
+        turn_on_in(&h.0, &h.claude(), on("ari")).map(|_| ()),
         make_claude_ai_files_in(&h.0, slug("ari")).map(|_| ()),
         forget_in(&h.0, forget_request(0)).map(|_| ()),
     ] {
@@ -692,4 +713,161 @@ fn installation_record_is_in_shared_voice_root() {
         "Ari is off. Everything Voice added is gone."
     );
     assert!(!h.claude().join("voice/installed.json").exists());
+}
+
+#[test]
+fn old_one_status_reports_skill_and_line_text() {
+    let h = Home::new();
+    fs::create_dir_all(h.claude().join("skills/ari")).unwrap();
+    fs::write(
+        h.claude().join("CLAUDE.md"),
+        "Ask Ari (/ari) before choosing.\r\n/aria\n",
+    )
+    .unwrap();
+    let value = serde_json::to_value(status(&h)).unwrap();
+    assert_eq!(
+        value["oldOne"],
+        serde_json::json!({"skill": true, "lines": ["Ask Ari (/ari) before choosing."]})
+    );
+}
+#[test]
+fn old_skill_without_replacement_has_actionable_sentence_and_changes_nothing() {
+    let h = Home::new();
+    fs::create_dir_all(h.claude().join("skills/ari")).unwrap();
+    fs::write(h.claude().join("skills/ari/SKILL.md"), "older skill").unwrap();
+    let before = snapshot(&h.claude());
+    assert_eq!(
+        turn_on_in(&h.0, &h.claude(), on("ari"))
+            .unwrap_err()
+            .message,
+        "Claude Code already has a skill called ari that Voice didn't add, so Voice didn't turn Ari on. Choose Replace the old one, and Voice backs it up and moves it aside first."
+    );
+    assert_eq!(snapshot(&h.claude()), before);
+}
+
+#[test]
+fn replacement_turns_on_names_backup_and_never_restores_old_parts() {
+    let h = Home::new();
+    fs::create_dir_all(h.claude().join("skills/ari")).unwrap();
+    fs::write(h.claude().join("skills/ari/SKILL.md"), "older skill").unwrap();
+    fs::write(h.claude().join("CLAUDE.md"), "keep\n/ari\n").unwrap();
+    let request =
+        serde_json::from_value(serde_json::json!({"slug":"ari", "replaceOld":true})).unwrap();
+    let result = succeeds(turn_on_in(&h.0, &h.claude(), request));
+    let parent = h.claude().join("voice-backups/ari");
+    let backup = fs::read_dir(parent)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let stamp = backup.file_name().unwrap().to_str().unwrap();
+    assert_eq!(
+        result.message,
+        format!(
+            "Ari is on. Voice moved the older ari skill and 1 CLAUDE.md line to ~/.claude/voice-backups/ari/{stamp}/ (only the parts it found). Turning Ari off won't put them back. Start a new Claude Code session to use Ari."
+        )
+    );
+    assert_eq!(status(&h).state, OnState::This);
+    assert!(serde_json::to_value(status(&h)).unwrap()["oldOne"].is_null());
+    assert_eq!(
+        fs::read(backup.join("skill/SKILL.md")).unwrap(),
+        b"older skill"
+    );
+    assert_eq!(fs::read(backup.join("CLAUDE.md")).unwrap(), b"keep\n/ari\n");
+    succeeds(turn_off_in(&h.0, &h.claude(), off("ari")));
+    assert!(!h.claude().join("skills/ari").exists());
+    assert_eq!(fs::read(h.claude().join("CLAUDE.md")).unwrap(), b"keep\n");
+}
+#[test]
+fn lines_only_can_be_kept_or_replaced_and_stale_choice_still_turns_on() {
+    for replace in [false, true] {
+        let h = Home::new();
+        fs::write(h.claude().join("CLAUDE.md"), "keep\n/ari\n/ARI\n").unwrap();
+        assert_eq!(
+            serde_json::to_value(status(&h)).unwrap()["oldOne"],
+            serde_json::json!({"skill":false,"lines":["/ari","/ARI"]})
+        );
+        let request =
+            serde_json::from_value(serde_json::json!({"slug":"ari", "replaceOld":replace}))
+                .unwrap();
+        let result = succeeds(turn_on_in(&h.0, &h.claude(), request));
+        let text = fs::read_to_string(h.claude().join("CLAUDE.md")).unwrap();
+        assert_eq!(text.contains("/ARI"), !replace);
+        if replace {
+            assert!(result.message.contains("2 CLAUDE.md lines"));
+        } else {
+            assert!(!h.claude().join("voice-backups").exists());
+        }
+    }
+    let h = Home::new();
+    let request =
+        serde_json::from_value(serde_json::json!({"slug":"ari", "replaceOld":true})).unwrap();
+    assert_eq!(
+        succeeds(turn_on_in(&h.0, &h.claude(), request)).message,
+        "Ari is on. Start a new Claude Code session to use Ari."
+    );
+    assert!(!h.claude().join("voice-backups").exists());
+}
+#[test]
+fn old_status_caps_unicode_text_and_find_errors_are_safe() {
+    let h = Home::new();
+    let text = format!("/ari {}", "界".repeat(210));
+    fs::write(h.claude().join("CLAUDE.md"), format!("{text}\r\n")).unwrap();
+    assert_eq!(
+        serde_json::to_value(status(&h)).unwrap()["oldOne"]["lines"][0],
+        format!("{}…", text.chars().take(200).collect::<String>())
+    );
+    fs::write(
+        h.claude().join("CLAUDE.md"),
+        vec![b' '; 4 * 1024 * 1024 + 1],
+    )
+    .unwrap();
+    assert_eq!(
+        claude_code_status_in(&h.0, &h.claude(), slug("ari"))
+            .unwrap_err()
+            .message,
+        "Voice couldn't check Claude Code. Close it and open it again."
+    );
+}
+
+#[test]
+fn replacement_refusals_pass_through_and_other_assistant_is_checked_first() {
+    let h = Home::new();
+    let skill = h.claude().join("skills/ari");
+    fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    symlink("missing", &skill).unwrap();
+    let request = || TurnOnRequest {
+        slug: "ari".into(),
+        replace_old: true,
+    };
+    assert_eq!(
+        turn_on_in(&h.0, &h.claude(), request())
+            .unwrap_err()
+            .message,
+        voice_core::replace_old::SKILL_NOT_FOLDER
+    );
+    fs::remove_file(&skill).unwrap();
+    fs::create_dir(&skill).unwrap();
+    fs::write(skill.join("SKILL.md"), "older skill").unwrap();
+    let outside = h.0.join("outside");
+    fs::create_dir(&outside).unwrap();
+    symlink(&outside, h.claude().join("voice-backups")).unwrap();
+    assert_eq!(
+        turn_on_in(&h.0, &h.claude(), request())
+            .unwrap_err()
+            .message,
+        voice_core::backup::FOLDER_NOT_PLAIN
+    );
+    fs::remove_file(h.claude().join("voice-backups")).unwrap();
+    h.make("Mo Lee");
+    install::turn_on(&h.claude().join("crew/mo-lee"), &h.places()).unwrap();
+    let before = snapshot(&h.claude());
+    assert_eq!(
+        turn_on_in(&h.0, &h.claude(), request())
+            .unwrap_err()
+            .message,
+        "Mo Lee is on in Claude Code. Turn Mo Lee off first, then turn Ari on."
+    );
+    assert_eq!(snapshot(&h.claude()), before);
 }

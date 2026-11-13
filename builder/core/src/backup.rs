@@ -14,7 +14,7 @@ use std::{
 
 pub const FOLDER_NOT_PLAIN: &str =
     "Voice's backup folder ~/.claude/voice-backups isn't a plain folder, so it backed nothing up.";
-const CHANGED: &str = "The older assistant's files changed while Voice backed them up, so it kept no backup. Try again.";
+pub(crate) const CHANGED: &str = "The older assistant's files changed while Voice backed them up, so it kept no backup. Try again.";
 const NO_FOLDER: &str =
     "Voice couldn't make a new backup folder, so it backed nothing up. Try again in a moment.";
 const HOLDS_BACKUP_END: &str = " holds Voice's own backup folder, so Voice backed nothing up.";
@@ -219,7 +219,7 @@ fn different() -> Error {
     Error::Invalid(CHANGED.into())
 }
 
-fn verify_entry(source: &Path, destination: &Path) -> Result<()> {
+pub(crate) fn verify_entry(source: &Path, destination: &Path) -> Result<()> {
     let mut left = vec![0u8; 64 * 1024];
     let mut right = vec![0u8; 64 * 1024];
     verify_entry_with_buffers(source, destination, &mut left, &mut right)

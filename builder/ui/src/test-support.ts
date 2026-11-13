@@ -80,7 +80,7 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     markClaudeaiChats: vi.fn().mockResolvedValue({ chats: [], mine: 0, notMine: 0, unmarked: 0 }),
     readClaudeai: vi.fn().mockResolvedValue({ chats: 0, messages: 0, privateLeftOut: 0 }),
     mergeHistories: vi.fn().mockResolvedValue({ questions: 0, heldOut: 0, messages: 0, duplicates: 0, privateLeftOut: 0 }),
-    claudeCodeStatus: vi.fn().mockResolvedValue({ state: 'off', onName: null, onSlug: null, outOfDate: false, changed: false }),
+    claudeCodeStatus: vi.fn().mockResolvedValue({ state: 'off', onName: null, onSlug: null, outOfDate: false, changed: false, oldOne: null }),
     turnOn: vi.fn().mockResolvedValue({ message: 'Ari is on.' }),
     turnOff: vi.fn().mockResolvedValue({ message: 'Ari is off.' }),
     claudeAiFiles: vi.fn().mockResolvedValue({ files: [] }),

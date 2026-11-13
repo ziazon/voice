@@ -15,7 +15,7 @@ use voice_core::{
     error::Error,
     forget as core_forget,
     install::{self, FileState, Places},
-    member, pack,
+    member, pack, replace_old,
 };
 use voice_ingest::private::{self, lock_state, private_folder_exists};
 
@@ -108,13 +108,33 @@ pub fn claude_code_status_in(
         on_slug: None,
         out_of_date: false,
         changed: false,
+        old_one: None,
     };
     if !claude_home.is_dir() {
         return Ok(empty(dto::OnState::NotSetUp));
     }
     let Some(status) = install::status(&places(home, claude_home)).map_err(|_| failure(STATUS))?
     else {
-        return Ok(empty(dto::OnState::Off));
+        let found = replace_old::find(&places(home, claude_home), &request.slug)
+            .map_err(|_| failure(STATUS))?;
+        let mut status = empty(dto::OnState::Off);
+        if found.any() {
+            status.old_one = Some(dto::OldOneFound {
+                skill: found.skill.is_some(),
+                lines: found
+                    .lines
+                    .into_iter()
+                    .map(|(_, text)| {
+                        if text.chars().count() > 200 {
+                            format!("{}…", text.chars().take(200).collect::<String>())
+                        } else {
+                            text
+                        }
+                    })
+                    .collect(),
+            });
+        }
+        return Ok(status);
     };
     let this = is_this(&status, &listed);
     Ok(dto::ClaudeCodeStatus {
@@ -123,6 +143,7 @@ pub fn claude_code_status_in(
         } else {
             dto::OnState::Other
         },
+        old_one: None,
         on_name: shown_name(&status.name),
         on_slug: Some(status.slug),
         out_of_date: this && status.out_of_date,
@@ -134,7 +155,11 @@ pub fn claude_code_status_in(
                     .any(|(_, state)| *state != FileState::Present)),
     })
 }
-pub fn turn_on_in(home: &Path, claude_home: &Path, request: dto::SlugRequest) -> Result<dto::Said> {
+pub fn turn_on_in(
+    home: &Path,
+    claude_home: &Path,
+    request: dto::TurnOnRequest,
+) -> Result<dto::Said> {
     let listed = listed(home, &request.slug)?;
     let name = &listed.member.name;
     if !claude_home.is_dir() {
@@ -149,7 +174,57 @@ pub fn turn_on_in(home: &Path, claude_home: &Path, request: dto::SlugRequest) ->
             name,
         )));
     }
+    let found = replace_old::find(&places, &request.slug).map_err(|_| failure(&on_failed(name)))?;
+    if found.skill.is_some() && !request.replace_old {
+        return Err(failure(&replace_old::old_skill(name, &request.slug)));
+    }
+    let replaced = if found.any() && request.replace_old {
+        let now = std::time::SystemTime::now();
+        Some(
+            replace_old::replace(
+                &places,
+                &request.slug,
+                &voice_agent::ledger::local_stamp(now),
+            )
+            .map_err(|error| match error {
+                Error::Invalid(sentence)
+                    if replace_old::says(&sentence) || voice_core::backup::says(&sentence) =>
+                {
+                    failure(&sentence)
+                }
+                _ => failure(&on_failed(name)),
+            })?,
+        )
+    } else {
+        None
+    };
     install::turn_on(&listed.dir, &places).map_err(|_| failure(&on_failed(name)))?;
+    if let Some(replaced) = replaced {
+        let mut parts = Vec::new();
+        if replaced.skill {
+            parts.push(format!("the older {} skill", request.slug));
+        }
+        if replaced.lines > 0 {
+            parts.push(format!(
+                "{} CLAUDE.md {}",
+                replaced.lines,
+                if replaced.lines == 1 { "line" } else { "lines" }
+            ));
+        }
+        let canonical_home = home.canonicalize().map_err(|_| failure(&on_failed(name)))?;
+        let shown = format!(
+            "~/{}",
+            replaced
+                .backup
+                .strip_prefix(&canonical_home)
+                .expect("backup beneath home")
+                .display()
+        );
+        return Ok(said(format!(
+            "{name} is on. Voice moved {} to {shown}/ (only the parts it found). Turning {name} off won't put them back. Start a new Claude Code session to use {name}.",
+            parts.join(" and ")
+        )));
+    }
     Ok(said(format!(
         "{name} is on. Start a new Claude Code session to use {name}."
     )))
@@ -294,7 +369,7 @@ pub fn claude_code_status(request: dto::SlugRequest) -> Result<dto::ClaudeCodeSt
         request,
     )
 }
-pub fn turn_on(request: dto::SlugRequest) -> Result<dto::Said> {
+pub fn turn_on(request: dto::TurnOnRequest) -> Result<dto::Said> {
     let home = home(STATUS)?;
     turn_on_in(
         &home,

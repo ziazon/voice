@@ -122,7 +122,7 @@ pub const PARITY: &[Parity] = &[
     },
     Parity {
         app: "turn_on",
-        cli: &[&["on"]],
+        cli: &[&["on"], &["on", "--replace-old"]],
     },
     Parity {
         app: "turn_off",

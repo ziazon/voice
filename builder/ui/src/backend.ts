@@ -27,6 +27,7 @@ import type { RefreshDrafted } from './types/generated/RefreshDrafted'
 import type { RefreshAnswerRequest } from './types/generated/RefreshAnswerRequest'
 import type { RefreshApplyRequest } from './types/generated/RefreshApplyRequest'
 import type { RefreshApplied } from './types/generated/RefreshApplied'
+import type { TurnOnRequest } from './types/generated/TurnOnRequest'
 import type { ClaudeCodeStatus } from './types/generated/ClaudeCodeStatus'
 import type { TurnOffRequest } from './types/generated/TurnOffRequest'
 import type { ClaudeAiFiles } from './types/generated/ClaudeAiFiles'
@@ -136,7 +137,7 @@ export interface Backend {
   readClaudeai(request: SlugRequest, onProgress: (progress: ReadProgress) => void): Promise<ClaudeaiCounts>
   mergeHistories(request: SlugRequest): Promise<MergeCounts>
   claudeCodeStatus(request: SlugRequest): Promise<ClaudeCodeStatus>
-  turnOn(request: SlugRequest): Promise<Said>
+  turnOn(request: TurnOnRequest): Promise<Said>
   turnOff(request: TurnOffRequest): Promise<Said>
   claudeAiFiles(request: SlugRequest): Promise<ClaudeAiFiles>
   makeClaudeAiFiles(request: SlugRequest): Promise<ClaudeAiFiles>

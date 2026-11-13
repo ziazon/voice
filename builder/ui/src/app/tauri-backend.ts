@@ -15,6 +15,7 @@ import type { ReportView } from '../types/generated/ReportView'
 import type { ReviewStatus } from '../types/generated/ReviewStatus'
 import type { RefreshDrafted } from '../types/generated/RefreshDrafted'
 import type { RefreshApplied } from '../types/generated/RefreshApplied'
+import type { TurnOnRequest } from '../types/generated/TurnOnRequest'
 import type { ClaudeCodeStatus } from '../types/generated/ClaudeCodeStatus'
 import type { ClaudeAiFiles } from '../types/generated/ClaudeAiFiles'
 import type { ForgetPreview } from '../types/generated/ForgetPreview'
@@ -128,7 +129,7 @@ export const tauriBackend: Backend = {
   },
   mergeHistories: request => invoke<MergeCounts>('merge_histories', { request }),
   claudeCodeStatus: request => invoke<ClaudeCodeStatus>('claude_code_status', { request }),
-  turnOn: request => invoke<Said>('turn_on', { request }),
+  turnOn: (request: TurnOnRequest) => invoke<Said>('turn_on', { request }),
   turnOff: request => invoke<Said>('turn_off', { request }),
   claudeAiFiles: request => invoke<ClaudeAiFiles>('claude_ai_files', { request }),
   makeClaudeAiFiles: request => invoke<ClaudeAiFiles>('make_claude_ai_files', { request }),

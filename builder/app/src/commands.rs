@@ -206,7 +206,7 @@ pub fn claude_code_status(
 
 #[tauri::command(async)]
 pub fn turn_on(
-    request: voice_api::dto::SlugRequest,
+    request: voice_api::dto::TurnOnRequest,
 ) -> Result<voice_api::dto::Said, voice_api::dto::Failure> {
     voice_api::turn_on(request)
 }

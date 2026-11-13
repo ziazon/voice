@@ -51,7 +51,7 @@ pub struct Status {
 const RULES: &str = "# {{NAME}}\n\nBefore you ask me a question (a choice between options, a go or no-go, a plan's open questions),\nask {{NAME}} first with the /{{SLUG}} skill. {{NAME}} says what I would likely pick and how sure\nthat answer is. Ask me only what {{NAME}} hands back, and show me {{NAME}}'s answer beside the\nquestion.\n";
 
 impl Places {
-    fn canonical(&self) -> Result<Self> {
+    pub(crate) fn canonical(&self) -> Result<Self> {
         if !self.claude_home.is_dir() {
             return Err(Error::Invalid(format!(
                 "{} is missing: install Claude Code and sign in to it first",

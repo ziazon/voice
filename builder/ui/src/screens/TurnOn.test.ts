@@ -5,7 +5,7 @@ import type { ClaudeCodeStatus } from '../types/generated/ClaudeCodeStatus'
 import type { Said } from '../types/generated/Said'
 import TurnOn from './TurnOn.vue'
 const assistant = { ...example, name: 'Ari', slug: 'ari' }
-const off: ClaudeCodeStatus = { state: 'off', onName: null, onSlug: null, outOfDate: false, changed: false }
+const off: ClaudeCodeStatus = { state: 'off', onName: null, onSlug: null, outOfDate: false, changed: false, oldOne: null }
 it('announces loading then shows off and turns on, disabling actions until status reloads', async () => {
   const load = deferred<ClaudeCodeStatus>()
   const on = deferred<Said>()
@@ -18,7 +18,7 @@ it('announces loading then shows off and turns on, disabling actions until statu
   expect(wrapper.text()).toContain('Turn Ari on, and Claude Code asks Ari before it asks you a question. One assistant can be on at a time.')
   expect(wrapper.text()).toContain('Ari is off in Claude Code.')
   await button(wrapper, 'Turn Ari on').trigger('click')
-  expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari' })
+  expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari', replaceOld: false })
   expect(button(wrapper, 'Turning it on…').attributes('disabled')).toBeDefined()
   on.resolve({ message: 'Ari is on.' }); await flushPromises()
   expect(wrapper.get('.alert-success').text()).toBe('Ari is on.')
@@ -41,7 +41,7 @@ it('shows update and changed notices and updates', async () => {
   expect(wrapper.text()).toContain('Ari has changed since you turned it on.')
   expect(wrapper.findAll('.text-secondary').map(p => p.text())).toContain('Something Voice added for Ari in your Claude folder was changed or removed.')
   await button(wrapper, 'Update Ari in Claude Code').trigger('click'); await flushPromises()
-  expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari' })
+  expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari', replaceOld: false })
 })
 it.each([
   ['this', 'Ari', 'ari', 'Turn Ari off', 'Ari is on in Claude Code.'],
@@ -100,4 +100,32 @@ it('explains what turning on adds and turning off removes', () => {
   const paragraphs = wrapper.findAll('p')
   expect(paragraphs[1]!.text()).toContain(`Turning ${example.name} on adds a skill and a short block to your Claude Code instructions.`)
   expect(paragraphs[1]!.text()).toContain("Turning it off removes what it added, except a file you've changed since.")
+})
+
+it.each([true, false])('offers replacement for an older assistant (skill=%s)', async skill => {
+  const on = deferred<Said>()
+  const backend = fakeBackend({ claudeCodeStatus: vi.fn().mockResolvedValue({ ...off, oldOne: { skill, lines: ['Ask Ari (/ari) before choosing.', '<b>/ari</b>'] } }), turnOn: vi.fn().mockReturnValue(on.promise) })
+  const wrapper = screen(TurnOn, backend, { assistant })
+  await flushPromises()
+  const warning = wrapper.get('.alert-warning')
+  expect(warning.text()).toContain('Claude Code already has an older Ari')
+  expect(warning.text().includes("A skill called ari that Voice didn't add")).toBe(skill)
+  expect(warning.text()).toContain('These lines in your CLAUDE.md:')
+  expect(warning.findAll('li code').map(line => line.text())).toEqual(['Ask Ari (/ari) before choosing.', '<b>/ari</b>'])
+  expect(warning.find('b').exists()).toBe(false)
+  expect(warning.text()).toContain("Replace the old one and Voice backs these up in ~/.claude/voice-backups/ari/ first, then turns Ari on. Turning Ari off won't put them back.")
+  expect(wrapper.findAll('button').map(b => b.text())).toEqual(skill ? ['Replace the old one'] : ['Replace the old one', 'Turn Ari on and keep those lines'])
+  await button(wrapper, 'Replace the old one').trigger('click')
+  expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari', replaceOld: true })
+  expect(button(wrapper, 'Replacing…').attributes('disabled')).toBeDefined()
+  on.resolve({ message: 'Ari is on. Backup kept.' }); await flushPromises()
+  expect(wrapper.get('.alert-success').text()).toBe('Ari is on. Backup kept.')
+})
+it('can keep old lines when no old skill exists', async () => {
+  const backend = fakeBackend({ claudeCodeStatus: vi.fn().mockResolvedValue({ ...off, oldOne: { skill: false, lines: ['/ari'] } }) })
+  const wrapper = screen(TurnOn, backend, { assistant })
+  await flushPromises()
+  expect(button(wrapper, 'Turn Ari on and keep those lines').classes()).toContain('btn-outline-secondary')
+  await button(wrapper, 'Turn Ari on and keep those lines').trigger('click'); await flushPromises()
+  expect(backend.turnOn).toHaveBeenCalledExactlyOnceWith({ slug: 'ari', replaceOld: false })
 })

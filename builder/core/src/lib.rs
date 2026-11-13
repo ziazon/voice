@@ -25,6 +25,7 @@ pub mod json;
 pub mod member;
 pub mod old_files;
 pub mod pack;
+pub mod replace_old;
 pub mod template;
 
 #[cfg(test)]

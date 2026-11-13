@@ -184,3 +184,49 @@ fn off_reports_every_left_path_exactly() {
         )
     );
 }
+
+#[test]
+fn old_skill_requires_explicit_replacement_and_keeps_a_backup() {
+    let f = Fixture::new();
+    let skill = f.claude.join("skills/ari");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(skill.join("SKILL.md"), "older skill").unwrap();
+    fs::write(f.claude.join("CLAUDE.md"), "keep\n/ari\n").unwrap();
+    let output = f
+        .command()
+        .args(["on", f.member.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("Claude Code already has a skill called ari that Voice didn't add"));
+    assert!(
+        error.contains("Run voice on <member_dir> --replace-old to back it up and move it aside.")
+    );
+    assert_eq!(fs::read(skill.join("SKILL.md")).unwrap(), b"older skill");
+    let text = f.run(&["on", f.member.to_str().unwrap(), "--replace-old"]);
+    let backup = PathBuf::from(
+        text.lines()
+            .next()
+            .unwrap()
+            .strip_prefix("backup: ")
+            .unwrap(),
+    );
+    assert!(backup.starts_with(f.home.join(".claude/voice-backups/ari")));
+    assert_eq!(
+        fs::read(backup.join("skill/SKILL.md")).unwrap(),
+        b"older skill"
+    );
+    assert_eq!(fs::read(backup.join("CLAUDE.md")).unwrap(), b"keep\n/ari\n");
+    assert!(text.contains("Ari is on in Claude Code."));
+    f.run(&["off"]);
+    assert!(!skill.exists());
+    assert_eq!(fs::read(f.claude.join("CLAUDE.md")).unwrap(), b"keep\n");
+}
+#[test]
+fn stale_replace_flag_still_turns_on() {
+    let f = Fixture::new();
+    let text = f.run(&["on", f.member.to_str().unwrap(), "--replace-old"]);
+    assert!(text.starts_with("Ari is on in Claude Code."));
+    assert!(!f.claude.join("voice-backups").exists());
+}

@@ -327,6 +327,24 @@ pub struct ClaudeCodeStatus {
     pub on_slug: Option<String>,
     pub out_of_date: bool,
     pub changed: bool,
+    pub old_one: Option<OldOneFound>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OldOneFound {
+    pub skill: bool,
+    pub lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct TurnOnRequest {
+    pub slug: String,
+    #[serde(default)]
+    pub replace_old: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

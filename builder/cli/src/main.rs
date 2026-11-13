@@ -222,6 +222,8 @@ enum Command {
     On {
         member_dir: PathBuf,
         #[arg(long)]
+        replace_old: bool,
+        #[arg(long)]
         claude_home: Option<PathBuf>,
     },
     /// Turn the assistant off in Claude Code.
@@ -2523,8 +2525,25 @@ fn pack(member_dir: PathBuf, out: PathBuf) -> Result<()> {
     );
     Ok(())
 }
-fn turn_on(member_dir: PathBuf, claude_home: Option<PathBuf>) -> Result<()> {
-    let on = install::turn_on(&member_dir, &places(claude_home)?)?;
+fn turn_on(member_dir: PathBuf, claude_home: Option<PathBuf>, replace_old: bool) -> Result<()> {
+    let places = places(claude_home)?;
+    let member = voice_core::crew::MemberDir::open(&member_dir)?.member;
+    let found = voice_core::replace_old::find(&places, &member.slug)?;
+    if found.skill.is_some() && !replace_old {
+        return Err(Error::Invalid(format!(
+            "{} Run voice on <member_dir> --replace-old to back it up and move it aside.",
+            voice_core::replace_old::old_skill(&member.name, &member.slug)
+        )));
+    }
+    if found.any() && replace_old {
+        let replaced = voice_core::replace_old::replace(
+            &places,
+            &member.slug,
+            &voice_agent::ledger::local_stamp(std::time::SystemTime::now()),
+        )?;
+        println!("backup: {}", replaced.backup.display());
+    }
+    let on = install::turn_on(&member_dir, &places)?;
     println!("{} is on in Claude Code.", on.name);
     println!("Added the skill /{} in {}.", on.slug, on.skill.display());
     println!("Added one line to {}:", on.claude_md.display());
@@ -2780,7 +2799,8 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
         Some(Command::On {
             member_dir,
             claude_home,
-        }) => turn_on(member_dir, claude_home),
+            replace_old,
+        }) => turn_on(member_dir, claude_home, replace_old),
         Some(Command::Off { claude_home }) => turn_off(claude_home),
         Some(Command::Status { claude_home }) => status(claude_home),
         Some(Command::Member {

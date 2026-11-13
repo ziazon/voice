@@ -51,19 +51,7 @@ pub fn find(home: &Path, claude_home: &Path, slug: &str) -> Result<Found> {
     }
     let state = find_state(home.join(".claude/state").join(slug))?;
     let skill_path = claude_home.join("skills").join(slug);
-    let claimed = || {
-        install_record::read(claude_home)
-            .ok()
-            .flatten()
-            .is_some_and(|record| {
-                record.slug == slug
-                    && record
-                        .added
-                        .iter()
-                        .any(|added| matches!(added, Added::Dir { path } if path == &skill_path))
-            })
-    };
-    let skill = if exists(&skill_path)? && !claimed() {
+    let skill = if exists(&skill_path)? && !skill_claimed(claude_home, slug, &skill_path) {
         Some(skill_path)
     } else {
         None
@@ -140,7 +128,27 @@ pub(crate) fn read_capped(path: &Path, cap: u64, follow: bool) -> Result<Option<
     Ok(Some(bytes))
 }
 
+pub(crate) fn skill_claimed(claude_home: &Path, slug: &str, skill_path: &Path) -> bool {
+    install_record::read(claude_home)
+        .ok()
+        .flatten()
+        .is_some_and(|record| {
+            record.slug == slug
+                && record
+                    .added
+                    .iter()
+                    .any(|added| matches!(added, Added::Dir { path } if path == skill_path))
+        })
+}
+
 fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
+    Ok(old_lines(path, slug)?
+        .into_iter()
+        .map(|(number, _)| number)
+        .collect())
+}
+
+pub(crate) fn old_lines(path: &Path, slug: &str) -> Result<Vec<(usize, String)>> {
     let Some(bytes) = read_capped(path, 4 * 1024 * 1024, true)? else {
         return Ok(Vec::new());
     };
@@ -177,7 +185,7 @@ fn find_lines(path: &Path, slug: &str) -> Result<Vec<usize>> {
             continue;
         }
         if mentions(line.as_bytes(), needle.as_bytes()) {
-            found.push(index + 1);
+            found.push((index + 1, (*line).to_owned()));
         }
     }
     Ok(found)
