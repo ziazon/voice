@@ -40,6 +40,12 @@ One record per slice, newest first. Paraphrase only; no real person.
   Verifier should-fix 2): the sign-in is read once when a run starts, so a person who signs out and back
   in with a Console account during a running build or panel finishes that run with no daily limit, each
   call still under its step stop. It needs the payer's own action.
+- **Repeat Verifier (Opus) on `81edaec`:** PASS, no must- or should-fix. Nits kept as they are: under a
+  subscription `--daily-cap-usd` isn't checked at all, so a bad value is ignored silently; build, interview
+  draft and refresh apply now find and check Claude Code before they refuse a bad limit pair or a damaged
+  `limit.json`, while refresh propose still refuses first (a test pins it), so with Claude Code also
+  missing a person sees that error first and the limit error on the next try; `cap_tests` leaves its
+  temp folder behind when it fails.
 - **Not verified:** panels under a subscription (`voice-panel-runner` has no `claude-subscription`
   feature; checked by reading). A real subscription sign-in in a testers' build (walk owed, attended):
   Connect Claude's card, `voice limit show`, and a build past the saved daily amount.
