@@ -475,3 +475,17 @@ Supersedes the 2026-11-04 entry's *A second Mac's run is owed for the record*.
 - **Nothing changes for VO6.** The `//` form stays required, Glob again listed 2 of the 22 denied
   names (the probe prints counts, not which ones), and Grep held again; whether to keep Grep, and
   whether a denied name may reach a turn, are still VO6's decisions.
+
+## 2026-11-13: a member computer opens a saved assistant and never saves it (PB8.9b1)
+
+- **One building computer.** The computer that builds an assistant is the only one that saves her to GitHub. A
+  computer that opened her from there is a member computer: its `save.json` says `"role": "member"` (a building
+  computer's record keeps its old bytes, with no `role`), and Save and every save choice refuse there. An older
+  Voice can't read a member record at all, so it can't save from one either.
+- **The building computer's name travels in the commit.** Save adds a `Saved-on: <computer name>` trailer; opening
+  reads it from the newest commit into `save.json`'s `builder`, so the refusal can name that computer. A copy saved
+  before this has no trailer, and the sentence then says "the computer that builds <Name>".
+- **Opening takes nothing it doesn't check first.** Only `crew/<slug>/` from `main`, plain ASCII names, no
+  dot-files, the deny list, size caps, never `private.json`, and a member whose private folder is
+  `~/.claude/state/<slug>`. Everything is staged and checked before an older assistant is backed up or anything
+  of the person's is touched.

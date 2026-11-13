@@ -2,6 +2,45 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.9b1: open an assistant you saved on GitHub (2026-11-13, lane: V1)
+
+- **Why:** one assistant is used on several computers (PB8.9, step 1.2). One computer builds her and saves her
+  (paraphrase only) to a private GitHub repo; until now nothing could open that copy anywhere else. PB8.9b was
+  split three ways at pickup: this slice (the engine, two app commands, `voice open`), PB8.9b2 (take the newest
+  version) and PB8.9b3 (the screens).
+- **What:** `voice open` lists the signed-in account's private repos (at most 100, newest pushed first) whose
+  description is Voice's or whose name ends `-assistant`, and the assistants in each one's `crew/` on `main`
+  (each `member.json` read through the contents API, at most 20 per repo). `voice open <owner>/<repo> <slug>`
+  checks the repo is private, fetches `main` (git's object checks on) into a fresh bare `backup.git` inside a 0700
+  staging folder under `~/.claude/crew/`, and writes out only `crew/<slug>/`: plain files only, every path part a
+  plain ASCII name (no dot-files, so no `.git`), the deny list, 10 MiB a file, 50 MiB and 2,000 files in all,
+  never `private.json` by any spelling. The member must name `~/.claude/state/<slug>` as its private folder and
+  pass the privacy check and bring-in's own check. Only then is an older assistant backed up (PB8.7b's code, now
+  shared by bring-in and open) and the copy moved in with no-replace renames. `save.json` records
+  `role: member` and the building computer's name. Permission is asked again. On a member computer Save and all
+  three save choices refuse with a sentence naming that computer. Save now adds a `Saved-on: <computer>` trailer,
+  which is where the name comes from. App commands `saved_on_github` and `open_saved` (paired with `voice open`);
+  `save_options` carries `memberComputer`. No screens.
+- **Briefs:** `plans/briefs/PB8.9b1-open-saved.md`, fix-up 1 (Claude's review: a finished open reported as failed,
+  a damaged `save.json` blocking a new choice, edge spaces in a computer name, bring-in's member check, unused
+  parameters, CLI help) and fix-up 2 (the Verifier's and the security review's findings, below).
+- **Who built it:** Codex, from every brief. Her sandbox blocks sockets, so the five Ask tests fail there; V1 ran
+  the full gate outside it.
+- **Reviews:** security review (sub-agent) on `aeb3074`: no HIGH; MEDIUM, a saved copy could plant a working
+  `.git` folder; LOWs: a `Private.json` spelling, an unbounded fetch, invisible characters in a computer name,
+  `member.json` keys only the Python kit reads. Verifier (Fable) on `aeb3074`: FAIL, must-fix: on a
+  case-insensitive disk a `Private.json` (or `private.jſon`) from the saved copy was read as `private.json`;
+  should-fixes: raw control characters in a refusal sentence, a false sentence for a mistyped slug, `.git` folders.
+  All fixed in fix-up 2 except the two below.
+- **Known limits:** the fetch takes all of `main`'s history (PB8.9b2's fast-forward check needs it; the repo is the
+  person's own); `member.json` keys only the Python kit reads (such as `queues`) aren't checked on open. The
+  SKILL.md's `voice` command is the building computer's (`"$HOME/Applications/…"` when both install there).
+- **Verified so far:** full `ci-local.sh` passed on `aeb3074` (all passed). Codex's targeted suites green on
+  `0bdd67f`; the full gate on `0bdd67f` was stopped at the run's time limit (no failure seen before it stopped).
+  Repeat Verifier (Opus) on `0bdd67f`: PASS, one should-fix (an empty `~/.claude/crew` left when the open fails
+  after staging), which is fix-up 3 (`plans/briefs/PB8.9b1-fixup-3.md`, not yet built).
+- **Not landed yet.** Owed: fix-up 3, the full gate on its head, a delta Verifier (Opus), then the land.
+
 ## PB8.7e: replace the old one when turning an assistant on (2026-11-13, lane: V1)
 
 - **Why:** an assistant made before Voice left `~/.claude/skills/<slug>/` and a free-text line in
