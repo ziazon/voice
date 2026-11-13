@@ -2,6 +2,51 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## PB8.7e: replace the old one when turning an assistant on (2026-11-13, lane: V1)
+
+- **Why:** an assistant made before Voice left `~/.claude/skills/<slug>/` and a free-text line in
+  `~/.claude/CLAUDE.md`. Turning on refused because of the old skill folder (`install::turn_on`), but the
+  app hid the reason behind its generic "nothing in your Claude folder was changed". Seen on a tester's
+  Mac with 0.1.2. Now PB8.9a, step 1.1 of the PB8.9 plan (one assistant, taught from every computer).
+- **What:** `voice_core::replace_old`. `find` is read-only: it finds an unclaimed skill folder and the
+  CLAUDE.md lines outside Voice's markers that mention `/<slug>`. `replace` backs both up first
+  (`backup::back_up`, byte-verified), then renames the skill aside in its own folder and checks it
+  against the backup. It checks that CLAUDE.md's bytes still equal the backup and that each found line
+  is still at its number, drops exactly those lines through the install journal (line endings and the
+  final newline kept), then deletes the aside folder. Any failure before the rewrite puts everything
+  back and removes the new backup (and its parent, when Voice made it). A failure after the rewrite is
+  a success that names what's left over. The API's status reports `oldOne` (skill and lines, each cut
+  to 200 characters). `turn_on` takes `TurnOnRequest { slug, replaceOld }`, refuses an old skill with
+  the real sentence, and on a replace names the backup folder. `voice on --replace-old` does the same.
+  Turn on shows the old one, offers *Replace the old one*, and offers *Turn <name> on and keep those
+  lines* when only lines were found. Turning off never puts the old one back.
+- **Briefs:** `plans/briefs/PB8.7e-replace-old.md`, then fix-ups 1 to 4. Fix-up 1: stale line numbers,
+  and the sentence after a failed turn-on. Fix-up 2: the first Verifier's findings, plus a `find` error
+  that no longer blocks a plain turn-on. Fix-up 3: the rollback-failed sentence printed a literal
+  `<stamp>`. Fix-up 4: after a stamp collision that sentence named the wrong backup folder.
+- **Who built it:** Codex, from every brief. Her sandbox blocks sockets, so V1 ran the API and UI
+  suites outside it.
+- **Verified (this run, on the rebased branch):** voice-core's tests (274 with fix-up 4) and
+  `TurnOn.test.ts` (16, its first run anywhere). Mutations, each by `mutate-check.sh`, all killed:
+  fix-up 3's sentence back to `<stamp>`, `says` without the stamp check and without its whole-sentence
+  comparison; fix-up 4's sentence naming the stamp again, a suffix check that takes any digit, and `says`
+  without the name check. Earlier runs' red and mutations are in the briefs' history; the full gate ran
+  at the land.
+- **Reviews:** Verifier (Fable) on fix-up 1's head: FAIL, three should-fixes, fixed in fix-up 2.
+  Repeat Verifier (Opus) on `30aa6eb`: PASS, no must-fix. One should-fix (the backup name after a
+  collision), which the security review (sub-task) also found as a LOW, fixed in fix-up 4. Delta
+  Verifier (Opus) on `4c88d93`: PASS, no must- or should-fix (nit: the rejection list pins no empty
+  name, `..` or `-0`; the code rejects them). Security review: no HIGH or MEDIUM.
+- **Known limits, kept:** a save to CLAUDE.md in the microseconds between the byte check and the
+  rewrite is lost (closing it needs a lock); retrying after a failed rollback says "changed" until the
+  person moves the aside folder the sentence names; `voice on --replace-old` doesn't list the lines
+  before it removes them, and the screen lists them as found at status time (lines added since are
+  removed too, after being backed up); the `~/.claude/` wording assumes the default Claude folder, as
+  `backup.rs`'s sentences do; a chmod on the backup's parent could be sent through a link swapped in by
+  a process running as the same person. The backup drops execute bits: filed as VF13 (`pxFzgciN`).
+- **Not verified:** a live replace on a tester's Mac (walk owed: an older skill and line, *Replace the
+  old one*, the backup folder holds both, turning off leaves them out).
+
 ## VF7c: the rest of the daily-limit words follow a subscription sign-in (2026-11-13, lane: V1)
 
 - **Why:** VF7b's out-of-scope list. Three screen sentences still described the daily limit as always
