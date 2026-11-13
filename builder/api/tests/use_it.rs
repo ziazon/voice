@@ -871,3 +871,38 @@ fn replacement_refusals_pass_through_and_other_assistant_is_checked_first() {
     );
     assert_eq!(snapshot(&h.claude()), before);
 }
+
+#[test]
+fn failed_turn_on_after_replacement_names_retained_backup() {
+    let h = Home::new();
+    fs::create_dir_all(h.claude().join("skills/ari")).unwrap();
+    fs::write(h.claude().join("skills/ari/SKILL.md"), "older skill").unwrap();
+    fs::create_dir_all(h.claude().join("voice/assistants/ari")).unwrap();
+    for folder in ["voice", "voice/assistants"] {
+        fs::set_permissions(h.claude().join(folder), fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let request = TurnOnRequest {
+        slug: "ari".into(),
+        replace_old: true,
+    };
+    let failure = turn_on_in(&h.0, &h.claude(), request).unwrap_err();
+    let backups: Vec<_> = fs::read_dir(h.claude().join("voice-backups/ari"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(backups.len(), 1);
+    let backup = &backups[0];
+    let stamp = backup.file_name().unwrap().to_str().unwrap();
+    assert_eq!(
+        failure.message,
+        format!(
+            "Voice moved the older ari skill to ~/.claude/voice-backups/ari/{stamp}/, but couldn't turn Ari on. Try again; turning Ari on again won't need to replace anything."
+        )
+    );
+    assert_eq!(
+        fs::read(backup.join("skill/SKILL.md")).unwrap(),
+        b"older skill"
+    );
+    assert!(!h.claude().join("skills/ari").exists());
+    assert!(h.claude().join("voice/assistants/ari").is_dir());
+}

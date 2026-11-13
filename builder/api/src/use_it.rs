@@ -155,6 +155,34 @@ pub fn claude_code_status_in(
                     .any(|(_, state)| *state != FileState::Present)),
     })
 }
+fn moved_old(
+    home: &Path,
+    name: &str,
+    slug: &str,
+    replaced: &replace_old::Replaced,
+) -> Result<String> {
+    let mut parts = Vec::new();
+    if replaced.skill {
+        parts.push(format!("the older {} skill", slug));
+    }
+    if replaced.lines > 0 {
+        parts.push(format!(
+            "{} CLAUDE.md {}",
+            replaced.lines,
+            if replaced.lines == 1 { "line" } else { "lines" }
+        ));
+    }
+    let canonical_home = home.canonicalize().map_err(|_| failure(&on_failed(name)))?;
+    let shown = format!(
+        "~/{}",
+        replaced
+            .backup
+            .strip_prefix(&canonical_home)
+            .expect("backup beneath home")
+            .display()
+    );
+    Ok(format!("Voice moved {} to {shown}/", parts.join(" and ")))
+}
 pub fn turn_on_in(
     home: &Path,
     claude_home: &Path,
@@ -198,31 +226,21 @@ pub fn turn_on_in(
     } else {
         None
     };
-    install::turn_on(&listed.dir, &places).map_err(|_| failure(&on_failed(name)))?;
-    if let Some(replaced) = replaced {
-        let mut parts = Vec::new();
-        if replaced.skill {
-            parts.push(format!("the older {} skill", request.slug));
-        }
-        if replaced.lines > 0 {
-            parts.push(format!(
-                "{} CLAUDE.md {}",
-                replaced.lines,
-                if replaced.lines == 1 { "line" } else { "lines" }
-            ));
-        }
-        let canonical_home = home.canonicalize().map_err(|_| failure(&on_failed(name)))?;
-        let shown = format!(
-            "~/{}",
-            replaced
-                .backup
-                .strip_prefix(&canonical_home)
-                .expect("backup beneath home")
-                .display()
-        );
+    let moved = replaced
+        .as_ref()
+        .map(|replaced| moved_old(home, name, &request.slug, replaced))
+        .transpose()?;
+    install::turn_on(&listed.dir, &places).map_err(|_| {
+        failure(&match &moved {
+            Some(moved) => format!(
+                "{moved}, but couldn't turn {name} on. Try again; turning {name} on again won't need to replace anything."
+            ),
+            None => on_failed(name),
+        })
+    })?;
+    if let Some(moved) = moved {
         return Ok(said(format!(
-            "{name} is on. Voice moved {} to {shown}/ (only the parts it found). Turning {name} off won't put them back. Start a new Claude Code session to use {name}.",
-            parts.join(" and ")
+            "{name} is on. {moved} (only the parts it found). Turning {name} off won't put them back. Start a new Claude Code session to use {name}."
         )));
     }
     Ok(said(format!(

@@ -62,13 +62,21 @@ pub fn find(places: &install::Places, slug: &str) -> Result<OldOne> {
 }
 
 pub fn replace(places: &install::Places, slug: &str, stamp: &str) -> Result<Replaced> {
-    replace_checked(places, slug, stamp, &|| {})
+    replace_checked(
+        places,
+        slug,
+        stamp,
+        #[cfg(test)]
+        &|| {},
+        &|| {},
+    )
 }
 
 fn replace_checked(
     places: &install::Places,
     slug: &str,
     stamp: &str,
+    #[cfg(test)] before_backup: &dyn Fn(),
     after_copy: &dyn Fn(),
 ) -> Result<Replaced> {
     let found = find(places, slug)?;
@@ -108,6 +116,8 @@ fn replace_checked(
             follow: true,
         });
     }
+    #[cfg(test)]
+    before_backup();
     let backup = backup::back_up(&places.home, slug, stamp, &items)?;
     let mut moved = false;
     let result = (|| {
@@ -123,6 +133,16 @@ fn replace_checked(
             let copied = backup.join("CLAUDE.md");
             if claude.text.as_bytes() != io(&copied, fs::read(&copied))? {
                 return Err(Error::Invalid(CHANGED.into()));
+            }
+            let lines: Vec<_> = claude.text.split_inclusive('\n').collect();
+            for (number, expected) in &found.lines {
+                let actual = lines.get(number - 1).map(|line| {
+                    let line = line.strip_suffix('\n').unwrap_or(line);
+                    line.strip_suffix('\r').unwrap_or(line)
+                });
+                if actual != Some(expected.as_str()) {
+                    return Err(Error::Invalid(CHANGED.into()));
+                }
             }
             let text: String = claude
                 .text

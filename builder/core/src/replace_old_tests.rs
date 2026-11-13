@@ -141,7 +141,7 @@ fn changed_claude_rolls_skill_back_and_discards_backup() {
     let f = Fixture::new();
     f.old_skill();
     fs::write(f.claude(), OLD).unwrap();
-    let result = replace_checked(&f.places, "ari", STAMP, &|| {
+    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {
         fs::write(f.claude(), "concurrent edit\n/ari\n").unwrap();
     });
     assert!(matches!(result, Err(Error::Invalid(message)) if message.contains("changed")));
@@ -157,7 +157,7 @@ fn changed_skill_rolls_back_and_discards_backup() {
     let f = Fixture::new();
     f.old_skill();
     fs::write(f.claude(), OLD).unwrap();
-    let result = replace_checked(&f.places, "ari", STAMP, &|| {
+    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {
         fs::write(f.skill().join("SKILL.md"), "concurrent skill").unwrap();
     });
     assert!(matches!(result, Err(Error::Invalid(message)) if message.contains("changed")));
@@ -203,5 +203,40 @@ fn no_old_one_is_a_clear_error_and_invalid_slug_is_refused() {
         matches!(replace(&f.places, "ari", STAMP), Err(Error::Invalid(message)) if message == "Voice found no older ari to replace.")
     );
     assert!(find(&f.places, "../ari").is_err());
+    f.no_backup();
+}
+
+#[test]
+fn stale_line_numbers_roll_skill_back_and_discard_backup() {
+    stale_lines_refused("keep\r\nunrelated instruction\r\n/ari");
+}
+
+#[test]
+fn stale_line_past_end_rolls_skill_back_and_discards_backup() {
+    stale_lines_refused("keep\n");
+}
+
+fn stale_lines_refused(changed: &str) {
+    let f = Fixture::new();
+    f.old_skill();
+    fs::write(f.claude(), "keep\r\n/ari\r\n").unwrap();
+    let result = replace_checked(
+        &f.places,
+        "ari",
+        STAMP,
+        &|| fs::write(f.claude(), changed).unwrap(),
+        &|| {},
+    );
+    assert!(matches!(result, Err(Error::Invalid(message)) if message == CHANGED));
+    assert_eq!(fs::read(f.claude()).unwrap(), changed.as_bytes());
+    assert_eq!(
+        fs::read(f.skill().join("SKILL.md")).unwrap(),
+        b"old skill\0\xff"
+    );
+    assert!(
+        !f.skill()
+            .with_file_name(format!(".ari.voice-replacing-{STAMP}"))
+            .exists()
+    );
     f.no_backup();
 }
