@@ -11,7 +11,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 use voice_core::error::{Error, Result as CoreResult};
 use voice_save::{
@@ -19,7 +19,7 @@ use voice_save::{
     git::Git,
     github::{self, DeviceCode, Endpoints, Github, UreqHttp},
     keychain::{Keychain, TokenStore},
-    record::{self, SaveRecord},
+    record::{self, Role, SaveRecord},
     secret::Secret,
     text,
 };
@@ -36,6 +36,7 @@ const SIGN_OUT: &str = "Voice couldn't sign you out of GitHub. Try again.";
 const CHOOSE: &str = "Voice couldn't keep your choice. Close it and open it again, then try again.";
 const SAVE: &str =
     "Voice couldn't save your assistant. Try again, or keep it on this computer only.";
+pub const OPEN_SAVED_FAILED: &str = "Voice couldn't open that saved assistant. Try again.";
 const SIGNUP_PAGE: &str = "https://github.com/signup";
 const DEVICE_PAGE: &str = "https://github.com/login/device";
 fn said(message: impl Into<String>) -> dto::Said {
@@ -106,7 +107,19 @@ pub fn save_options_in(
     let member = member(home, &request.slug, OPTIONS)?;
     let found = flow::detect(git, home, &member.dir).map_err(|error| map_error(error, OPTIONS))?;
     let options = flow::options(&found, home);
-    let chosen = match record::read_record(&member.state_dir).ok().flatten() {
+    let record = record::read_record(&member.state_dir).ok().flatten();
+    let member_computer = match &record {
+        Some(SaveRecord::Github {
+            role: Role::Member,
+            builder,
+            ..
+        }) => Some(text::member_computer(
+            &member.member.name,
+            builder.as_deref(),
+        )),
+        _ => None,
+    };
+    let chosen = match record {
         Some(SaveRecord::Local) => Some(text::CHOSE_LOCAL.into()),
         Some(SaveRecord::Existing { repo, .. }) => {
             Some(text::chose_existing(&flow::shown(&repo, home)))
@@ -117,6 +130,7 @@ pub fn save_options_in(
         None => None,
     };
     Ok(dto::SaveOptions {
+        member_computer,
         choices: options
             .choices
             .into_iter()
@@ -324,12 +338,162 @@ pub fn save_push_in(
         github,
         tokens,
     }
-    .save_now(&member, home, &FolderPrivacy, check)
+    .save_now_from(
+        &member,
+        home,
+        &FolderPrivacy,
+        check,
+        voice_save::computer::name().as_deref(),
+    )
     .map_err(|error| map_error(error, SAVE))?;
     Ok(said(match saved {
         Saved::KeptLocal => text::KEPT_LOCAL.into(),
         Saved::Pushed { message } => message,
     }))
+}
+
+/// List saved assistants without exposing the sign-in token to the app.
+pub fn saved_on_github_in(
+    home: &Path,
+    github: Option<&Github<'_>>,
+    tokens: &dyn TokenStore,
+) -> Result<dto::SavedOnGithub> {
+    let Some(token) = tokens
+        .load()
+        .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?
+    else {
+        return Ok(dto::SavedOnGithub {
+            signed_in: false,
+            items: Vec::new(),
+        });
+    };
+    let github = github.ok_or_else(|| failure(text::NOT_SET_UP))?;
+    let items = github
+        .saved_assistants(&token)
+        .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?
+        .into_iter()
+        .map(|item| {
+            let here = voice_core::assistants::find(home, &item.slug)
+                .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?
+                .is_some();
+            Ok(dto::SavedAssistant {
+                owner: item.repo.owner,
+                repo: item.repo.name,
+                slug: item.slug,
+                name: item.name,
+                here,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(dto::SavedOnGithub {
+        signed_in: true,
+        items,
+    })
+}
+
+pub fn open_saved_in(
+    home: &Path,
+    claude_home: &Path,
+    request: dto::OpenSavedRequest,
+    git: &Git,
+    github: Option<&Github<'_>>,
+    tokens: &dyn TokenStore,
+) -> Result<dto::OpenedSaved> {
+    let repo = github::RepoRef {
+        owner: request.owner,
+        name: request.repo,
+    };
+    let stamp = voice_agent::ledger::local_stamp(SystemTime::now());
+    let staged = Saver {
+        git,
+        github,
+        tokens,
+    }
+    .stage_open(home, &repo, &request.slug, &stamp, &FolderPrivacy)
+    .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?;
+    let result = (|| {
+        crate::assistants::check_brought_member(home, &staged.member_dir)
+            .map_err(|_| failure(&text::saved_copy_refused(&repo.full(), "member.json")))?;
+        let name = &staged.member.name;
+        let already = || {
+            failure(&format!(
+                "You already have an assistant called {name} on this computer, so Voice opened nothing. Forget that one first, then open the saved one again."
+            ))
+        };
+        let dir = voice_core::assistants::assistant_dir(home, &request.slug)
+            .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?;
+        if voice_core::assistants::find(home, &request.slug)
+            .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?
+            .is_some()
+            || std::fs::symlink_metadata(&dir).is_ok()
+        {
+            return Err(already());
+        }
+        let found = voice_core::existing::find(home, claude_home, &request.slug)
+            .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?;
+        let refusal = crate::assistants::bring_in_refusal(home, &found)
+            .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?;
+        let (made, backup) = crate::assistants::back_up_older_then(home, claude_home, &request.slug, &stamp, &mut || {
+            let placed = flow::place_opened(&staged, home, &repo)?;
+            if let Err(error) = crate::assistants::clear_consent(home, &request.slug) {
+                // place_opened created only these three paths; leave the older state intact.
+                let _ = std::fs::remove_dir_all(&placed.dir);
+                let _ = std::fs::remove_dir_all(placed.state_dir.join("backup.git"));
+                let _ = std::fs::remove_file(placed.state_dir.join("save.json"));
+                return Err(error);
+            }
+            Ok(voice_core::assistants::Listed { dir: placed.dir, member: placed.member })
+        }).map_err(|error| match error {
+            Error::Invalid(sentence) if refusal.as_deref() == Some(&sentence) => failure(&format!("Voice can't open {name} here yet: ~/.claude/state/{}/ holds files it can't back up. Move that folder somewhere else, then try again.", request.slug)),
+            Error::Exists(_) => already(),
+            other => map_error(other, OPEN_SAVED_FAILED),
+        })?;
+        let backup = backup.map(|path| {
+            format!(
+                "~/{}",
+                path.strip_prefix(home)
+                    .expect("backup beneath home")
+                    .display()
+            )
+        });
+        let mut message = format!(
+            "Opened {name} from {}. Voice asks for your permission again on this computer before {name} reads anything.",
+            repo.full()
+        );
+        if let Some(path) = &backup {
+            message.push_str(&format!(
+                " Voice backed up the older {name} first, in {path}/."
+            ));
+        }
+        Ok(dto::OpenedSaved {
+            assistant: crate::assistants::assistant(home, made),
+            backup,
+            message,
+        })
+    })();
+    let _ = std::fs::remove_dir_all(&staged.dir);
+    result
+}
+
+pub fn saved_on_github() -> Result<dto::SavedOnGithub> {
+    let home = home(OPEN_SAVED_FAILED)?;
+    with_github(OPEN_SAVED_FAILED, |github| {
+        saved_on_github_in(&home, github, &Keychain::github())
+    })
+}
+
+pub fn open_saved(request: dto::OpenSavedRequest) -> Result<dto::OpenedSaved> {
+    let home = home(OPEN_SAVED_FAILED)?;
+    with_github(OPEN_SAVED_FAILED, |github| {
+        open_saved_in(
+            &home,
+            &crate::use_it::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR").as_deref()),
+            request,
+            &Git::system(),
+            github,
+            &Keychain::github(),
+        )
+    })
 }
 
 fn with_github<T>(fallback: &str, run: impl FnOnce(Option<&Github<'_>>) -> Result<T>) -> Result<T> {

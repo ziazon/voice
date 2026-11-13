@@ -20,6 +20,8 @@ pub const COMMANDS: &[&str] = &[
     "github_sign_out",
     "save_choose",
     "save_push",
+    "saved_on_github",
+    "open_saved",
     "claude_code_folders",
     "read_claude_code",
     "choose_claudeai_export",

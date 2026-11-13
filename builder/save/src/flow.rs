@@ -2,7 +2,7 @@ use crate::{
     git::{self, Env, FoundRepo, Git, Identity, Remote},
     github::{Github, RepoRef, github_repo_of, valid_repo_name},
     keychain::TokenStore,
-    record::{SaveRecord, read_record, write_record},
+    record::{Role, SaveRecord, read_record, write_record},
     secret::Secret,
     text,
 };
@@ -151,6 +151,7 @@ pub enum Saved {
 }
 impl Saver<'_> {
     pub fn choose_local(&self, member: &MemberPaths) -> Result<()> {
+        refuse_member(member)?;
         write_record(&member.state_dir, &SaveRecord::Local)
     }
     pub fn choose_existing(
@@ -160,6 +161,7 @@ impl Saver<'_> {
         root: &Path,
         remotes: &dyn RemoteCheck,
     ) -> Result<SaveRecord> {
+        refuse_member(member)?;
         let github = self
             .github
             .ok_or_else(|| Error::Invalid(text::NOT_SET_UP.into()))?;
@@ -188,6 +190,7 @@ impl Saver<'_> {
         Ok(record)
     }
     pub fn choose_github(&self, member: &MemberPaths, name: &str) -> Result<RepoRef> {
+        refuse_member(member)?;
         let github = self
             .github
             .ok_or_else(|| Error::Invalid(text::NOT_SET_UP.into()))?;
@@ -237,6 +240,8 @@ impl Saver<'_> {
                 owner: repo.owner.clone(),
                 name: repo.name.clone(),
                 branch: "main".into(),
+                role: Role::Builder,
+                builder: None,
             },
         )?;
         Ok(repo)
@@ -248,6 +253,17 @@ impl Saver<'_> {
         privacy: &dyn PrivacyCheck,
         remotes: &dyn RemoteCheck,
     ) -> Result<Saved> {
+        self.save_now_from(member, home, privacy, remotes, None)
+    }
+    pub fn save_now_from(
+        &self,
+        member: &MemberPaths,
+        home: &Path,
+        privacy: &dyn PrivacyCheck,
+        remotes: &dyn RemoteCheck,
+        computer: Option<&str>,
+    ) -> Result<Saved> {
+        refuse_member(member)?;
         let record = read_record(&member.state_dir)?
             .ok_or_else(|| Error::Invalid(text::CHOOSE_FIRST.into()))?;
         if record == SaveRecord::Local {
@@ -255,11 +271,7 @@ impl Saver<'_> {
         }
         let hits = privacy.hits(&member.dir)?;
         if !hits.is_empty() {
-            let mut places = hits.iter().take(20).cloned().collect::<Vec<_>>().join(", ");
-            if hits.len() > 20 {
-                places.push_str(&format!(" and {} more", hits.len() - 20));
-            }
-            return Err(Error::Invalid(text::privacy_hits(&places)));
+            return Err(Error::Invalid(text::privacy_hits(&places(&hits))));
         }
         let github = self
             .github
@@ -294,6 +306,7 @@ impl Saver<'_> {
                 owner,
                 name,
                 branch,
+                ..
             } => {
                 let full = RepoRef { owner, name }.full();
                 let backup = member.state_dir.join("backup.git");
@@ -332,7 +345,14 @@ impl Saver<'_> {
             &member.dir,
             &format!("crew/{}", member.member.slug),
             &who,
-            &format!("Save {}", member.member.name),
+            &match computer.filter(|value| crate::computer::valid_computer_name(value)) {
+                Some(computer) => format!(
+                    "Save {}\n\nSaved-on: {}\n",
+                    member.member.name,
+                    computer.trim()
+                ),
+                None => format!("Save {}", member.member.name),
+            },
         )?;
         git::push(self.git, env, &git_dir, &remote, &branch, push_token)?;
         if !committed.changed {
@@ -341,4 +361,362 @@ impl Saver<'_> {
         }
         Ok(Saved::Pushed { message })
     }
+}
+
+fn refuse_member(member: &MemberPaths) -> Result<()> {
+    if let Some(SaveRecord::Github {
+        role: Role::Member,
+        builder,
+        ..
+    }) = read_record(&member.state_dir).ok().flatten()
+    {
+        return Err(Error::Invalid(text::member_computer(
+            &member.member.name,
+            builder.as_deref(),
+        )));
+    }
+    Ok(())
+}
+
+pub struct Staged {
+    pub dir: PathBuf,
+    pub member_dir: PathBuf,
+    pub git_dir: PathBuf,
+    pub member: voice_core::member::Member,
+    pub builder: Option<String>,
+}
+fn open_io<T>(path: &Path, result: std::io::Result<T>) -> Result<T> {
+    result.map_err(|source| Error::Io {
+        path: path.into(),
+        source,
+    })
+}
+// Check every ancestor before creating anything: create_dir_all must never traverse a link.
+fn plain_parents(home: &Path, path: &Path) -> Result<()> {
+    let mut current = home.to_owned();
+    for component in path
+        .strip_prefix(home)
+        .map_err(|_| Error::Invalid("invalid assistant folder".into()))?
+        .components()
+    {
+        current.push(component);
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.is_dir() => {}
+            Ok(_) => {
+                return Err(Error::Invalid(
+                    "assistant folder isn't a plain folder".into(),
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return open_io(&current, Err(error)),
+        }
+    }
+    Ok(())
+}
+impl Saver<'_> {
+    pub fn stage_open(
+        &self,
+        home: &Path,
+        repo: &RepoRef,
+        slug: &str,
+        stamp: &str,
+        privacy: &dyn PrivacyCheck,
+    ) -> Result<Staged> {
+        use std::{fs, os::unix::fs::DirBuilderExt};
+        if voice_core::crew::slugify(slug).as_deref() != Some(slug)
+            || !crate::github::valid_owner(&repo.owner)
+            || !valid_repo_name(&repo.name)
+            || !voice_core::backup::valid_stamp(stamp)
+        {
+            return Err(Error::Invalid("invalid saved assistant".into()));
+        }
+        let github = self
+            .github
+            .ok_or_else(|| Error::Invalid(text::NOT_SET_UP.into()))?;
+        self.git.check_version()?;
+        let token = self
+            .tokens
+            .load()?
+            .ok_or_else(|| Error::Invalid(text::SIGN_IN_FIRST.into()))?;
+        github.account(&token)?;
+        github.confirm_private(&token, repo)?;
+        let crew = home.join(".claude/crew");
+        plain_parents(home, &crew)?;
+        open_io(&crew, fs::create_dir_all(&crew))?;
+        let dir = crew.join(format!(
+            ".{slug}.voice-opening-{stamp}-{}",
+            std::process::id()
+        ));
+        open_io(&dir, fs::DirBuilder::new().mode(0o700).create(&dir))?;
+        let result = (|| {
+            let git_dir = dir.join("backup.git");
+            self.git.init_bare(&git_dir)?;
+            self.git.run(
+                Env::Own,
+                &git_dir,
+                "remote",
+                &[
+                    "add",
+                    "origin",
+                    &format!("https://github.com/{}.git", repo.full()),
+                ],
+            )?;
+            git::fetch_main(self.git, &git_dir, &token)?;
+            let member_dir = dir.join("member");
+            let entries = opening_entries(self.git, &git_dir, repo, slug)?;
+            open_io(
+                &member_dir,
+                fs::DirBuilder::new().mode(0o700).create(&member_dir),
+            )?;
+            for (rel, oid, executable) in entries {
+                write_opened_blob(self.git, &git_dir, &member_dir, &rel, &oid, executable)?;
+            }
+            let member = read_member(&member_dir.join("member.json"))?;
+            if member.slug != slug
+                || voice_core::member::private_state_dir(&member, home)
+                    != Some(home.join(".claude/state").join(slug))
+            {
+                return Err(Error::Invalid(text::saved_copy_refused(
+                    &repo.full(),
+                    "member.json",
+                )));
+            }
+            voice_core::crew::check_name("name", &member.name)?;
+            voice_core::crew::check_name("principal", &member.principal)?;
+            let hits = privacy.hits(&member_dir)?;
+            if !hits.is_empty() {
+                return Err(Error::Invalid(text::saved_copy_private(
+                    &repo.full(),
+                    &places(&hits),
+                )));
+            }
+            let trailer = self.git.run(
+                Env::Own,
+                &git_dir,
+                "log",
+                &[
+                    "-1",
+                    "--format=%(trailers:key=Saved-on,valueonly)",
+                    "refs/heads/main",
+                ],
+            )?;
+            let trailer = trailer.trim();
+            let builder = crate::computer::valid_computer_name(trailer).then(|| trailer.to_owned());
+            Ok(Staged {
+                dir: dir.clone(),
+                member_dir,
+                git_dir,
+                member,
+                builder,
+            })
+        })();
+        if result.is_err() {
+            let _ = fs::remove_dir_all(&dir);
+        }
+        result
+    }
+}
+fn places(hits: &[String]) -> String {
+    let mut places = hits.iter().take(20).cloned().collect::<Vec<_>>().join(", ");
+    if hits.len() > 20 {
+        places.push_str(&format!(" and {} more", hits.len() - 20));
+    }
+    places
+}
+type OpeningEntry = (String, String, bool);
+fn opening_entries(
+    git: &Git,
+    git_dir: &Path,
+    repo: &RepoRef,
+    slug: &str,
+) -> Result<Vec<OpeningEntry>> {
+    let prefix = format!("crew/{slug}/");
+    let bytes = git.run_bytes(
+        git_dir,
+        "ls-tree",
+        &["-r", "-z", "--full-tree", "refs/heads/main", "--", &prefix],
+    )?;
+    let full = repo.full();
+    let refused = |rel: &str| Error::Invalid(text::saved_copy_refused(&full, rel));
+    let large = || Error::Invalid(text::saved_copy_large(&full));
+    let mut entries = Vec::new();
+    let mut total = 0u64;
+    let mut count = 0;
+    let mut has_member = false;
+    for entry in bytes.split(|b| *b == 0).filter(|entry| !entry.is_empty()) {
+        count += 1;
+        if count > 2000 {
+            return Err(large());
+        }
+        let entry = std::str::from_utf8(entry).map_err(|_| refused("unsupported file name"))?;
+        let (head, path) = entry
+            .split_once('\t')
+            .ok_or_else(|| refused("unsupported file name"))?;
+        let rel = path.strip_prefix(&prefix).ok_or_else(|| refused(path))?;
+        let mut head = head.split(' ');
+        let mode = head.next().unwrap_or("");
+        let kind = head.next().unwrap_or("");
+        let oid = head.next().unwrap_or("");
+        if !matches!(mode, "100644" | "100755")
+            || kind != "blob"
+            || rel.split('/').any(|part| matches!(part, "" | "." | ".."))
+            || rel.contains('\\')
+            || rel.chars().any(char::is_control)
+            || voice_core::deny::DenyList::builtin().denied_relative(Path::new(rel))
+        {
+            return Err(refused(rel));
+        }
+        let size: u64 = git
+            .run(Env::Own, git_dir, "cat-file", &["-s", oid])?
+            .trim()
+            .parse()
+            .map_err(|_| refused(rel))?;
+        total = total.checked_add(size).ok_or_else(large)?;
+        if size > 10 * 1024 * 1024 || total > 50 * 1024 * 1024 {
+            return Err(large());
+        }
+        if rel == "member.json" {
+            has_member = true;
+        }
+        if rel
+            .split('/')
+            .any(|part| matches!(part, "private.json" | ".DS_Store"))
+        {
+            continue;
+        }
+        entries.push((rel.to_owned(), oid.to_owned(), mode == "100755"));
+    }
+    if !has_member {
+        return Err(refused("member.json"));
+    }
+    Ok(entries)
+}
+fn write_opened_blob(
+    git: &Git,
+    git_dir: &Path,
+    member_dir: &Path,
+    rel: &str,
+    oid: &str,
+    executable: bool,
+) -> Result<()> {
+    use std::{
+        fs,
+        io::Write,
+        os::unix::fs::{DirBuilderExt, OpenOptionsExt},
+    };
+    let mut folder = member_dir.to_owned();
+    let parts: Vec<_> = rel.split('/').collect();
+    for part in &parts[..parts.len() - 1] {
+        folder.push(part);
+        match fs::symlink_metadata(&folder) {
+            Ok(metadata) if metadata.is_dir() => {}
+            Ok(_) => return Err(Error::Invalid("saved copy folder isn't plain".into())),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                open_io(&folder, fs::DirBuilder::new().mode(0o700).create(&folder))?;
+            }
+            Err(error) => return open_io(&folder, Err(error)),
+        }
+    }
+    let path = member_dir.join(rel);
+    let bytes = git.run_bytes(git_dir, "cat-file", &["blob", oid])?;
+    let mut file = open_io(
+        &path,
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .mode(if executable { 0o755 } else { 0o644 })
+            .open(&path),
+    )?;
+    open_io(&path, file.write_all(&bytes))
+}
+fn rename_new(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let from = CString::new(from.as_os_str().as_bytes())?;
+    let to = CString::new(to.as_os_str().as_bytes())?;
+    #[cfg(target_os = "macos")]
+    // SAFETY: both C strings remain live and flags request an exclusive rename.
+    let result = unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), libc::RENAME_EXCL) };
+    #[cfg(target_os = "linux")]
+    // SAFETY: both C strings remain live; AT_FDCWD resolves their absolute paths.
+    let result = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            from.as_ptr(),
+            libc::AT_FDCWD,
+            to.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let from = Path::new(std::ffi::OsStr::from_bytes(from.as_bytes()));
+        let to = Path::new(std::ffi::OsStr::from_bytes(to.as_bytes()));
+        if std::fs::symlink_metadata(to).is_ok() {
+            return Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
+        }
+        std::fs::rename(from, to)
+    }
+}
+pub fn place_opened(staged: &Staged, home: &Path, repo: &RepoRef) -> Result<MemberPaths> {
+    use std::fs;
+    let slug = &staged.member.slug;
+    let member_dir = home.join(".claude/crew").join(slug);
+    plain_parents(home, member_dir.parent().expect("crew parent"))?;
+    if fs::symlink_metadata(&member_dir).is_ok() {
+        return Err(Error::Exists(slug.clone()));
+    }
+    let state = home.join(".claude/state").join(slug);
+    plain_parents(home, &state)?;
+    let made_state = fs::symlink_metadata(&state).is_err();
+    let result = (|| {
+        crate::record::create_state(&state)?;
+        let backup = state.join("backup.git");
+        if [&backup, &state.join("save.json")]
+            .iter()
+            .any(|path| fs::symlink_metadata(path).is_ok())
+        {
+            return Err(Error::Invalid(text::state_in_use(slug)));
+        }
+        open_io(&backup, rename_new(&staged.git_dir, &backup))?;
+        if let Err(error) = rename_new(&staged.member_dir, &member_dir) {
+            open_io(&staged.git_dir, rename_new(&backup, &staged.git_dir))?;
+            return if error.kind() == std::io::ErrorKind::AlreadyExists {
+                Err(Error::Exists(slug.clone()))
+            } else {
+                open_io(&member_dir, Err(error))
+            };
+        }
+        if let Err(error) = write_record(
+            &state,
+            &SaveRecord::Github {
+                owner: repo.owner.clone(),
+                name: repo.name.clone(),
+                branch: "main".into(),
+                role: Role::Member,
+                builder: staged.builder.clone(),
+            },
+        ) {
+            open_io(
+                &staged.member_dir,
+                rename_new(&member_dir, &staged.member_dir),
+            )?;
+            open_io(&staged.git_dir, rename_new(&backup, &staged.git_dir))?;
+            return Err(error);
+        }
+        let _ = fs::remove_dir(&staged.dir);
+        MemberPaths::load(&member_dir.join("member.json"), home)
+    })();
+    if result.is_err() && made_state {
+        let _ = fs::remove_dir(&state);
+    }
+    result
 }

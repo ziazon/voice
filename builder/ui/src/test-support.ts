@@ -27,6 +27,7 @@ export const saveOptions: SaveOptions = {
   chosen: null,
   signedIn: false,
   suggestedName: 'example-assistant',
+  memberComputer: null,
 }
 export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
   const reviewStatus = { built: false, areas: [], tests: { waiting: 0, inUse: 0, retired: 0 }, byArea: [], change: null }
@@ -72,6 +73,8 @@ export function fakeBackend(overrides: Partial<Backend> = {}): Backend {
     githubSignOut: vi.fn().mockResolvedValue({ message: 'You are signed out of GitHub.' }),
     saveChoose: vi.fn().mockResolvedValue({ message: 'Your choice is kept.' }),
     savePush: vi.fn().mockResolvedValue({ message: 'Your copy is saved.' }),
+    savedOnGithub: vi.fn().mockResolvedValue({ signedIn: false, items: [] }),
+    openSaved: vi.fn().mockResolvedValue({ assistant, backup: null, message: 'Opened Example from example-owner/example-assistant.' }),
     claudeCodeFolders: vi.fn().mockResolvedValue({ found: false, folders: [] }),
     readClaudeCode: vi.fn().mockResolvedValue({ questions: 0, heldOut: 0, messages: 0, privateLeftOut: 0, unreadable: 0, first: null, last: null }),
     chooseClaudeaiExport: vi.fn().mockResolvedValue(null),

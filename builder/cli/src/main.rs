@@ -396,6 +396,15 @@ enum Command {
         #[command(subcommand)]
         command: SaveCommand,
     },
+    /// Open an assistant you saved on GitHub, on this computer.
+    Open {
+        /// The GitHub repository: <owner>/<repo>.
+        #[arg(requires = "slug")]
+        repo: Option<String>,
+        /// The assistant's folder name.
+        #[arg(requires = "repo")]
+        slug: Option<String>,
+    },
     /// Read a member's configuration.
     Member {
         #[command(subcommand)]
@@ -2438,10 +2447,70 @@ fn save_push(path: PathBuf) -> Result<()> {
         github: github.as_ref(),
         tokens: &Keychain::github(),
     }
-    .save_now(&member, &home, &voice_api::FolderPrivacy, check)?;
+    .save_now_from(
+        &member,
+        &home,
+        &voice_api::FolderPrivacy,
+        check,
+        voice_save::computer::name().as_deref(),
+    )?;
     match saved {
         Saved::KeptLocal => println!("{}", text::KEPT_LOCAL),
         Saved::Pushed { message } => println!("{message}"),
+    }
+    Ok(())
+}
+
+fn open_saved(repo: Option<String>, slug: Option<String>) -> Result<()> {
+    let failure = |error: voice_api::dto::Failure| Error::Invalid(error.message);
+    match (repo, slug) {
+        (Some(repo), Some(slug)) => {
+            let (owner, repo) = repo.split_once('/').ok_or_else(|| {
+                Error::Invalid(
+                    "Choose a saved assistant with: voice open <owner>/<repo> <slug>".into(),
+                )
+            })?;
+            let opened = voice_api::save::open_saved(voice_api::dto::OpenSavedRequest {
+                owner: owner.into(),
+                repo: repo.into(),
+                slug,
+            })
+            .map_err(failure)?;
+            println!("{}", opened.message);
+            if let Some(backup) = opened.backup {
+                println!("backup: {backup}");
+            }
+            println!(
+                "Next: voice consent agree ~/.claude/crew/{}",
+                opened.assistant.slug
+            );
+        }
+        (None, None) => {
+            let saved = voice_api::save::saved_on_github().map_err(failure)?;
+            if !saved.signed_in {
+                return Err(Error::Invalid(
+                    "Sign in to GitHub first: voice save sign-in".into(),
+                ));
+            }
+            if saved.items.is_empty() {
+                println!("Voice found no saved assistants in your private GitHub repos.");
+            }
+            for item in saved.items {
+                println!(
+                    "{}/{}  {}  {}{}",
+                    item.owner,
+                    item.repo,
+                    item.slug,
+                    item.name,
+                    if item.here {
+                        "  (on this computer)"
+                    } else {
+                        ""
+                    }
+                );
+            }
+        }
+        _ => unreachable!("clap requires the repo and slug together"),
     }
     Ok(())
 }
@@ -2827,6 +2896,7 @@ fn run(cli: Cli) -> Result<std::process::ExitCode> {
             },
             SaveCommand::Push { path } => save_push(path),
         },
+        Some(Command::Open { repo, slug }) => open_saved(repo, slug),
         Some(Command::Agents) => agents(),
         Some(Command::Claude { command }) => match command {
             ClaudeCommand::Check => claude_check(),

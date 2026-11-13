@@ -166,6 +166,19 @@ pub mod pb6 {
     }
     impl Wrapper {
         pub fn new(dir: &Path, fail_push: bool) -> Self {
+            Self::make(dir, fail_push, None)
+        }
+        pub fn with_remote(dir: &Path, remote: &Path, full: &str) -> Self {
+            Self::make(
+                dir,
+                false,
+                Some(format!(
+                    "url.{}.insteadOf=https://github.com/{full}.git",
+                    file_url(remote)
+                )),
+            )
+        }
+        fn make(dir: &Path, fail_push: bool, remote: Option<String>) -> Self {
             use std::os::unix::fs::PermissionsExt;
             let program = dir.join("git-wrapper");
             let log = dir.join("git-log.jsonl");
@@ -189,13 +202,19 @@ if 'GIT_INDEX_FILE' in os.environ:
     witness = os.path.join(os.path.dirname(__file__), 'index-witness')
     if not os.path.lexists(witness):
         os.symlink(scratch, witness)
-os.execv({}, [{}, *sys.argv[1:]])
+os.execv({}, [{}, *{}, *sys.argv[1:]])
 "##,
                 python.display(),
                 serde_json::to_string(&log).unwrap(),
                 if fail_push { "True" } else { "False" },
                 serde_json::to_string(real_git()).unwrap(),
-                serde_json::to_string(real_git()).unwrap()
+                serde_json::to_string(real_git()).unwrap(),
+                serde_json::to_string(
+                    &remote
+                        .map(|value| vec!["-c".to_owned(), value])
+                        .unwrap_or_default()
+                )
+                .unwrap()
             );
             fs::write(&program, source).unwrap();
             fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();

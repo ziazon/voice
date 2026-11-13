@@ -122,6 +122,22 @@ impl Git {
             None,
         )
     }
+    pub(crate) fn run_bytes(
+        &self,
+        git_dir: &Path,
+        subcommand: &str,
+        args: &[&str],
+    ) -> Result<Vec<u8>> {
+        let output = output(
+            self.repo_command(Env::Own, git_dir, subcommand).args(args),
+            subcommand,
+            None,
+        )?;
+        if !output.status.success() {
+            return Err(failed(subcommand));
+        }
+        Ok(output.stdout)
+    }
     fn repo_command(&self, env: Env, git_dir: &Path, subcommand: &str) -> Command {
         let mut command = self.command(env);
         command
@@ -450,6 +466,20 @@ pub fn push(
         remote,
         &format!("refs/heads/{branch}:refs/heads/{branch}"),
     ]);
+    let credential = auth_header(&mut command, token);
+    let output = output(&mut command, "push", None)
+        .map_err(|_| Error::Invalid(text::push_failed("git push failed")))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(Error::Invalid(text::push_failed(&scrub_detail(
+        &output.stderr,
+        token,
+        credential.as_deref(),
+    ))))
+}
+
+fn auth_header(command: &mut Command, token: Option<&Secret>) -> Option<String> {
     let credential =
         token.map(|token| STANDARD.encode(format!("x-access-token:{}", token.expose())));
     if let Some(credential) = &credential {
@@ -461,12 +491,33 @@ pub fn push(
                 format!("AUTHORIZATION: basic {credential}"),
             );
     }
-    let output = output(&mut command, "push", None)
-        .map_err(|_| Error::Invalid(text::push_failed("git push failed")))?;
+    credential
+}
+
+pub fn fetch_main(git: &Git, git_dir: &Path, token: &Secret) -> Result<()> {
+    let mut command = git.repo_command(Env::Own, git_dir, "fetch");
+    command.args([
+        "--no-tags",
+        "--no-recurse-submodules",
+        "--",
+        "origin",
+        "+refs/heads/main:refs/heads/main",
+    ]);
+    let credential = auth_header(&mut command, Some(token));
+    let output = output(&mut command, "fetch", None)
+        .map_err(|_| Error::Invalid(text::fetch_failed("git fetch failed")))?;
     if output.status.success() {
         return Ok(());
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(Error::Invalid(text::fetch_failed(&scrub_detail(
+        &output.stderr,
+        Some(token),
+        credential.as_deref(),
+    ))))
+}
+
+fn scrub_detail(stderr: &[u8], token: Option<&Secret>, credential: Option<&str>) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
     let mut detail = stderr
         .lines()
         .rev()
@@ -474,7 +525,7 @@ pub fn push(
         .unwrap_or("")
         .to_owned();
     if let (Some(token), Some(credential)) = (token, credential) {
-        detail = detail.replace(&credential, "[hidden]");
+        detail = detail.replace(credential, "[hidden]");
         if !token.expose().is_empty() {
             detail = detail.replace(token.expose(), "[hidden]");
         }
@@ -490,7 +541,5 @@ pub fn push(
         }
         start = authority;
     }
-    Err(Error::Invalid(text::push_failed(
-        &detail.chars().take(300).collect::<String>(),
-    )))
+    detail.chars().take(300).collect()
 }

@@ -137,6 +137,14 @@ pub fn is_said(message: &str) -> bool {
         GITHUB_UNREACHABLE,
     ]
     .contains(&message)
+        || (message.starts_with("Voice saves ")
+            && message.ends_with(". This computer takes each new version instead."))
+        || (message.starts_with("The saved copy in ")
+            && (message.ends_with(", so Voice opened nothing.")
+                || message.ends_with(", so it opened nothing.")))
+        || (message.starts_with("~/.claude/state/")
+            && message.ends_with("Forget that assistant first, then try again."))
+        || message.starts_with("Voice couldn't fetch the saved copy: ")
         || [
             SIGN_IN_FAILED,
             REPO_PUBLIC,
@@ -158,5 +166,39 @@ pub fn is_said(message: &str) -> bool {
 pub fn denied_in_folder(rel: &str) -> String {
     format!(
         "{rel} is a kind of file that holds passwords or keys, so Voice won't save this folder. Move it out of the assistant's folder, then save again."
+    )
+}
+
+pub fn member_computer(name: &str, builder: Option<&str>) -> String {
+    match builder {
+        Some(builder) => format!(
+            "Voice saves {name} only from {builder}, the computer that builds {name}. This computer takes each new version instead."
+        ),
+        None => format!(
+            "Voice saves {name} only from the computer that builds {name}, the one that first saved {name} to GitHub. This computer takes each new version instead."
+        ),
+    }
+}
+pub fn fetch_failed(detail: &str) -> String {
+    format!("Voice couldn't fetch the saved copy: {detail}")
+}
+pub fn saved_copy_refused(full: &str, rel: &str) -> String {
+    format!(
+        "The saved copy in {full} holds {rel}, which Voice doesn't open (a link, a private file or something that isn't a plain file), so it opened nothing."
+    )
+}
+pub fn saved_copy_large(full: &str) -> String {
+    format!(
+        "The saved copy in {full} is bigger than an assistant should be, so Voice opened nothing."
+    )
+}
+pub fn saved_copy_private(full: &str, places: &str) -> String {
+    format!(
+        "The saved copy in {full} holds things that look private ({places}), so Voice opened nothing."
+    )
+}
+pub fn state_in_use(slug: &str) -> String {
+    format!(
+        "~/.claude/state/{slug}/ already holds a saved copy's files, so Voice opened nothing. Forget that assistant first, then try again."
     )
 }

@@ -1,3 +1,6 @@
+import type { SavedOnGithub } from '../types/generated/SavedOnGithub'
+import type { OpenSavedRequest } from '../types/generated/OpenSavedRequest'
+import type { OpenedSaved } from '../types/generated/OpenedSaved'
 import type { BuildRequest } from '../types/generated/BuildRequest'
 import type { AskAnswer } from '../types/generated/AskAnswer'
 import type { Permissions } from '../types/generated/Permissions'
@@ -112,6 +115,8 @@ export const tauriBackend: Backend = {
   githubSignOut: () => invoke<Said>('github_sign_out'),
   saveChoose: request => invoke<Said>('save_choose', { request }),
   savePush: request => invoke<Said>('save_push', { request }),
+  savedOnGithub: () => invoke<SavedOnGithub>('saved_on_github'),
+  openSaved: request => invoke<OpenedSaved>('open_saved', { request }),
   claudeCodeFolders: request => invoke<ClaudeCodeFolders>('claude_code_folders', { request }),
   readClaudeCode: (request, onProgress) => {
     const channel = new Channel<ReadProgress>()

@@ -24,6 +24,8 @@
     "allow-github-sign-out",
     "allow-save-choose",
     "allow-save-push",
+    "allow-saved-on-github",
+    "allow-open-saved",
     "allow-claude-code-folders",
     "allow-read-claude-code",
     "allow-choose-claudeai-export",

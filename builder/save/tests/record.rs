@@ -20,6 +20,8 @@ fn each_variant_round_trips_and_local_bytes_are_pinned() {
             owner: "rowan-vale".into(),
             name: "wren-assistant".into(),
             branch: "main".into(),
+            role: voice_save::record::Role::Builder,
+            builder: None,
         },
     ] {
         write_record(&scratch.0, &record).unwrap();

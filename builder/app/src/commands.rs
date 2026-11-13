@@ -117,6 +117,18 @@ pub fn save_push(
 }
 
 #[tauri::command(async)]
+pub fn saved_on_github() -> Result<voice_api::dto::SavedOnGithub, voice_api::dto::Failure> {
+    voice_api::saved_on_github()
+}
+
+#[tauri::command(async)]
+pub fn open_saved(
+    request: voice_api::dto::OpenSavedRequest,
+) -> Result<voice_api::dto::OpenedSaved, voice_api::dto::Failure> {
+    voice_api::open_saved(request)
+}
+
+#[tauri::command(async)]
 pub fn claude_code_folders(
     request: voice_api::dto::SlugRequest,
 ) -> Result<voice_api::dto::ClaudeCodeFolders, voice_api::dto::Failure> {

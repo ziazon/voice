@@ -10,6 +10,19 @@ use voice_core::{
     json::to_python_json,
 };
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    #[default]
+    Builder,
+    Member,
+}
+impl Role {
+    fn is_builder(&self) -> bool {
+        *self == Self::Builder
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "lowercase", deny_unknown_fields)]
 pub enum SaveRecord {
@@ -23,6 +36,10 @@ pub enum SaveRecord {
         owner: String,
         name: String,
         branch: String,
+        #[serde(default, skip_serializing_if = "Role::is_builder")]
+        role: Role,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        builder: Option<String>,
     },
 }
 fn io(path: &Path, source: std::io::Error) -> Error {
@@ -71,7 +88,24 @@ pub fn read_record(state_dir: &Path) -> Result<Option<SaveRecord>> {
     let keys: &[&str] = match object.get("mode").and_then(|v| v.as_str()) {
         Some("local") => &["mode"],
         Some("existing") => &["mode", "repo", "remote", "branch"],
-        Some("github") => &["mode", "owner", "name", "branch"],
+        Some("github") => {
+            // Older Voice refuses these extra keys, preventing saves from a member computer.
+            match (object.get("role"), object.get("builder")) {
+                (None, None) => &["mode", "owner", "name", "branch"],
+                (Some(role), None) if role.as_str() == Some("member") => {
+                    &["mode", "owner", "name", "branch", "role"]
+                }
+                (Some(role), Some(builder))
+                    if role.as_str() == Some("member")
+                        && builder
+                            .as_str()
+                            .is_some_and(crate::computer::valid_computer_name) =>
+                {
+                    &["mode", "owner", "name", "branch", "role", "builder"]
+                }
+                _ => return Err(invalid()),
+            }
+        }
         _ => return Err(invalid()),
     };
     if object.len() != keys.len() || keys.iter().any(|key| !object.contains_key(*key)) {
@@ -102,6 +136,7 @@ pub fn read_record(state_dir: &Path) -> Result<Option<SaveRecord>> {
             owner,
             name,
             branch,
+            ..
         } => {
             crate::github::valid_owner(owner)
                 && crate::github::valid_repo_name(name)

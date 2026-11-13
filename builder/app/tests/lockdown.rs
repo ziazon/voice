@@ -64,6 +64,8 @@ fn lockdown_1_command_lists_agree_in_order() {
             "github_sign_out",
             "save_choose",
             "save_push",
+            "saved_on_github",
+            "open_saved",
             "claude_code_folders",
             "read_claude_code",
             "choose_claudeai_export",

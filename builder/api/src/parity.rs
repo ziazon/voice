@@ -85,6 +85,14 @@ pub const PARITY: &[Parity] = &[
         cli: &[&["save", "push"]],
     },
     Parity {
+        app: "saved_on_github",
+        cli: &[&["open"]],
+    },
+    Parity {
+        app: "open_saved",
+        cli: &[&["open"]],
+    },
+    Parity {
         app: "claude_code_folders",
         cli: &[&["folders"]],
     },

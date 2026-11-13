@@ -346,6 +346,8 @@ fn push_reports_privacy_hits_before_network() {
             owner: "example-owner".into(),
             name: "ari-assistant".into(),
             branch: "main".into(),
+            role: voice_save::record::Role::Builder,
+            builder: None,
         },
     )
     .unwrap();
@@ -565,10 +567,11 @@ fn dto_json_uses_camel_case_and_requests_refuse_extra_keys() {
         chosen: None,
         signed_in: false,
         suggested_name: "ari-assistant".into(),
+        member_computer: None,
     };
     assert_eq!(
         serde_json::to_value(options).unwrap(),
-        json!({"choices":[{"kind":"github","label":"label"}],"selected":0,"note":null,"chosen":null,"signedIn":false,"suggestedName":"ari-assistant"})
+        json!({"choices":[{"kind":"github","label":"label"}],"selected":0,"note":null,"chosen":null,"signedIn":false,"suggestedName":"ari-assistant","memberComputer":null})
     );
     for (kind, value) in [
         (SaveKind::Existing, "existing"),
@@ -669,4 +672,309 @@ fn mismatched_choice_kind_is_changed_without_writing_a_record() {
         assert!(!member.state_dir.join("save.json").exists());
         assert_eq!(answer.unwrap_err().message, CHANGED);
     }
+}
+
+#[test]
+fn saved_list_without_token_is_signed_out_and_does_no_http() {
+    let home = Home::new();
+    let http = FakeHttp::new(vec![]);
+    let github = github(&http);
+    let answer = saved_on_github_in(&home.0, Some(&github), &MemoryStore::new()).unwrap();
+    assert!(!answer.signed_in);
+    assert!(answer.items.is_empty());
+    assert!(http.requests.borrow().is_empty());
+}
+
+#[test]
+fn member_computer_options_carry_the_save_refusal() {
+    let home = Home::new();
+    let member = home.make();
+    write_record(
+        &member.state_dir,
+        &SaveRecord::Github {
+            owner: "example-owner".into(),
+            name: "ari-assistant".into(),
+            branch: "main".into(),
+            role: voice_save::record::Role::Member,
+            builder: Some("Studio".into()),
+        },
+    )
+    .unwrap();
+    let options = save_options_in(&home.0, slug("ari"), &git(), &MemoryStore::new()).unwrap();
+    assert_eq!(
+        options.member_computer,
+        Some(text::member_computer("Ari", Some("Studio")))
+    );
+}
+
+fn open_fixture(home: &Home) -> Git {
+    use std::os::unix::fs::PermissionsExt;
+    let source = home.0.join("source");
+    let made = assistants::make(
+        &source,
+        &assistants::New {
+            name: "Ari",
+            pronouns: "they/them",
+            principal: "Rowan Vale",
+            principal_pronouns: "they/them",
+        },
+        "2026-11-13",
+        "voice",
+    )
+    .unwrap();
+    let repo = source.join(".claude");
+    run_git(&repo, &["init", "-q", "--initial-branch=main"]);
+    run_git(&repo, &["add", "crew"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "user.name=Voice",
+            "-c",
+            "user.email=voice@localhost",
+            "commit",
+            "-qm",
+            "Save Ari\n\nSaved-on: Studio\n",
+        ],
+    );
+    assert!(made.dir.join("member.json").exists());
+    let wrapper = home.0.join("git-wrapper");
+    let real = serde_json::to_string(real_git().to_str().unwrap()).unwrap();
+    let rewrite = serde_json::to_string(&format!(
+        "url.file://{}.insteadOf=https://github.com/example-owner/ari-assistant.git",
+        repo.display()
+    ))
+    .unwrap();
+    fs::write(&wrapper, format!("#!/usr/bin/python3\nimport os, sys\nos.execv({real}, [{real}, '-c', {rewrite}] + sys.argv[1:])\n")).unwrap();
+    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
+    Git::at(wrapper)
+}
+fn open_request() -> OpenSavedRequest {
+    OpenSavedRequest {
+        owner: "example-owner".into(),
+        repo: "ari-assistant".into(),
+        slug: "ari".into(),
+    }
+}
+fn open_http() -> FakeHttp {
+    FakeHttp::new(vec![
+        account("repo"),
+        reply(
+            json!({"private":true,"visibility":"private","owner":{"login":"example-owner"},"name":"ari-assistant"}),
+        ),
+    ])
+}
+fn assert_no_staging(home: &Path) {
+    assert!(
+        fs::read_dir(home.join(".claude/crew"))
+            .unwrap()
+            .all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("voice-opening"))
+    );
+}
+
+#[test]
+fn open_saved_backs_up_older_assistant_and_clears_permission() {
+    let fixture = Home::new();
+    let git = open_fixture(&fixture);
+    let home = Home::new();
+    let claude = home.0.join(".claude");
+    fs::create_dir_all(claude.join("skills/ari")).unwrap();
+    fs::write(claude.join("skills/ari/SKILL.md"), "An older assistant.\n").unwrap();
+    fs::write(claude.join("CLAUDE.md"), "Ask /ari before a choice.\n").unwrap();
+    fs::create_dir_all(claude.join("state/ari")).unwrap();
+    fs::write(claude.join("state/ari/decisions.jsonl"), "older history\n").unwrap();
+    write_consent(&home.0, "ari").unwrap();
+    assert!(read_consent(&home.0, "ari").agreed);
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    let http = open_http();
+    let github = github(&http);
+    let opened = open_saved_in(
+        &home.0,
+        &claude,
+        open_request(),
+        &git,
+        Some(&github),
+        &tokens,
+    )
+    .unwrap();
+    let backup = opened.backup.unwrap();
+    let backup_dir = home.0.join(backup.strip_prefix("~/").unwrap());
+    assert_eq!(
+        fs::read(backup_dir.join("state/decisions.jsonl")).unwrap(),
+        b"older history\n"
+    );
+    assert_eq!(
+        fs::read(backup_dir.join("skill/SKILL.md")).unwrap(),
+        b"An older assistant.\n"
+    );
+    assert!(backup_dir.join("CLAUDE.md").is_file());
+    assert_eq!(
+        fs::read(claude.join("state/ari/decisions-before-voice.jsonl")).unwrap(),
+        b"older history\n"
+    );
+    assert_eq!(
+        opened.message,
+        format!(
+            "Opened Ari from example-owner/ari-assistant. Voice asks for your permission again on this computer before Ari reads anything. Voice backed up the older Ari first, in {backup}/."
+        )
+    );
+    assert!(!opened.assistant.consent.agreed);
+    assert!(!read_consent(&home.0, "ari").agreed);
+    assert_no_staging(&home.0);
+    http.drained();
+}
+
+#[test]
+fn open_saved_refuses_existing_voice_assistant_and_removes_staging() {
+    let fixture = Home::new();
+    let git = open_fixture(&fixture);
+    let home = Home::new();
+    let member = home.make();
+    let original = fs::read(member.dir.join("member.json")).unwrap();
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    let http = open_http();
+    let github = github(&http);
+    let error = open_saved_in(
+        &home.0,
+        &home.0.join(".claude"),
+        open_request(),
+        &git,
+        Some(&github),
+        &tokens,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.message,
+        "You already have an assistant called Ari on this computer, so Voice opened nothing. Forget that one first, then open the saved one again."
+    );
+    assert_eq!(fs::read(member.dir.join("member.json")).unwrap(), original);
+    assert_no_staging(&home.0);
+}
+
+#[test]
+fn open_saved_masks_internal_errors_and_rejects_extra_request_keys() {
+    let home = Home::new();
+    let error = open_saved_in(
+        &home.0,
+        &home.0.join(".claude"),
+        OpenSavedRequest {
+            slug: "../ari".into(),
+            ..open_request()
+        },
+        &git(),
+        None,
+        &MemoryStore::new(),
+    )
+    .unwrap_err();
+    assert_eq!(error.message, voice_api::save::OPEN_SAVED_FAILED);
+    assert!(
+        serde_json::from_value::<OpenSavedRequest>(
+            json!({"owner":"example-owner","repo":"ari-assistant","slug":"ari","extra":true})
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn permission_clear_failure_undoes_the_new_saved_copy() {
+    let fixture = Home::new();
+    let git = open_fixture(&fixture);
+    let home = Home::new();
+    let claude = home.0.join(".claude");
+    let state = claude.join("state/ari");
+    fs::create_dir_all(state.join("consent.json")).unwrap();
+    fs::write(state.join("decisions.jsonl"), "older history\n").unwrap();
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    let http = open_http();
+    let github = github(&http);
+    assert!(
+        open_saved_in(
+            &home.0,
+            &claude,
+            open_request(),
+            &git,
+            Some(&github),
+            &tokens
+        )
+        .is_err()
+    );
+    assert!(!claude.join("crew/ari").exists());
+    assert!(!state.join("save.json").exists());
+    assert!(!state.join("backup.git").exists());
+    assert_eq!(
+        fs::read(state.join("decisions.jsonl")).unwrap(),
+        b"older history\n"
+    );
+    assert!(state.join("consent.json").is_dir());
+    assert_no_staging(&home.0);
+}
+
+#[test]
+fn saved_list_marks_the_assistant_already_on_this_computer() {
+    let home = Home::new();
+    home.make();
+    let http = FakeHttp::new(vec![
+        reply(
+            json!([{"private":true,"description":"My AI assistant, saved by Voice","owner":{"login":"example-owner"},"name":"ari-assistant"}]),
+        ),
+        reply(json!([{"type":"dir","name":"ari"}])),
+        reply(
+            json!({"type":"file","encoding":"base64","content":"eyJzbHVnIjoiYXJpIiwibmFtZSI6IkFyaSJ9"}),
+        ),
+    ]);
+    let github = github(&http);
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    let answer = saved_on_github_in(&home.0, Some(&github), &tokens).unwrap();
+    assert!(answer.signed_in);
+    assert_eq!(
+        answer.items,
+        vec![SavedAssistant {
+            owner: "example-owner".into(),
+            repo: "ari-assistant".into(),
+            slug: "ari".into(),
+            name: "Ari".into(),
+            here: true
+        }]
+    );
+    http.drained();
+}
+
+#[test]
+fn open_saved_explains_an_older_state_refusal_and_cleans_staging() {
+    let fixture = Home::new();
+    let git = open_fixture(&fixture);
+    let home = Home::new();
+    let claude = home.0.join(".claude");
+    fs::create_dir_all(claude.join("state")).unwrap();
+    fs::write(claude.join("state/ari"), "older state file\n").unwrap();
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    let http = open_http();
+    let github = github(&http);
+    let error = open_saved_in(
+        &home.0,
+        &claude,
+        open_request(),
+        &git,
+        Some(&github),
+        &tokens,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.message,
+        "Voice can't open Ari here yet: ~/.claude/state/ari/ holds files it can't back up. Move that folder somewhere else, then try again."
+    );
+    assert_eq!(
+        fs::read(claude.join("state/ari")).unwrap(),
+        b"older state file\n"
+    );
+    assert_no_staging(&home.0);
 }

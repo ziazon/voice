@@ -26,6 +26,7 @@ it.each([
   ['githubSignInFinish', 'github_sign_in_finish'],
   ['githubSignInCancel', 'github_sign_in_cancel'],
   ['githubSignOut', 'github_sign_out'],
+  ['savedOnGithub', 'saved_on_github'],
 ] as const)('maps %s to its command', async (method, command) => {
   vi.mocked(invoke).mockClear().mockResolvedValue('answer')
   expect(tauriBackend[method]).toBeTypeOf('function')
@@ -44,6 +45,7 @@ it.each([
   ['openLink', 'open_link', { link: 'githubSignup' }],
   ['saveChoose', 'save_choose', { slug: 'example', choice: 0, kind: 'github', name: 'example-assistant' }],
   ['savePush', 'save_push', { slug: 'example' }],
+  ['openSaved', 'open_saved', { owner: 'example-owner', repo: 'ari-assistant', slug: 'ari' }],
   ['claudeCodeStatus', 'claude_code_status', { slug: 'ari' }],
   ['turnOn', 'turn_on', { slug: 'ari' }],
   ['turnOff', 'turn_off', { slug: 'ari' }],

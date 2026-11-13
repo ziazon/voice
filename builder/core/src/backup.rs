@@ -36,7 +36,7 @@ pub struct Item<'a> {
     pub follow: bool,
 }
 
-pub(crate) fn valid_stamp(stamp: &str) -> bool {
+pub fn valid_stamp(stamp: &str) -> bool {
     stamp.len() == 17
         && stamp.bytes().enumerate().all(|(n, b)| {
             if matches!(n, 4 | 7 | 10) {

@@ -137,6 +137,44 @@ pub struct SaveOptions {
     pub chosen: Option<String>,
     pub signed_in: bool,
     pub suggested_name: String,
+    pub member_computer: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SavedOnGithub {
+    pub signed_in: bool,
+    pub items: Vec<SavedAssistant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SavedAssistant {
+    pub owner: String,
+    pub repo: String,
+    pub slug: String,
+    pub name: String,
+    pub here: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct OpenSavedRequest {
+    pub owner: String,
+    pub repo: String,
+    pub slug: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OpenedSaved {
+    pub assistant: Assistant,
+    pub backup: Option<String>,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

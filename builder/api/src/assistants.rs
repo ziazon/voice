@@ -92,7 +92,7 @@ pub fn write_consent(home: &Path, slug: &str) -> voice_core::error::Result<dto::
     write_private(home, slug, "consent.json", &bytes)?;
     Ok(read_consent(home, slug))
 }
-fn assistant(home: &Path, listed: assistants::Listed) -> dto::Assistant {
+pub(crate) fn assistant(home: &Path, listed: assistants::Listed) -> dto::Assistant {
     dto::Assistant {
         consent: read_consent(home, &listed.member.slug),
         slug: listed.member.slug,
@@ -214,7 +214,7 @@ fn private_ok(home: &Path, value: &serde_json::Value) -> bool {
     voice_ingest::anonymize::Rules::from_value(value.get("anonymizer"), home).is_ok()
 }
 
-fn check_brought_member(home: &Path, folder: &Path) -> voice_core::error::Result<()> {
+pub(crate) fn check_brought_member(home: &Path, folder: &Path) -> voice_core::error::Result<()> {
     let member = voice_core::member::read_member(&folder.join("member.json"))?;
     voice_ingest::filters::Filters::compile(&member.filters)?;
     voice_ingest::anonymize::Rules::for_member(&member, home)?;
@@ -465,15 +465,64 @@ fn bring_in_checked(
             }
         }
     }
+    let mut copied_files = Vec::new();
+    let (made, backup) = back_up_older_with(home, claude_home, &slug, stamp, &mut |backup| {
+        let made = make_and_clear(home, new, date, cli)?;
+        if !files.is_empty() {
+            let Some(backup) = backup else {
+                let _ = fs::remove_dir_all(&made.dir);
+                return Err(Error::Invalid(old_files::CANT_BRING.into()));
+            };
+            let source = backup.join("member");
+            let checked =
+                old_files::bring(&source, &made.dir, files, &|value| private_ok(home, value))
+                    .and_then(|()| {
+                        after_copy(home, &made.dir)
+                            .map_err(|_| Error::Invalid(old_files::CANT_BRING.into()))
+                    });
+            if let Err(error) = checked {
+                let _ = fs::remove_dir_all(&made.dir);
+                return Err(error);
+            }
+            copied_files = old_files::NAMES
+                .into_iter()
+                .filter(|name| files.iter().any(|file| file == name))
+                .map(str::to_owned)
+                .collect();
+        }
+        Ok(made)
+    })?;
+    Ok((made, backup, copied_files))
+}
+
+/// Back up the older assistant, preserving its history and rolling back a failed replacement.
+pub(crate) fn back_up_older_then(
+    home: &Path,
+    claude_home: &Path,
+    slug: &str,
+    stamp: &str,
+    make: &mut dyn FnMut() -> voice_core::error::Result<assistants::Listed>,
+) -> voice_core::error::Result<(assistants::Listed, Option<PathBuf>)> {
+    back_up_older_with(home, claude_home, slug, stamp, &mut |_| make())
+}
+
+fn back_up_older_with(
+    home: &Path,
+    claude_home: &Path,
+    slug: &str,
+    stamp: &str,
+    make: &mut dyn FnMut(Option<&Path>) -> voice_core::error::Result<assistants::Listed>,
+) -> voice_core::error::Result<(assistants::Listed, Option<PathBuf>)> {
+    let found = existing::find(home, claude_home, slug)?;
     if !found.any() {
-        return make_and_clear(home, new, date, cli).map(|made| (made, None, Vec::new()));
+        return make(None).map(|made| (made, None));
     }
     if let Some(sentence) = bring_in_refusal(home, &found)? {
         return Err(Error::Invalid(sentence));
     }
-    let state = home.join(".claude/state").join(&slug);
+    let state = home.join(".claude/state").join(slug);
     let _lock = match fs::symlink_metadata(&state) {
-        Ok(_) => Some(voice_ingest::private::lock_existing_state(home, &slug)?),
+        Ok(_) => Some(voice_ingest::private::lock_existing_state(home, slug)?),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(source) => {
             return Err(Error::Io {
@@ -501,7 +550,7 @@ fn bring_in_checked(
             });
         }
     }
-    let backup = voice_core::backup::back_up(home, &slug, stamp, &items)?;
+    let backup = voice_core::backup::back_up(home, slug, stamp, &items)?;
     let corpus = state.join("decisions.jsonl");
     let before = state.join("decisions-before-voice.jsonl");
     let mut moved = false;
@@ -523,33 +572,13 @@ fn bring_in_checked(
             }
             moved = true;
         }
-        let made = make_and_clear(home, new, date, cli)?;
+        // A replacement may clear permission before returning an error, too.
         cleared = true;
-        if !files.is_empty() {
-            let copied = old_files::bring(&backup.join("member"), &made.dir, files, &|value| {
-                private_ok(home, value)
-            });
-            let checked = copied.and_then(|()| {
-                after_copy(home, &made.dir)
-                    .map_err(|_| Error::Invalid(old_files::CANT_BRING.into()))
-            });
-            if let Err(error) = checked {
-                let _ = fs::remove_dir_all(&made.dir);
-                return Err(error);
-            }
-        }
+        let made = make(Some(&backup))?;
         Ok(made)
     })();
     match result {
-        Ok(made) => Ok((
-            made,
-            Some(backup),
-            old_files::NAMES
-                .into_iter()
-                .filter(|name| files.iter().any(|file| file == name))
-                .map(str::to_owned)
-                .collect(),
-        )),
+        Ok(made) => Ok((made, Some(backup))),
         Err(error) => {
             if !crew_existed {
                 // Only remove a parent this call created, and only while it is empty.

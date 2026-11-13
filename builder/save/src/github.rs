@@ -1,4 +1,5 @@
 use crate::{secret::Secret, text};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::time::Duration;
 use voice_core::error::{Error, Result};
@@ -112,6 +113,7 @@ impl Endpoints {
     }
 }
 pub const SCOPE: &str = "repo";
+pub const VOICE_DESCRIPTION: &str = "My AI assistant, saved by Voice";
 /// API version: https://docs.github.com/en/rest/about-the-rest-api/api-versions
 pub const API_VERSION: &str = "2026-03-10";
 /// Voice's registered GitHub OAuth App (device flow on, expiring tokens off). An OAuth
@@ -137,6 +139,12 @@ pub struct DeviceCode {
 pub struct Account {
     pub login: String,
     pub id: u64,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedAssistant {
+    pub repo: RepoRef,
+    pub slug: String,
+    pub name: String,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoRef {
@@ -297,6 +305,128 @@ impl<'a> Github<'a> {
             id,
         })
     }
+    /// Private candidates, capped at two pages:
+    /// https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user
+    pub fn saved_assistants(&self, token: &Secret) -> Result<Vec<SavedAssistant>> {
+        let mut saved = Vec::new();
+        for page in 1..=2 {
+            let response = self.api(Method::Get, &format!(
+                "/user/repos?visibility=private&affiliation=owner,collaborator,organization_member&sort=pushed&per_page=50&page={page}"
+            ), token, None).map_err(|_| unreachable())?;
+            if response.status == 401 {
+                return Err(Error::Invalid(text::SIGN_IN_FIRST.into()));
+            }
+            if response.status != 200 || response.body.len() > 1_048_576 {
+                return Err(unreachable());
+            }
+            let body: Value = serde_json::from_slice(&response.body).map_err(|_| unreachable())?;
+            let repos = body.as_array().ok_or_else(unreachable)?;
+            for entry in repos.iter().take(50) {
+                let (Some(owner), Some(name)) =
+                    (entry["owner"]["login"].as_str(), entry["name"].as_str())
+                else {
+                    continue;
+                };
+                if entry["private"].as_bool() != Some(true)
+                    || !valid_owner(owner)
+                    || !valid_repo_name(name)
+                    || !(entry["description"].as_str() == Some(VOICE_DESCRIPTION)
+                        || name.ends_with("-assistant"))
+                {
+                    continue;
+                }
+                saved.extend(self.saved_in(
+                    token,
+                    &RepoRef {
+                        owner: owner.into(),
+                        name: name.into(),
+                    },
+                )?);
+            }
+            if repos.len() != 50 {
+                break;
+            }
+        }
+        saved.sort_by(|a, b| a.repo.full().cmp(&b.repo.full()).then(a.slug.cmp(&b.slug)));
+        Ok(saved)
+    }
+    /// Inspect only the member metadata, never a download URL:
+    /// https://docs.github.com/en/rest/repos/contents#get-repository-content
+    pub fn saved_in(&self, token: &Secret, repo: &RepoRef) -> Result<Vec<SavedAssistant>> {
+        if !valid_owner(&repo.owner) || !valid_repo_name(&repo.name) {
+            return Err(Error::Invalid(text::NOT_ON_GITHUB.into()));
+        }
+        let path = format!("/repos/{}/contents/crew?ref=main", repo.full());
+        let Some(body) = self.saved_content(token, &path)? else {
+            return Ok(vec![]);
+        };
+        let Some(entries) = body.as_array() else {
+            return Ok(vec![]);
+        };
+        let mut saved = Vec::new();
+        for slug in entries
+            .iter()
+            .filter(|entry| entry["type"].as_str() == Some("dir"))
+            .filter_map(|entry| entry["name"].as_str())
+            .filter(|slug| voice_core::crew::slugify(slug).as_deref() == Some(*slug))
+            .take(20)
+        {
+            let path = format!(
+                "/repos/{}/contents/crew/{slug}/member.json?ref=main",
+                repo.full()
+            );
+            let Some(body) = self.saved_content(token, &path)? else {
+                continue;
+            };
+            if body["type"].as_str() != Some("file") || body["encoding"].as_str() != Some("base64")
+            {
+                continue;
+            }
+            let Some(content) = body["content"].as_str() else {
+                continue;
+            };
+            let content: String = content
+                .chars()
+                .filter(|c| *c != '\n' && *c != '\r')
+                .collect();
+            let Ok(bytes) = STANDARD.decode(content) else {
+                continue;
+            };
+            if bytes.len() > 65_536 {
+                continue;
+            }
+            let Ok(member) = serde_json::from_slice::<Value>(&bytes) else {
+                continue;
+            };
+            if !member.is_object() || member["slug"].as_str() != Some(slug) {
+                continue;
+            }
+            let Some(name) = member["name"].as_str() else {
+                continue;
+            };
+            if voice_core::crew::check_name("name", name).is_err() {
+                continue;
+            }
+            saved.push(SavedAssistant {
+                repo: repo.clone(),
+                slug: slug.into(),
+                name: name.into(),
+            });
+        }
+        Ok(saved)
+    }
+    fn saved_content(&self, token: &Secret, path: &str) -> Result<Option<Value>> {
+        let Ok(response) = self.api(Method::Get, path, token, None) else {
+            return Ok(None);
+        };
+        if response.status == 401 {
+            return Err(Error::Invalid(text::SIGN_IN_FIRST.into()));
+        }
+        if response.status != 200 || response.body.len() > 1_048_576 {
+            return Ok(None);
+        }
+        Ok(serde_json::from_slice(&response.body).ok())
+    }
     /// Private creation: https://docs.github.com/en/rest/repos/repos
     pub fn create_private_repo(&self, token: &Secret, name: &str) -> Result<RepoRef> {
         if !valid_repo_name(name) {
@@ -307,7 +437,7 @@ impl<'a> Github<'a> {
             "/user/repos",
             token,
             Some(json!({
-                "name": name, "private": true, "description": "My AI assistant, saved by Voice",
+                "name": name, "private": true, "description": VOICE_DESCRIPTION,
                 "auto_init": false, "has_issues": false, "has_projects": false, "has_wiki": false
             })),
         )?;

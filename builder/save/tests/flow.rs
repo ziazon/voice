@@ -600,7 +600,9 @@ fn github_choice_creates_once_and_saves_to_main_then_refuses_changed_origin() {
         Some(SaveRecord::Github {
             owner: "rowan-vale".into(),
             name: "wren-assistant".into(),
-            branch: "main".into()
+            branch: "main".into(),
+            role: voice_save::record::Role::Builder,
+            builder: None,
         })
     );
     assert_eq!(
@@ -707,4 +709,56 @@ fn symlink_in_template_member_is_refused_before_commit_or_push() {
             .any(|arg| arg == "push")
     }));
     http.assert_drained();
+}
+
+#[test]
+fn saved_on_trailer_uses_only_valid_computer_names() {
+    for computer in [Some("Studio"), None, Some("invalid@name")] {
+        let scratch = Scratch::new("save-trailer");
+        let home = scratch.0.canonicalize().unwrap();
+        let member = paths(&home);
+        let remote = home.join("remote.git");
+        init(&remote, true);
+        let wrapper = Wrapper::new(&home, false);
+        let saving = Git::at(wrapper.program);
+        let http = FakeHttp::new(vec![
+            account(),
+            reply(
+                201,
+                json!({"owner":{"login":"rowan-vale"},"name":"wren-assistant"}),
+            ),
+            private(),
+            account(),
+        ]);
+        let github = client(&http);
+        let tokens = tokens();
+        let remotes = Approve::new();
+        let saver = Saver {
+            git: &saving,
+            github: Some(&github),
+            tokens: &tokens,
+        };
+        saver.choose_github(&member, "wren-assistant").unwrap();
+        let backup = member.state_dir.join("backup.git");
+        git(
+            &backup,
+            &[
+                "config",
+                &format!("url.{}.pushInsteadOf", file_url(&remote)),
+                "https://github.com/rowan-vale/wren-assistant.git",
+            ],
+        );
+        saver
+            .save_now_from(&member, &home, &Clean, &remotes, computer)
+            .unwrap();
+        assert_eq!(
+            git(&remote, &["log", "-1", "--format=%B", "main"]),
+            if computer == Some("Studio") {
+                "Save Wren\n\nSaved-on: Studio"
+            } else {
+                "Save Wren"
+            }
+        );
+        http.assert_drained();
+    }
 }

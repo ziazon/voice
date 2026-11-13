@@ -9,3 +9,5 @@ pub mod text;
 pub mod flow;
 pub mod git;
 pub mod record;
+
+pub mod computer;

@@ -88,3 +88,11 @@ fn claude_sign_out_shares_the_terminal_logout() {
         .unwrap();
     assert_eq!(row.cli, &[&["claude", "sign-out"][..]]);
 }
+
+#[test]
+fn saved_assistant_commands_share_the_terminal_open() {
+    for app in ["saved_on_github", "open_saved"] {
+        let row = PARITY.iter().find(|row| row.app == app).unwrap();
+        assert_eq!(row.cli, &[&["open"][..]]);
+    }
+}

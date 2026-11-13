@@ -1,3 +1,6 @@
+import type { SavedOnGithub } from './types/generated/SavedOnGithub'
+import type { OpenSavedRequest } from './types/generated/OpenSavedRequest'
+import type { OpenedSaved } from './types/generated/OpenedSaved'
 import type { BuildRequest } from './types/generated/BuildRequest'
 import type { AskRequest } from './types/generated/AskRequest'
 import type { AskAnswer } from './types/generated/AskAnswer'
@@ -128,6 +131,8 @@ export interface Backend {
   githubSignOut(): Promise<Said>
   saveChoose(request: SaveChoiceRequest): Promise<Said>
   savePush(request: SlugRequest): Promise<Said>
+  savedOnGithub(): Promise<SavedOnGithub>
+  openSaved(request: OpenSavedRequest): Promise<OpenedSaved>
   claudeCodeFolders(request: SlugRequest): Promise<ClaudeCodeFolders>
   readClaudeCode(request: ReadRequest, onProgress: (progress: ReadProgress) => void): Promise<ReadCounts>
   chooseClaudeaiExport(request: ChooseExportRequest): Promise<ExportStatus | null>

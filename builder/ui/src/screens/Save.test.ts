@@ -8,7 +8,7 @@ import Save from './Save.vue'
 const options: SaveOptions = {
   choices: [{ kind: 'github', label: 'A new private GitHub repo' }, { kind: 'local', label: 'This computer only' }],
   selected: 0, note: 'A free GitHub account lets you keep a private copy.', chosen: null,
-  signedIn: false, suggestedName: 'example-assistant',
+  signedIn: false, suggestedName: 'example-assistant', memberComputer: null,
 }
 
 it('announces loading, then shows choices, recommendation, note and fixed signup action', async () => {
