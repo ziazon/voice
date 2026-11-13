@@ -970,11 +970,46 @@ fn open_saved_explains_an_older_state_refusal_and_cleans_staging() {
     .unwrap_err();
     assert_eq!(
         error.message,
-        "Voice can't open Ari here yet: ~/.claude/state/ari/ holds files it can't back up. Move that folder somewhere else, then try again."
+        "~/.claude/state/ari is a file or a link, not a folder, so Voice opened nothing. Move it somewhere else, then try again."
     );
     assert_eq!(
         fs::read(claude.join("state/ari")).unwrap(),
         b"older state file\n"
+    );
+    assert_no_staging(&home.0);
+}
+
+#[test]
+fn open_saved_reports_a_member_that_fails_the_final_check() {
+    let fixture = Home::new();
+    let git = open_fixture(&fixture);
+    // Change the staged config at the log call, after the privacy scan, so the
+    // final API check is the one that refuses it.
+    let wrapper = fixture.0.join("git-wrapper");
+    let source = fs::read_to_string(&wrapper).unwrap();
+    let intercept = "import json\nif 'log' in sys.argv[1:]:\n    git_dir = next(arg.split('=', 1)[1] for arg in sys.argv[1:] if arg.startswith('--git-dir='))\n    path = os.path.join(os.path.dirname(git_dir), 'member', 'member.json')\n    with open(path) as file: value = json.load(file)\n    value['filters']['personal'] = '['\n    with open(path, 'w') as file: json.dump(value, file)\n";
+    fs::write(
+        &wrapper,
+        source.replace("os.execv(", &(intercept.to_owned() + "os.execv(")),
+    )
+    .unwrap();
+    let home = Home::new();
+    let tokens = MemoryStore::new();
+    tokens.save(&Secret::new("test-token".into())).unwrap();
+    let http = open_http();
+    let github = github(&http);
+    let error = open_saved_in(
+        &home.0,
+        &home.0.join(".claude"),
+        open_request(),
+        &git,
+        Some(&github),
+        &tokens,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.message,
+        "The saved copy in example-owner/ari-assistant has a member.json Voice can't use, so it opened nothing."
     );
     assert_no_staging(&home.0);
 }

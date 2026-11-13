@@ -143,7 +143,9 @@ pub fn is_said(message: &str) -> bool {
             && (message.ends_with(", so Voice opened nothing.")
                 || message.ends_with(", so it opened nothing.")))
         || (message.starts_with("~/.claude/state/")
-            && message.ends_with("Forget that assistant first, then try again."))
+            && message.ends_with("Move that folder somewhere else, then try again."))
+        || (message.starts_with("Voice found no assistant called ")
+            && message.ends_with(", so it opened nothing."))
         || message.starts_with("Voice couldn't fetch the saved copy: ")
         || [
             SIGN_IN_FAILED,
@@ -199,6 +201,13 @@ pub fn saved_copy_private(full: &str, places: &str) -> String {
 }
 pub fn state_in_use(slug: &str) -> String {
     format!(
-        "~/.claude/state/{slug}/ already holds a saved copy's files, so Voice opened nothing. Forget that assistant first, then try again."
+        "~/.claude/state/{slug}/ already holds a saved copy's files, so Voice opened nothing. Move that folder somewhere else, then try again."
     )
+}
+
+pub fn saved_copy_missing(full: &str, slug: &str) -> String {
+    format!("Voice found no assistant called {slug} in {full}, so it opened nothing.")
+}
+pub fn saved_copy_unusable(full: &str) -> String {
+    format!("The saved copy in {full} has a member.json Voice can't use, so it opened nothing.")
 }

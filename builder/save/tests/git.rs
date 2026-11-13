@@ -585,3 +585,37 @@ fn failing_push_strips_url_userinfo_before_showing_the_detail() {
         assert_eq!(error.to_string(), text::push_failed(shown));
     }
 }
+
+#[test]
+fn failing_fetch_hides_token_and_encoded_header() {
+    let scratch = Scratch::new("fetch-redaction");
+    let wrapper = Wrapper::new(&scratch.0, true);
+    let saving = Git::at(wrapper.program.clone());
+    let token = Secret::new("invented-token".into());
+    let error = saving::fetch_main(&saving, &scratch.0, &token)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(error, text::fetch_failed("fatal: [hidden] [hidden]"));
+    assert!(!error.contains(token.expose()));
+    use base64::Engine;
+    let credential = base64::engine::general_purpose::STANDARD
+        .encode(format!("x-access-token:{}", token.expose()));
+    assert!(!error.contains(&credential));
+}
+
+#[test]
+fn fetch_checks_transferred_objects() {
+    let scratch = Scratch::new("fetch-fsck");
+    let wrapper = Wrapper::new(&scratch.0, true);
+    let saving = Git::at(wrapper.program.clone());
+    assert!(
+        saving::fetch_main(&saving, &scratch.0, &Secret::new("invented-token".into())).is_err()
+    );
+    let calls = wrapper.calls();
+    let args = calls[0]["argv"].as_array().unwrap();
+    assert!(args.windows(2).any(|pair| pair
+        == [
+            serde_json::json!("-c"),
+            serde_json::json!("transfer.fsckObjects=true")
+        ]));
+}

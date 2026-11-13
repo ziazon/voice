@@ -413,7 +413,7 @@ pub fn open_saved_in(
     .map_err(|error| map_error(error, OPEN_SAVED_FAILED))?;
     let result = (|| {
         crate::assistants::check_brought_member(home, &staged.member_dir)
-            .map_err(|_| failure(&text::saved_copy_refused(&repo.full(), "member.json")))?;
+            .map_err(|_| failure(&text::saved_copy_unusable(&repo.full())))?;
         let name = &staged.member.name;
         let already = || {
             failure(&format!(
@@ -444,7 +444,13 @@ pub fn open_saved_in(
             }
             Ok(voice_core::assistants::Listed { dir: placed.dir, member: placed.member })
         }).map_err(|error| match error {
-            Error::Invalid(sentence) if refusal.as_deref() == Some(&sentence) => failure(&format!("Voice can't open {name} here yet: ~/.claude/state/{}/ holds files it can't back up. Move that folder somewhere else, then try again.", request.slug)),
+            Error::Invalid(sentence) if refusal.as_deref() == Some(&sentence) => {
+                if found.state.as_ref().is_some_and(|state| state.link || state.not_folder) {
+                    failure(&format!("~/.claude/state/{} is a file or a link, not a folder, so Voice opened nothing. Move it somewhere else, then try again.", request.slug))
+                } else {
+                    failure(&format!("Voice can't open {name} here yet: ~/.claude/state/{}/ holds files it can't back up. Move that folder somewhere else, then try again.", request.slug))
+                }
+            },
             Error::Exists(_) => already(),
             other => map_error(other, OPEN_SAVED_FAILED),
         })?;

@@ -442,12 +442,18 @@ impl Saver<'_> {
         github.confirm_private(&token, repo)?;
         let crew = home.join(".claude/crew");
         plain_parents(home, &crew)?;
+        let made_crew = fs::symlink_metadata(&crew).is_err();
         open_io(&crew, fs::create_dir_all(&crew))?;
         let dir = crew.join(format!(
             ".{slug}.voice-opening-{stamp}-{}",
             std::process::id()
         ));
-        open_io(&dir, fs::DirBuilder::new().mode(0o700).create(&dir))?;
+        if let Err(error) = open_io(&dir, fs::DirBuilder::new().mode(0o700).create(&dir)) {
+            if made_crew {
+                let _ = fs::remove_dir(&crew);
+            }
+            return Err(error);
+        }
         let result = (|| {
             let git_dir = dir.join("backup.git");
             self.git.init_bare(&git_dir)?;
@@ -471,15 +477,24 @@ impl Saver<'_> {
             for (rel, oid, executable) in entries {
                 write_opened_blob(self.git, &git_dir, &member_dir, &rel, &oid, executable)?;
             }
-            let member = read_member(&member_dir.join("member.json"))?;
+            let full = repo.full();
+            match fs::symlink_metadata(member_dir.join("private.json")) {
+                Ok(_) => {
+                    return Err(Error::Invalid(text::saved_copy_refused(
+                        &full,
+                        "private.json",
+                    )));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return open_io(&member_dir.join("private.json"), Err(error)),
+            }
+            let unusable = || Error::Invalid(text::saved_copy_unusable(&full));
+            let member = read_member(&member_dir.join("member.json")).map_err(|_| unusable())?;
             if member.slug != slug
                 || voice_core::member::private_state_dir(&member, home)
                     != Some(home.join(".claude/state").join(slug))
             {
-                return Err(Error::Invalid(text::saved_copy_refused(
-                    &repo.full(),
-                    "member.json",
-                )));
+                return Err(unusable());
             }
             voice_core::crew::check_name("name", &member.name)?;
             voice_core::crew::check_name("principal", &member.principal)?;
@@ -512,6 +527,9 @@ impl Saver<'_> {
         })();
         if result.is_err() {
             let _ = fs::remove_dir_all(&dir);
+            if made_crew {
+                let _ = fs::remove_dir(&crew);
+            }
         }
         result
     }
@@ -537,7 +555,14 @@ fn opening_entries(
         &["-r", "-z", "--full-tree", "refs/heads/main", "--", &prefix],
     )?;
     let full = repo.full();
-    let refused = |rel: &str| Error::Invalid(text::saved_copy_refused(&full, rel));
+    let refused = |rel: &str| {
+        let shown = if rel.split('/').all(opening_part) {
+            rel
+        } else {
+            "a file with an unusual name"
+        };
+        Error::Invalid(text::saved_copy_refused(&full, shown))
+    };
     let large = || Error::Invalid(text::saved_copy_large(&full));
     let mut entries = Vec::new();
     let mut total = 0u64;
@@ -548,23 +573,32 @@ fn opening_entries(
         if count > 2000 {
             return Err(large());
         }
-        let entry = std::str::from_utf8(entry).map_err(|_| refused("unsupported file name"))?;
+        let entry =
+            std::str::from_utf8(entry).map_err(|_| refused("a file with an unusual name"))?;
         let (head, path) = entry
             .split_once('\t')
-            .ok_or_else(|| refused("unsupported file name"))?;
+            .ok_or_else(|| refused("a file with an unusual name"))?;
         let rel = path.strip_prefix(&prefix).ok_or_else(|| refused(path))?;
         let mut head = head.split(' ');
         let mode = head.next().unwrap_or("");
         let kind = head.next().unwrap_or("");
         let oid = head.next().unwrap_or("");
+        if rel.split('/').any(|part| part == ".DS_Store") {
+            continue;
+        }
         if !matches!(mode, "100644" | "100755")
             || kind != "blob"
-            || rel.split('/').any(|part| matches!(part, "" | "." | ".."))
-            || rel.contains('\\')
-            || rel.chars().any(char::is_control)
+            || rel.split('/').any(|part| !opening_part(part))
             || voice_core::deny::DenyList::builtin().denied_relative(Path::new(rel))
         {
             return Err(refused(rel));
+        }
+        // Refuse ASCII case aliases even on a case-sensitive staging disk.
+        if rel
+            .split('/')
+            .any(|part| part != "private.json" && part.eq_ignore_ascii_case("private.json"))
+        {
+            return Err(refused("private.json"));
         }
         let size: u64 = git
             .run(Env::Own, git_dir, "cat-file", &["-s", oid])?
@@ -587,7 +621,7 @@ fn opening_entries(
         entries.push((rel.to_owned(), oid.to_owned(), mode == "100755"));
     }
     if !has_member {
-        return Err(refused("member.json"));
+        return Err(Error::Invalid(text::saved_copy_missing(&full, slug)));
     }
     Ok(entries)
 }
@@ -676,6 +710,8 @@ pub fn place_opened(staged: &Staged, home: &Path, repo: &RepoRef) -> Result<Memb
     }
     let state = home.join(".claude/state").join(slug);
     plain_parents(home, &state)?;
+    let state_parent = state.parent().expect("state parent");
+    let made_state_parent = fs::symlink_metadata(state_parent).is_err();
     let made_state = fs::symlink_metadata(&state).is_err();
     let result = (|| {
         crate::record::create_state(&state)?;
@@ -715,8 +751,51 @@ pub fn place_opened(staged: &Staged, home: &Path, repo: &RepoRef) -> Result<Memb
         let _ = fs::remove_dir(&staged.dir);
         MemberPaths::load(&member_dir.join("member.json"), home)
     })();
-    if result.is_err() && made_state {
-        let _ = fs::remove_dir(&state);
+    if result.is_err() {
+        if made_state {
+            let _ = fs::remove_dir(&state);
+        }
+        if made_state_parent {
+            let _ = fs::remove_dir(state_parent);
+        }
     }
     result
+}
+
+pub(crate) fn opening_part(part: &str) -> bool {
+    (1..=255).contains(&part.len())
+        && !part.starts_with(['.', ' '])
+        && !part.ends_with(['.', ' '])
+        && part
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._- ".contains(&b))
+}
+#[cfg(test)]
+mod opening_tests {
+    use super::opening_part;
+    #[test]
+    fn only_plain_ascii_path_parts_are_opened() {
+        for part in [
+            ".git",
+            ".GIT",
+            ".hidden",
+            "a.",
+            "a ",
+            " a",
+            "é.md",
+            "private.jſon",
+            "bad\n\x1b",
+            "a/b",
+            "a\\b",
+            "",
+            ".",
+            "..",
+        ] {
+            assert!(!opening_part(part), "{part:?}");
+        }
+        assert!(!opening_part(&"a".repeat(256)));
+        for part in ["notes", "identity.md", "A file_1-2.md", &"a".repeat(255)] {
+            assert!(opening_part(part), "{part:?}");
+        }
+    }
 }

@@ -64,9 +64,30 @@ fn opening_sentences_are_recognized() {
         text::saved_copy_refused("rowan/wren-assistant", "link"),
         text::saved_copy_private("rowan/wren-assistant", "identity.md:1"),
         text::saved_copy_large("rowan/wren-assistant"),
+        text::saved_copy_missing("rowan/wren-assistant", "wren"),
+        text::saved_copy_unusable("rowan/wren-assistant"),
         text::state_in_use("wren"),
     ] {
         assert!(text::is_said(&sentence), "{sentence}");
     }
     assert!(!text::is_said("raw invented-token error"));
+}
+
+#[test]
+fn computer_names_refuse_invisible_marks() {
+    for c in [
+        '\u{202e}', '\u{061c}', '\u{200b}', '\u{200f}', '\u{202a}', '\u{2060}', '\u{2069}',
+        '\u{feff}',
+    ] {
+        assert!(!valid_computer_name(&format!("Studio{c}")), "{c:?}");
+    }
+}
+#[test]
+fn occupied_state_explains_moving_the_folder() {
+    let sentence = voice_save::text::state_in_use("wren");
+    assert_eq!(
+        sentence,
+        "~/.claude/state/wren/ already holds a saved copy's files, so Voice opened nothing. Move that folder somewhere else, then try again."
+    );
+    assert!(voice_save::text::is_said(&sentence));
 }

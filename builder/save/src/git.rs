@@ -495,7 +495,11 @@ fn auth_header(command: &mut Command, token: Option<&Secret>) -> Option<String> 
 }
 
 pub fn fetch_main(git: &Git, git_dir: &Path, token: &Secret) -> Result<()> {
-    let mut command = git.repo_command(Env::Own, git_dir, "fetch");
+    let mut command = git.command(Env::Own);
+    command
+        .args(["-c", "transfer.fsckObjects=true"])
+        .arg(format!("--git-dir={}", git_dir.display()))
+        .arg("fetch");
     command.args([
         "--no-tags",
         "--no-recurse-submodules",

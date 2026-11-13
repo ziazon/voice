@@ -190,7 +190,7 @@ import os, sys, json, base64
 env_names = sorted(name for name in os.environ if name != '__CF_USER_TEXT_ENCODING')
 with open({}, 'a', encoding='utf-8') as log:
     log.write(json.dumps({{'argv': sys.argv[1:], 'env': env_names}}) + '\n')
-if {} and 'push' in sys.argv[1:]:
+if {} and any(verb in sys.argv[1:] for verb in ('push', 'fetch')):
     header = os.environ.get('GIT_CONFIG_VALUE_0', '')
     credential = header.rsplit(' ', 1)[-1]
     token = base64.b64decode(credential).decode().split(':', 1)[1]

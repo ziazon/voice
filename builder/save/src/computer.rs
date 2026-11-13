@@ -6,7 +6,7 @@ pub fn valid_computer_name(value: &str) -> bool {
     (1..=64).contains(&value.chars().count())
         && !value
             .chars()
-            .any(|c| c.is_control() || "@<>{}[]()#\\`\"$".contains(c))
+            .any(|c| c.is_control() || matches!(c, '\u{061c}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}') || "@<>{}[]()#\\`\"$".contains(c))
         && !value.contains(['\n', '\r'])
 }
 pub fn name() -> Option<String> {
