@@ -77,6 +77,19 @@ impl Cap {
             call_usd: if call_usd == 0.0 { 0.0 } else { call_usd },
         })
     }
+    /// The cap for this sign-in. Under a Claude subscription there is no daily limit (V-Q16): Voice
+    /// stops for the day only when Claude Code says the plan is nearly used up. The step limit stays,
+    /// as the only stop inside a call.
+    pub fn for_sign_in(self, subscription: bool) -> Cap {
+        if subscription {
+            Cap {
+                daily_usd: 0.0,
+                ..self
+            }
+        } else {
+            self
+        }
+    }
     pub fn daily_limit(&self) -> Option<f64> {
         (self.daily_usd > 0.0).then_some(self.daily_usd)
     }

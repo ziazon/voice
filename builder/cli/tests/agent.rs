@@ -751,3 +751,86 @@ fn subscription_spend_reports_todays_calls_and_tokens() {
         "Today, 2 calls to Claude and 850 tokens, on your Claude subscription.\n"
     );
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_limits_show_and_save_console_amounts() {
+    for method in ["claude.ai", "api_key"] {
+        let f = Fixture::new();
+        f.stub(&format!(r#"case "$1" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{{"loggedIn":true,"authMethod":"{method}"}}';; esac"#));
+        let member = f.member.to_str().unwrap();
+        let out = f.run(&["limit", "show", member]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        let expected = if method == "claude.ai" {
+            "Signed in with your Claude subscription, Voice has no daily limit: it stops for the day when Claude Code says your plan is nearly used up, and leaves the rest for you. The daily limit is for an Anthropic Console sign-in only."
+        } else {
+            "Daily limit: about $50.00 a day, and at most $5.00 for one step, as Claude Code estimates it."
+        };
+        assert_eq!(text(&out.stdout), format!("{expected}\n"));
+        drop(Session::open(&f.home, "wren", Cap::default()).unwrap());
+        let out = f.run(&[
+            "limit",
+            "set",
+            member,
+            "--daily-usd",
+            "20",
+            "--step-usd",
+            "2",
+        ]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        let expected = if method == "claude.ai" {
+            "Saved for an Anthropic Console sign-in. Signed in with your Claude subscription, Voice has no daily limit: it stops for the day when Claude Code says your plan is nearly used up, and leaves the rest for you."
+        } else {
+            "Daily limit: about $20.00 a day, and at most $2.00 for one step, as Claude Code estimates it."
+        };
+        assert_eq!(text(&out.stdout), format!("{expected}\n"));
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(f.state().join("limit.json")).unwrap()).unwrap();
+        assert_eq!(saved, serde_json::json!({"daily_usd":20.0,"call_usd":2.0}));
+    }
+}
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_interview_ignores_daily_limit_keeps_step_budget() {
+    for method in ["claude.ai", "api_key"] {
+        let f = Fixture::new();
+        let member = f.member.to_str().unwrap();
+        {
+            let _session = Session::open(&f.home, "wren", Cap::default()).unwrap();
+            Cap::new(1.0, 0.5).unwrap().save(&f.home, "wren").unwrap();
+        }
+        voice_ingest::private::write_private(
+            &f.home,
+            "wren",
+            "runs.jsonl",
+            format!("{{\"day\":\"{}\",\"cost_usd\":2}}\n", day_of(&f.home)).as_bytes(),
+        )
+        .unwrap();
+        let kinds = ["scope", "sequencing", "methods", "verification", "go-no-go"];
+        let questions: Vec<_> = (1..=20).map(|n| serde_json::json!({"n":n,"header":kinds[(n-1)%5],"question":format!("Situation {n}: what first?"),"multiSelect":false,"recommended":"A","options":[{"label":"Cut it","description":"Less work"},{"label":"Keep it","description":"More work"}]})).collect();
+        fs::write(f.bin.join("reply"), serde_json::json!({"type":"result","subtype":"success","is_error":false,"total_cost_usd":0.02,"structured_output":{"questions":questions}}).to_string()).unwrap();
+        f.stub(&format!(
+            r#"here="${{0%/*}}"
+case "$1" in
+--version) echo '2.1.292 (Claude Code)';;
+auth) echo '{{"loggedIn":true,"authMethod":"{method}"}}';;
+*) printf '%s\n' "$@" > "$here/argv"; cat > "$here/stdin"; cat "$here/reply";;
+esac"#
+        ));
+        let out = f.run(&["interview", "draft", member, "--daily-cap-usd", "1"]);
+        if method == "claude.ai" {
+            assert!(out.status.success(), "{}", text(&out.stderr));
+            let argv = fs::read_to_string(f.bin.join("argv")).unwrap();
+            let args: Vec<_> = argv.lines().collect();
+            let at = args.iter().position(|s| *s == "--max-budget-usd").unwrap();
+            assert_eq!(args[at + 1], "0.50");
+        } else {
+            assert_eq!(
+                text(&out.stderr),
+                format!("voice: {}\n", voice_agent::text::cap_reached(2.0, 1.0))
+            );
+            assert!(!f.bin.join("argv").exists());
+        }
+    }
+}

@@ -433,7 +433,7 @@ enum Command {
         corpus: String,
         #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
         /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
@@ -470,7 +470,7 @@ enum Command {
     /// Show what building this assistant has spent today.
     Spend {
         member_dir: PathBuf,
-        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
     },
@@ -695,7 +695,7 @@ enum LimitCommand {
     /// Set the daily limit and the most one step may use; 0 for no limit in either field.
     Set {
         member_dir: PathBuf,
-        /// The daily limit in US dollars; 0 for no limit.
+        /// The daily limit in US dollars; 0 for no limit. Anthropic Console sign-in only.
         #[arg(long)]
         daily_usd: f64,
         /// The most one step may use in US dollars; 0 for no limit.
@@ -712,7 +712,7 @@ enum RefreshCommand {
         /// The Claude model to draft with.
         #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
         /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
@@ -728,7 +728,7 @@ enum RefreshCommand {
         /// The Claude model to test with.
         #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
         /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
@@ -782,7 +782,7 @@ enum InterviewCommand {
         per_kind: u8,
         #[arg(long, default_value = voice_agent::claude::DEFAULT_MODEL)]
         model: String,
-        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50).
+        /// The daily limit, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $50). Anthropic Console sign-in only.
         #[arg(long)]
         daily_cap_usd: Option<f64>,
         /// The most one call may spend, in US dollars as Claude Code estimates them; 0 for no limit (default: the limit set for this assistant, else $5).
@@ -1720,7 +1720,12 @@ fn cap_for(
 fn limit_show(member_dir: PathBuf) -> Result<()> {
     use voice_agent::{ledger::Cap, text};
     let (member, home) = member_and_home(&member_dir)?;
-    println!("{}", text::limit(Cap::load(&home, &member.slug)?));
+    let cap = Cap::load(&home, &member.slug)?;
+    if signed_in_with_subscription(&home) {
+        println!("{}", text::LIMIT_SUBSCRIPTION);
+    } else {
+        println!("{}", text::limit(cap));
+    }
     Ok(())
 }
 fn limit_set(member_dir: PathBuf, daily_usd: f64, step_usd: f64) -> Result<()> {
@@ -1736,7 +1741,11 @@ fn limit_set(member_dir: PathBuf, daily_usd: f64, step_usd: f64) -> Result<()> {
         },
     )?;
     cap.save(&home, &member.slug)?;
-    println!("{}", text::limit(cap));
+    if signed_in_with_subscription(&home) {
+        println!("{}", text::LIMIT_SAVED_SUBSCRIPTION);
+    } else {
+        println!("{}", text::limit(cap));
+    }
     Ok(())
 }
 fn closing_spend(session: &voice_agent::ledger::Session, subscription: bool) -> Result<String> {
@@ -1751,16 +1760,21 @@ fn closing_spend(session: &voice_agent::ledger::Session, subscription: bool) -> 
     }
 }
 
+fn signed_in_with_subscription(home: &Path) -> bool {
+    use voice_agent::claude;
+    claude::SUBSCRIPTION_OFFERED
+        && claude::find(std::env::var_os("PATH").as_deref(), home)
+            .and_then(|claude| claude.status(home))
+            .is_ok_and(|status| status.subscription)
+}
+
 fn spend(member_dir: PathBuf, daily_cap_usd: Option<f64>) -> Result<()> {
-    use voice_agent::{claude, ledger::Session};
+    use voice_agent::ledger::Session;
     let home = home()?;
     let member = checked_member(&member_dir, &home)?;
     let cap = cap_for(&home, &member.slug, daily_cap_usd, None)?;
-    let session = Session::open(&home, &member.slug, cap)?;
-    let subscription = claude::SUBSCRIPTION_OFFERED
-        && claude::find(std::env::var_os("PATH").as_deref(), &home)
-            .and_then(|claude| claude.status(&home))
-            .is_ok_and(|status| status.subscription);
+    let subscription = signed_in_with_subscription(&home);
+    let session = Session::open(&home, &member.slug, cap.for_sign_in(subscription))?;
     println!("{}", closing_spend(&session, subscription)?);
     Ok(())
 }
@@ -1784,8 +1798,8 @@ fn build(member_dir: PathBuf, args: BuildArgs) -> Result<()> {
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member)?,
     );
-    let session =
-        Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
+    let session = Session::open_existing(&home, &member.slug, cap.for_sign_in(ready.subscription))
+        .map_err(|error| match error {
             Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
                 nothing_yet(&member.slug)
             }
@@ -1946,14 +1960,16 @@ fn interview_draft(member_dir: PathBuf, args: DraftArgs) -> Result<()> {
         Ceilings::for_member(&member)?,
     );
     let session = if existed {
-        Session::open_existing(&home, &member.slug, cap).map_err(|error| match error {
-            Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
-                nothing_yet(&member.slug)
-            }
-            error => error,
-        })?
+        Session::open_existing(&home, &member.slug, cap.for_sign_in(ready.subscription)).map_err(
+            |error| match error {
+                Error::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+                    nothing_yet(&member.slug)
+                }
+                error => error,
+            },
+        )?
     } else {
-        Session::open(&home, &member.slug, cap)?
+        Session::open(&home, &member.slug, cap.for_sign_in(ready.subscription))?
     };
     let DraftPlan {
         answered,
@@ -2069,7 +2085,7 @@ fn refresh_propose(
         Ceilings::for_member(&member)?,
     );
     let store = Store::open(&home, &member)?;
-    let session = Session::open(&home, &member.slug, cap)?;
+    let session = Session::open(&home, &member.slug, cap.for_sign_in(ready.subscription))?;
     match refresh::propose(
         &guard,
         &session,
@@ -2119,7 +2135,7 @@ fn refresh_apply(
         Ceilings::for_member(&member)?,
     );
     let store = Store::open(&home, &member)?;
-    let session = Session::open(&home, &member.slug, cap)?;
+    let session = Session::open(&home, &member.slug, cap.for_sign_in(ready.subscription))?;
     let Measured {
         proposal,
         measurement,

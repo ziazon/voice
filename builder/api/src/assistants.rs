@@ -671,6 +671,7 @@ pub fn show_assistant_folder(request: dto::SlugRequest) -> Result<()> {
 }
 fn ready_status(status: claude::Status) -> dto::ClaudeStatus {
     dto::ClaudeStatus {
+        subscription: status.subscription,
         ready: true,
         message: text::ready(&status.version),
         note: None,
@@ -680,6 +681,7 @@ fn ready_status(status: claude::Status) -> dto::ClaudeStatus {
 }
 fn subscription_refused_status() -> dto::ClaudeStatus {
     dto::ClaudeStatus {
+        subscription: false,
         ready: false,
         message: text::SUBSCRIPTION_REFUSED.into(),
         note: None,
@@ -689,6 +691,7 @@ fn subscription_refused_status() -> dto::ClaudeStatus {
 }
 fn unavailable_status(error: Error) -> dto::ClaudeStatus {
     dto::ClaudeStatus {
+        subscription: false,
         ready: false,
         message: claude_message(error),
         note: None,
@@ -709,6 +712,7 @@ pub fn claude_check_in(
         Ok(status) if status.signed_in => ready_status(status),
         Ok(status) if status.subscription_refused => subscription_refused_status(),
         Ok(status) => dto::ClaudeStatus {
+            subscription: false,
             ready: false,
             message: text::signed_out_at(
                 &status.version,
@@ -827,6 +831,7 @@ impl Drop for ClaudeSignOutGuard<'_> {
 }
 fn stopped_sign_in_status() -> dto::ClaudeStatus {
     dto::ClaudeStatus {
+        subscription: false,
         ready: false,
         message: text::SIGN_IN_STOPPED.into(),
         note: None,
@@ -853,6 +858,7 @@ pub fn claude_sign_in_in(
         }
         if request.subscription && !claude::SUBSCRIPTION_OFFERED {
             return Ok(dto::ClaudeStatus {
+                subscription: false,
                 ready: false,
                 message: text::SUBSCRIPTION_NOT_OFFERED.into(),
                 note: None,
@@ -895,6 +901,7 @@ pub fn claude_sign_in_in(
         }
     }
     Ok(dto::ClaudeStatus {
+        subscription: false,
         ready: false,
         message: result
             .err()

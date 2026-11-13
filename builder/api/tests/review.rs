@@ -705,3 +705,34 @@ fn subscription_refresh_reports_usage_in_both_flows() {
         Some("Today, 3 calls to Claude and about 3 thousand tokens, on your Claude subscription.")
     );
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_refresh_ignores_daily_limit() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    for method in ["claude.ai", "api_key"] {
+        let h = Home::new(true);
+        h.built();
+        h.keep();
+        h.stub(false, |s| s.replace("api_key", method));
+        voice_ingest::private::write_private(
+            &h.path,
+            "wren",
+            "limit.json",
+            br#"{"daily_usd":1,"call_usd":0.5}"#,
+        )
+        .unwrap();
+        voice_ingest::private::write_private(&h.path, "wren", "runs.jsonl", format!("{}\n", serde_json::json!({"day":voice_agent::ledger::local_day(std::time::SystemTime::now()),"cost_usd":2})).as_bytes()).unwrap();
+        let result = h.draft();
+        if method == "claude.ai" {
+            result.unwrap();
+            assert_eq!(h.calls(), 1);
+        } else {
+            assert_eq!(
+                result.unwrap_err().message,
+                "Today's spending limit for this assistant is reached: about $2.00 of $1.00, as Claude Code estimates it. Run the build again tomorrow to carry on."
+            );
+            assert_eq!(h.calls(), 0);
+        }
+    }
+}

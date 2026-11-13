@@ -107,6 +107,9 @@ pub struct ExistingAssistant {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ClaudeStatus {
+    /// Claude Code is ready and signed in with a Claude subscription (testers' builds only): the
+    /// screen shows no daily limit and no dollars.
+    pub subscription: bool,
     pub ready: bool,
     pub message: String,
     pub note: Option<String>,

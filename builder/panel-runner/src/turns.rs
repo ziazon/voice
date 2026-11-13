@@ -64,7 +64,7 @@ impl ClaudeTurns {
         seats: &[String],
     ) -> Result<Self, String> {
         let claude = claude::find_in(home, path, fallbacks).map_err(message)?;
-        claude.check(home).map_err(message)?;
+        let ready = claude.check(home).map_err(message)?;
         let mut sessions = BTreeMap::new();
         let mut ceilings = Vec::new();
         let mut servers = BTreeMap::new();
@@ -82,7 +82,8 @@ impl ClaudeTurns {
                 .map(|server| server.with_timeout(Duration::from_secs(600)));
             servers.insert(seat.clone(), server);
             let cap = Cap::load(home, seat)
-                .map_err(|_| crate::text::assistant_problem(seat, crate::text::BAD_LIMIT))?;
+                .map_err(|_| crate::text::assistant_problem(seat, crate::text::BAD_LIMIT))?
+                .for_sign_in(ready.subscription);
             let session = Session::open_existing(home, seat, cap).map_err(|error| {
                 let reason = if matches!(&error, Error::Invalid(value) if value == voice_ingest::private::BUSY) {
                     crate::text::ASSISTANT_BUSY

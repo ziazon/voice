@@ -245,6 +245,7 @@ fn claude_status_uses_only_safe_messages() {
     assert_eq!(
         claude_check_in(h, Some(std::ffi::OsStr::new("")), &[]).unwrap(),
         ClaudeStatus {
+            subscription: false,
             ready: false,
             message: text::NOT_INSTALLED.into(),
             note: None,
@@ -367,6 +368,7 @@ fn missing_home_claude_check_returns_a_status() {
         assert_eq!(
             claude_check().unwrap(),
             ClaudeStatus {
+                subscription: false,
                 ready: false,
                 message: text::FAILED.into(),
                 note: None,

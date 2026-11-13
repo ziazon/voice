@@ -25,6 +25,7 @@ async function check() {
   } catch (failure) {
     status.value = {
       ready: false,
+      subscription: false,
       message: failureMessage(failure, "Voice couldn't check Claude Code. Close it and open it again."),
       note: null,
       canSignIn: false,
@@ -43,6 +44,7 @@ async function signIn(subscription: boolean) {
   } catch (failure) {
     status.value = {
       ready: false,
+      subscription: false,
       message: failureMessage(failure, "Voice couldn't start signing in to Claude. Close it and open it again."),
       note: null,
       canSignIn: true,
@@ -176,31 +178,34 @@ onMounted(loadLimit)
   <section class="card mt-3">
     <div class="card-body p-5">
       <h2 class="mb-3">How much it may use</h2>
-      <p>The amounts are Claude Code's own estimates.</p>
-      <div v-if="limitError" class="alert alert-danger" role="alert">{{ limitError }}</div>
-      <template v-if="limit">
-        <div class="row g-3">
-          <div class="col-md-6">
-            <label for="limit-day" class="form-label">Stop for the day at about</label>
-            <div class="input-group">
-              <span class="input-group-text">$</span>
-              <input id="limit-day" v-model="day" class="form-control" :class="{ 'is-invalid': !!dayProblem }" :aria-invalid="!!dayProblem" aria-describedby="limit-day-problem" inputmode="decimal" :disabled="loadingLimit || savingLimit" />
-              <div id="limit-day-problem" class="invalid-feedback">{{ dayProblem }}</div>
+      <p v-if="status?.ready && status.subscription">Signed in with your Claude subscription, Voice has no daily limit: it stops for the day when Claude Code says your plan is nearly used up, and leaves the rest for you. The daily limit is for an Anthropic Console sign-in only.</p>
+      <template v-else>
+        <p>The amounts are Claude Code's own estimates.</p>
+        <div v-if="limitError" class="alert alert-danger" role="alert">{{ limitError }}</div>
+        <template v-if="limit && status && !loading && !signingIn">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="limit-day" class="form-label">Stop for the day at about</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input id="limit-day" v-model="day" class="form-control" :class="{ 'is-invalid': !!dayProblem }" :aria-invalid="!!dayProblem" aria-describedby="limit-day-problem" inputmode="decimal" :disabled="loadingLimit || savingLimit" />
+                <div id="limit-day-problem" class="invalid-feedback">{{ dayProblem }}</div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label for="limit-step" class="form-label">Most one step may use</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input id="limit-step" v-model="step" class="form-control" :class="{ 'is-invalid': !!stepProblem }" :aria-invalid="!!stepProblem" aria-describedby="limit-step-problem" inputmode="decimal" :disabled="loadingLimit || savingLimit" />
+                <div id="limit-step-problem" class="invalid-feedback">{{ stepProblem }}</div>
+              </div>
             </div>
           </div>
-          <div class="col-md-6">
-            <label for="limit-step" class="form-label">Most one step may use</label>
-            <div class="input-group">
-              <span class="input-group-text">$</span>
-              <input id="limit-step" v-model="step" class="form-control" :class="{ 'is-invalid': !!stepProblem }" :aria-invalid="!!stepProblem" aria-describedby="limit-step-problem" inputmode="decimal" :disabled="loadingLimit || savingLimit" />
-              <div id="limit-step-problem" class="invalid-feedback">{{ stepProblem }}</div>
-            </div>
-          </div>
-        </div>
-        <p class="mt-3">Enter 0 in either box for no limit. With no limit for one step, the day's last step may go a little over.</p>
-        <p class="mt-3">If the build reaches the limit, it carries on tomorrow. Voice checks the limit before every step, so it stops before it goes over.</p>
-        <button type="button" class="btn btn-primary" :disabled="loadingLimit || savingLimit || !!dayProblem || !!stepProblem" @click="saveLimit">Save the limit</button>
-        <p v-if="savedMessage" class="mt-3 mb-0" role="status">{{ savedMessage }}</p>
+          <p class="mt-3">Enter 0 in either box for no limit. With no limit for one step, the day's last step may go a little over.</p>
+          <p class="mt-3">If the build reaches the limit, it carries on tomorrow. Voice checks the limit before every step, so it stops before it goes over.</p>
+          <button type="button" class="btn btn-primary" :disabled="loadingLimit || savingLimit || !!dayProblem || !!stepProblem" @click="saveLimit">Save the limit</button>
+          <p v-if="savedMessage" class="mt-3 mb-0" role="status">{{ savedMessage }}</p>
+        </template>
       </template>
     </div>
   </section>

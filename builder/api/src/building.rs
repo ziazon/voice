@@ -102,8 +102,10 @@ impl Drop for Running<'_> {
             .remove(&self.slug);
     }
 }
-pub(crate) fn open(home: &Path, slug: &str) -> Result<Session> {
-    let cap = Cap::load(home, slug).map_err(|_| failure(LIMIT_DAMAGED))?;
+pub(crate) fn open(home: &Path, slug: &str, subscription: bool) -> Result<Session> {
+    let cap = Cap::load(home, slug)
+        .map_err(|_| failure(LIMIT_DAMAGED))?
+        .for_sign_in(subscription);
     open_with(home, slug, cap)
 }
 fn open_with(home: &Path, slug: &str, cap: Cap) -> Result<Session> {
@@ -187,7 +189,7 @@ pub fn build_assistant_in(
             Cap::new(0.0, 0.0).map_err(|_| failure(LIMIT_BAD))?,
         )?
     } else {
-        open(home, &request.slug)?
+        open(home, &request.slug, ready.subscription)?
     };
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
@@ -270,7 +272,7 @@ pub fn spend_today_in(
         && claude::find_in(home, path, fallbacks)
             .and_then(|claude| claude.status(home))
             .is_ok_and(|status| status.subscription);
-    spend(&open(home, &request.slug)?, subscription)
+    spend(&open(home, &request.slug, subscription)?, subscription)
 }
 fn object(home: &Path, slug: &str, name: &str) -> Option<Map<String, Value>> {
     let bytes = private::read_private_optional(home, slug, name).ok()??;
@@ -431,7 +433,7 @@ pub fn draft_interview_in(
     can_draft(home, &member, request.replace)?;
     let book = book(&member).map_err(|_| failure(SETTINGS))?;
     let claude = claude::find_in(home, path, fallbacks).map_err(|e| failure(&claude_message(e)))?;
-    claude
+    let ready = claude
         .check(home)
         .map_err(|e| failure(&claude_message(e)))?;
     let server = SelfHosted::load(home, &request.slug).map_err(|_| failure(SETTINGS))?;
@@ -439,7 +441,7 @@ pub fn draft_interview_in(
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member).map_err(|_| failure(SETTINGS))?,
     );
-    let session = open(home, &request.slug)?;
+    let session = open(home, &request.slug, ready.subscription)?;
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
     }

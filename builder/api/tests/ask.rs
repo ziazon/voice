@@ -548,3 +548,49 @@ fn model_server_gets_calendar_without_even_checking_claude() {
     assert_eq!(ledger[0]["step"], "ask");
     assert_eq!(ledger[0]["agent"], "self-hosted");
 }
+
+#[cfg(feature = "claude-subscription")]
+#[test]
+fn subscription_ask_ignores_daily_limit() {
+    let _case = CASES.lock().unwrap_or_else(|p| p.into_inner());
+    for method in ["claude.ai", "api_key"] {
+        let h = Home::new();
+        let program = h.bin.join("claude");
+        fs::write(
+            &program,
+            fs::read_to_string(&program)
+                .unwrap()
+                .replace("api_key", method),
+        )
+        .unwrap();
+        private::write_private(
+            &h.path,
+            "wren",
+            "limit.json",
+            br#"{"daily_usd":1,"call_usd":0.5}"#,
+        )
+        .unwrap();
+        private::write_private(
+            &h.path,
+            "wren",
+            "runs.jsonl",
+            format!(
+                "{}\n",
+                json!({"day":local_day(SystemTime::now()),"cost_usd":2})
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        let result = h.no_read(h.request(&[]));
+        if method == "claude.ai" {
+            result.unwrap();
+            assert!(h.bin.join("stdin").exists());
+        } else {
+            assert_eq!(
+                result.unwrap_err().message,
+                "Today's spending limit for this assistant is reached: about $2.00 of $1.00, as Claude Code estimates it. Run the build again tomorrow to carry on."
+            );
+            assert!(!h.bin.join("stdin").exists());
+        }
+    }
+}

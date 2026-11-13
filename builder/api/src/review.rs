@@ -267,7 +267,7 @@ pub fn draft_refresh_in(
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member).map_err(|_| failure(REVIEW_SETTINGS))?,
     );
-    let session = open(home, &request.slug)?;
+    let session = open(home, &request.slug, ready.subscription)?;
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
     }
@@ -354,7 +354,7 @@ pub fn apply_refresh_in(
         guard::providers(&claude, server.as_ref()),
         Ceilings::for_member(&member).map_err(|_| failure(REVIEW_SETTINGS))?,
     );
-    let session = open(home, &request.slug)?;
+    let session = open(home, &request.slug, ready.subscription)?;
     if !crate::read_consent(home, &request.slug).agreed {
         return Err(failure(PERMISSION));
     }

@@ -412,3 +412,50 @@ fn used_today_rejects_the_same_damaged_lines_as_spend() {
         );
     }
 }
+
+#[test]
+fn subscription_cap_keeps_only_the_step_limit() {
+    let cap = Cap::new(50.0, 5.0).unwrap();
+    let subscription = cap.for_sign_in(true);
+    assert_eq!(subscription.daily_limit(), None);
+    assert_eq!(subscription.call_limit(), Some(5.0));
+    assert_eq!(subscription.budget_for(1_000.0), Ok(Some(5.0)));
+    assert_eq!(cap.for_sign_in(false), cap);
+    assert_eq!(
+        Cap::new(50.0, 0.0)
+            .unwrap()
+            .for_sign_in(true)
+            .budget_for(49.999),
+        Ok(None)
+    );
+    let unlimited = Cap::new(0.0, 0.0).unwrap();
+    assert_eq!(unlimited.for_sign_in(true), unlimited);
+}
+
+#[test]
+fn subscription_session_runs_past_daily_limit_with_step_budget() {
+    for subscription in [true, false] {
+        let home = Scratch::new("subscription-cap");
+        seed_ledger(&home.0, &[spent_line(&today(), 2.0)]);
+        let stub = Stub::replying(&ok_reply(&json!({"labels":[]})), 0);
+        let session = voice_agent::ledger::Session::open_with_clock(
+            &home.0,
+            "wren",
+            Cap::new(1.0, 0.5).unwrap().for_sign_in(subscription),
+            fixed_clock(),
+        )
+        .unwrap();
+        let schema = schema();
+        let result = Guard::new(vec![&stub.claude()], Ceilings::defaults())
+            .call(&session, &call("records", &schema));
+        if subscription {
+            result.unwrap();
+            let argv = stub.argv(0).unwrap();
+            let at = argv.iter().position(|s| s == "--max-budget-usd").unwrap();
+            assert_eq!(argv[at + 1], "0.50");
+        } else {
+            assert_eq!(result.unwrap_err().to_string(), text::cap_reached(2.0, 1.0));
+            assert!(!stub.ran());
+        }
+    }
+}

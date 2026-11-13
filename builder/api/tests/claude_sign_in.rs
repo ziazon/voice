@@ -559,3 +559,35 @@ fn failed_sign_out_releases_the_marker_for_sign_in_and_sign_out() {
     stub.program("exit 1");
     assert!(!stub.sign_out(&state).unwrap().ready);
 }
+
+#[test]
+fn subscription_status_is_only_true_for_ready_subscription() {
+    for method in ["claude.ai", "api_key"] {
+        let stub = Stub::new("");
+        stub.ready();
+        let program = stub.0.join("claude");
+        fs::write(
+            &program,
+            fs::read_to_string(&program)
+                .unwrap()
+                .replace("api_key", method),
+        )
+        .unwrap();
+        let status = claude_check_in(&stub.0, None, std::slice::from_ref(&program)).unwrap();
+        assert_eq!(
+            status.subscription,
+            method == "claude.ai" && cfg!(feature = "claude-subscription")
+        );
+        fs::remove_file(stub.0.join("ready")).unwrap();
+        let status = claude_check_in(&stub.0, None, &[program]).unwrap();
+        assert!(!status.ready);
+        assert!(!status.subscription);
+    }
+    let stub = Stub::new("");
+    fs::remove_file(stub.0.join("claude")).unwrap();
+    assert!(
+        !claude_check_in(&stub.0, Some(std::ffi::OsStr::new("")), &[])
+            .unwrap()
+            .subscription
+    );
+}

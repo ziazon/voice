@@ -77,11 +77,14 @@ pub fn ask_in(
         Error::Invalid(message) => failure(&message),
         _ => failure(text::FAILED),
     })?;
-    if provider.id() == claude::AGENT_ID {
+    let subscription = if provider.id() == claude::AGENT_ID {
         claude
             .check(home)
-            .map_err(|e| failure(&claude_message(e)))?;
-    }
+            .map_err(|e| failure(&claude_message(e)))?
+            .subscription
+    } else {
+        false
+    };
     // Read before opening the session, so nothing is spent until every read has worked.
     let mut calendar = None;
     for capability in capabilities {
@@ -89,7 +92,7 @@ pub fn ask_in(
             Capability::CalendarRead => calendar = Some(read_calendar(slug)?),
         }
     }
-    let session = building::open(home, slug)?;
+    let session = building::open(home, slug, subscription)?;
     if !crate::read_consent(home, slug).agreed {
         return Err(failure(history::PERMISSION));
     }

@@ -74,6 +74,9 @@ pub fn limit_damaged(path: &Path) -> String {
         path.display()
     )
 }
+pub const LIMIT_SUBSCRIPTION: &str = "Signed in with your Claude subscription, Voice has no daily limit: it stops for the day when Claude Code says your plan is nearly used up, and leaves the rest for you. The daily limit is for an Anthropic Console sign-in only.";
+pub const LIMIT_SAVED_SUBSCRIPTION: &str = "Saved for an Anthropic Console sign-in. Signed in with your Claude subscription, Voice has no daily limit: it stops for the day when Claude Code says your plan is nearly used up, and leaves the rest for you.";
+
 pub fn limit(cap: crate::ledger::Cap) -> String {
     match (cap.daily_limit(), cap.call_limit()) {
         (Some(daily), Some(call)) => format!(
