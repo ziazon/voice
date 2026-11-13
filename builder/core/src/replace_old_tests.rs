@@ -141,7 +141,7 @@ fn changed_claude_rolls_skill_back_and_discards_backup() {
     let f = Fixture::new();
     f.old_skill();
     fs::write(f.claude(), OLD).unwrap();
-    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {
+    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {}, &|| {
         fs::write(f.claude(), "concurrent edit\n/ari\n").unwrap();
     });
     assert!(matches!(result, Err(Error::Invalid(message)) if message.contains("changed")));
@@ -157,7 +157,7 @@ fn changed_skill_rolls_back_and_discards_backup() {
     let f = Fixture::new();
     f.old_skill();
     fs::write(f.claude(), OLD).unwrap();
-    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {
+    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {}, &|| {
         fs::write(f.skill().join("SKILL.md"), "concurrent skill").unwrap();
     });
     assert!(matches!(result, Err(Error::Invalid(message)) if message.contains("changed")));
@@ -224,6 +224,7 @@ fn stale_lines_refused(changed: &str) {
         &f.places,
         "ari",
         STAMP,
+        &|| {},
         &|| fs::write(f.claude(), changed).unwrap(),
         &|| {},
     );
@@ -268,10 +269,76 @@ fn undeletable_aside_is_a_success_with_verified_backup() {
 }
 
 #[test]
+fn rollback_failure_keeps_backup_and_aside_and_reports_real_stamp() {
+    let f = Fixture::new();
+    f.old_skill();
+    fs::write(f.claude(), "keep\n/ari\n").unwrap();
+    let result = replace_checked(
+        &f.places,
+        "ari",
+        STAMP,
+        &|| {
+            fs::create_dir(f.skill()).unwrap();
+            fs::write(f.skill().join("blocker"), "concurrent skill").unwrap();
+            fs::write(f.claude(), "Keep\n/ari\n").unwrap();
+        },
+        &|| {},
+        &|| {},
+    );
+    let backup = f.places.home.join(".claude/voice-backups/ari").join(STAMP);
+    let aside = f
+        .skill()
+        .with_file_name(format!(".ari.voice-replacing-{STAMP}"));
+    assert!(backup.is_dir());
+    assert!(aside.is_dir());
+    assert_eq!(
+        fs::read(backup.join("skill/SKILL.md")).unwrap(),
+        b"old skill\0\xff"
+    );
+    assert_eq!(
+        fs::read(aside.join("SKILL.md")).unwrap(),
+        b"old skill\0\xff"
+    );
+    assert_eq!(fs::read(backup.join("CLAUDE.md")).unwrap(), b"keep\n/ari\n");
+    assert_eq!(fs::read(f.claude()).unwrap(), b"Keep\n/ari\n");
+    assert_eq!(
+        fs::read(f.skill().join("blocker")).unwrap(),
+        b"concurrent skill"
+    );
+    let Err(Error::Invalid(message)) = result else {
+        panic!("expected rollback failure, got {result:?}");
+    };
+    assert_eq!(
+        message,
+        "Voice couldn't put the older ari skill back. It's at ~/.claude/skills/.ari.voice-replacing-2026-11-12-093000, and a copy is in ~/.claude/voice-backups/ari/2026-11-12-093000/."
+    );
+}
+
+#[test]
 fn rollback_failure_sentence_is_recognized() {
-    assert!(says(
-        "Voice couldn't put the older ari skill back. It's at ~/.claude/skills/.ari.voice-replacing-<stamp>, and a copy is in ~/.claude/voice-backups/ari/<stamp>/."
-    ));
+    for slug in ["ari", "robin-2"] {
+        for stamp in ["2026-11-12-093000", "2025-01-02-235959"] {
+            let sentence = format!(
+                "Voice couldn't put the older {slug} skill back. It's at ~/.claude/skills/.{slug}.voice-replacing-{stamp}, and a copy is in ~/.claude/voice-backups/{slug}/{stamp}/."
+            );
+            assert!(says(&sentence), "rejected {sentence}");
+            for malformed in [
+                "<stamp>",
+                "2026-11-12-09300",
+                "2026-11-12-0930000",
+                "2026/11-12-093000",
+                "2026-11-12-09300x",
+                "2026-11-12-093000-1",
+            ] {
+                assert!(
+                    !says(&sentence.replace(stamp, malformed)),
+                    "accepted {malformed}"
+                );
+            }
+            assert!(!says(&sentence.replacen(stamp, "2024-01-01-000000", 1)));
+            assert!(!says(&sentence.replace(slug, "../ari")));
+        }
+    }
 }
 
 #[test]
@@ -297,7 +364,7 @@ fn failed_replace_removes_only_a_new_empty_backup_parent() {
         if preexisting {
             fs::create_dir_all(&parent).unwrap();
         }
-        let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {
+        let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {}, &|| {
             fs::write(f.skill().join("SKILL.md"), "changed skill").unwrap();
         });
         assert!(matches!(result, Err(Error::Invalid(message)) if message == CHANGED));
@@ -322,7 +389,7 @@ fn changed_unfound_byte_after_copy_refuses_and_preserves_concurrent_edit() {
     let f = Fixture::new();
     f.old_skill();
     fs::write(f.claude(), "keep\n/ari\n").unwrap();
-    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {
+    let result = replace_checked(&f.places, "ari", STAMP, &|| {}, &|| {}, &|| {
         fs::write(f.claude(), "Keep\n/ari\n").unwrap();
     });
     assert!(matches!(result, Err(Error::Invalid(message)) if message == CHANGED));

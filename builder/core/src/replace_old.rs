@@ -16,9 +16,9 @@ pub const NO_OLDER_END: &str = " to replace.";
 pub const ROLLED_BACK_FAILED_START: &str = "Voice couldn't put the older ";
 pub const ROLLED_BACK_FAILED_END: &str = " skill back.";
 
-pub fn rolled_back_failed(slug: &str) -> String {
+pub fn rolled_back_failed(slug: &str, stamp: &str) -> String {
     format!(
-        "{ROLLED_BACK_FAILED_START}{slug}{ROLLED_BACK_FAILED_END} It's at ~/.claude/skills/.{slug}.voice-replacing-<stamp>, and a copy is in ~/.claude/voice-backups/{slug}/<stamp>/."
+        "{ROLLED_BACK_FAILED_START}{slug}{ROLLED_BACK_FAILED_END} It's at ~/.claude/skills/.{slug}.voice-replacing-{stamp}, and a copy is in ~/.claude/voice-backups/{slug}/{stamp}/."
     )
 }
 
@@ -26,8 +26,15 @@ pub fn says(message: &str) -> bool {
     message
         .strip_prefix(ROLLED_BACK_FAILED_START)
         .and_then(|rest| rest.split_once(ROLLED_BACK_FAILED_END))
-        .is_some_and(|(slug, _)| {
-            block::validate_id(slug).is_ok() && message == rolled_back_failed(slug)
+        .is_some_and(|(slug, rest)| {
+            let prefix = format!(" It's at ~/.claude/skills/.{slug}.voice-replacing-");
+            rest.strip_prefix(&prefix)
+                .and_then(|rest| rest.split_once(", and a copy is in "))
+                .is_some_and(|(stamp, _)| {
+                    block::validate_id(slug).is_ok()
+                        && backup::valid_stamp(stamp)
+                        && message == rolled_back_failed(slug, stamp)
+                })
         })
         || matches!(message, SKILL_NOT_FOLDER | CHANGED)
         || message
@@ -84,6 +91,8 @@ pub fn replace(places: &install::Places, slug: &str, stamp: &str) -> Result<Repl
         stamp,
         #[cfg(test)]
         &|| {},
+        #[cfg(test)]
+        &|| {},
         &|| {},
     )
 }
@@ -92,6 +101,7 @@ fn replace_checked(
     places: &install::Places,
     slug: &str,
     stamp: &str,
+    #[cfg(test)] after_rename: &dyn Fn(),
     #[cfg(test)] before_backup: &dyn Fn(),
     after_copy: &dyn Fn(),
 ) -> Result<Replaced> {
@@ -150,6 +160,8 @@ fn replace_checked(
         if let (Some(skill), Some(aside)) = (&found.skill, &aside) {
             io(skill, fs::rename(skill, aside))?;
             moved = true;
+            #[cfg(test)]
+            after_rename();
             backup::verify_entry(aside, &backup.join("skill"))?;
         }
         let mut journal = Journal::default();
@@ -191,7 +203,7 @@ fn replace_checked(
         if moved {
             let skill = found.skill.as_ref().expect("moved skill exists");
             if fs::rename(aside.as_ref().expect("moved skill has aside"), skill).is_err() {
-                return Err(Error::Invalid(rolled_back_failed(slug)));
+                return Err(Error::Invalid(rolled_back_failed(slug, stamp)));
             }
         }
         io(&backup, fs::remove_dir_all(&backup))?;

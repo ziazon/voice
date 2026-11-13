@@ -36,19 +36,22 @@ pub struct Item<'a> {
     pub follow: bool,
 }
 
-pub fn back_up(home: &Path, slug: &str, stamp: &str, items: &[Item<'_>]) -> Result<PathBuf> {
-    if crew::slugify(slug).as_deref() != Some(slug) {
-        return Err(Error::Invalid("invalid assistant slug".into()));
-    }
-    if stamp.len() != 17
-        || !stamp.bytes().enumerate().all(|(n, b)| {
+pub(crate) fn valid_stamp(stamp: &str) -> bool {
+    stamp.len() == 17
+        && stamp.bytes().enumerate().all(|(n, b)| {
             if matches!(n, 4 | 7 | 10) {
                 b == b'-'
             } else {
                 b.is_ascii_digit()
             }
         })
-    {
+}
+
+pub fn back_up(home: &Path, slug: &str, stamp: &str, items: &[Item<'_>]) -> Result<PathBuf> {
+    if crew::slugify(slug).as_deref() != Some(slug) {
+        return Err(Error::Invalid("invalid assistant slug".into()));
+    }
+    if !valid_stamp(stamp) {
         return Err(Error::Invalid("invalid backup date".into()));
     }
     if items
