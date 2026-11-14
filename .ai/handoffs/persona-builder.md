@@ -2,6 +2,29 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF14: the other Claude Code messages name the sign-in this build can start (2026-11-14, lane: V1)
+
+- **Why:** found building VF6: `NOT_INSTALLED`, `SIGNED_OUT`, `SUBSCRIPTION_REFUSED` and `SUBSCRIPTION_NOT_OFFERED`
+  still sent a Mac user to the Anthropic Console sign-in, which is refused on a Mac since VF3.
+- **What:** each of the four is still one `pub const &str`, now defined per build with `#[cfg]`, the way
+  `CONSOLE_NOT_AVAILABLE` is. Off a Mac every sentence is unchanged. On a Mac, a testers' build names the Claude
+  subscription and `voice claude sign-in --subscription`; the public build says the Console sign-in doesn't work on a
+  Mac yet and a later update adds it. The API's allow-list compares by name, so the CLI and Connect Claude follow
+  with no other change.
+- **Brief:** `plans/briefs/VF14-claude-code-messages-name-the-sign-in.md`.
+- **Who built it:** Codex, from the brief; V1 ran the socket-using tests outside Codex's sandbox.
+- **Reviews:** security review sub-agent: no findings (each constant defined exactly once in every build; the
+  allow-list follows by name; every command named is one that build can start; no leak). Its nit: the CLI's
+  `--subscription` flag keys off the CLI crate's feature, the words off the agent crate's, as `signed_out_at` already
+  does. Verifier: not required (spec).
+- **Verified:** red first (Codex: the new agent test failed on its assertion before the change). Green on a Mac in
+  both builds: `voice-agent` `text` and `profile`, `voice-api` `assistants`, `voice-cli` `agent`; `cargo fmt`; clippy
+  `-D warnings` on the workspace and on the testers' build. Mutation (`cp`, `cmp`): the old Console-only
+  `SUBSCRIPTION_NOT_OFFERED` fails the new test on its exact string. Full `ci-local.sh` at the land.
+- **Decided at pickup:** `console_sign_in_uses_the_approved_words` now picks its expected `NOT_INSTALLED` and
+  `SIGNED_OUT` per build too (the brief's step 2.2), so it overlaps the new test on those two; left as it is.
+- **Not verified:** off a Mac (unchanged text, pinned by the same tests); the screen by hand.
+
 ## VF6: `voice claude check` names the sign-in this build can start (2026-11-13, lane: V1)
 
 - **Why:** found in VF3's walk: on a Mac, the not-signed-in text still said to sign in with an Anthropic Console
