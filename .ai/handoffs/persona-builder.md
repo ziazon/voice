@@ -2,6 +2,29 @@
 
 One record per slice, newest first. Paraphrase only; no real person.
 
+## VF6: `voice claude check` names the sign-in this build can start (2026-11-13, lane: V1)
+
+- **Why:** found in VF3's walk: on a Mac, the not-signed-in text still said to sign in with an Anthropic Console
+  account and to run `voice claude sign-in`, and since VF3 that sign-in is refused there.
+- **What:** `text::signed_out_at` picks its tail from `claude::starts(SignIn::Console)` and `SUBSCRIPTION_OFFERED`:
+  the Console sentence where Console starts (unchanged off a Mac); *so sign in once with your Claude subscription*
+  in a testers' build on a Mac; and *Signing in with a Console account doesn't work on a Mac yet. A later update
+  adds it.* in the public build on a Mac. `SIGN_IN_CLI` became `sign_in_cli()`, which gives the matching command
+  (`voice claude sign-in`, or `--subscription`) or none, and `voice claude check` adds it only when there is one.
+  The Connect Claude screen shows the API's message as-is, so it follows with no UI change.
+- **Brief:** `plans/briefs/VF6-check-names-the-sign-in.md`.
+- **Who built it:** Codex, from the brief (`392dea0`); V1 ran every cargo test outside Codex's sandbox.
+- **Reviews:** security review sub-agent: no findings (static strings; the program path still goes through
+  `shown_program`; the subscription words only in a build with the feature). Verifier: not required (spec).
+- **Verified:** green on a Mac in both builds: `voice-agent` `text` and `profile`, `voice-cli` `agent`
+  (`claude_check`), `voice-api` `assistants` (`claude_status`), each with and without `claude-subscription`. Red by
+  mutation (`cp`, `cmp`): the old Console-only tail and command fail the agent test in both builds and the CLI test,
+  each on its exact expected string. Full `ci-local.sh` at the land.
+- **Decided at pickup:** the screen's text comes from the API, so no UI test changed; the screen's intro paragraph
+  and its *Sign in with Anthropic Console* button stay (VF3 kept the button and shows the refusal). `SIGNED_OUT` and
+  `NOT_INSTALLED` also name a Console sign-in and were left: out of this slice's spec.
+- **Not verified:** off a Mac (the Console case is unchanged and pinned by the same tests); the screen by hand.
+
 ## VF8: the egress header-deadline test accepts a reset (2026-11-13, lane: V1)
 
 - **Why:** `header_deadline_is_absolute` failed once while gating VF7a (2026-11-09): its trickle pass read
