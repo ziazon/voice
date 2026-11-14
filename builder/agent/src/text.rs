@@ -106,7 +106,16 @@ pub const CONSOLE_NOT_AVAILABLE: &str =
     "Signing in with a Console account doesn't work on a Mac yet. A later update adds it.";
 #[cfg(feature = "claude-subscription")]
 pub const CONSOLE_NOT_AVAILABLE: &str = "Signing in with a Console account doesn't work on a Mac yet. A later update adds it. Use Sign in with a Claude subscription instead.";
-pub const SIGN_IN_CLI: &str = "Run voice claude sign-in to sign in.";
+/// The command for a sign-in this build can start, when one is available.
+pub fn sign_in_cli() -> Option<&'static str> {
+    if crate::claude::starts(crate::claude::SignIn::Console) {
+        Some("Run voice claude sign-in to sign in.")
+    } else if crate::claude::SUBSCRIPTION_OFFERED {
+        Some("Run voice claude sign-in --subscription to sign in.")
+    } else {
+        None
+    }
+}
 pub const SIGN_IN_WAITING: &str =
     "Finish signing in on the page that opened in your browser. Voice carries on when you're done.";
 pub const SIGN_IN_FAILED: &str = "Claude Code didn't finish signing in. Try again. If no sign-in page opened in your browser, check that this computer has a default browser.";
@@ -115,9 +124,21 @@ pub const SIGN_IN_TIMED_OUT: &str =
 pub const SIGN_IN_STOPPED: &str =
     "You stopped signing in, so Claude Code still isn't signed in for Voice.";
 pub const PROFILE_FAILED: &str = "Voice couldn't set up its own Claude Code folder. Check there's space on this computer, then try again.";
+/// The sign-in guidance this build can offer on this platform.
+fn sign_in_once() -> &'static str {
+    if crate::claude::starts(crate::claude::SignIn::Console) {
+        ", so sign in once with an Anthropic Console account."
+    } else if crate::claude::SUBSCRIPTION_OFFERED {
+        ", so sign in once with your Claude subscription."
+    } else {
+        ". Signing in with a Console account doesn't work on a Mac yet. A later update adds it."
+    }
+}
+/// Explain the separate sign-in for the Claude Code found on this computer.
 pub fn signed_out_at(version: &str, program: &str) -> String {
     format!(
-        "Claude Code {version} at {program} isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account."
+        "Claude Code {version} at {program} isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself{}",
+        sign_in_once()
     )
 }
 pub fn shown_program(program: &Path, home: &Path) -> String {

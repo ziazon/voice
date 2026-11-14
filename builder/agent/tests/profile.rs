@@ -277,9 +277,16 @@ fn displayed_paths_hide_the_home_and_signed_out_text_is_exact() {
         text::shown_program(Path::new("/opt/homebrew/bin/claude"), home),
         "/opt/homebrew/bin/claude"
     );
+    let expected = if !cfg!(target_os = "macos") {
+        "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account."
+    } else if voice_agent::claude::SUBSCRIPTION_OFFERED {
+        "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude subscription."
+    } else {
+        "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself. Signing in with a Console account doesn't work on a Mac yet. A later update adds it."
+    };
     assert_eq!(
         text::signed_out_at("2.1.292", "~/.local/bin/claude"),
-        "Claude Code 2.1.292 at ~/.local/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account."
+        expected
     );
 }
 

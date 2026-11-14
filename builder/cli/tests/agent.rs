@@ -132,13 +132,14 @@ fn claude_check_says_ready_or_what_to_do() {
     f.stub("case \"$1\" in --version) echo '2.1.292 (Claude Code)';; auth) echo '{\"loggedIn\":false}';; esac");
     let out = f.run(&["claude", "check"]);
     assert_eq!(out.status.code(), Some(1));
-    assert_eq!(
-        text(&out.stderr),
-        format!(
-            "voice: {}\n",
-            "Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account. Run voice claude sign-in to sign in."
-        )
-    );
+    let expected = if !cfg!(target_os = "macos") {
+        "voice: Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with an Anthropic Console account. Run voice claude sign-in to sign in.\n"
+    } else if voice_agent::claude::SUBSCRIPTION_OFFERED {
+        "voice: Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself, so sign in once with your Claude subscription. Run voice claude sign-in --subscription to sign in.\n"
+    } else {
+        "voice: Claude Code 2.1.292 at ~/bin/claude isn't signed in for Voice yet. Voice keeps a sign-in of its own, separate from the Claude app and from the Claude Code you use yourself. Signing in with a Console account doesn't work on a Mac yet. A later update adds it.\n"
+    };
+    assert_eq!(text(&out.stderr), expected);
 }
 
 #[test]

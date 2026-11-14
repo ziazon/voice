@@ -1656,14 +1656,15 @@ fn claude_check() -> Result<()> {
         return Err(Error::Invalid(text::SUBSCRIPTION_REFUSED.into()));
     }
     if !ready.signed_in {
-        return Err(Error::Invalid(format!(
-            "{} {}",
-            text::signed_out_at(
-                &ready.version,
-                &text::shown_program(claude.program(), &home)
-            ),
-            text::SIGN_IN_CLI,
-        )));
+        let mut message = text::signed_out_at(
+            &ready.version,
+            &text::shown_program(claude.program(), &home),
+        );
+        if let Some(line) = text::sign_in_cli() {
+            message.push(' ');
+            message.push_str(line);
+        }
+        return Err(Error::Invalid(message));
     }
     println!("{}", text::ready(&ready.version));
     Ok(())
