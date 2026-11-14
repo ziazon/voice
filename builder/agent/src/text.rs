@@ -1,12 +1,28 @@
 //! Every sentence the agent crate shows a person: plain words, no tool words.
 use std::path::Path;
 
+#[cfg(not(target_os = "macos"))]
 pub const NOT_INSTALLED: &str = "Voice works through your own Claude Code, and it isn't on this computer yet. Install it (https://code.claude.com/docs/en/setup), then try again. Voice signs it in with an Anthropic Console account, which is billed for what it uses (API billing).";
+#[cfg(all(target_os = "macos", feature = "claude-subscription"))]
+pub const NOT_INSTALLED: &str = "Voice works through your own Claude Code, and it isn't on this computer yet. Install it (https://code.claude.com/docs/en/setup), then try again. Voice signs it in with your Claude subscription, so what it does uses your plan.";
+#[cfg(all(target_os = "macos", not(feature = "claude-subscription")))]
+pub const NOT_INSTALLED: &str = "Voice works through your own Claude Code, and it isn't on this computer yet. Install it (https://code.claude.com/docs/en/setup), then try again. Signing in with a Console account doesn't work on a Mac yet. A later update adds it.";
 pub const DOES_NOT_RUN: &str = "Claude Code is on this computer but didn't start. Open it once on its own to check it works, then try again.";
+#[cfg(not(target_os = "macos"))]
 pub const SIGNED_OUT: &str = "Claude Code isn't signed in for Voice. Sign in with your Anthropic Console account on Connect Claude, or with `voice claude sign-in`, then try again.";
+#[cfg(all(target_os = "macos", feature = "claude-subscription"))]
+pub const SIGNED_OUT: &str = "Claude Code isn't signed in for Voice. Sign in with your Claude subscription on Connect Claude, or with `voice claude sign-in --subscription`, then try again.";
+#[cfg(all(target_os = "macos", not(feature = "claude-subscription")))]
+pub const SIGNED_OUT: &str = "Claude Code isn't signed in for Voice. Signing in with a Console account doesn't work on a Mac yet. A later update adds it.";
+#[cfg(not(target_os = "macos"))]
 pub const SUBSCRIPTION_REFUSED: &str = "Claude Code is signed in for Voice with a Claude subscription, which this copy of Voice can't use. Sign in again with an Anthropic Console account on Connect Claude, or with `voice claude sign-in`.";
+#[cfg(target_os = "macos")]
+pub const SUBSCRIPTION_REFUSED: &str = "Claude Code is signed in for Voice with a Claude subscription, which this copy of Voice can't use. Signing in with a Console account doesn't work on a Mac yet. A later update adds it.";
+#[cfg(not(target_os = "macos"))]
 pub const SUBSCRIPTION_NOT_OFFERED: &str =
     "This copy of Voice signs in with an Anthropic Console account only.";
+#[cfg(target_os = "macos")]
+pub const SUBSCRIPTION_NOT_OFFERED: &str = "This copy of Voice can't sign in with a Claude subscription. Signing in with a Console account doesn't work on a Mac yet. A later update adds it.";
 
 pub const PLAN_STOPPED: &str = "Your Claude plan is nearly used up, so Voice has stopped for today and left the rest for you. Run the build again tomorrow to carry on.";
 pub const FAILED: &str = "Claude Code couldn't finish this step. Open Claude Code and check it answers you, then try again.";
